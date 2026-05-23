@@ -1,0 +1,40 @@
+{
+  "name": "openqlow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "FLATUP GYM attack AI for approved SNS draft generation",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "daily": "tsx src/scheduler/daily.ts",
+    "monitor": "tsx src/index.ts monitor",
+    "serve": "tsx src/line_bot/webhook.ts",
+    "typecheck": "tsc --noEmit",
+    "test:config": "tsx src/config.test.ts",
+    "test:date": "tsx src/utils/date.test.ts",
+    "test:draft-date": "tsx src/utils/draft_date.test.ts",
+    "test:safety": "tsx src/safety/check.test.ts",
+    "test:publication-lock": "tsx src/safety/publication_lock.test.ts",
+    "test:approval": "tsx src/approval/message.test.ts",
+    "test:line-command": "tsx src/line_bot/commands.test.ts",
+    "test:line-command-memory": "tsx src/line_bot/commands_memory.test.ts",
+    "test:line-reply": "tsx src/line_bot/reply.test.ts",
+    "test:line-notifier": "tsx src/line_bot/notifier.test.ts",
+    "test:state": "tsx src/state/file_store.test.ts",
+    "test:canon": "tsx src/sources/canon_map.test.ts",
+    "test:vault-register": "tsx src/adapters/vault_register.test.ts",
+    "test:privacy": "tsx src/privacy/rules.test.ts",
+    "test:forbidden-actions": "tsx src/safety/forbidden_actions.test.ts",
+    "test:session-store": "tsx src/conversation/session_store.test.ts",
+    "test:interview-flow": "tsx src/conversation/interview_flow.test.ts",
+    "test:crm-log": "tsx src/conversation/crm_log_generator.test.ts",
+    "test:memory-keeper": "tsx src/commands/memory_keeper.test.ts",
+    "test": "npm run typecheck && npm run test:config && npm run test:date && npm run test:draft-date && npm run test:safety && npm run test:publication-lock && npm run test:approval && npm run test:line-command && npm run test:line-command-memory && npm run test:line-reply && npm run test:line-notifier && npm run test:state && npm run test:canon && npm run test:vault-register && npm run test:privacy && npm run test:forbidden-actions && npm run test:session-store && npm run test:interview-flow && npm run test:crm-log && npm run test:memory-keeper"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {}
+}

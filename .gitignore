@@ -1,0 +1,28 @@
+# 依存
+node_modules/
+
+# ランタイム生成物（VPS と Mac で別物、コミットしない）
+state/
+drafts/
+logs/
+*.log
+
+# 機密
+.env
+.env.*
+!.env.example
+
+# 一時バックアップ
+.phase2-backup/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+
+# Obsidian ミラー（誤同期防止）
+obsidian-bridge/

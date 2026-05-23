@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OPENQLOW health monitor every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Unit=openqlow-monitor.service
+
+[Install]
+WantedBy=timers.target

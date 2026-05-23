@@ -1,0 +1,20 @@
+[Unit]
+Description=Cloudflare quick tunnel for OPENQLOW
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:80 --no-autoupdate
+Restart=always
+RestartSec=10
+User=root
+MemoryMax=128M
+CPUQuota=20%
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

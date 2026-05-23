@@ -1,0 +1,21 @@
+[Unit]
+Description=OPENQLOW health monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=openqlow
+Group=openqlow
+WorkingDirectory=/opt/openqlow
+EnvironmentFile=/etc/openqlow/openqlow.env
+ExecStart=/usr/bin/npm run monitor
+MemoryMax=256M
+CPUQuota=25%
+TasksMax=64
+OOMPolicy=stop
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/openqlow /opt/obsidian-vault

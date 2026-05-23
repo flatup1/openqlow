@@ -1,0 +1,16 @@
+services:
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: anythingllm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - /opt/anythingllm/storage:/app/server/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Use this in the AnythingLLM UI when connecting to Ollama from Docker:
+      # http://host.docker.internal:11434
+      UID: "1000"
+      GID: "1000"
