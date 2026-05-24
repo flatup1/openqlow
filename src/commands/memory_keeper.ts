@@ -70,7 +70,7 @@ export async function cancelMemorySession(userId: string, opts: MemoryHandlerOpt
   return {
     ok: true,
     reply: existed
-      ? "OPENQLOW（記憶係）：セッションを中止しました。やり直すなら「/昨日の記録」と送ってください。"
+      ? "OPENQLOW（記憶係）：セッションを中止しました。やり直すなら「/日記」と送ってください。"
       : "OPENQLOW（記憶係）：進行中のセッションはありません。",
     meta: { hadSession: existed },
   };
@@ -82,7 +82,7 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
   if (!session) {
     return {
       ok: false,
-      reply: "OPENQLOW（記憶係）：保存対象のセッションが見つかりません（タイムアウトの可能性）。\n「/昨日の記録」から再開してください。",
+      reply: "OPENQLOW（記憶係）：保存対象のセッションが見つかりません（タイムアウトの可能性）。\n「/日記」から再開してください。",
     };
   }
 
@@ -130,10 +130,19 @@ export async function tryContinueOngoingSession(userId: string, text: string, op
   return continueMemoryInterview(userId, text, opts);
 }
 
+/**
+ * 全角スラッシュ「／」「\」など先頭の区切り文字を半角「/」に揃え、
+ * 周辺の空白も削る。Jin のスマホ日本語入力で自動全角化されても通るようにする。
+ */
+function normaliseCommandText(text: string): string {
+  return text.trim().replace(/^[／\/\\]/, "/");
+}
+
 export function parseMemoryCommand(text: string): MemoryCommand | undefined {
-  const trimmed = text.trim();
-  if (/^\/?昨日の記録$/.test(trimmed)) return "/昨日の記録";
+  const trimmed = normaliseCommandText(text);
+  if (/^\/?(?:昨日の記録|昨日の日記|日記)$/.test(trimmed)) return "/昨日の記録";
   if (/^\/?保存用ログ$/.test(trimmed)) return "/保存用ログ";
+  // 「やめる」単体は除外（既存承認フローの「やめる FG-XXX」と区別するため）
   if (/^\/?中止$/.test(trimmed)) return "/中止";
   return undefined;
 }

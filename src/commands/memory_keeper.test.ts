@@ -26,16 +26,29 @@ async function setVaultTmp(): Promise<void> {
 
 const userId = "test-user-mk-001";
 
-// 1. parseMemoryCommand: 主要 3 コマンド
+// 1. parseMemoryCommand: 主要 3 コマンド + エイリアス
 assert.equal(parseMemoryCommand("/昨日の記録"), "/昨日の記録");
+assert.equal(parseMemoryCommand("/日記"), "/昨日の記録");
+assert.equal(parseMemoryCommand("日記"), "/昨日の記録");
+assert.equal(parseMemoryCommand("/昨日の日記"), "/昨日の記録");
 assert.equal(parseMemoryCommand("/保存用ログ"), "/保存用ログ");
 assert.equal(parseMemoryCommand("/中止"), "/中止");
 assert.equal(parseMemoryCommand("昨日の記録"), "/昨日の記録"); // 先頭 / なしも許容
 assert.equal(parseMemoryCommand("OK FG-20260521-001"), undefined);
 assert.equal(parseMemoryCommand("/SNS作成"), undefined);
 
+// 1b. 全角スラッシュ「／」も半角と同じ扱い（日本語IME対策）
+assert.equal(parseMemoryCommand("／日記"), "/昨日の記録");
+assert.equal(parseMemoryCommand("／昨日の記録"), "/昨日の記録");
+assert.equal(parseMemoryCommand("／中止"), "/中止");
+
+// 1c. 「やめる」単体は memory ではなく承認フロー側の責務（混同回避）
+assert.equal(parseMemoryCommand("やめる"), undefined);
+assert.equal(parseMemoryCommand("やめる FG-20260521-001"), undefined);
+
 // 2. isMemoryCommandText
 assert.equal(isMemoryCommandText("/昨日の記録"), true);
+assert.equal(isMemoryCommandText("/日記"), true);
 assert.equal(isMemoryCommandText("hello"), false);
 
 // 3. startMemoryInterview: セッション開始メッセージに「昨日」と「はい/なし」が入る
@@ -118,6 +131,14 @@ assert.equal(isMemoryCommandText("hello"), false);
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/昨日の記録", { store });
+  assert.equal(r.route, "command");
+  assert.ok(r.ok);
+}
+
+// 10b. routeMemoryText: /日記 alias
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/日記", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
 }

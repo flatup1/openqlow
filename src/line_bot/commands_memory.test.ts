@@ -28,6 +28,16 @@ const userId = "test-line-user-001";
   assert.match(result.message, /記憶係/);
 }
 
+// 2b. /日記 + userId → /昨日の記録 と同じくセッション開始
+{
+  const store = await makeStore();
+  const result = await executeLineCommand("/日記", { userId, memorySessionStore: store });
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /記憶係/);
+}
+
 // 3. /中止 でセッション破棄
 {
   const store = await makeStore();
