@@ -144,7 +144,7 @@ function normaliseCommandText(text: string): string {
  */
 export function parseOneShotMemo(text: string): { body: string } | undefined {
   const trimmed = normaliseCommandText(text);
-  const match = trimmed.match(/^\/?(?:昨日の記録|昨日の日記|日記)(?:\s+|\n)([\s\S]+)$/);
+  const match = trimmed.match(/^\/?(?:昨日の記録|昨日の日記|日記|メモ)(?:\s+|\n)([\s\S]+)$/);
   if (!match) return undefined;
   const body = match[1].trim();
   if (!body) return undefined;

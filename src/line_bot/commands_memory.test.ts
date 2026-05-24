@@ -63,7 +63,7 @@ const userId = "test-line-user-001";
   const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-cmd-mem-vault-"));
   process.env.OBSIDIAN_VAULT_ROOT = tmp;
   const store = await makeStore();
-  const r = await executeLineCommand("/日記 メルティのキッズクラス始動", { userId, memorySessionStore: store });
+  const r = await executeLineCommand("メモ メルティのキッズクラス始動", { userId, memorySessionStore: store });
   assert.equal(r.handled, true);
   assert.equal(r.action, "memory_keeper");
   assert.match(r.message, /保存しました/);
