@@ -64,11 +64,18 @@ assert.ok(yesnoQ.includes("なし"));
   assert.ok(r.prompt.includes("体験者"));
 }
 
-// 6. ジャンル選択で f / 終わり → ready_to_save
+// 6. ジャンル選択で f / 終わり / 終わる → ready_to_save
 {
   const s = makeSession();
   s.step = "awaiting_genre_choice";
   const r = applyGenreChoice(s, "f");
+  assert.equal(s.step, "ready_to_save");
+  assert.equal(r.finished, true);
+}
+{
+  const s = makeSession();
+  s.step = "awaiting_more_genre";
+  const r = applyMoreGenreAnswer(s, "終わる");
   assert.equal(s.step, "ready_to_save");
   assert.equal(r.finished, true);
 }

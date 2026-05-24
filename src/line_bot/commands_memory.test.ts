@@ -48,14 +48,25 @@ const userId = "test-line-user-001";
   assert.match(r.message, /中止/);
 }
 
-// 4. 進行中セッションへの「なし」回答が引き継がれる
+// 4. 進行中セッションへの「なし」回答が引き継がれる（自動セッション破棄）
 {
   const store = await makeStore();
   await executeLineCommand("/昨日の記録", { userId, memorySessionStore: store });
   const r = await executeLineCommand("なし", { userId, memorySessionStore: store });
   assert.equal(r.handled, true);
   assert.equal(r.action, "memory_keeper");
-  assert.match(r.message, /記録なしで保存/);
+  assert.match(r.message, /記録なしで終了/);
+}
+
+// 4b. ワンショット: /日記 本文 で 1 往復保存
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-cmd-mem-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const store = await makeStore();
+  const r = await executeLineCommand("/日記 メルティのキッズクラス始動", { userId, memorySessionStore: store });
+  assert.equal(r.handled, true);
+  assert.equal(r.action, "memory_keeper");
+  assert.match(r.message, /保存しました/);
 }
 
 // 5. 進行中セッションがない普通のメッセージは未処理（既存承認フローに流れる）

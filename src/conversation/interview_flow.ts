@@ -88,7 +88,7 @@ function parseGenreChoice(input: string): Genre | "end" | "unknown" {
   if (/^(c|問い合わせ|問合|inquiry)/i.test(t)) return "inquiry";
   if (/^(d|会員|気になる|member)/i.test(t)) return "member_change";
   if (/^(e|その他|other|自由)/i.test(t)) return "other";
-  if (/^(f|終わり|終了|end|done|もう|なし)/i.test(t)) return "end";
+  if (/^(f|終わり|終わる|終り|終了|おわり|end|done|もう|なし)/i.test(t)) return "end";
   return "unknown";
 }
 
@@ -114,7 +114,7 @@ export function buildMoreGenreQuestion(): string {
     "1 件分の記録が終わりました。",
     "他に記録すべきことはありますか？",
     "・追加する → ジャンルの頭文字を送ってください（a〜e）",
-    "・終わる   → f または「終わり」と送ってください",
+    "・終わる   → f / 終わる / 終わり",
   ].join("\n");
 }
 
@@ -122,12 +122,9 @@ export function applyYesNoAnswer(session: ConversationSession, answer: string): 
   const parsed = parseYesNo(answer);
   if (parsed === "no") {
     session.step = "ready_to_save";
+    session.skipSave = true; // 空ログを残さない
     return {
-      prompt: [
-        "了解です。今日は記録なしで保存します。",
-        "「/保存用ログ」と送ると Obsidian に空ログを残せます。",
-        "保存しない場合は「/中止」で OK。",
-      ].join("\n"),
+      prompt: "OPENQLOW（記憶係）：記録なしで終了。今日も静かに進めましょう。",
       finished: true,
     };
   }
@@ -147,12 +144,16 @@ export function applyGenreChoice(session: ConversationSession, answer: string): 
   const parsed = parseGenreChoice(answer);
   if (parsed === "end") {
     session.step = "ready_to_save";
+    // genres が空なら保存スキップ（無駄ファイル作らない）
+    if (session.genres.length === 0) {
+      session.skipSave = true;
+      return {
+        prompt: "OPENQLOW（記憶係）：記録なしで終了。今日も静かに進めましょう。",
+        finished: true,
+      };
+    }
     return {
-      prompt: [
-        "お疲れ様でした。記録の準備ができました。",
-        "「/保存用ログ」と送ると Obsidian に保存します。",
-        "やり直すなら「/中止」で OK。",
-      ].join("\n"),
+      prompt: "OPENQLOW（記憶係）：記録の準備ができました。自動で保存します…",
       finished: true,
     };
   }

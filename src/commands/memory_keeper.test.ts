@@ -8,6 +8,7 @@ import {
   continueMemoryInterview,
   dispatchMemoryCommand,
   isMemoryCommandText,
+  parseOneShotMemo,
   parseMemoryCommand,
   routeMemoryText,
   saveMemorySession,
@@ -45,6 +46,19 @@ assert.equal(parseMemoryCommand("／中止"), "/中止");
 // 1c. 「やめる」単体は memory ではなく承認フロー側の責務（混同回避）
 assert.equal(parseMemoryCommand("やめる"), undefined);
 assert.equal(parseMemoryCommand("やめる FG-20260521-001"), undefined);
+
+// 1d. parseOneShotMemo: /日記 + 本文 のワンショット記録抽出
+assert.deepEqual(parseOneShotMemo("/日記 メルティのキッズクラス始動"), { body: "メルティのキッズクラス始動" });
+assert.deepEqual(parseOneShotMemo("/昨日の記録 体験者あり"), { body: "体験者あり" });
+assert.deepEqual(parseOneShotMemo("／日記 全角スラでもOK"), { body: "全角スラでもOK" });
+assert.deepEqual(parseOneShotMemo("日記\n改行で本文"), { body: "改行で本文" });
+assert.equal(parseOneShotMemo("/日記"), undefined); // 本文なしはワンショットではない
+assert.equal(parseOneShotMemo("/日記   "), undefined); // 空白だけも対象外
+assert.equal(parseOneShotMemo("/SNS作成 何か"), undefined);
+
+// 1e. parseMemoryCommand: ワンショット形式は対話起動として扱わない
+assert.equal(parseMemoryCommand("/日記 本文あり"), undefined);
+assert.equal(parseMemoryCommand("／日記 本文あり"), undefined);
 
 // 2. isMemoryCommandText
 assert.equal(isMemoryCommandText("/昨日の記録"), true);
@@ -157,6 +171,45 @@ assert.equal(isMemoryCommandText("hello"), false);
   const store = await makeStore();
   const r = await routeMemoryText("nobody-user", "なし", { store });
   assert.equal(r.route, "no_match");
+}
+
+// 13. ワンショット記録：/日記 本文 → 1往復で保存
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/日記 メルティのキッズクラス始動", { store });
+  assert.equal(r.route, "command");
+  assert.ok(r.ok, `保存失敗: ${r.reply}`);
+  assert.match(r.reply, /保存しました/);
+  assert.equal(r.meta?.mode, "one_shot");
+  assert.equal(await store.exists(userId), false, "ワンショット後はセッション残らない");
+}
+
+// 14. 「なし」回答 → 自動セッション破棄、ファイル作らない
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/日記", { store });
+  const r = await routeMemoryText(userId, "なし", { store });
+  assert.equal(r.route, "ongoing_session");
+  assert.ok(r.ok);
+  assert.match(r.reply, /記録なしで終了/);
+  assert.equal(await store.exists(userId), false, "セッションは自動破棄");
+}
+
+// 15. 対話モード完走 → /保存用ログ なしで自動保存される
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/日記", { store });
+  await routeMemoryText(userId, "はい", { store });
+  await routeMemoryText(userId, "e", { store });          // その他選択
+  const r = await routeMemoryText(userId, "メモ本文", { store }); // 1 行で完了
+  // 「その他」は質問 1 つだけなので、回答後 awaiting_more_genre になる
+  // 続けて「終わる」で end → 自動保存
+  const r2 = await routeMemoryText(userId, "終わる", { store });
+  assert.match(r2.reply, /保存しました/, `自動保存応答: ${r2.reply}`);
+  assert.equal(await store.exists(userId), false, "自動保存後はセッション破棄");
 }
 
 console.log("memory keeper tests passed");

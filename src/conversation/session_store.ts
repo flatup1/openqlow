@@ -32,6 +32,8 @@ export interface ConversationSession {
   activeGenreQuestionIndex: number;
   /** 集めた genre 回答群 */
   genres: GenreEntry[];
+  /** 「なし」で終了したセッションは保存スキップ（空ログ作らない） */
+  skipSave?: boolean;
   startedAt: string;           // ISO8601
   expiresAt: string;           // ISO8601 (30 分後)
   lastInteractionAt: string;   // ISO8601

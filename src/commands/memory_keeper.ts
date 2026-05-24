@@ -37,7 +37,7 @@ export async function startMemoryInterview(userId: string, opts: MemoryHandlerOp
     "",
     buildYesNoQuestion(),
     "",
-    "（途中でやめたい時は「/中止」、保存したい時は「/保存用ログ」と送ってください）",
+    "（途中でやめたい時は「/中止」。最後に「終わる」と送ると自動保存します）",
   ].join("\n");
   return { ok: true, reply, meta: { sessionStarted: session.startedAt } };
 }
@@ -138,8 +138,23 @@ function normaliseCommandText(text: string): string {
   return text.trim().replace(/^[／\/\\]/, "/");
 }
 
+/**
+ * 「/日記 本文」「/日記\n本文」などワンショット記録の本文を抽出。
+ * 本文がなければ undefined を返す（＝対話モード継続）。
+ */
+export function parseOneShotMemo(text: string): { body: string } | undefined {
+  const trimmed = normaliseCommandText(text);
+  const match = trimmed.match(/^\/?(?:昨日の記録|昨日の日記|日記)(?:\s+|\n)([\s\S]+)$/);
+  if (!match) return undefined;
+  const body = match[1].trim();
+  if (!body) return undefined;
+  return { body };
+}
+
 export function parseMemoryCommand(text: string): MemoryCommand | undefined {
   const trimmed = normaliseCommandText(text);
+  // 本文付きはワンショット扱いなので、対話モード起動コマンドとしては検出しない
+  if (parseOneShotMemo(text)) return undefined;
   if (/^\/?(?:昨日の記録|昨日の日記|日記)$/.test(trimmed)) return "/昨日の記録";
   if (/^\/?保存用ログ$/.test(trimmed)) return "/保存用ログ";
   // 「やめる」単体は除外（既存承認フローの「やめる FG-XXX」と区別するため）
@@ -168,18 +183,114 @@ export interface RouteResult extends MemoryHandlerResult {
 }
 
 /**
+ * 「/日記 本文」ワンショット記録：1 往復で Obsidian に保存。
+ */
+export async function recordOneShotMemo(userId: string, body: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult> {
+  const store = getStore(opts);
+  // 既存セッションがあれば破棄（ワンショットは独立した記録）
+  await store.destroy(userId);
+  const session = await store.start(userId, "/昨日の記録");
+  session.genres.push({
+    type: "other",
+    data: { topic: body },
+    answers: [{ key: "topic", question: "ワンショット記録", answer: body }],
+  });
+  session.step = "ready_to_save";
+  await store.save(session);
+
+  try {
+    const result = await saveCrmLog(session);
+    await store.destroy(userId);
+    return {
+      ok: true,
+      reply: [
+        "OPENQLOW（記憶係）：保存しました📝",
+        `日付: ${result.dateJst}`,
+        result.appended ? "（既存ログに追記）" : "（新規ファイル）",
+      ].join("\n"),
+      meta: { mode: "one_shot", filePath: result.filePath, dateJst: result.dateJst },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      reply: `OPENQLOW（記憶係）：保存失敗。\n理由: ${message}`,
+      meta: { mode: "one_shot", error: message },
+    };
+  }
+}
+
+/**
+ * 対話モード終了時の自動保存。skipSave が true なら保存せず破棄のみ。
+ */
+async function autoSaveIfFinished(userId: string, session: ConversationSession, opts: MemoryHandlerOptions): Promise<MemoryHandlerResult | undefined> {
+  if (session.step !== "ready_to_save") return undefined;
+
+  const store = getStore(opts);
+  if (session.skipSave) {
+    await store.destroy(userId);
+    return undefined; // 上位の reply をそのまま使う
+  }
+
+  try {
+    const result = await saveCrmLog(session);
+    await store.destroy(userId);
+    return {
+      ok: true,
+      reply: [
+        "OPENQLOW（記憶係）：保存しました📝",
+        `日付: ${result.dateJst}`,
+        result.appended ? "（既存ログに追記）" : "（新規ファイル）",
+        `件数: ${session.genres.length}`,
+      ].join("\n"),
+      meta: {
+        mode: "auto_save",
+        filePath: result.filePath,
+        dateJst: result.dateJst,
+        genres: session.genres.length,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      reply: `OPENQLOW（記憶係）：保存失敗。セッション保持中。\n理由: ${message}`,
+      meta: { mode: "auto_save", error: message },
+    };
+  }
+}
+
+/**
  * テキスト 1 件分のフルディスパッチ。
  * 既存承認フロー (OK FG-...) は呼び出し側で先に処理してから、これに来る前提。
  */
 export async function routeMemoryText(userId: string, text: string, opts: MemoryHandlerOptions = {}): Promise<RouteResult> {
+  // 1) ワンショット「/日記 本文」を最優先で検出
+  const oneShot = parseOneShotMemo(text);
+  if (oneShot) {
+    const result = await recordOneShotMemo(userId, oneShot.body, opts);
+    return { ...result, route: "command" };
+  }
+
+  // 2) 明示コマンド（/日記 単独、/中止、/保存用ログ）
   const command = parseMemoryCommand(text);
   if (command) {
     const result = await dispatchMemoryCommand(userId, command, opts);
     return { ...result, route: "command" };
   }
 
+  // 3) 進行中セッションへの回答
   const ongoing = await tryContinueOngoingSession(userId, text, opts);
   if (ongoing) {
+    // 対話が終了状態に達したら、その場で自動保存（/保存用ログ を待たない）
+    const store = getStore(opts);
+    const session = await store.load(userId);
+    if (session) {
+      const autosave = await autoSaveIfFinished(userId, session, opts);
+      if (autosave) {
+        return { ...autosave, route: "ongoing_session" };
+      }
+    }
     return { ...ongoing, route: "ongoing_session" };
   }
 
