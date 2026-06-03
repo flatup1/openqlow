@@ -33,4 +33,12 @@ rsync -az --delete "${RSYNC_EXCLUDES[@]}" \
   "$PROJECT_ROOT" \
   "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}"
 
+# rsync は Mac の UID/GID をそのまま転送するため、VPS 側で
+# webhook プロセスのユーザ (openqlow) が state/ drafts/ logs/ に
+# 書き込めなくなる。同期後に明示的に chown して、書き込み対象ディレクトリも作っておく。
+echo "[sync-to-vps] fixing ownership on ${REMOTE_DIR} → openqlow:openqlow"
+ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" \
+  "mkdir -p ${REMOTE_DIR}state ${REMOTE_DIR}drafts ${REMOTE_DIR}logs && \
+   chown -R openqlow:openqlow ${REMOTE_DIR}"
+
 echo "[sync-to-vps] done."

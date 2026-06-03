@@ -131,6 +131,62 @@ export function getMorningMode(text: string): "dialog" | "bulk" {
   return "dialog";
 }
 
+// 各 morning フィールドに対する「ラベル語」候補。
+// bulk 回答で「8. 今日の最優先タスク：システム構築」のように
+// ラベル付きで送られた時、値からラベル部分を剥がすために使う。
+// 長い語を先に試すため後でソートする。
+const BULK_LABEL_KEYWORDS: Record<string, string[]> = {
+  trial_yesterday: ["昨日の体験", "体験"],
+  enrollment_yesterday: ["入会した人", "入会"],
+  enrollment_considering: [
+    "入会迷ってる人", "入会迷い", "入会検討中の人", "入会検討中", "入会検討", "入会しそうな人", "入会しそう",
+    "迷ってる人", "迷い", "検討中",
+  ],
+  followup_needed: [
+    "返信・フォローが必要な人", "返信・フォロー", "フォローが必要な人",
+    "返信が必要な人", "返信", "フォロー",
+  ],
+  review_request_candidate: ["口コミ頼めそうな人", "口コミ依頼候補", "口コミ", "レビュー"],
+  retention_risk: [
+    "休みがち・退会しそうな人", "退会しそうな人", "休みがちな人", "休みがち", "退会リスク", "退会",
+  ],
+  concerning_member: ["気になる会員", "気になる人", "気になる"],
+  today_top_task: [
+    "今日の最優先タスク", "今日のタスク", "今日のToDo", "最優先タスク", "最優先", "今日",
+  ],
+};
+
+/**
+ * captured value から先頭のラベル語＋区切り記号を剥がす。
+ * 例: "今日の最優先タスク：システム構築" → "システム構築"
+ *     "体験 山田さん"                   → "山田さん"
+ *     "なし"（ラベルなし）              → "なし"（そのまま）
+ */
+function stripLabelPrefix(value: string, keywords: string[]): string {
+  let s = value.trim();
+  // 長い語から試す（"今日の最優先タスク" を "今日" より先に剥がす）
+  const sorted = [...keywords].sort((a, b) => b.length - a.length);
+  for (const kw of sorted) {
+    // ラベル後ろに必ず 1 文字以上の区切り（コロン/空白/ハイフン等）が来る場合のみ剥がす
+    // → "なし" がラベルとぶつかって誤剥がしされないように
+    const re = new RegExp(`^${escapeRegExp(kw)}\\s*[:：、\\s-]+`);
+    if (re.test(s)) {
+      s = s.replace(re, "").trim();
+      return s;
+    }
+    // 末尾がラベルだけ（"今日の最優先タスク" 単独）→ 値は空扱い
+    const reExact = new RegExp(`^${escapeRegExp(kw)}\\s*$`);
+    if (reExact.test(s)) {
+      return "";
+    }
+  }
+  return s;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function parseBulkMorningAnswer(text: string): Record<string, string> | undefined {
   const normalized = normalizeLineText(text);
   // 順序固定: 1)体験 2)入会 3)迷い 4)返信 5)口コミ 6)退会 7)気になる 8)タスク
@@ -150,10 +206,14 @@ function parseBulkMorningAnswer(text: string): Record<string, string> | undefine
   let matched = 0;
   for (const [key, pattern] of fields) {
     const match = normalized.match(pattern);
-    const value = match?.[1]?.trim();
-    if (value) {
-      result[key] = sanitiseBulkAnswer(value);
-      matched += 1;
+    const rawValue = match?.[1]?.trim();
+    if (rawValue !== undefined) {
+      // 先頭にラベル語があれば剥がす（"今日の最優先タスク：xxx" → "xxx"）
+      const stripped = stripLabelPrefix(rawValue, BULK_LABEL_KEYWORDS[key] ?? []);
+      const sanitised = sanitiseBulkAnswer(stripped);
+      // 「なし」相当しか残らない場合でも matched カウントには入れる（存在は確認できた）
+      result[key] = sanitised;
+      if (rawValue.length > 0) matched += 1;
     }
   }
 

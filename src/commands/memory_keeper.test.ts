@@ -304,6 +304,53 @@ assert.equal(isMemoryCommandText("hello"), false);
   assert.equal(await store.exists(userId), false, "まとめ回答保存後はセッション破棄");
 }
 
+// 14d-label. ラベル付きのbulk回答（"8. 今日の最優先タスク：xxx" 形式）でも
+//            値からラベルが剥がれ、ToDo返信に二重表示されない（実機バグA再現）
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/おはよう まとめ", { store });
+  const last = await routeMemoryText(userId, [
+    "1. 昨日の体験：なし",
+    "2. 入会：なし",
+    "3. 入会迷ってる人：なし",
+    "4. 返信・フォローが必要な人：なし",
+    "5. 口コミ頼めそうな人：せいじ",
+    "6. 休みがち・退会しそうな人：",
+    "7. 気になる会員：",
+    "8. 今日の最優先タスク：システム構築",
+  ].join("\n"), { store });
+  assert.match(last.reply, /保存しました/, `保存: ${last.reply}`);
+  // ToDo に「今日のタスク: システム構築」が出る（"今日の最優先タスク:" は剥がれる）
+  assert.match(last.reply, /今日のタスク: システム構築/);
+  assert.doesNotMatch(last.reply, /今日のタスク:.*今日の最優先タスク/, "ラベル二重表示しない");
+  // 「なし」しかない項目はToDo3つに含まれない
+  assert.doesNotMatch(last.reply, /返信・フォロー:.*なし/, "「なし」は除外");
+  assert.doesNotMatch(last.reply, /入会検討中.*なし/, "「なし」は除外");
+}
+
+// 14d-label-bis. 個別ラベルの剥がれ方を直接確認
+//   全角の「:」混じり、長い語が短い語より先に剥がれるか
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/おはよう まとめ", { store });
+  const last = await routeMemoryText(userId, [
+    "1. 体験 山田さん",
+    "2. 入会 田中さん",
+    "3. 入会迷ってる人: 佐藤さん",
+    "4. なし",
+    "5. なし",
+    "6. なし",
+    "7. なし",
+    "8. 看板撮影",
+  ].join("\n"), { store });
+  assert.match(last.reply, /保存しました/);
+  // ラベル付きの値が綺麗に剥がれること（ToDoには出ないがファイルには記録される）
+  assert.match(last.reply, /今日のタスク: 看板撮影/);
+  assert.match(last.reply, /入会検討中の方へ声かけ: 佐藤さん/);
+}
+
 // 15. 対話モード完走 → /保存用ログ なしで自動保存される
 {
   await setVaultTmp();
