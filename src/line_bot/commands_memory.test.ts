@@ -39,12 +39,21 @@ const userId = "test-line-user-001";
   assert.match(result.message, /記憶係/);
 }
 
-// 2c. /おはよう は一問一答ではなく、まとめ回答テンプレートを返す
+// 2c. /おはよう（デフォルト）は対話モード（1問ずつ）
 {
   const store = await makeStore();
   const result = await executeLineCommand("／ おはよー", { userId, memorySessionStore: store });
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /1問ずつ聞きます/);
+  assert.match(result.message, /1\/8: 昨日、体験/);
+}
+
+// 2c-bis. /おはよう まとめ で旧テンプレ送信モード
+{
+  const store = await makeStore();
+  const result = await executeLineCommand("おはよう まとめ", { userId, memorySessionStore: store });
   assert.equal(result.action, "memory_keeper");
   assert.match(result.message, /まとめて送ってください/);
   assert.match(result.message, /1\. 昨日の体験/);
@@ -60,7 +69,8 @@ const userId = "test-line-user-001";
   const root = await mkdtemp(path.join(tmpdir(), "openqlow-bulk-morning-root-"));
   process.env.OPENQLOW_ROOT = root;
   const store = await makeStore();
-  await executeLineCommand("おはよう", { userId, memorySessionStore: store });
+  // 旧テンプレ送信モードで起動するため「まとめ」サフィックス
+  await executeLineCommand("おはよう まとめ", { userId, memorySessionStore: store });
 
   const result = await executeLineCommand([
     "1. 体験1人、女性、初心者",

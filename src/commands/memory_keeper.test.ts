@@ -202,37 +202,90 @@ assert.equal(isMemoryCommandText("hello"), false);
   assert.equal(await store.exists(userId), false, "セッションは自動破棄");
 }
 
-// 14b. /おはよう → 一問一答ではなく、まとめ回答テンプレートが返ってくる
+// 14b. /おはよう（デフォルト） → 対話モード（1問ずつ）
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/おはよう", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
-  assert.match(r.reply, /おはようございます/);
-  assert.match(r.reply, /まとめて送ってください/);
-  assert.match(r.reply, /1\. 昨日の体験/);
-  assert.match(r.reply, /3\. 入会迷ってる人/);
-  assert.match(r.reply, /5\. 口コミ頼めそうな人/);
-  assert.match(r.reply, /8\. 今日の最優先タスク/);
+  assert.match(r.reply, /1問ずつ聞きます/);
+  assert.match(r.reply, /1\/8: 昨日、体験/);
   const s = await store.load(userId);
-  assert.equal(s?.activeGenre, undefined);
-  assert.equal(s?.step, "awaiting_bulk_morning");
+  assert.equal(s?.activeGenre, "morning", "dialog mode は morning genre を即開始");
+  assert.equal(s?.step, "awaiting_genre_detail");
+  assert.equal(s?.activeGenreQuestionIndex, 0);
+  assert.equal(r.meta?.mode, "morning_dialog");
 }
 
-// 14c. /朝 もエイリアス
+// 14b-bis. /日報 もデフォルト対話モード
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/日報", { store });
+  assert.equal(r.route, "command");
+  assert.ok(r.ok);
+  assert.match(r.reply, /1問ずつ聞きます/);
+  assert.match(r.reply, /1\/8: 昨日、体験/);
+}
+
+// 14b-tri. /おはよう まとめ → 旧来のテンプレ一括モード
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/おはよう まとめ", { store });
+  assert.equal(r.route, "command");
+  assert.ok(r.ok);
+  assert.match(r.reply, /まとめて送ってください/);
+  assert.match(r.reply, /1\. 昨日の体験/);
+  assert.match(r.reply, /8\. 今日の最優先タスク/);
+  const s = await store.load(userId);
+  assert.equal(s?.step, "awaiting_bulk_morning");
+  assert.equal(r.meta?.mode, "morning_interview");
+}
+
+// 14b-quad. /日報 bulk もテンプレ一括
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/日報 bulk", { store });
+  assert.match(r.reply, /まとめて送ってください/);
+}
+
+// 14c. /朝 もエイリアス（デフォルト対話モード）
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/朝", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
-  assert.match(r.reply, /まとめて送ってください/);
+  assert.match(r.reply, /1問ずつ聞きます/);
+  assert.match(r.reply, /1\/8: 昨日、体験/);
 }
 
-// 14d. 朝のまとめ回答 → 1回で即自動保存（OpenRouterを使わない）
+// 14c-dialog. 対話モード: 8回の往復で完走 → 自動保存＋ToDo3つ
 {
   await setVaultTmp();
   const store = await makeStore();
-  await routeMemoryText(userId, "/おはよう", { store });
+  await routeMemoryText(userId, "/日報", { store });
+  // Q1〜Q7 を順番に回答
+  const r1 = await routeMemoryText(userId, "山田さん女性", { store });
+  assert.match(r1.reply, /2\/8: 入会/);
+  await routeMemoryText(userId, "なし", { store });           // Q2
+  await routeMemoryText(userId, "佐藤さん料金", { store });  // Q3 入会検討
+  await routeMemoryText(userId, "なし", { store });           // Q4 フォロー
+  await routeMemoryText(userId, "なし", { store });           // Q5 口コミ
+  await routeMemoryText(userId, "せとさん", { store });       // Q6 退会リスク
+  await routeMemoryText(userId, "なし", { store });           // Q7 気になる
+  const last = await routeMemoryText(userId, "看板撮影", { store }); // Q8 → 自動保存
+  assert.match(last.reply, /保存しました/, `Q8回答後: ${last.reply}`);
+  assert.match(last.reply, /今日やることはこの3つ/);
+  assert.match(last.reply, /今日のタスク: 看板撮影/);
+  assert.match(last.reply, /入会検討中の方へ声かけ: 佐藤さん料金/);
+  assert.equal(await store.exists(userId), false, "完走後はセッション破棄");
+}
+
+// 14d. 朝のまとめ回答 → 1回で即自動保存（OpenRouterを使わない）
+//      → 旧テンプレ送信モードを使うので /おはよう まとめ
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/おはよう まとめ", { store });
   const last = await routeMemoryText(userId, [
     "1. 体験1人、女性、初心者",
     "2. 入会なし",

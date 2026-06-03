@@ -70,9 +70,8 @@ function buildBulkMorningPrompt(): string {
 }
 
 /**
- * /おはよう 朝の 6 問固定インタビュー開始。
- * ジャンル選択をスキップし、いきなり morning ジャンルの 1 問目を返す。
- * 6 問完了 → 自動保存される（autoSaveIfFinished が処理）。
+ * /おはよう /日報 まとめ — 朝の 8 問を「テンプレ一括返信」モードで開始。
+ * 旧来の挙動。1メッセージで全部送りたい時に使う。
  */
 export async function startMorningInterview(userId: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult> {
   const store = getStore(opts);
@@ -83,6 +82,53 @@ export async function startMorningInterview(userId: string, opts: MemoryHandlerO
 
   const reply = buildBulkMorningPrompt();
   return { ok: true, reply, meta: { sessionStarted: session.startedAt, mode: "morning_interview" } };
+}
+
+/**
+ * /日報 /おはよう（デフォルト）— 「1 問ずつ聞く対話モード」を開始。
+ * - 質問は morning genre の 8 問を順番に返す（applyGenreDetailAnswer が進行管理）。
+ * - 8 問完了で autoSaveIfFinished が走り、保存＋ToDo3つ提案。
+ * - LLM 不使用・ルールベース。
+ */
+export async function startMorningDialog(userId: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult> {
+  const store = getStore(opts);
+  await store.destroy(userId);
+  const session = await store.start(userId, "/日報");
+  session.genres.push({
+    type: "morning",
+    data: {},
+    answers: [],
+  });
+  session.activeGenre = "morning";
+  session.activeGenreQuestionIndex = 0;
+  session.step = "awaiting_genre_detail";
+  await store.save(session);
+
+  const firstQ = __interviewInternals.GENRE_QUESTIONS.morning[0];
+  return {
+    ok: true,
+    reply: [
+      "OPENQLOW（記憶係）：おはようございます。1問ずつ聞きます。",
+      "",
+      firstQ.question,
+      "",
+      "（途中でやめたい時は「中止」/ まとめて送りたい時は「日報 まとめ」）",
+    ].join("\n"),
+    meta: { sessionStarted: session.startedAt, mode: "morning_dialog" },
+  };
+}
+
+/**
+ * /日報 や /おはよう の後ろに付くサフィックスから動作モードを決定する。
+ * - "まとめ" / "bulk" / "テンプレ" / "template" → bulk テンプレ一括モード
+ * - それ以外 → dialog 対話モード（デフォルト）
+ */
+export function getMorningMode(text: string): "dialog" | "bulk" {
+  const normalized = normalizeLineText(text);
+  const parts = normalized.split(/\s+/);
+  const sub = (parts[1] || "").toLowerCase();
+  if (sub === "まとめ" || sub === "bulk" || sub === "テンプレ" || sub === "template") return "bulk";
+  return "dialog";
 }
 
 function parseBulkMorningAnswer(text: string): Record<string, string> | undefined {
@@ -444,6 +490,14 @@ export async function routeMemoryText(userId: string, text: string, opts: Memory
   // 2) 明示コマンド（/日記 単独、/中止、/保存用ログ）
   const command = parseMemoryCommand(text);
   if (command) {
+    // /おはよう /日報: サフィックス「まとめ」で旧テンプレ送信、それ以外は対話モード
+    if (command === "/おはよう") {
+      const mode = getMorningMode(text);
+      const result = mode === "bulk"
+        ? await startMorningInterview(userId, opts)
+        : await startMorningDialog(userId, opts);
+      return { ...result, route: "command" };
+    }
     const result = await dispatchMemoryCommand(userId, command, opts);
     return { ...result, route: "command" };
   }
