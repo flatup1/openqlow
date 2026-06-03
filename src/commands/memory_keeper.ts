@@ -16,6 +16,7 @@ import { canonicalLineCommand, normalizeLineText } from "../line_bot/normalize_c
 import { createMorningPublishCandidate } from "../publish/morning_candidate.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
+import { buildTodoReplyLines } from "./daily_report_todo.js";
 
 export type MemoryCommand = "/昨日の記録" | "/保存用ログ" | "/中止" | "/おはよう";
 
@@ -56,10 +57,12 @@ function buildBulkMorningPrompt(): string {
     "",
     "1. 昨日の体験：",
     "2. 入会：",
-    "3. 返信・フォローが必要な人：",
-    "4. 気になる会員：",
-    "5. 休みがち・退会しそうな人：",
-    "6. 今日の最優先タスク：",
+    "3. 入会迷ってる人：",
+    "4. 返信・フォローが必要な人：",
+    "5. 口コミ頼めそうな人：",
+    "6. 休みがち・退会しそうな人：",
+    "7. 気になる会員：",
+    "8. 今日の最優先タスク：",
     "",
     "空欄や「なし」でも大丈夫です。",
     "途中でやめたい時は「中止」と送ってください。",
@@ -84,13 +87,17 @@ export async function startMorningInterview(userId: string, opts: MemoryHandlerO
 
 function parseBulkMorningAnswer(text: string): Record<string, string> | undefined {
   const normalized = normalizeLineText(text);
+  // 順序固定: 1)体験 2)入会 3)迷い 4)返信 5)口コミ 6)退会 7)気になる 8)タスク
+  // 後方互換: 旧6問フォーマット（3)返信 4)気になる 5)退会 6)タスク）も拾える
   const fields: Array<[string, RegExp]> = [
-    ["trial_yesterday", /(?:^|\n)\s*(?:1|1\.|1:|1\.|①|昨日の体験|体験)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:2|2\.|2:|②|入会)\s*[.:：、\s-]*|\n?$)/s],
-    ["enrollment_yesterday", /(?:^|\n)\s*(?:2|2\.|2:|②|入会)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:3|3\.|3:|③|返信|フォロー)\s*[.:：、\s-]*|\n?$)/s],
-    ["followup_needed", /(?:^|\n)\s*(?:3|3\.|3:|③|返信・フォローが必要な人|返信|フォロー)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:4|4\.|4:|④|気になる会員)\s*[.:：、\s-]*|\n?$)/s],
-    ["concerning_member", /(?:^|\n)\s*(?:4|4\.|4:|④|気になる会員)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:5|5\.|5:|⑤|休みがち|退会)\s*[.:：、\s-]*|\n?$)/s],
-    ["retention_risk", /(?:^|\n)\s*(?:5|5\.|5:|⑤|休みがち・退会しそうな人|休みがち|退会)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:6|6\.|6:|⑥|今日の最優先タスク|最優先)\s*[.:：、\s-]*|\n?$)/s],
-    ["today_top_task", /(?:^|\n)\s*(?:6|6\.|6:|⑥|今日の最優先タスク|最優先)\s*[.:：、\s-]*(.*)$/s],
+    ["trial_yesterday", /(?:^|\n)\s*(?:1|1\.|1:|①|昨日の体験|体験)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:2|2\.|2:|②|入会)\s*[.:：、\s-]*|\n?$)/s],
+    ["enrollment_yesterday", /(?:^|\n)\s*(?:2|2\.|2:|②|入会(?:した人)?(?!検討|迷|しそう))\s*[.:：、\s-]*(.*?)(?=\n\s*(?:3|3\.|3:|③|入会迷|入会検討|入会しそう|返信|フォロー)\s*[.:：、\s-]*|\n?$)/s],
+    ["enrollment_considering", /(?:^|\n)\s*(?:3|3\.|3:|③|入会迷|入会検討|入会しそう|迷)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:4|4\.|4:|④|返信|フォロー|気になる)\s*[.:：、\s-]*|\n?$)/s],
+    ["followup_needed", /(?:^|\n)\s*(?:4|4\.|4:|④|返信・フォローが必要な人|返信|フォロー)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:5|5\.|5:|⑤|口コミ|気になる|休みがち|退会)\s*[.:：、\s-]*|\n?$)/s],
+    ["review_request_candidate", /(?:^|\n)\s*(?:5|5\.|5:|⑤|口コミ|レビュー)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:6|6\.|6:|⑥|休みがち|退会|気になる)\s*[.:：、\s-]*|\n?$)/s],
+    ["retention_risk", /(?:^|\n)\s*(?:6|6\.|6:|⑥|休みがち・退会しそうな人|休みがち|退会)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:7|7\.|7:|⑦|気になる会員|気になる|今日|最優先)\s*[.:：、\s-]*|\n?$)/s],
+    ["concerning_member", /(?:^|\n)\s*(?:7|7\.|7:|⑦|気になる会員|気になる)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:8|8\.|8:|⑧|今日|最優先|タスク)\s*[.:：、\s-]*|\n?$)/s],
+    ["today_top_task", /(?:^|\n)\s*(?:8|8\.|8:|⑧|今日の最優先タスク|最優先|今日)\s*[.:：、\s-]*(.*)$/s],
   ];
 
   const result: Record<string, string> = {};
@@ -170,6 +177,7 @@ async function recordBulkMorningAnswer(userId: string, text: string, opts: Memor
   try {
     const result = await saveCrmLog(session);
     const publishLines = await morningPublishCandidateMessage(session, result.dateJst);
+    const todoLines = buildTodoReplyLines(parsed);
     await store.destroy(userId);
     return {
       ok: true,
@@ -178,9 +186,10 @@ async function recordBulkMorningAnswer(userId: string, text: string, opts: Memor
         `日付: ${result.dateJst}`,
         result.appended ? "（既存ログに追記）" : "（新規ファイル）",
         "まとめ回答として記録しました。",
+        ...todoLines,
         ...publishLines,
       ].join("\n"),
-      meta: { mode: "bulk_morning", filePath: result.filePath, dateJst: result.dateJst },
+      meta: { mode: "bulk_morning", filePath: result.filePath, dateJst: result.dateJst, todos: todoLines.length > 0 },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -388,6 +397,9 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
   try {
     const result = await saveCrmLog(session);
     const publishLines = await morningPublishCandidateMessage(session, result.dateJst);
+    // 8問インタビュー完了時は ToDo3つを抽出して返信に追記
+    const morningEntry = session.genres.find((g) => g.type === "morning");
+    const todoLines = morningEntry ? buildTodoReplyLines(morningEntry.data) : [];
     await store.destroy(userId);
     return {
       ok: true,
@@ -396,6 +408,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
         `日付: ${result.dateJst}`,
         result.appended ? "（既存ログに追記）" : "（新規ファイル）",
         `件数: ${session.genres.length}`,
+        ...todoLines,
         ...publishLines,
       ].join("\n"),
       meta: {
@@ -403,6 +416,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
         filePath: result.filePath,
         dateJst: result.dateJst,
         genres: session.genres.length,
+        todos: todoLines.length > 0,
       },
     };
   } catch (error) {

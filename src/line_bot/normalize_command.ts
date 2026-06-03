@@ -12,7 +12,15 @@ const DIARY_ALIASES = new Set([
   "昨日",
   "/昨日",
 ]);
-const MORNING_ALIASES = new Set(["おはよう", "/おはよう", "おはよー", "/おはよー", "朝", "/朝", "朝の質問", "/朝の質問"]);
+const MORNING_ALIASES = new Set([
+  "おはよう", "/おはよう", "おはよー", "/おはよー",
+  "朝", "/朝", "朝の質問", "/朝の質問",
+  "日報", "/日報", "にっぽう", "/にっぽう", "daily", "/daily",
+]);
+const MONTHLY_ALIASES = new Set([
+  "月報", "/月報", "げっぽう", "/げっぽう",
+  "今月の日報", "/今月の日報", "月次", "/月次", "monthly", "/monthly",
+]);
 const SAVE_ALIASES = new Set(["保存用ログ", "/保存用ログ", "保存", "/保存"]);
 const CANCEL_ALIASES = new Set(["中止", "/中止", "キャンセル", "/キャンセル"]);
 
@@ -21,6 +29,7 @@ export type CanonicalLineCommand =
   | "/追記"
   | "/昨日の記録"
   | "/おはよう"
+  | "/月報"
   | "/保存用ログ"
   | "/中止";
 
@@ -47,6 +56,7 @@ export function canonicalLineCommand(text: string): CanonicalLineCommand | undef
   if (APPEND_ALIASES.has(head)) return "/追記";
   if (DIARY_ALIASES.has(head)) return "/昨日の記録";
   if (MORNING_ALIASES.has(head)) return "/おはよう";
+  if (MONTHLY_ALIASES.has(head)) return "/月報";
   if (SAVE_ALIASES.has(head)) return "/保存用ログ";
   if (CANCEL_ALIASES.has(head)) return "/中止";
   return undefined;

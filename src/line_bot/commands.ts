@@ -9,6 +9,7 @@ import {
   routeMemoryText,
 } from "../commands/memory_keeper.js";
 import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js";
+import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
 import { SessionStore } from "../conversation/session_store.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { createMediaPublishCandidate } from "../publish/media_candidate.js";
@@ -23,7 +24,8 @@ export type LineCommandAction =
   | "git_push"
   | "memory_keeper"
   | "owner_info"
-  | "media_post_candidate";
+  | "media_post_candidate"
+  | "monthly_report";
 
 export interface LineCommandResult {
   handled: boolean;
@@ -196,6 +198,31 @@ async function executeMediaPostCommand(text: string, opts: ExecuteLineCommandOpt
   };
 }
 
+async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  const req = parseMonthlyReportCommand(text, opts.now ?? new Date());
+  if (!req) return undefined;
+
+  try {
+    const result = await buildMonthlyReport(req);
+    return {
+      handled: true,
+      ok: true,
+      action: "monthly_report",
+      message: result.message,
+      meta: { yearMonth: result.yearMonth, fileCount: result.fileCount, truncated: result.truncated },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "monthly_report",
+      message: `OPENQLOW: 月報の生成に失敗しました。\n理由: ${message}`,
+      meta: { yearMonth: req.yearMonth, error: message },
+    };
+  }
+}
+
 export async function executeLineCommand(text: string, opts: ExecuteLineCommandOptions = {}): Promise<LineCommandResult> {
   // 0) オーナー情報: 「今何してる」「妻向け」等 → 家族向け説明を返す
   //    （誰でも聞ける情報なので allowlist チェック前に処理して OK）
@@ -245,6 +272,10 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
 
   const mediaPost = await executeMediaPostCommand(text, opts);
   if (mediaPost) return mediaPost;
+
+  // 2.5) /月報: その月の日報を日付順にまとめて返信（記憶係より前で確定させる）
+  const monthly = await executeMonthlyReport(text, opts);
+  if (monthly) return monthly;
 
   // 3) 記憶係: /昨日の記録 /保存用ログ /中止 と、進行中セッションへの回答
   const memory = await executeMemoryKeeper(text, opts);

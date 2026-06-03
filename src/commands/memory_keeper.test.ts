@@ -211,7 +211,9 @@ assert.equal(isMemoryCommandText("hello"), false);
   assert.match(r.reply, /おはようございます/);
   assert.match(r.reply, /まとめて送ってください/);
   assert.match(r.reply, /1\. 昨日の体験/);
-  assert.match(r.reply, /6\. 今日の最優先タスク/);
+  assert.match(r.reply, /3\. 入会迷ってる人/);
+  assert.match(r.reply, /5\. 口コミ頼めそうな人/);
+  assert.match(r.reply, /8\. 今日の最優先タスク/);
   const s = await store.load(userId);
   assert.equal(s?.activeGenre, undefined);
   assert.equal(s?.step, "awaiting_bulk_morning");
@@ -234,13 +236,18 @@ assert.equal(isMemoryCommandText("hello"), false);
   const last = await routeMemoryText(userId, [
     "1. 体験1人、女性、初心者",
     "2. 入会なし",
-    "3. 昨日の体験者に料金案内",
-    "4. なし",
-    "5. 最近Aさん来てない",
-    "6. 体験者にLINEする",
+    "3. なし",
+    "4. 昨日の体験者に料金案内",
+    "5. なし",
+    "6. 最近Aさん来てない",
+    "7. なし",
+    "8. 体験者にLINEする",
   ].join("\n"), { store });
   assert.match(last.reply, /保存しました/, `自動保存応答: ${last.reply}`);
   assert.equal(last.meta?.mode, "bulk_morning");
+  // 8項目仕様: ToDo3つ提案が返信に含まれる（today_top_task が埋まっているため）
+  assert.match(last.reply, /今日やることはこの3つ/);
+  assert.match(last.reply, /今日のタスク: 体験者にLINEする/);
   assert.equal(await store.exists(userId), false, "まとめ回答保存後はセッション破棄");
 }
 

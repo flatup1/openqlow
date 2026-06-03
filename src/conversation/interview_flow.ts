@@ -44,14 +44,16 @@ const GENRE_QUESTIONS: Record<Genre, QuestionDefinition[]> = {
   other: [
     { key: "topic", question: "自由記述で 1 行どうぞ", sanitise: (s) => sanitiseFreeText(s.trim()) },
   ],
-  // /おはよう 専用：ジャンル選択メニューには出さない、6 問固定
+  // /おはよう /日報 専用：ジャンル選択メニューには出さない、8 問固定
   morning: [
-    { key: "trial_yesterday", question: "1/6: 昨日、体験に来た人はいましたか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "enrollment_yesterday", question: "2/6: 入会した人はいましたか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "followup_needed", question: "3/6: 返信・フォローが必要な人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "concerning_member", question: "4/6: 気になった会員さんはいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "retention_risk", question: "5/6: 休みがち・退会しそうな人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "today_top_task", question: "6/6: 今日やるべきことを 1 つだけ選ぶなら何ですか？", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "trial_yesterday", question: "1/8: 昨日、体験に来た人はいましたか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "enrollment_yesterday", question: "2/8: 入会した人はいましたか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "enrollment_considering", question: "3/8: 入会しそうだけど迷っている人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "followup_needed", question: "4/8: 返信・フォローが必要な人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "review_request_candidate", question: "5/8: 口コミをお願いできそうな人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "retention_risk", question: "6/8: 休みがち・退会しそうな人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "concerning_member", question: "7/8: 気になった会員さんはいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "today_top_task", question: "8/8: 今日やるべきことを 1 つだけ選ぶなら何ですか？", sanitise: (s) => sanitiseFreeText(s.trim()) },
   ],
 };
 
@@ -223,11 +225,11 @@ export function applyGenreDetailAnswer(session: ConversationSession, answer: str
     session.activeGenre = undefined;
     session.activeGenreQuestionIndex = 0;
 
-    // morning は 6 問固定なので「他にある？」を聞かず即保存へ
+    // morning は 8 問固定なので「他にある？」を聞かず即保存へ
     if (wasMorning) {
       session.step = "ready_to_save";
       return {
-        prompt: "☀ 6 問終わりました。Obsidian に保存します…",
+        prompt: "☀ 8 問終わりました。Obsidian に保存します…",
         finished: true,
       };
     }

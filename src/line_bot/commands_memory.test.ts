@@ -48,7 +48,9 @@ const userId = "test-line-user-001";
   assert.equal(result.action, "memory_keeper");
   assert.match(result.message, /まとめて送ってください/);
   assert.match(result.message, /1\. 昨日の体験/);
-  assert.match(result.message, /6\. 今日の最優先タスク/);
+  assert.match(result.message, /3\. 入会迷ってる人/);
+  assert.match(result.message, /5\. 口コミ頼めそうな人/);
+  assert.match(result.message, /8\. 今日の最優先タスク/);
 }
 
 // 2d. /おはよう 後の番号つきまとめ回答を1回で保存する
@@ -63,10 +65,12 @@ const userId = "test-line-user-001";
   const result = await executeLineCommand([
     "1. 体験1人、女性、初心者",
     "2. 入会なし",
-    "3. 昨日の体験者に料金案内",
-    "4. なし",
-    "5. 最近Aさん来てない",
-    "6. 体験者にLINEする",
+    "3. なし",
+    "4. 昨日の体験者に料金案内",
+    "5. なし",
+    "6. 最近Aさん来てない",
+    "7. なし",
+    "8. 体験者にLINEする",
   ].join("\n"), { userId, memorySessionStore: store });
 
   assert.equal(result.handled, true);
