@@ -5,7 +5,7 @@ async function testFormatWebhookReply(): Promise<void> {
   const text = formatWebhookReply([
     {
       ok: false,
-      message: "No approval command found. Expected: OK FG-YYYYMMDD-NNN / 修正 FG-YYYYMMDD-NNN: comment / やめる FG-YYYYMMDD-NNN",
+      message: "No approval command found. Expected: OK FG-YYYYMMDD-NNN / OK FG-YYYYMMDD-NNN all / 修正 FG-YYYYMMDD-NNN: comment / NO FG-YYYYMMDD-NNN",
     },
   ]);
 

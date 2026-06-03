@@ -1,0 +1,21 @@
+[Unit]
+Description=OPENQLOW daily owner check-in
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=openqlow
+Group=openqlow
+WorkingDirectory=/opt/openqlow
+EnvironmentFile=/etc/openqlow/openqlow.env
+ExecStart=/usr/bin/npm run daily:check
+MemoryMax=512M
+CPUQuota=30%
+TasksMax=128
+OOMPolicy=stop
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/openqlow /opt/obsidian-vault

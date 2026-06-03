@@ -17,6 +17,7 @@ const GENRE_SECTION_TITLE: Record<Genre, string> = {
   inquiry: "## 昨日の問い合わせ",
   member_change: "## 気になる会員",
   other: "## その他のメモ",
+  morning: "## 朝の整理（6 問）",
 };
 
 const GENRE_TAG: Record<Genre, string> = {
@@ -25,6 +26,7 @@ const GENRE_TAG: Record<Genre, string> = {
   inquiry: "inquiry",
   member_change: "member_change",
   other: "other",
+  morning: "morning",
 };
 
 export interface CrmLogRenderOptions {

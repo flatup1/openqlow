@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { executeLineCommand } from "./commands.js";
 import { SessionStore } from "../conversation/session_store.js";
+import { approveRecord } from "../scheduler/daily.js";
 
 async function makeStore(): Promise<SessionStore> {
   const baseDir = await mkdtemp(path.join(tmpdir(), "openqlow-cmd-mem-test-"));
@@ -36,6 +37,58 @@ const userId = "test-line-user-001";
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
   assert.match(result.message, /記憶係/);
+}
+
+// 2c. /おはよう は一問一答ではなく、まとめ回答テンプレートを返す
+{
+  const store = await makeStore();
+  const result = await executeLineCommand("／ おはよー", { userId, memorySessionStore: store });
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /まとめて送ってください/);
+  assert.match(result.message, /1\. 昨日の体験/);
+  assert.match(result.message, /6\. 今日の最優先タスク/);
+}
+
+// 2d. /おはよう 後の番号つきまとめ回答を1回で保存する
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-bulk-morning-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-bulk-morning-root-"));
+  process.env.OPENQLOW_ROOT = root;
+  const store = await makeStore();
+  await executeLineCommand("おはよう", { userId, memorySessionStore: store });
+
+  const result = await executeLineCommand([
+    "1. 体験1人、女性、初心者",
+    "2. 入会なし",
+    "3. 昨日の体験者に料金案内",
+    "4. なし",
+    "5. 最近Aさん来てない",
+    "6. 体験者にLINEする",
+  ].join("\n"), { userId, memorySessionStore: store });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /保存しました/);
+  assert.match(result.message, /投稿ID: FG-\d{8}-9\d\d/);
+  assert.match(result.message, /投稿準備まで: OK FG-\d{8}-9\d\d all/);
+  assert.match(result.message, /Threadsのみ: OK FG-\d{8}-9\d\d threads/);
+  const stateFiles = await readdir(path.join(root, "state"));
+  const recordFile = stateFiles.find((file) => /^FG-\d{8}-9\d\d\.json$/.test(file));
+  assert.ok(recordFile, "朝回答から投稿候補レコードが作られる");
+  const record = JSON.parse(await readFile(path.join(root, "state", recordFile), "utf8"));
+  assert.equal(record.status, "pending_approval");
+  assert.ok(record.drafts.some((draft: { platform: string }) => draft.platform === "threads"));
+  assert.doesNotMatch(JSON.stringify(record.drafts), /Aさん|料金案内|体験者にLINEする/);
+  await approveRecord(record.id, `OK ${record.id} all`);
+  const queue = JSON.parse(await readFile(path.join(root, "state", "publish_queue", `${record.id}.json`), "utf8"));
+  assert.deepEqual(queue.destinations, ["google_business", "threads", "line_voom"]);
+  assert.equal(queue.instructions.threads.humanFinalClickRequired, true);
+  assert.equal(queue.instructions.line_voom.mode, "browser_assist_only");
+  assert.equal(result.meta?.mode, "bulk_morning");
 }
 
 // 3. /中止 でセッション破棄

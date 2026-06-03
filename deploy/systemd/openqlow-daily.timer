@@ -1,8 +1,8 @@
 [Unit]
-Description=Run OPENQLOW daily at 09:00
+Description=Run OPENQLOW daily at 05:15 JST
 
 [Timer]
-OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 05:15:00 Asia/Tokyo
 Persistent=true
 Unit=openqlow-daily.service
 

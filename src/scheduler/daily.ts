@@ -6,6 +6,7 @@ import { expandIdea } from "../distribution/expand.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { assertNoPublishRuntimeEnabled, assertPhase1DraftOnly } from "../safety/publication_lock.js";
 import { formatApprovalMessage } from "../approval/message.js";
+import { parseApprovalCommand } from "../approval/command.js";
 import { saveRecord, loadRecord } from "../state/file_store.js";
 import { saveXDraftOnly } from "../adapters/x_typefully.js";
 import { saveInstagramDraft } from "../adapters/instagram_draft.js";
@@ -18,6 +19,8 @@ import {
   registerPerformancePlaceholder,
 } from "../adapters/vault_register.js";
 import { pushApprovalNotification } from "../line_bot/notifier.js";
+import { createPublishQueueEntry } from "../publish/queue.js";
+import type { PublishDestination } from "../publish/publisher_types.js";
 
 function approvalIdFor(date: string, index: number): string {
   return `FG-${date.replaceAll("-", "")}-${String(index + 1).padStart(3, "0")}`;
@@ -88,8 +91,9 @@ export async function approveRecord(id: string, approvalReply: string): Promise<
   const record = await loadRecord(config.root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
 
-  if (approvalReply.trim() !== `OK ${id}`) {
-    throw new Error(`Invalid approval. Required exact reply: OK ${id}`);
+  const approval = parseApprovalCommand(approvalReply);
+  if (!approval || approval.response !== "OK" || approval.id !== id) {
+    throw new Error(`Invalid approval. Required reply: OK ${id}`);
   }
 
   const safety = checkDraftSafety(allDraftText(record.drafts));
@@ -109,6 +113,15 @@ export async function approveRecord(id: string, approvalReply: string): Promise<
     } catch (err) {
       console.error(`vault mirror failed for ${draft.id}:`, err);
     }
+  }
+
+  const publishDestinations = approval.targets.filter(
+    (target): target is PublishDestination => target !== "drafts_only"
+  );
+  if (publishDestinations.length > 0) {
+    saved.push(await createPublishQueueEntry(config.root, record, publishDestinations, new Date(), {
+      mediaFiles: record.mediaFiles,
+    }));
   }
 
   const updatedRecord: DraftRecord = {

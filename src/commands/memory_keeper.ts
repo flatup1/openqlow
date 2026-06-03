@@ -7,12 +7,17 @@ import {
   type ConversationSession,
 } from "../conversation/session_store.js";
 import {
+  __interviewInternals,
   advanceConversation,
   buildYesNoQuestion,
 } from "../conversation/interview_flow.js";
 import { saveCrmLog } from "../conversation/crm_log_generator.js";
+import { canonicalLineCommand, normalizeLineText } from "../line_bot/normalize_command.js";
+import { createMorningPublishCandidate } from "../publish/morning_candidate.js";
+import { rememberApprovalCandidate } from "../approval/shortcut.js";
+import { loadConfig } from "../config.js";
 
-export type MemoryCommand = "/昨日の記録" | "/保存用ログ" | "/中止";
+export type MemoryCommand = "/昨日の記録" | "/保存用ログ" | "/中止" | "/おはよう";
 
 export interface MemoryHandlerResult {
   ok: boolean;
@@ -40,6 +45,151 @@ export async function startMemoryInterview(userId: string, opts: MemoryHandlerOp
     "（途中でやめたい時は「/中止」。最後に「終わる」と送ると自動保存します）",
   ].join("\n");
   return { ok: true, reply, meta: { sessionStarted: session.startedAt } };
+}
+
+function buildBulkMorningPrompt(): string {
+  return [
+    "OPENQLOW（記憶係）：おはようございます。",
+    "OPENQLOW（記憶係）：昨日の記録をまとめて送ってください。",
+    "",
+    "コピペして、分かるところだけ埋めればOKです。",
+    "",
+    "1. 昨日の体験：",
+    "2. 入会：",
+    "3. 返信・フォローが必要な人：",
+    "4. 気になる会員：",
+    "5. 休みがち・退会しそうな人：",
+    "6. 今日の最優先タスク：",
+    "",
+    "空欄や「なし」でも大丈夫です。",
+    "途中でやめたい時は「中止」と送ってください。",
+  ].join("\n");
+}
+
+/**
+ * /おはよう 朝の 6 問固定インタビュー開始。
+ * ジャンル選択をスキップし、いきなり morning ジャンルの 1 問目を返す。
+ * 6 問完了 → 自動保存される（autoSaveIfFinished が処理）。
+ */
+export async function startMorningInterview(userId: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult> {
+  const store = getStore(opts);
+  await store.destroy(userId);
+  const session = await store.start(userId, "/おはよう");
+  session.step = "awaiting_bulk_morning";
+  await store.save(session);
+
+  const reply = buildBulkMorningPrompt();
+  return { ok: true, reply, meta: { sessionStarted: session.startedAt, mode: "morning_interview" } };
+}
+
+function parseBulkMorningAnswer(text: string): Record<string, string> | undefined {
+  const normalized = normalizeLineText(text);
+  const fields: Array<[string, RegExp]> = [
+    ["trial_yesterday", /(?:^|\n)\s*(?:1|1\.|1:|1\.|①|昨日の体験|体験)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:2|2\.|2:|②|入会)\s*[.:：、\s-]*|\n?$)/s],
+    ["enrollment_yesterday", /(?:^|\n)\s*(?:2|2\.|2:|②|入会)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:3|3\.|3:|③|返信|フォロー)\s*[.:：、\s-]*|\n?$)/s],
+    ["followup_needed", /(?:^|\n)\s*(?:3|3\.|3:|③|返信・フォローが必要な人|返信|フォロー)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:4|4\.|4:|④|気になる会員)\s*[.:：、\s-]*|\n?$)/s],
+    ["concerning_member", /(?:^|\n)\s*(?:4|4\.|4:|④|気になる会員)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:5|5\.|5:|⑤|休みがち|退会)\s*[.:：、\s-]*|\n?$)/s],
+    ["retention_risk", /(?:^|\n)\s*(?:5|5\.|5:|⑤|休みがち・退会しそうな人|休みがち|退会)\s*[.:：、\s-]*(.*?)(?=\n\s*(?:6|6\.|6:|⑥|今日の最優先タスク|最優先)\s*[.:：、\s-]*|\n?$)/s],
+    ["today_top_task", /(?:^|\n)\s*(?:6|6\.|6:|⑥|今日の最優先タスク|最優先)\s*[.:：、\s-]*(.*)$/s],
+  ];
+
+  const result: Record<string, string> = {};
+  let matched = 0;
+  for (const [key, pattern] of fields) {
+    const match = normalized.match(pattern);
+    const value = match?.[1]?.trim();
+    if (value) {
+      result[key] = sanitiseBulkAnswer(value);
+      matched += 1;
+    }
+  }
+
+  return matched >= 2 ? result : undefined;
+}
+
+function sanitiseBulkAnswer(input: string): string {
+  return input.trim() || "なし";
+}
+
+function hasMorningGenre(session: ConversationSession): boolean {
+  return session.genres.some((genre) => genre.type === "morning");
+}
+
+async function morningPublishCandidateMessage(session: ConversationSession, dateJst: string): Promise<string[]> {
+  if (!hasMorningGenre(session)) return [];
+  try {
+    const record = await createMorningPublishCandidate({ dateJst });
+    await rememberApprovalCandidate(loadConfig().root, record.id);
+    return [
+      "",
+      "SNS投稿候補も作りました。",
+      record.approvalMessage,
+    ];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [
+      "",
+      "SNS投稿候補の作成だけ失敗しました。",
+      `理由: ${message}`,
+    ];
+  }
+}
+
+async function recordBulkMorningAnswer(userId: string, text: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult | undefined> {
+  const store = getStore(opts);
+  const session = await store.load(userId);
+  if (!session || session.step !== "awaiting_bulk_morning") return undefined;
+
+  const parsed = parseBulkMorningAnswer(text);
+  if (!parsed) {
+    return {
+      ok: false,
+      reply: [
+        "OPENQLOW（記憶係）：まとめ回答として読み取れませんでした。",
+        "1〜6の番号つきで、分かるところだけ送ってください。",
+        "",
+        buildBulkMorningPrompt(),
+      ].join("\n"),
+      meta: { mode: "bulk_morning", parseFailed: true },
+    };
+  }
+
+  const questions = __interviewInternals.GENRE_QUESTIONS.morning;
+  session.genres = [{
+    type: "morning",
+    data: parsed,
+    answers: questions.map((question) => ({
+      key: question.key,
+      question: question.question,
+      answer: parsed[question.key] ?? "なし",
+    })),
+  }];
+  session.step = "ready_to_save";
+  await store.save(session);
+
+  try {
+    const result = await saveCrmLog(session);
+    const publishLines = await morningPublishCandidateMessage(session, result.dateJst);
+    await store.destroy(userId);
+    return {
+      ok: true,
+      reply: [
+        "OPENQLOW（記憶係）：保存しました📝",
+        `日付: ${result.dateJst}`,
+        result.appended ? "（既存ログに追記）" : "（新規ファイル）",
+        "まとめ回答として記録しました。",
+        ...publishLines,
+      ].join("\n"),
+      meta: { mode: "bulk_morning", filePath: result.filePath, dateJst: result.dateJst },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      reply: `OPENQLOW（記憶係）：保存失敗。\n理由: ${message}`,
+      meta: { mode: "bulk_morning", error: message },
+    };
+  }
 }
 
 export async function continueMemoryInterview(userId: string, answer: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult | undefined> {
@@ -135,7 +285,7 @@ export async function tryContinueOngoingSession(userId: string, text: string, op
  * 周辺の空白も削る。Jin のスマホ日本語入力で自動全角化されても通るようにする。
  */
 function normaliseCommandText(text: string): string {
-  return text.trim().replace(/^[／\/\\]/, "/");
+  return normalizeLineText(text);
 }
 
 /**
@@ -152,13 +302,14 @@ export function parseOneShotMemo(text: string): { body: string } | undefined {
 }
 
 export function parseMemoryCommand(text: string): MemoryCommand | undefined {
-  const trimmed = normaliseCommandText(text);
+  const canonical = canonicalLineCommand(text);
   // 本文付きはワンショット扱いなので、対話モード起動コマンドとしては検出しない
   if (parseOneShotMemo(text)) return undefined;
-  if (/^\/?(?:昨日の記録|昨日の日記|日記)$/.test(trimmed)) return "/昨日の記録";
-  if (/^\/?保存用ログ$/.test(trimmed)) return "/保存用ログ";
+  if (canonical === "/おはよう") return "/おはよう";
+  if (canonical === "/昨日の記録") return "/昨日の記録";
+  if (canonical === "/保存用ログ") return "/保存用ログ";
   // 「やめる」単体は除外（既存承認フローの「やめる FG-XXX」と区別するため）
-  if (/^\/?中止$/.test(trimmed)) return "/中止";
+  if (canonical === "/中止") return "/中止";
   return undefined;
 }
 
@@ -168,6 +319,8 @@ export function isMemoryCommandText(text: string): boolean {
 
 export async function dispatchMemoryCommand(userId: string, command: MemoryCommand, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult> {
   switch (command) {
+    case "/おはよう":
+      return startMorningInterview(userId, opts);
     case "/昨日の記録":
       return startMemoryInterview(userId, opts);
     case "/保存用ログ":
@@ -234,6 +387,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
 
   try {
     const result = await saveCrmLog(session);
+    const publishLines = await morningPublishCandidateMessage(session, result.dateJst);
     await store.destroy(userId);
     return {
       ok: true,
@@ -242,6 +396,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
         `日付: ${result.dateJst}`,
         result.appended ? "（既存ログに追記）" : "（新規ファイル）",
         `件数: ${session.genres.length}`,
+        ...publishLines,
       ].join("\n"),
       meta: {
         mode: "auto_save",
@@ -279,7 +434,13 @@ export async function routeMemoryText(userId: string, text: string, opts: Memory
     return { ...result, route: "command" };
   }
 
-  // 3) 進行中セッションへの回答
+  // 3) /おはよう の包括回答
+  const bulkMorning = await recordBulkMorningAnswer(userId, text, opts);
+  if (bulkMorning) {
+    return { ...bulkMorning, route: "ongoing_session" };
+  }
+
+  // 4) 進行中セッションへの回答
   const ongoing = await tryContinueOngoingSession(userId, text, opts);
   if (ongoing) {
     // 対話が終了状態に達したら、その場で自動保存（/保存用ログ を待たない）

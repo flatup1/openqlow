@@ -44,6 +44,7 @@ export interface DraftRecord {
   id: string;
   idea: ContentIdea;
   drafts: PlatformDraft[];
+  mediaFiles?: string[];
   status: DraftStatus;
   approvalMessage: string;
   createdAt: string;

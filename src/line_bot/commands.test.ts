@@ -39,6 +39,7 @@ async function testPushCommandSkipsWhenNoChanges(): Promise<void> {
   const result = await executeLineCommand("/push", {
     runGit: async (args) => {
       calls.push(args);
+      if (args.includes("rev-list")) return "0\t0\n";
       return "";
     },
     vaultRoot: "/tmp/vault",
@@ -48,7 +49,33 @@ async function testPushCommandSkipsWhenNoChanges(): Promise<void> {
   assert.equal(result.ok, true);
   assert.equal(result.action, "git_push");
   assert.match(result.message, /変更はありません/);
-  assert.deepEqual(calls, [["-C", "/tmp/vault", "status", "--porcelain"]]);
+  assert.deepEqual(calls, [
+    ["-C", "/tmp/vault", "status", "--porcelain"],
+    ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+  ]);
+}
+
+async function testPushCommandPushesCleanAheadCommit(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("rev-list")) return "0\t1\n";
+      if (args.includes("push")) return "pushed\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "git_push");
+  assert.match(result.message, /未pushのコミット1件/);
+  assert.deepEqual(calls, [
+    ["-C", "/tmp/vault", "status", "--porcelain"],
+    ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+    ["-C", "/tmp/vault", "push"],
+  ]);
 }
 
 async function testPushCommandCommitsAndPushesChanges(): Promise<void> {
@@ -82,10 +109,36 @@ async function testNonCommandIsNotHandled(): Promise<void> {
   assert.equal(result.handled, false);
 }
 
+async function testMediaPostCommandCreatesApprovalCandidate(): Promise<void> {
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-line-media-root-"));
+  process.env.OPENQLOW_ROOT = root;
+
+  const result = await executeLineCommand([
+    "/投稿",
+    "本文: 弱い自分と向き合う練習。 #FLATUPGYM #成田",
+    "ファイル: /tmp/post.mp4",
+    "投稿先: threads,line",
+  ].join("\n"), {
+    now: new Date("2026-06-03T07:00:00.000Z"),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "media_post_candidate");
+  assert.match(result.message, /投稿候補を作りました/);
+  assert.match(result.message, /FG-20260603-701/);
+
+  const saved = JSON.parse(await readFile(path.join(root, "state", "FG-20260603-701.json"), "utf8"));
+  assert.equal(saved.status, "pending_approval");
+  assert.deepEqual(saved.mediaFiles, ["/tmp/post.mp4"]);
+}
+
 await testAppendCommandWritesDailyLog();
 await testAppendCommandRequiresBody();
 await testPushCommandSkipsWhenNoChanges();
+await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
 await testNonCommandIsNotHandled();
+await testMediaPostCommandCreatesApprovalCandidate();
 
 console.log("line command tests passed");

@@ -6,7 +6,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { openqlowPath } from "../utils/paths.js";
 
-export type Genre = "trial" | "enrollment" | "inquiry" | "member_change" | "other";
+export type Genre =
+  | "trial"
+  | "enrollment"
+  | "inquiry"
+  | "member_change"
+  | "other"
+  | "morning"; // /おはよう: 朝の 6 問固定インタビュー（ジャンル選択メニューには出さない）
 
 export interface GenreEntry {
   type: Genre;
@@ -19,6 +25,7 @@ export type SessionStep =
   | "awaiting_yes_no"        // Q1
   | "awaiting_genre_choice"  // Q2
   | "awaiting_genre_detail"  // Q3..Q7
+  | "awaiting_bulk_morning"  // /おはよう の包括回答待ち
   | "awaiting_more_genre"    // Q8 (続けるか？)
   | "ready_to_save";         // 保存待機
 

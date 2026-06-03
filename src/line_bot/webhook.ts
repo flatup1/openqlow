@@ -1,6 +1,11 @@
 import http from "node:http";
 import crypto from "node:crypto";
+import { loadConfig } from "../config.js";
 import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily.js";
+import { parseApprovalCommand } from "../approval/command.js";
+import { expandApprovalShortcut } from "../approval/shortcut.js";
+import { createBrowserPanel } from "../publish/browser_panel.js";
+import { runFinalPublish } from "../publish/final_publish.js";
 import { executeLineCommand } from "./commands.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 
@@ -10,23 +15,6 @@ const channelSecret = process.env.LINE_CHANNEL_SECRET || "";
 const jinLineUserId = process.env.JIN_LINE_USER_ID || "";
 const backupApproverLineUserId = process.env.BACKUP_APPROVER_LINE_USER_ID || "";
 const allowedApproverIds = new Set([jinLineUserId, backupApproverLineUserId].filter(Boolean));
-
-const APPROVAL_ID_REGEX = "FG-\\d{8}-\\d{3}";
-
-function parseApproval(text: string): { id: string; response: "OK" | "revision" | "reject"; raw: string; note?: string } | undefined {
-  const trimmed = text.trim();
-
-  const ok = trimmed.match(new RegExp(`^OK\\s+(${APPROVAL_ID_REGEX})$`, "i"));
-  if (ok) return { id: ok[1], response: "OK", raw: trimmed };
-
-  const revision = trimmed.match(new RegExp(`^修正\\s+(${APPROVAL_ID_REGEX})[:::]?\\s*(.*)$`));
-  if (revision) return { id: revision[1], response: "revision", raw: trimmed, note: revision[2] };
-
-  const reject = trimmed.match(new RegExp(`^[×x✕Xやめる]+\\s*(${APPROVAL_ID_REGEX})$`, "i"));
-  if (reject) return { id: reject[1], response: "reject", raw: trimmed };
-
-  return undefined;
-}
 
 function verifyLineSignature(rawBody: string, signature: string | string[] | undefined): boolean {
   if (!channelSecret) {
@@ -84,17 +72,38 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
   const lineCommand = await executeLineCommand(text, { userId });
   if (lineCommand.handled) return { ...lineCommand };
 
-  const parsed = parseApproval(text);
+  const config = loadConfig();
+  const approvalText = await expandApprovalShortcut(text, config.root) ?? text;
+  const okShortcutUsed = approvalText !== text;
+  const parsed = parseApprovalCommand(approvalText);
   if (!parsed) {
     return {
       ok: false,
-      message: "No approval command found. Expected: OK FG-YYYYMMDD-NNN / 修正 FG-YYYYMMDD-NNN: comment / やめる FG-YYYYMMDD-NNN"
+      message: "No approval command found. Expected: ok / OK FG-YYYYMMDD-NNN / OK FG-YYYYMMDD-NNN all / 修正 FG-YYYYMMDD-NNN: comment / NO FG-YYYYMMDD-NNN"
     };
   }
 
   if (parsed.response === "OK") {
     const files = await approveRecord(parsed.id, parsed.raw);
-    return { ok: true, action: "approved", id: parsed.id, saved: files };
+    const hasPublishDestinations = parsed.targets.some(target => target !== "drafts_only");
+    const panel = hasPublishDestinations ? await createBrowserPanel(config.root, parsed.id) : undefined;
+    const finalPublish = okShortcutUsed && hasPublishDestinations
+      ? await runFinalPublish(config.root, parsed.id)
+      : undefined;
+    const finalPublished = finalPublish?.published.map(item => `${item.destination}: ${item.externalId}`) ?? [];
+    const browserQueued = finalPublish?.browserQueued.map(item => `${item.destination}: Macブラウザ投稿待ち`) ?? [];
+    const finalSkipped = finalPublish?.skipped.map(item => `${item.destination}: ${item.reason}`) ?? [];
+    const message = [
+      finalPublish ? "OPENQLOW: ok承認で最終投稿まで処理しました。" : hasPublishDestinations ? "OPENQLOW: 投稿準備キューを作りました。" : "OPENQLOW: 下書きを保存しました。",
+      `ID: ${parsed.id}`,
+      finalPublished.length ? `最終投稿済み: ${finalPublished.join(" / ")}` : "",
+      browserQueued.length ? `ブラウザ投稿待ち: ${browserQueued.join(" / ")}` : "",
+      finalSkipped.length ? `未完了: ${finalSkipped.join(" / ")}` : "",
+      panel ? `ブラウザ投稿パネル: ${panel}` : "",
+      panel ? "Threads / Googleビジネス / LINE VOOM は、このパネルから本文コピーして確認できます。" : "",
+      finalPublish ? "Googleビジネス / LINE VOOM はMac側のログイン済みブラウザ投稿ランナーで処理します。" : panel ? "最終投稿ボタンは、Jinさんが画面で確認してから押してください。" : "",
+    ].filter(Boolean).join("\n");
+    return { ok: true, action: "approved", id: parsed.id, saved: files, panel, message };
   }
 
   if (parsed.response === "revision") {

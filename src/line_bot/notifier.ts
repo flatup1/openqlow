@@ -1,4 +1,6 @@
 import type { DraftRecord } from "../types.js";
+import { loadConfig } from "../config.js";
+import { rememberApprovalCandidate } from "../approval/shortcut.js";
 
 interface LineMessage {
   type: "text";
@@ -69,6 +71,7 @@ export async function pushLineMessage(text: string, opts: PushOptions = {}): Pro
 }
 
 export async function pushApprovalNotification(record: DraftRecord, opts: PushOptions = {}): Promise<{ ok: boolean; mode: "dry_run" | "sent" | "skipped"; error?: string }> {
+  await rememberApprovalCandidate(loadConfig().root, record.id);
   return pushLineMessage(record.approvalMessage, opts);
 }
 

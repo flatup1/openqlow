@@ -56,8 +56,13 @@ export function formatApprovalMessage(
     draftText,
     "",
     "これ投稿する？",
-    `承認する場合: OK ${approvalId}`,
+    "かんたん投稿準備: ok",
+    `下書き保存だけ: OK ${approvalId}`,
+    `投稿準備まで: OK ${approvalId} all`,
+    `Threadsのみ: OK ${approvalId} threads`,
+    `Googleビジネスプロフィールのみ: OK ${approvalId} google`,
+    `LINE VOOMのみ: OK ${approvalId} voom`,
     `修正する場合: 修正 ${approvalId}: 直したい内容`,
-    `やめる場合: やめる ${approvalId}`,
+    `やめる場合: NO ${approvalId}`,
   ].join("\n");
 }

@@ -202,6 +202,48 @@ assert.equal(isMemoryCommandText("hello"), false);
   assert.equal(await store.exists(userId), false, "セッションは自動破棄");
 }
 
+// 14b. /おはよう → 一問一答ではなく、まとめ回答テンプレートが返ってくる
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/おはよう", { store });
+  assert.equal(r.route, "command");
+  assert.ok(r.ok);
+  assert.match(r.reply, /おはようございます/);
+  assert.match(r.reply, /まとめて送ってください/);
+  assert.match(r.reply, /1\. 昨日の体験/);
+  assert.match(r.reply, /6\. 今日の最優先タスク/);
+  const s = await store.load(userId);
+  assert.equal(s?.activeGenre, undefined);
+  assert.equal(s?.step, "awaiting_bulk_morning");
+}
+
+// 14c. /朝 もエイリアス
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/朝", { store });
+  assert.equal(r.route, "command");
+  assert.ok(r.ok);
+  assert.match(r.reply, /まとめて送ってください/);
+}
+
+// 14d. 朝のまとめ回答 → 1回で即自動保存（OpenRouterを使わない）
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/おはよう", { store });
+  const last = await routeMemoryText(userId, [
+    "1. 体験1人、女性、初心者",
+    "2. 入会なし",
+    "3. 昨日の体験者に料金案内",
+    "4. なし",
+    "5. 最近Aさん来てない",
+    "6. 体験者にLINEする",
+  ].join("\n"), { store });
+  assert.match(last.reply, /保存しました/, `自動保存応答: ${last.reply}`);
+  assert.equal(last.meta?.mode, "bulk_morning");
+  assert.equal(await store.exists(userId), false, "まとめ回答保存後はセッション破棄");
+}
+
 // 15. 対話モード完走 → /保存用ログ なしで自動保存される
 {
   await setVaultTmp();

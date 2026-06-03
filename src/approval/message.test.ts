@@ -33,9 +33,13 @@ const safety = checkDraftSafety(drafts.map(draft => draft.body).join("\n"));
 const message = formatApprovalMessage(idea, drafts, safety);
 
 assert(message.includes("投稿ID: FG-20260518-001"), "message includes approval id");
-assert(message.includes("承認する場合: OK FG-20260518-001"), "message requires exact approval");
+assert(message.includes("下書き保存だけ: OK FG-20260518-001"), "message keeps drafts-only approval");
+assert(message.includes("投稿準備まで: OK FG-20260518-001 all"), "message includes all publish queue approval");
+assert(message.includes("Threadsのみ: OK FG-20260518-001 threads"), "message includes threads publish queue approval");
+assert(message.includes("Googleビジネスプロフィールのみ: OK FG-20260518-001 google"), "message includes google publish queue approval");
+assert(message.includes("LINE VOOMのみ: OK FG-20260518-001 voom"), "message includes voom publish queue approval");
 assert(message.includes("修正する場合: 修正 FG-20260518-001:"), "message requires id for revision");
-assert(message.includes("やめる場合: やめる FG-20260518-001"), "message requires id for rejection");
+assert(message.includes("やめる場合: NO FG-20260518-001"), "message includes NO rejection");
 assert(!message.includes("Y / 修正"), "message no longer uses Y approval");
 assert(message.includes("優しさスコア:"), "message includes kindness score");
 assert(message.includes("安全チェック: OK"), "message includes safety OK");

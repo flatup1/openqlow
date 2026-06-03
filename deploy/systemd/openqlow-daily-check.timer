@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OPENQLOW daily owner check-in at 08:00 JST
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 Asia/Tokyo
+Persistent=true
+Unit=openqlow-daily-check.service
+
+[Install]
+WantedBy=timers.target
