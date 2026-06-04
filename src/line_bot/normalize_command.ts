@@ -24,6 +24,29 @@ const MONTHLY_ALIASES = new Set([
 const SAVE_ALIASES = new Set(["保存用ログ", "/保存用ログ", "保存", "/保存"]);
 const CANCEL_ALIASES = new Set(["中止", "/中止", "キャンセル", "/キャンセル"]);
 
+// 連結形（"日報まとめ" のようにスペース無し）の prefix 候補。
+// 長い語を先に試すため降順で並べる（"朝の質問" を "朝" より先に）。
+const MORNING_HEAD_PREFIXES = [
+  "朝の質問", "おはよう", "おはよー", "にっぽう", "日報", "daily", "朝",
+];
+const MORNING_BULK_SUFFIXES = new Set(["まとめ", "bulk", "テンプレ", "template"]);
+
+/**
+ * "日報まとめ" / "おはようbulk" のようなスペース無し連結形が
+ * morning コマンド + bulk サフィックスとして解釈できるかを判定。
+ * 真なら canonical は /おはよう、モードは bulk として扱う。
+ */
+export function matchMorningConcatenated(head: string): boolean {
+  const h = head.replace(/^\//, "");
+  for (const prefix of MORNING_HEAD_PREFIXES) {
+    if (h.length <= prefix.length) continue;
+    if (!h.startsWith(prefix)) continue;
+    const suffix = h.slice(prefix.length).toLowerCase();
+    if (MORNING_BULK_SUFFIXES.has(suffix)) return true;
+  }
+  return false;
+}
+
 export type CanonicalLineCommand =
   | "/push"
   | "/追記"
@@ -59,5 +82,7 @@ export function canonicalLineCommand(text: string): CanonicalLineCommand | undef
   if (MONTHLY_ALIASES.has(head)) return "/月報";
   if (SAVE_ALIASES.has(head)) return "/保存用ログ";
   if (CANCEL_ALIASES.has(head)) return "/中止";
+  // 連結形（"日報まとめ" 等）も /おはよう として扱う
+  if (matchMorningConcatenated(head)) return "/おはよう";
   return undefined;
 }

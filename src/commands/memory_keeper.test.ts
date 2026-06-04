@@ -280,6 +280,54 @@ assert.equal(isMemoryCommandText("hello"), false);
   assert.equal(await store.exists(userId), false, "完走後はセッション破棄");
 }
 
+// 14c-dialog-typo. 対話モードで「なひ」「無」「-」等の typo を「なし」に救済
+{
+  await setVaultTmp();
+  const store = await makeStore();
+  await routeMemoryText(userId, "/日報", { store });
+  await routeMemoryText(userId, "なひ", { store });    // Q1: typo
+  await routeMemoryText(userId, "無", { store });      // Q2: 漢字
+  await routeMemoryText(userId, "-", { store });        // Q3: 記号
+  await routeMemoryText(userId, "no", { store });       // Q4: 英字
+  await routeMemoryText(userId, "ナシ", { store });    // Q5: カナ
+  await routeMemoryText(userId, "ない", { store });    // Q6
+  await routeMemoryText(userId, "特になし", { store }); // Q7
+  const last = await routeMemoryText(userId, "システム構築", { store }); // Q8
+  assert.match(last.reply, /保存しました/);
+  // 「なし」しか残らない項目はToDoに出ない（typo救済が効いている証拠）
+  assert.match(last.reply, /今日のタスク: システム構築/);
+  assert.doesNotMatch(last.reply, /返信・フォロー:\s*なひ/, "なひがそのまま残らない");
+  assert.doesNotMatch(last.reply, /退会リスク確認:\s*-/, "記号がそのまま残らない");
+}
+
+// 14e. 連結形コマンドのモード切替（Jin 実機の「日報まとめ」スペースなし）
+{
+  const store = await makeStore();
+  // 進行中の対話セッションをまず作る
+  await routeMemoryText(userId, "/日報", { store });
+  // 「日報まとめ」（スペース無し）で bulk モードに切替できる
+  const r = await routeMemoryText(userId, "日報まとめ", { store });
+  assert.equal(r.route, "command", "concatenated form is recognized as command");
+  assert.match(r.reply, /まとめて送ってください/);
+  assert.equal(r.meta?.mode, "morning_interview", "switched to bulk mode");
+}
+
+// 14e-bis. スラッシュ付き連結形「/日報まとめ」も同様
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/日報まとめ", { store });
+  assert.equal(r.route, "command");
+  assert.match(r.reply, /まとめて送ってください/);
+}
+
+// 14e-tri. ヒント文に「日報まとめ」(スペース無し) が含まれる
+{
+  const store = await makeStore();
+  const r = await routeMemoryText(userId, "/日報", { store });
+  assert.match(r.reply, /日報まとめ/, "ヒントはスペース無し表記");
+  assert.doesNotMatch(r.reply, /日報 まとめ/, "古いスペース有り表記が残っていない");
+}
+
 // 14d. 朝のまとめ回答 → 1回で即自動保存（OpenRouterを使わない）
 //      → 旧テンプレ送信モードを使うので /おはよう まとめ
 {

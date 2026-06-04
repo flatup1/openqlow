@@ -4,6 +4,12 @@
 
 import type { ConversationSession, Genre, GenreEntry } from "./session_store.js";
 import { formatAge, formatName, sanitiseFreeText } from "../privacy/rules.js";
+import { normalizeEmptyAnswer } from "../commands/answer_normalize.js";
+
+/** morning 質問用: 安全化＋「なし」相当のタイポ救済 */
+function sanitiseMorningAnswer(input: string): string {
+  return normalizeEmptyAnswer(sanitiseFreeText(input.trim()));
+}
 
 export interface QuestionDefinition {
   key: string;
@@ -45,15 +51,16 @@ const GENRE_QUESTIONS: Record<Genre, QuestionDefinition[]> = {
     { key: "topic", question: "自由記述で 1 行どうぞ", sanitise: (s) => sanitiseFreeText(s.trim()) },
   ],
   // /おはよう /日報 専用：ジャンル選択メニューには出さない、8 問固定
+  // sanitiseMorningAnswer で "なひ" "無" 等のタイポも "なし" に正規化される
   morning: [
-    { key: "trial_yesterday", question: "1/8: 昨日、体験に来た人はいましたか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "enrollment_yesterday", question: "2/8: 入会した人はいましたか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "enrollment_considering", question: "3/8: 入会しそうだけど迷っている人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "followup_needed", question: "4/8: 返信・フォローが必要な人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "review_request_candidate", question: "5/8: 口コミをお願いできそうな人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "retention_risk", question: "6/8: 休みがち・退会しそうな人はいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "concerning_member", question: "7/8: 気になった会員さんはいますか？（なければ「なし」）", sanitise: (s) => sanitiseFreeText(s.trim()) },
-    { key: "today_top_task", question: "8/8: 今日やるべきことを 1 つだけ選ぶなら何ですか？", sanitise: (s) => sanitiseFreeText(s.trim()) },
+    { key: "trial_yesterday", question: "1/8: 昨日、体験に来た人はいましたか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "enrollment_yesterday", question: "2/8: 入会した人はいましたか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "enrollment_considering", question: "3/8: 入会しそうだけど迷っている人はいますか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "followup_needed", question: "4/8: 返信・フォローが必要な人はいますか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "review_request_candidate", question: "5/8: 口コミをお願いできそうな人はいますか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "retention_risk", question: "6/8: 休みがち・退会しそうな人はいますか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "concerning_member", question: "7/8: 気になった会員さんはいますか？（なければ「なし」）", sanitise: sanitiseMorningAnswer },
+    { key: "today_top_task", question: "8/8: 今日やるべきことを 1 つだけ選ぶなら何ですか？", sanitise: sanitiseMorningAnswer },
   ],
 };
 

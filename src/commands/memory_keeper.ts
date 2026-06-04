@@ -12,11 +12,12 @@ import {
   buildYesNoQuestion,
 } from "../conversation/interview_flow.js";
 import { saveCrmLog } from "../conversation/crm_log_generator.js";
-import { canonicalLineCommand, normalizeLineText } from "../line_bot/normalize_command.js";
+import { canonicalLineCommand, matchMorningConcatenated, normalizeLineText } from "../line_bot/normalize_command.js";
 import { createMorningPublishCandidate } from "../publish/morning_candidate.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
 import { buildTodoReplyLines } from "./daily_report_todo.js";
+import { normalizeEmptyAnswer } from "./answer_normalize.js";
 
 export type MemoryCommand = "/昨日の記録" | "/保存用ログ" | "/中止" | "/おはよう";
 
@@ -112,7 +113,7 @@ export async function startMorningDialog(userId: string, opts: MemoryHandlerOpti
       "",
       firstQ.question,
       "",
-      "（途中でやめたい時は「中止」/ まとめて送りたい時は「日報 まとめ」）",
+      "（途中でやめたい時は「中止」/ まとめて送りたい時は「日報まとめ」）",
     ].join("\n"),
     meta: { sessionStarted: session.startedAt, mode: "morning_dialog" },
   };
@@ -120,7 +121,9 @@ export async function startMorningDialog(userId: string, opts: MemoryHandlerOpti
 
 /**
  * /日報 や /おはよう の後ろに付くサフィックスから動作モードを決定する。
- * - "まとめ" / "bulk" / "テンプレ" / "template" → bulk テンプレ一括モード
+ * - "日報 まとめ" / "日報　まとめ"（分離形）→ bulk
+ * - "日報まとめ" / "おはようbulk"（連結形）→ bulk
+ * - "まとめ" / "bulk" / "テンプレ" / "template" → bulk
  * - それ以外 → dialog 対話モード（デフォルト）
  */
 export function getMorningMode(text: string): "dialog" | "bulk" {
@@ -128,6 +131,9 @@ export function getMorningMode(text: string): "dialog" | "bulk" {
   const parts = normalized.split(/\s+/);
   const sub = (parts[1] || "").toLowerCase();
   if (sub === "まとめ" || sub === "bulk" || sub === "テンプレ" || sub === "template") return "bulk";
+  // 連結形（スペース無し）: "日報まとめ" 等
+  const head = (parts[0] ?? "").toLowerCase();
+  if (matchMorningConcatenated(head)) return "bulk";
   return "dialog";
 }
 
@@ -221,7 +227,8 @@ function parseBulkMorningAnswer(text: string): Record<string, string> | undefine
 }
 
 function sanitiseBulkAnswer(input: string): string {
-  return input.trim() || "なし";
+  const normalized = normalizeEmptyAnswer(input.trim());
+  return normalized || "なし";
 }
 
 function hasMorningGenre(session: ConversationSession): boolean {
