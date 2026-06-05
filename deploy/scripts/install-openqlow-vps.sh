@@ -30,11 +30,12 @@ fi
 cp "${OPENQLOW_ROOT}/deploy/systemd/"openqlow-*.service /etc/systemd/system/
 cp "${OPENQLOW_ROOT}/deploy/systemd/"openqlow-*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable openqlow-webhook.service openqlow-daily.timer openqlow-monitor.timer
+systemctl enable openqlow-webhook.service openqlow-daily.timer openqlow-monitor.timer openqlow-morning.timer
 
 echo "Installed OPENQLOW systemd units."
 echo "Next:"
 echo "  1. Edit ${ENV_FILE}"
 echo "  2. Run: cd ${OPENQLOW_ROOT} && npm ci && npm run test"
-echo "  3. Start: systemctl start openqlow-webhook.service openqlow-daily.timer openqlow-monitor.timer"
+echo "  3. Start: systemctl start openqlow-webhook.service openqlow-daily.timer openqlow-monitor.timer openqlow-morning.timer"
 echo "  4. Add nginx route from deploy/nginx/openqlow-same-vps.conf"
+echo "  Note: openqlow-morning.timer fires at 07:00 JST daily — set OPENQLOW_MORNING_PUSH_DISABLED=true to disable."

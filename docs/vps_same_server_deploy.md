@@ -95,8 +95,15 @@ sudo bash /opt/openqlow/deploy/scripts/install-openqlow-vps.sh
 sudo systemctl start openqlow-webhook.service
 sudo systemctl start openqlow-daily.timer
 sudo systemctl start openqlow-monitor.timer
+sudo systemctl start openqlow-morning.timer   # 毎朝 07:00 JST に LINE push（要 JIN_LINE_USER_ID + LINE_CHANNEL_ACCESS_TOKEN）
 sudo systemctl status openqlow-webhook.service
 sudo systemctl list-timers 'openqlow-*'
+```
+
+### 朝の自動push を一時停止したい時
+```bash
+sudo systemctl stop openqlow-morning.timer
+# または .env で OPENQLOW_MORNING_PUSH_DISABLED=true
 ```
 
 ログ確認:
