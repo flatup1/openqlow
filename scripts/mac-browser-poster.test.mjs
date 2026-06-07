@@ -57,6 +57,13 @@ assert(autoCalls.some(call => call[0] === "open" && call.includes("https://manag
 assert(autoCalls.some(call => call[0] === "osascript" && call.join(" ").includes("openQLOW 自動投稿")));
 assert(!autoCalls.some(call => call.join(" ").includes("display dialog")), "AUTO_CLICK=true では手動確認ダイアログを出さない");
 
+const autoMissPoster = createMacBrowserPoster({
+  env: { OPENQLOW_BROWSER_AUTO_CLICK: "true" },
+  run: async () => "",
+});
+
+await assert.rejects(() => autoMissPoster(jobFile), /自動投稿ボタンを見つけられませんでした/);
+
 const unsafeJobFile = path.join(dir, "unsafe-job.json");
 await writeFile(unsafeJobFile, JSON.stringify({
   recordId: "FG-20260603-702",

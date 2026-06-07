@@ -74,6 +74,17 @@ function parsePosterOutput(output, fallbackExternalId) {
   return fallbackExternalId;
 }
 
+function parseBuiltInAutoClickOutput(output, fallbackExternalId) {
+  const trimmed = String(output ?? "").trim();
+  if (!trimmed) {
+    throw new Error("自動投稿ボタンを見つけられませんでした。半自動モードで確認してください。");
+  }
+  if (trimmed !== "auto-clicked") {
+    throw new Error(`自動投稿に失敗しました: ${trimmed}`);
+  }
+  return fallbackExternalId;
+}
+
 async function runExternalAutoClicker(run, command, jobFile, fallbackExternalId) {
   const output = await run(command, [jobFile]);
   return parsePosterOutput(output, fallbackExternalId);
@@ -93,12 +104,8 @@ async function runBuiltInAutoClick(run, job) {
     '      return "auto-clicked"',
     '    end try',
     '  end repeat',
-    '  try',
-    '    key code 36 using command down',
-    '    return "auto-clicked"',
-    '  end try',
     'end tell',
-    'return "auto-clicked"',
+    'error "自動投稿ボタンを見つけられませんでした"',
   ].join("\n");
 
   const output = await run("osascript", [
@@ -107,7 +114,7 @@ async function runBuiltInAutoClick(run, job) {
     "-e",
     `display notification "${escapeAppleScriptString(destinationLabel(job.destination))} へ自動投稿を試行しました" with title "openQLOW 自動投稿"`,
   ]);
-  return parsePosterOutput(output, `${job.destination}-auto-clicked-${job.recordId}`);
+  return parseBuiltInAutoClickOutput(output, `${job.destination}-auto-clicked-${job.recordId}`);
 }
 
 async function runAutoClick(run, job, jobFile, env) {
