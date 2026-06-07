@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { pushAlert } from "../line_bot/notifier.js";
+import { formatSelfHealResult, runSystemdSelfHeal, servicesFromEnv } from "./systemd_self_heal.js";
 
 const execFileP = promisify(execFile);
 
@@ -36,6 +37,17 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
   } finally {
     clearTimeout(t);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export function lineWebhookAttemptsForEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.OPENQLOW_LINE_WEBHOOK_ATTEMPTS;
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isInteger(parsed) && parsed > 0 && parsed <= 20) return parsed;
+  return env.OPENQLOW_MONITOR_SYSTEMD === "true" ? 8 : 1;
 }
 
 export async function checkOpenRouter(): Promise<CheckResult> {
@@ -87,13 +99,23 @@ export async function checkLineWebhook(): Promise<CheckResult> {
   const r = await timed(async () => {
     const port = Number(process.env.OPENQLOW_LINE_PORT ?? 8787);
     const url = `http://localhost:${port}/line/webhook`;
-    const res = await fetchWithTimeout(url, { method: "POST", body: "ping" }, 2000);
-    // 200 with JSON "no approval command" is the expected healthy response,
-    // 401 (signature failure) also indicates the server is running.
-    if (res.status === 200 || res.status === 401) {
-      return { ok: true, detail: `webhook ${res.status}` };
+    let lastError = "webhook unavailable";
+    const attempts = lineWebhookAttemptsForEnv();
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const res = await fetchWithTimeout(url, { method: "POST", body: "ping" }, 2000);
+        // 200 with JSON "no approval command" is the expected healthy response,
+        // 401 (signature failure) also indicates the server is running.
+        if (res.status === 200 || res.status === 401) {
+          return { ok: true, detail: attempts > 1 ? `webhook ${res.status} after ${attempt}/${attempts}` : `webhook ${res.status}` };
+        }
+        lastError = `webhook HTTP ${res.status}`;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+      if (attempt < attempts) await sleep(1000);
     }
-    return { ok: false, error: `webhook HTTP ${res.status}` };
+    return { ok: false, error: lastError };
   });
   return { name: "line_webhook", ...r };
 }
@@ -135,6 +157,18 @@ export async function checkLaunchd(): Promise<CheckResult> {
   return { name: "launchd", ...r };
 }
 
+export async function checkSystemdSelfHeal(): Promise<CheckResult> {
+  const r = await timed(async () => {
+    const result = await runSystemdSelfHeal({
+      services: servicesFromEnv(),
+      allowRestart: process.env.OPENQLOW_MONITOR_SELF_HEAL === "true",
+    });
+    const detail = formatSelfHealResult(result);
+    return result.ok ? { ok: true, detail } : { ok: false, error: detail };
+  });
+  return { name: "systemd_self_heal", ...r };
+}
+
 export interface HealthReport {
   ok: boolean;
   timestamp: string;
@@ -142,19 +176,28 @@ export interface HealthReport {
   failures: CheckResult[];
 }
 
+export function healthcheckNamesForEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  const names = ["openrouter"];
+  const systemdEnabled = env.OPENQLOW_MONITOR_SYSTEMD === "true";
+  if (!systemdEnabled) names.push("line_webhook");
+  if (env.OPENQLOW_CHECK_NGROK === "true") names.push("ngrok");
+  if (env.OPENQLOW_CHECK_LAUNCHD === "true") names.push("launchd");
+  if (env.OPENQLOW_CHECK_OLLAMA === "true") names.push("ollama");
+  if (env.OPENQLOW_CHECK_ANYTHINGLLM === "true") names.push("anythingllm");
+  if (systemdEnabled) names.push("systemd_self_heal", "line_webhook");
+  return names;
+}
+
 export async function runHealthcheck(): Promise<HealthReport> {
-  const pendingChecks = [
-    checkOpenRouter(),
-    checkLineWebhook(),
-    checkNgrok(),
-    checkLaunchd(),
-  ];
-  if (process.env.OPENQLOW_CHECK_OLLAMA === "true") {
-    pendingChecks.push(checkOllama());
-  }
-  if (process.env.OPENQLOW_CHECK_ANYTHINGLLM === "true") {
-    pendingChecks.push(checkAnythingLLM());
-  }
+  const pendingChecks = healthcheckNamesForEnv().map((name) => {
+    if (name === "openrouter") return checkOpenRouter();
+    if (name === "line_webhook") return checkLineWebhook();
+    if (name === "ngrok") return checkNgrok();
+    if (name === "launchd") return checkLaunchd();
+    if (name === "ollama") return checkOllama();
+    if (name === "anythingllm") return checkAnythingLLM();
+    return checkSystemdSelfHeal();
+  });
   const checks = await Promise.all(pendingChecks);
   const failures = checks.filter(c => !c.ok);
   return {

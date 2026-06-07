@@ -5,10 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=openqlow
-Group=openqlow
+User=root
+Group=root
 WorkingDirectory=/opt/openqlow
 EnvironmentFile=/etc/openqlow/openqlow.env
+Environment=OPENQLOW_MONITOR_SYSTEMD=true
+Environment=OPENQLOW_MONITOR_SELF_HEAL=true
+Environment=OPENQLOW_MONITOR_SERVICES=openqlow-webhook.service
 ExecStart=/usr/bin/npm run monitor
 MemoryMax=256M
 CPUQuota=25%
