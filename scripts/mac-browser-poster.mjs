@@ -58,13 +58,86 @@ async function showConfirmation(run, job) {
   ]);
 }
 
+function autoClickEnabled(env) {
+  return env.OPENQLOW_BROWSER_AUTO_CLICK === "true" || env.AUTO_CLICK === "true";
+}
+
+function parsePosterOutput(output, fallbackExternalId) {
+  const trimmed = String(output ?? "").trim();
+  if (!trimmed) return fallbackExternalId;
+  try {
+    const json = JSON.parse(trimmed);
+    if (typeof json.externalId === "string" && json.externalId) return json.externalId;
+  } catch {
+    // Non-JSON output is allowed for simple AppleScript adapters.
+  }
+  return fallbackExternalId;
+}
+
+async function runExternalAutoClicker(run, command, jobFile, fallbackExternalId) {
+  const output = await run(command, [jobFile]);
+  return parsePosterOutput(output, fallbackExternalId);
+}
+
+async function runBuiltInAutoClick(run, job) {
+  const script = [
+    'tell application "Google Chrome" to activate',
+    'delay 2',
+    'tell application "System Events"',
+    '  keystroke "v" using command down',
+    '  delay 1',
+    '  set buttonNames to {"投稿", "Post", "公開", "Publish", "シェア", "Share"}',
+    '  repeat with buttonName in buttonNames',
+    '    try',
+    '      click button (buttonName as text) of window 1 of process "Google Chrome"',
+    '      return "auto-clicked"',
+    '    end try',
+    '  end repeat',
+    '  try',
+    '    key code 36 using command down',
+    '    return "auto-clicked"',
+    '  end try',
+    'end tell',
+    'return "auto-clicked"',
+  ].join("\n");
+
+  const output = await run("osascript", [
+    "-e",
+    script,
+    "-e",
+    `display notification "${escapeAppleScriptString(destinationLabel(job.destination))} へ自動投稿を試行しました" with title "openQLOW 自動投稿"`,
+  ]);
+  return parsePosterOutput(output, `${job.destination}-auto-clicked-${job.recordId}`);
+}
+
+async function runAutoClick(run, job, jobFile, env) {
+  if (job.finalClickAllowed !== true) {
+    throw new Error("自動投稿には finalClickAllowed=true が必要です。");
+  }
+
+  const fallbackExternalId = `${job.destination}-auto-clicked-${job.recordId}`;
+  const command = env.OPENQLOW_BROWSER_AUTO_CLICK_CMD ?? "";
+  if (command.trim()) {
+    return runExternalAutoClicker(run, command.trim(), jobFile, fallbackExternalId);
+  }
+
+  return runBuiltInAutoClick(run, job);
+}
+
 export function createMacBrowserPoster(opts = {}) {
   const run = opts.run ?? defaultRun;
+  const env = opts.env ?? process.env;
   return async function macBrowserPoster(jobFile) {
     const job = JSON.parse(await readFile(jobFile, "utf8"));
     const url = defaultUrl(job.destination, job.url);
     await copyToClipboard(run, job.text ?? "");
     await openDestination(run, url);
+
+    if (autoClickEnabled(env)) {
+      const externalId = await runAutoClick(run, job, jobFile, env);
+      return { externalId };
+    }
+
     const button = await showConfirmation(run, job);
     if (button.trim() !== "投稿した") {
       throw new Error("投稿確認が完了していません。画面で投稿後にもう一度実行してください。");
