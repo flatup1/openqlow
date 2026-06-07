@@ -124,10 +124,10 @@ if (command === "expense:report") {
 }
 
 if (command === "expense:csv") {
-  // 例: npm run dev -- expense:csv 2026-06
+  // 例: npm run dev -- expense:csv yayoi 2026-06 ／ expense:csv 2026-06
   const req = parseExpenseCsvCommand(`/経費CSV ${[id, ...responseParts].join(" ")}`.trim());
   if (!req) {
-    console.error("Usage: npm run dev -- expense:csv [YYYY-MM|先月|今月|M月]");
+    console.error("Usage: npm run dev -- expense:csv [yayoi|汎用] [YYYY-MM|先月|今月|M月]");
     process.exit(1);
   }
   const result = await exportExpenseCsv(req);

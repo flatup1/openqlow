@@ -22,11 +22,23 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { obsidianPath } from "../utils/paths.js";
 import { formatDateInTimeZone } from "../utils/date.js";
+import { type ExpenseEntry, DEFAULT_TAX_RATE, taxAmount } from "./expense_model.js";
+import {
+  type ExportFormat,
+  buildExport,
+  buildGenericCsv,
+  parseFormatToken,
+} from "./expense_export.js";
+
+// 後方互換: これらは expense_model / expense_export からの再エクスポート。
+export { taxAmount } from "./expense_model.js";
+export type { ExpenseEntry } from "./expense_model.js";
+export { buildGenericCsv as buildExpenseCsv } from "./expense_export.js";
+export type { ExportFormat } from "./expense_export.js";
 
 const EXPENSE_DIRECTORY_RELATIVE = "6_システム/openqlow_expenses";
 const LEDGER_JSONL = "expenses.jsonl";
 const LINE_SAFE_CHARS = 4800; // LINE 5000 字制限に余裕を持たせる
-const DEFAULT_TAX_RATE = 10; // 税込み前提。既定の消費税率(%)
 
 // 記録コマンドの先頭語（スラッシュ有無どちらでも可）
 const EXPENSE_ALIASES = new Set([
@@ -62,14 +74,6 @@ const CATEGORY_ALIASES: Record<string, string> = {
   "消耗品以外": "雑費", "雑費": "雑費",
 };
 const CANONICAL_CATEGORIES = [...new Set(Object.values(CATEGORY_ALIASES))];
-
-export interface ExpenseEntry {
-  date: string; // YYYY-MM-DD (JST)
-  amount: number; // 円（税込・整数）
-  category: string;
-  memo: string;
-  taxRate?: number; // 消費税率(%)。未指定は DEFAULT_TAX_RATE 扱い。
-}
 
 export type ParsedExpenseCommand =
   | { ok: true; entry: ExpenseEntry; knownCategory: boolean }
@@ -147,12 +151,6 @@ function parseTaxToken(token: string): number | undefined {
     if (rate === 0 || rate === 8 || rate === 10) return rate;
   }
   return undefined;
-}
-
-/** 税込金額から内税（消費税）を四捨五入で求める。 */
-export function taxAmount(amountIncludingTax: number, taxRate = DEFAULT_TAX_RATE): number {
-  if (taxRate <= 0) return 0;
-  return Math.round(amountIncludingTax - amountIncludingTax / (1 + taxRate / 100));
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -355,15 +353,33 @@ export function parseExpenseReportCommand(
   return yearMonth ? { yearMonth } : undefined;
 }
 
-/** "/経費CSV [arg]" から YYYY-MM を抽出する。別コマンドなら undefined。 */
+export interface ExpenseCsvRequest extends ExpenseMonthRequest {
+  format: ExportFormat;
+}
+
+/**
+ * "/経費CSV [形式] [arg]" から 形式 と YYYY-MM を抽出する。
+ * 形式トークン（弥生/yayoi/freee/汎用）は位置自由。既定は generic。
+ * /経費CSV 系でなければ undefined。
+ */
 export function parseExpenseCsvCommand(
   text: string,
   now: Date = new Date(),
   timeZone = "Asia/Tokyo",
-): ExpenseMonthRequest | undefined {
+): ExpenseCsvRequest | undefined {
   if (!isExpenseCsvCommand(text)) return undefined;
-  const yearMonth = monthFromArg(argPart(text), now, timeZone);
-  return yearMonth ? { yearMonth } : undefined;
+
+  const tokens = argPart(text).split(" ").filter((t) => t.length > 0);
+  let format: ExportFormat = "generic";
+  const rest: string[] = [];
+  for (const token of tokens) {
+    const f = parseFormatToken(token);
+    if (f) format = f;
+    else rest.push(token);
+  }
+
+  const yearMonth = monthFromArg(rest.join(" "), now, timeZone);
+  return yearMonth ? { yearMonth, format } : undefined;
 }
 
 // --- 月報（集計） ---
@@ -494,69 +510,77 @@ export function parseLedger(raw: string): Required<ExpenseEntry>[] {
   return entries;
 }
 
-// --- CSV 出力 ---
-
-const CSV_HEADER = ["日付", "金額(税込)", "消費税率", "消費税(内税)", "カテゴリ", "メモ"];
-
-function csvCell(value: string): string {
-  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
-}
-
-/** ExpenseEntry の配列を CSV 文字列にする（ヘッダ付き、CRLF 区切り）。 */
-export function buildExpenseCsv(entries: Required<ExpenseEntry>[]): string {
-  const rows = entries.map((e) => [
-    e.date,
-    String(e.amount),
-    `${e.taxRate}%`,
-    String(taxAmount(e.amount, e.taxRate)),
-    e.category,
-    e.memo,
-  ]);
-  return [CSV_HEADER, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
-}
+// --- CSV 出力（会計ソフト向けアダプタは expense_export に委譲） ---
 
 export interface ExportCsvResult {
   ok: boolean;
   yearMonth: string;
+  format: ExportFormat;
   file?: string;
   count: number;
   message: string;
 }
 
-export interface ExportCsvOptions extends ReadLedgerOptions {}
+export interface ExportCsvOptions extends ReadLedgerOptions {
+  /** 出力フォーマット。既定 generic。req.format があればそちらを優先。 */
+  format?: ExportFormat;
+  /** 経費の相手（貸方）勘定科目。個人事業主の既定は事業主借。 */
+  creditAccount?: string;
+}
+
+const FORMAT_LABEL: Record<ExportFormat, string> = {
+  generic: "汎用",
+  yayoi: "弥生会計",
+  freee: "freee",
+};
 
 /**
- * 指定月の経費を CSV（Excel 互換の UTF-8 BOM 付き）として
- * expenses-YYYY-MM.csv に書き出す。
+ * 指定月の経費を、指定フォーマットの CSV としてエクスポートする。
+ *  - generic … expenses-YYYY-MM.csv（表計算/Excel 向け）
+ *  - yayoi   … expenses-YYYY-MM-yayoi.csv（弥生 仕訳インポート形式）
+ * 形式は req.format（コマンド由来）または opts.format で指定。
  */
 export async function exportExpenseCsv(
-  req: ExpenseMonthRequest,
+  req: ExpenseMonthRequest | ExpenseCsvRequest,
   opts: ExportCsvOptions = {},
 ): Promise<ExportCsvResult> {
+  const format: ExportFormat = ("format" in req ? req.format : undefined) ?? opts.format ?? "generic";
+
   const entries = await readMonthEntries(req.yearMonth, opts);
   if (!entries || entries.length === 0) {
     return {
       ok: false,
       yearMonth: req.yearMonth,
+      format,
       count: 0,
       message: `${req.yearMonth} の経費がまだありません。CSV は作りませんでした。`,
     };
   }
 
+  const artifact = buildExport(format, entries, { creditAccount: opts.creditAccount });
+  if (!artifact.supported) {
+    return {
+      ok: false,
+      yearMonth: req.yearMonth,
+      format,
+      count: entries.length,
+      message: artifact.message ?? `${format} 形式は未対応です。`,
+    };
+  }
+
   const dir = opts.dirOverride ?? obsidianPath(EXPENSE_DIRECTORY_RELATIVE);
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `expenses-${req.yearMonth}.csv`);
-  const bom = "﻿"; // Excel で文字化けしないように
-  await fs.writeFile(file, bom + buildExpenseCsv(entries), "utf8");
+  const file = path.join(dir, `expenses-${req.yearMonth}${artifact.fileSuffix}.csv`);
+  await fs.writeFile(file, artifact.content, "utf8");
 
   return {
     ok: true,
     yearMonth: req.yearMonth,
+    format,
     file,
     count: entries.length,
     message: [
-      `[OPENQLOW 経費CSV] ${req.yearMonth}（${entries.length}件）を書き出しました。`,
+      `[OPENQLOW 経費CSV/${FORMAT_LABEL[format]}] ${req.yearMonth}（${entries.length}件）を書き出しました。`,
       file,
       "",
       "GitHubへ反映するには「/push」を送ってください。",

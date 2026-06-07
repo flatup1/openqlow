@@ -319,7 +319,7 @@ async function executeExpenseCsv(text: string, opts: ExecuteLineCommandOptions):
       ok: result.ok,
       action: "expense_csv",
       message: result.message,
-      meta: { yearMonth: result.yearMonth, count: result.count, file: result.file },
+      meta: { yearMonth: result.yearMonth, format: result.format, count: result.count, file: result.file },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

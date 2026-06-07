@@ -34,9 +34,10 @@ existing `/push` command. No external accounting service is involved.
 
 Storage: `6_システム/openqlow_expenses/`
 
-- `expenses.jsonl` — one expense per line (date, amount, category, memo, taxRate)
+- `expenses.jsonl` — canonical ledger, one expense per line (date, amount, category, memo, taxRate)
 - `expenses-YYYY-MM.md` — per-month Markdown table for browsing in Obsidian
-- `expenses-YYYY-MM.csv` — per-month CSV export for spreadsheets / tax filing
+- `expenses-YYYY-MM.csv` — generic CSV (Excel/spreadsheets, UTF-8 BOM)
+- `expenses-YYYY-MM-yayoi.csv` — 弥生会計 仕訳インポート形式 (journal entries, no header)
 
 LINE / CLI:
 
@@ -46,10 +47,18 @@ LINE / CLI:
 /経費 2026-06-01 3000 交通費 セミナー   # record on a past date
 /経費月報                              # this month's totals by category + tax
 /経費月報 先月 / 2026-05 / 5月          # last / specific month
-/経費CSV                              # export this month to CSV
-/経費CSV 2026-05                       # export a specific month
+/経費CSV                              # export this month (generic CSV)
+/経費CSV 弥生                          # export for 弥生会計 (journal-entry format)
+/経費CSV 弥生 先月 / 2026-05           # format token + month, order-free
 /経費カテゴリ                          # list the standard accounting buckets
 ```
+
+Accounting-software export is a pluggable adapter layer (canonical ledger →
+per-format CSV), so freee etc. can be added later without changing the ledger.
+The 弥生 adapter emits one journal entry per expense (借方=category /
+貸方=事業主借 for a sole proprietor). Design notes, the 弥生 column mapping, and
+the first-import checklist (encoding / 税区分 / 科目名) are in
+[`docs/expense_accounting_export.md`](docs/expense_accounting_export.md).
 
 Amounts accept `1,200`, `¥1200`, and `1200円` and are treated as tax-included.
 A tax token (`8%`, `10%`, `非課税`) can appear anywhere after the amount; the

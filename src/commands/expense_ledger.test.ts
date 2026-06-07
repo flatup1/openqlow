@@ -157,8 +157,13 @@ const FIXED_NOW = new Date("2026-06-04T05:00:00Z"); // JST 14:00 → 2026-06-04
 
 {
   assert.equal(parseExpenseCsvCommand("/経費CSV", FIXED_NOW)?.yearMonth, "2026-06");
+  assert.equal(parseExpenseCsvCommand("/経費CSV", FIXED_NOW)?.format, "generic"); // 既定
   assert.equal(parseExpenseCsvCommand("経費CSV 先月", FIXED_NOW)?.yearMonth, "2026-05");
   assert.equal(parseExpenseCsvCommand("/経費csv 2026-03", FIXED_NOW)?.yearMonth, "2026-03");
+  // 形式トークンは位置自由
+  assert.equal(parseExpenseCsvCommand("/経費CSV 弥生 先月", FIXED_NOW)?.format, "yayoi");
+  assert.equal(parseExpenseCsvCommand("/経費CSV 弥生 先月", FIXED_NOW)?.yearMonth, "2026-05");
+  assert.equal(parseExpenseCsvCommand("/経費CSV 2026-03 yayoi", FIXED_NOW)?.format, "yayoi");
   assert.equal(parseExpenseCsvCommand("/経費月報", FIXED_NOW), undefined);
 }
 
@@ -220,6 +225,15 @@ const FIXED_NOW = new Date("2026-06-04T05:00:00Z"); // JST 14:00 → 2026-06-04
     assert.ok(csvText.startsWith("﻿"), "Excel 用 BOM 付き");
     assert.ok(csvText.includes("日付,金額(税込),消費税率,消費税(内税),カテゴリ,メモ"));
     assert.equal(csvText.trimEnd().split("\r\n").length, 1 + 3); // header + 3 rows
+
+    // 弥生形式は別ファイル(-yayoi)・ヘッダ無し・仕訳行で出力
+    const yayoi = await exportExpenseCsv({ yearMonth: "2026-06", format: "yayoi" }, { dirOverride: dir });
+    assert.ok(yayoi.ok);
+    assert.equal(yayoi.format, "yayoi");
+    const yayoiText = await fs.readFile(path.join(dir, "expenses-2026-06-yayoi.csv"), "utf-8");
+    assert.ok(!yayoiText.startsWith("﻿"), "弥生は BOM 無し");
+    assert.ok(yayoiText.includes("事業主借"), "個人事業主の相手科目");
+    assert.equal(yayoiText.trimEnd().split("\r\n").length, 3); // 3経費=3仕訳, ヘッダ無し
 
     // データが無い月の CSV は作らない
     const emptyCsv = await exportExpenseCsv({ yearMonth: "2026-01" }, { dirOverride: dir });
