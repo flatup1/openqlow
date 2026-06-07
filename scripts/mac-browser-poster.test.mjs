@@ -93,4 +93,34 @@ const adapterResult = await adapterPoster(jobFile);
 assert.equal(adapterResult.externalId, "adapter-ok-123");
 assert(adapterCalls.some(call => call[0] === "/tmp/fake-auto-clicker" && call[1] === jobFile));
 
+const failedAdapterPoster = createMacBrowserPoster({
+  env: {
+    OPENQLOW_BROWSER_AUTO_CLICK: "true",
+    OPENQLOW_BROWSER_AUTO_CLICK_CMD: "/tmp/fake-auto-clicker",
+  },
+  run: async (command) => {
+    if (command === "/tmp/fake-auto-clicker") {
+      return JSON.stringify({ status: "failed", reason: "投稿ボタンが見つからない" });
+    }
+    return "";
+  },
+});
+
+await assert.rejects(() => failedAdapterPoster(jobFile), /投稿ボタンが見つからない/);
+
+const uncertainAdapterPoster = createMacBrowserPoster({
+  env: {
+    OPENQLOW_BROWSER_AUTO_CLICK: "true",
+    OPENQLOW_BROWSER_AUTO_CLICK_CMD: "/tmp/fake-auto-clicker",
+  },
+  run: async (command) => {
+    if (command === "/tmp/fake-auto-clicker") {
+      return JSON.stringify({ status: "uncertain", reason: "投稿後の確認ができません" });
+    }
+    return "";
+  },
+});
+
+await assert.rejects(() => uncertainAdapterPoster(jobFile), /投稿後の確認ができません/);
+
 console.log("mac browser poster tests passed");

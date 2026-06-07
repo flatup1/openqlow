@@ -65,12 +65,16 @@ function autoClickEnabled(env) {
 function parsePosterOutput(output, fallbackExternalId) {
   const trimmed = String(output ?? "").trim();
   if (!trimmed) return fallbackExternalId;
+  let json = null;
   try {
-    const json = JSON.parse(trimmed);
-    if (typeof json.externalId === "string" && json.externalId) return json.externalId;
+    json = JSON.parse(trimmed);
   } catch {
     // Non-JSON output is allowed for simple AppleScript adapters.
   }
+  if (json && (json.status === "failed" || json.status === "uncertain")) {
+    throw new Error(json.reason || `外部投稿アダプタが ${json.status} を返しました。`);
+  }
+  if (json && typeof json.externalId === "string" && json.externalId) return json.externalId;
   return fallbackExternalId;
 }
 
