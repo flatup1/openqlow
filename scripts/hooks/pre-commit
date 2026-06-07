@@ -1,113 +1,14 @@
 #!/usr/bin/env bash
-# Claude/Codex 協業のための pre-commit フック
-# COORDINATION.md の規約に従って、コミットを検証する
+# pre-commit hook：git-secrets チェックのみ（既存セキュリティ機構を維持）
 #
-# 検証項目:
-#   1. コミットメッセージの先頭に AI 名のプレフィックスがある
-#      （claude: / codex: / co-ai: / jin:）
-#   2. 変更ファイルが宣言した AI の担当領域内
-#
-# インストール:
-#   ./scripts/hooks/install.sh
-# またはシンボリックリンク:
-#   ln -s ../../scripts/hooks/pre-commit .git/hooks/pre-commit
+# AI プレフィックスと領域チェックは commit-msg hook で行う
+# （pre-commit はメッセージにアクセスできないため）
 
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-COMMIT_MSG_FILE="${REPO_ROOT}/.git/COMMIT_EDITMSG"
-
-# ===== 1. コミットメッセージプレフィックス検証 =====
-
-# commit -m や commit --amend の前に走るので、COMMIT_EDITMSGがあれば読む
-if [[ -f "${COMMIT_MSG_FILE}" ]]; then
-  FIRST_LINE=$(head -n 1 "${COMMIT_MSG_FILE}" | head -c 200)
-else
-  # コミットメッセージが未確定（git commit のみで対話的editorに入る場合）
-  # 検証は commit-msg フックに任せる
-  exit 0
-fi
-
-# プレフィックスチェック
-if ! echo "${FIRST_LINE}" | grep -qE "^(claude|codex|co-ai|jin):"; then
-  echo "❌ コミットメッセージに AI プレフィックスがありません" >&2
-  echo "" >&2
-  echo "コミットメッセージの先頭は以下のいずれかにしてください：" >&2
-  echo "  claude: ...  (Claudeが書いた)" >&2
-  echo "  codex: ...   (Codexが書いた)" >&2
-  echo "  co-ai: ...   (両AI共同)" >&2
-  echo "  jin: ...     (JIN手作業)" >&2
-  echo "" >&2
-  echo "現在のメッセージ: ${FIRST_LINE}" >&2
-  echo "" >&2
-  echo "規約：COORDINATION.md §6" >&2
-  exit 1
-fi
-
-# 発信元AIを抽出
-AI_PREFIX=$(echo "${FIRST_LINE}" | cut -d: -f1)
-
-# ===== 2. 担当領域チェック（簡易版） =====
-
-# co-ai / jin は領域チェック対象外
-if [[ "${AI_PREFIX}" == "co-ai" ]] || [[ "${AI_PREFIX}" == "jin" ]]; then
-  echo "✅ pre-commit: ${AI_PREFIX} prefix OK (no territory check)"
-  exit 0
-fi
-
-# COORDINATION.md の存在確認
-COORD_FILE="${REPO_ROOT}/COORDINATION.md"
-if [[ ! -f "${COORD_FILE}" ]]; then
-  echo "⚠️  COORDINATION.md がありません。領域チェックをスキップします" >&2
-  exit 0
-fi
-
-# 変更ファイル一覧（staged）
-CHANGED_FILES=$(git diff --cached --name-only)
-if [[ -z "${CHANGED_FILES}" ]]; then
-  exit 0
-fi
-
-# 担当領域のパターン定義（COORDINATION.md §1の要約）
-# 注意：COORDINATION.md が変更されたらここも更新する
-if [[ "${AI_PREFIX}" == "claude" ]]; then
-  ALLOWED_PATTERNS="^(src/sources/|src/distribution/|src/generators/|COORDINATION\\.md|AGENTS\\.md|docs/|CLAUDE\\.md|HANDOFF)"
-  OTHER_AI="codex"
-elif [[ "${AI_PREFIX}" == "codex" ]]; then
-  ALLOWED_PATTERNS="^(src/scheduler/|src/monitor/|src/line_bot/|src/safety/|src/approval/|src/commands/|src/publish/|src/adapters/|src/conversation/|src/state/|src/privacy/|deploy/|scripts/|COORDINATION\\.md|AGENTS\\.md|docs/|HANDOFF)"
-  OTHER_AI="claude"
-fi
-
-VIOLATIONS=""
-while IFS= read -r file; do
-  if ! echo "${file}" | grep -qE "${ALLOWED_PATTERNS}"; then
-    VIOLATIONS="${VIOLATIONS}  ${file}"$'\n'
-  fi
-done <<< "${CHANGED_FILES}"
-
-if [[ -n "${VIOLATIONS}" ]]; then
-  echo "❌ ${AI_PREFIX} の担当外領域に変更が含まれています" >&2
-  echo "" >&2
-  echo "違反ファイル:" >&2
-  echo "${VIOLATIONS}" >&2
-  echo "" >&2
-  echo "これらは ${OTHER_AI} の担当領域、または未定義領域です。" >&2
-  echo "確認：" >&2
-  echo "  - 本当にあなた（${AI_PREFIX}）が触っていい？" >&2
-  echo "  - 担当変更ならJINに依頼してCOORDINATION.mdを更新" >&2
-  echo "  - 共同作業なら 'co-ai:' プレフィックスに変更" >&2
-  echo "" >&2
-  echo "規約：COORDINATION.md §1, §4" >&2
-  exit 1
-fi
-
-echo "✅ pre-commit: ${AI_PREFIX} territory check passed"
-
-# ===== 3. git-secrets チェック（既存セキュリティ機構を継承） =====
 if command -v git-secrets >/dev/null 2>&1; then
   git secrets --pre_commit_hook -- "$@" || {
-    echo "❌ pre-commit: git-secrets でシークレット検出。コミットを中止します。" >&2
+    echo "❌ pre-commit: git-secrets でシークレット検出" >&2
     exit 1
   }
-  echo "✅ pre-commit: git-secrets check passed"
 fi
