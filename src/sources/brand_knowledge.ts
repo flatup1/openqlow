@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { flatupAiOsPath } from "../utils/paths.js";
 
 const dataFiles = [
+  "canon_2026.md",
   "brand_voice.md",
   "gym_profile.md",
   "differentiation.md",
