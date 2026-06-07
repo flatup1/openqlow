@@ -163,6 +163,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: results.every(result => result.ok === true), results }));
     } catch (error) {
+      console.error("[webhook] executeApproval failed:", error);
       const message = error instanceof Error ? error.message : String(error);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: message }));
