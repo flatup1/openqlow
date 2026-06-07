@@ -19,8 +19,36 @@ npm run dev -- generate
 npm run dev -- approve <post-id> "OK <post-id>"
 npm run dev -- revise <post-id> "revision note"
 npm run dev -- reject <post-id> "reason"
+npm run dev -- expense 1200 消耗品 ジムの備品
+npm run dev -- expense:report 2026-06
 npm run test
 ```
+
+## Expense Ledger (会計記録)
+
+Records expenses into the Obsidian Vault as a machine-readable `.jsonl` plus a
+human-readable monthly Markdown ledger, then ships them to GitHub through the
+existing `/push` command. No external accounting service is involved.
+
+Storage: `6_システム/openqlow_expenses/`
+
+- `expenses.jsonl` — one expense per line (date, amount, category, memo)
+- `expenses-YYYY-MM.md` — per-month Markdown table for browsing in Obsidian
+
+LINE / CLI:
+
+```text
+/経費 1200 消耗品 ジムの備品          # record (today, JST)
+/経費 2026-06-01 3000 交通費 セミナー   # record on a past date
+/経費月報                              # this month's totals by category
+/経費月報 先月                         # last month
+/経費月報 2026-05                      # a specific month
+```
+
+Amounts accept `1,200`, `¥1200`, and `1200円`. Category is the accounting
+bucket (勘定科目); memo is optional. The monthly report sums per category and
+returns one LINE message. After recording, send `/push` to commit the Vault to
+GitHub.
 
 ## Safety Rules
 
