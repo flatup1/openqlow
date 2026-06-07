@@ -45,6 +45,11 @@ export interface DraftRecord {
   idea: ContentIdea;
   drafts: PlatformDraft[];
   mediaFiles?: string[];
+  revisionHistory?: Array<{
+    revisedAt: string;
+    oldDrafts: PlatformDraft[];
+    newBody: string;
+  }>;
   status: DraftStatus;
   approvalMessage: string;
   createdAt: string;
