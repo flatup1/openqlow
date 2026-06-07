@@ -25,7 +25,7 @@ export interface MediaPlanValidation {
   issues: MediaRuleIssue[];
 }
 
-const SUPPORTED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov"]);
+const SUPPORTED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".mp4", ".mov"]);
 
 function isRemoteUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);

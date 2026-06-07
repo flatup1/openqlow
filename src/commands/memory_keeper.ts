@@ -14,6 +14,7 @@ import {
 import { saveCrmLog } from "../conversation/crm_log_generator.js";
 import { canonicalLineCommand, matchMorningConcatenated, normalizeLineText } from "../line_bot/normalize_command.js";
 import { createMorningPublishCandidate } from "../publish/morning_candidate.js";
+import { formatMediaCandidatesForLine, listMediaCandidates, mediaDirectoryForEnv } from "../publish/media_library.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
 import { buildTodoReplyLines } from "./daily_report_todo.js";
@@ -430,6 +431,7 @@ async function createSimplePostCandidate(): Promise<MemoryHandlerResult> {
     const dateJst = formatDateInTimeZone(new Date(), "Asia/Tokyo");
     const record = await createMorningPublishCandidate({ dateJst });
     await rememberApprovalCandidate(loadConfig().root, record.id);
+    const mediaCandidates = await listMediaCandidates(mediaDirectoryForEnv());
     const threads = record.drafts.find((draft) => draft.platform === "threads");
     const body = [
       threads?.body ?? "",
@@ -439,13 +441,23 @@ async function createSimplePostCandidate(): Promise<MemoryHandlerResult> {
       ok: true,
       reply: [
         "投稿候補です。",
+        `投稿ID: ${record.id}`,
+        "投稿先: Threads / Googleビジネスプロフィール / LINE VOOM",
         "",
+        "本文:",
         body,
         "",
-        "投稿準備するなら「ok」",
-        "やめるなら「やめる」",
+        formatMediaCandidatesForLine(mediaCandidates, 5),
+        "",
+        "修正するなら: 修正 新しい本文",
+        "一覧外を使うなら: 挿入",
+        "LINEに画像/動画を直接送っても添付できます。",
+        "投稿準備するなら: OK",
+        "やめるなら: NO " + record.id,
+        "",
+        "今日はこの内容でいいですか？",
       ].join("\n"),
-      meta: { mode: "simple_post", id: record.id },
+      meta: { mode: "simple_post", id: record.id, mediaCandidateCount: mediaCandidates.length },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

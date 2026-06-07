@@ -5,7 +5,7 @@ import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily
 import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut } from "../approval/shortcut.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
-import { runFinalPublish } from "../publish/final_publish.js";
+import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeLineCommand } from "./commands.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 
@@ -30,42 +30,76 @@ function verifyLineSignature(rawBody: string, signature: string | string[] | und
 }
 
 interface ExtractedEvent {
-  text: string;
+  kind: "text" | "media";
+  text?: string;
+  messageId?: string;
+  messageType?: "image" | "video";
   userId?: string;
 }
 
-function extractLineTexts(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
+function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
   try {
     const payload = JSON.parse(rawBody) as {
       events?: Array<{
         type?: string;
         replyToken?: string;
         source?: { userId?: string };
-        message?: { type?: string; text?: string };
+        message?: { type?: string; text?: string; id?: string };
       }>;
     };
 
     if (!Array.isArray(payload.events)) {
-      return { events: [{ text: rawBody }], linePayload: false };
+      return { events: [{ kind: "text", text: rawBody }], linePayload: false };
     }
 
     const events: ExtractedEvent[] = [];
     let replyToken: string | undefined;
     for (const event of payload.events) {
-      if (event.type !== "message" || event.message?.type !== "text" || !event.message.text) continue;
+      if (event.type !== "message") continue;
       const userId = event.source?.userId;
-      console.log(`LINE message received from ${userId || "unknown"}: ${event.message.text}`);
       if (allowedApproverIds.size > 0 && !allowedApproverIds.has(userId || "")) {
         return { events: [], linePayload: true, ignored: "non_approver_user" };
       }
       replyToken ??= event.replyToken;
-      events.push({ text: event.message.text, userId });
+
+      if (event.message?.type === "text" && event.message.text) {
+        console.log(`LINE message received from ${userId || "unknown"}: ${event.message.text}`);
+        events.push({ kind: "text", text: event.message.text, userId });
+      }
+
+      if ((event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
+        events.push({
+          kind: "media",
+          messageId: event.message.id,
+          messageType: event.message.type,
+          userId,
+        });
+      }
     }
 
     return { events, linePayload: true, replyToken };
   } catch {
-    return { events: [{ text: rawBody }], linePayload: false };
+    return { events: [{ kind: "text", text: rawBody }], linePayload: false };
   }
+}
+
+async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, unknown>> {
+  if (event.kind !== "media" || !event.messageId || !event.messageType) {
+    return { ok: false, message: "OPENQLOW: メディアイベントを処理できませんでした。" };
+  }
+  const config = loadConfig();
+  const result = await saveLineMessageMediaAndAttach({
+    root: config.root,
+    messageId: event.messageId,
+    messageType: event.messageType,
+    token: process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "",
+  });
+  return {
+    ok: result.ok,
+    action: "line_media_attached",
+    id: result.id,
+    message: result.message,
+  };
 }
 
 async function executeApproval(text: string, userId?: string): Promise<Record<string, unknown>> {
@@ -92,21 +126,13 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
     const files = await approveRecord(parsed.id, parsed.raw);
     const hasPublishDestinations = parsed.targets.some(target => target !== "drafts_only");
     const panel = hasPublishDestinations ? await createBrowserPanel(config.root, parsed.id) : undefined;
-    const finalPublish = okShortcutUsed && hasPublishDestinations
-      ? await runFinalPublish(config.root, parsed.id)
-      : undefined;
-    const finalPublished = finalPublish?.published.map(item => `${item.destination}: ${item.externalId}`) ?? [];
-    const browserQueued = finalPublish?.browserQueued.map(item => `${item.destination}: Macブラウザ投稿待ち`) ?? [];
-    const finalSkipped = finalPublish?.skipped.map(item => `${item.destination}: ${item.reason}`) ?? [];
     const message = [
-      finalPublish ? "OPENQLOW: ok承認で最終投稿まで処理しました。" : hasPublishDestinations ? "OPENQLOW: 投稿準備キューを作りました。" : "OPENQLOW: 下書きを保存しました。",
+      hasPublishDestinations ? "OPENQLOW: 投稿準備キューを作りました。外部投稿はまだしていません。" : "OPENQLOW: 下書きを保存しました。",
       `ID: ${parsed.id}`,
-      finalPublished.length ? `最終投稿済み: ${finalPublished.join(" / ")}` : "",
-      browserQueued.length ? `ブラウザ投稿待ち: ${browserQueued.join(" / ")}` : "",
-      finalSkipped.length ? `未完了: ${finalSkipped.join(" / ")}` : "",
       panel ? `ブラウザ投稿パネル: ${panel}` : "",
       panel ? "Threads / Googleビジネス / LINE VOOM は、このパネルから本文コピーして確認できます。" : "",
-      finalPublish ? "Googleビジネス / LINE VOOM はMac側のログイン済みブラウザ投稿ランナーで処理します。" : panel ? "最終投稿ボタンは、Jinさんが画面で確認してから押してください。" : "",
+      okShortcutUsed && hasPublishDestinations ? "完全自動投稿はまだ保留中です。最終投稿ボタンは、Jinさんが画面で確認してから押してください。" : "",
+      !okShortcutUsed && panel ? "最終投稿ボタンは、Jinさんが画面で確認してから押してください。" : "",
     ].filter(Boolean).join("\n");
     return { ok: true, action: "approved", id: parsed.id, saved: files, panel, message };
   }
@@ -139,7 +165,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const extracted = extractLineTexts(body);
+    const extracted = extractLineEvents(body);
     if (extracted.ignored) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, ignored: extracted.ignored }));
@@ -155,7 +181,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
-        results.push(await executeApproval(ev.text, ev.userId));
+        if (ev.kind === "media") {
+          results.push(await executeLineMedia(ev));
+        } else {
+          results.push(await executeApproval(ev.text ?? "", ev.userId));
+        }
       }
       if (extracted.linePayload) {
         await replyLineMessage(extracted.replyToken, formatWebhookReply(results));

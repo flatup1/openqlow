@@ -12,8 +12,10 @@ import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js
 import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
 import { SessionStore } from "../conversation/session_store.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
+import { applyLineRevisionCommand, parseLineRevisionCommand } from "../approval/revision.js";
 import { createMediaPublishCandidate } from "../publish/media_candidate.js";
 import { parseMediaCommand } from "../publish/media_command.js";
+import { applyImageChoiceCommand, attachMediaSelectionCommand, parseImageChoiceCommand, parseInsertMediaCommand } from "../publish/media_library.js";
 import { validateMediaPlan } from "../publish/media_rules.js";
 import { canonicalLineCommand, normalizeLineText } from "./normalize_command.js";
 
@@ -24,6 +26,9 @@ export type LineCommandAction =
   | "git_push"
   | "memory_keeper"
   | "owner_info"
+  | "revision"
+  | "media_insert"
+  | "image_choice"
   | "media_post_candidate"
   | "monthly_report";
 
@@ -198,6 +203,45 @@ async function executeMediaPostCommand(text: string, opts: ExecuteLineCommandOpt
   };
 }
 
+async function executeRevisionCommand(text: string): Promise<LineCommandResult | undefined> {
+  if (!parseLineRevisionCommand(text)) return undefined;
+  const config = loadConfig();
+  const result = await applyLineRevisionCommand(config.root, text);
+  return {
+    handled: true,
+    ok: result.ok,
+    action: "revision",
+    message: result.message,
+    meta: { id: result.id },
+  };
+}
+
+async function executeInsertMediaCommand(text: string): Promise<LineCommandResult | undefined> {
+  if (!parseInsertMediaCommand(text)) return undefined;
+  const config = loadConfig();
+  const result = await attachMediaSelectionCommand(config.root, text);
+  return {
+    handled: true,
+    ok: result.ok,
+    action: "media_insert",
+    message: result.message,
+    meta: { id: result.id },
+  };
+}
+
+async function executeImageChoiceCommand(text: string): Promise<LineCommandResult | undefined> {
+  if (!parseImageChoiceCommand(text)) return undefined;
+  const config = loadConfig();
+  const result = await applyImageChoiceCommand(config.root, text);
+  return {
+    handled: true,
+    ok: result.ok,
+    action: "image_choice",
+    message: result.message,
+    meta: { id: result.id },
+  };
+}
+
 async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
   const req = parseMonthlyReportCommand(text, opts.now ?? new Date());
   if (!req) return undefined;
@@ -269,6 +313,15 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
       };
     }
   }
+
+  const revision = await executeRevisionCommand(text);
+  if (revision) return revision;
+
+  const insertedMedia = await executeInsertMediaCommand(text);
+  if (insertedMedia) return insertedMedia;
+
+  const imageChoice = await executeImageChoiceCommand(text);
+  if (imageChoice) return imageChoice;
 
   const mediaPost = await executeMediaPostCommand(text, opts);
   if (mediaPost) return mediaPost;

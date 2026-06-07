@@ -1,8 +1,41 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { saveRecord } from "../state/file_store.js";
+import type { DraftRecord } from "../types.js";
 import { executeLineCommand } from "./commands.js";
+
+function pendingRecord(id: string): DraftRecord {
+  return {
+    id,
+    idea: {
+      id,
+      date: "2026-06-08",
+      theme: "LINEコマンド",
+      angle: "承認待ち編集",
+      audience: "local_narita",
+      source: "obsidian_inbox",
+      valueConnection: "投稿前に本文と画像を確認する。",
+    },
+    drafts: [{
+      id: `${id}_threads`,
+      ideaId: id,
+      approvalId: id,
+      platform: "threads",
+      publicationLevel: "level_2_draft",
+      body: "古い本文です。",
+      hashtags: ["FLATUPGYM"],
+      cta: "",
+      safetyNotes: [],
+      createdAt: "2026-06-08T00:00:00.000Z",
+    }],
+    status: "pending_approval",
+    approvalMessage: "候補",
+    createdAt: "2026-06-08T00:00:00.000Z",
+    updatedAt: "2026-06-08T00:00:00.000Z",
+  };
+}
 
 async function testAppendCommandWritesDailyLog(): Promise<void> {
   const vault = await mkdtemp(path.join(tmpdir(), "openqlow-line-command-vault-"));
@@ -109,6 +142,79 @@ async function testNonCommandIsNotHandled(): Promise<void> {
   assert.equal(result.handled, false);
 }
 
+async function testRevisionCommandUpdatesPendingDraft(): Promise<void> {
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-line-revision-root-"));
+  process.env.OPENQLOW_ROOT = root;
+  await saveRecord(root, pendingRecord("FG-20260608-301"));
+
+  const result = await executeLineCommand("修正 初心者でも安心して始められる練習です。", {
+    now: new Date("2026-06-08T01:00:00.000Z"),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "revision");
+  assert.match(result.message, /再確認/);
+
+  const saved = JSON.parse(await readFile(path.join(root, "state", "FG-20260608-301.json"), "utf8"));
+  assert.equal(saved.status, "pending_approval");
+  assert.equal(saved.drafts[0].body, "初心者でも安心して始められる練習です。");
+  assert.equal(saved.revisionHistory[0].oldDrafts[0].body, "古い本文です。");
+}
+
+async function testInsertCommandAttachesWhitelistedMedia(): Promise<void> {
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-line-insert-root-"));
+  const mediaDir = await mkdtemp(path.join(tmpdir(), "openqlow-line-insert-media-"));
+  process.env.OPENQLOW_ROOT = root;
+  process.env.OPENQLOW_MEDIA_DIR = mediaDir;
+  await saveRecord(root, pendingRecord("FG-20260608-302"));
+  await mkdir(mediaDir, { recursive: true });
+  await writeFile(path.join(mediaDir, "candidate.jpg"), "fake", "utf8");
+  await writeFile(path.join(mediaDir, "ignore.txt"), "fake", "utf8");
+
+  const list = await executeLineCommand("挿入");
+  assert.equal(list.handled, true);
+  assert.equal(list.action, "media_insert");
+  assert.match(list.message, /1\. candidate\.jpg/);
+  assert.doesNotMatch(list.message, /ignore\.txt/);
+
+  const selected = await executeLineCommand("挿入 1");
+  assert.equal(selected.handled, true);
+  assert.equal(selected.ok, true);
+  assert.equal(selected.action, "media_insert");
+  assert.match(selected.message, /目視確認/);
+
+  const saved = JSON.parse(await readFile(path.join(root, "state", "FG-20260608-302.json"), "utf8"));
+  assert.deepEqual(saved.mediaFiles, [path.join(mediaDir, "candidate.jpg")]);
+}
+
+async function testImageChoiceCommandSelectsAndClearsMedia(): Promise<void> {
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-line-image-root-"));
+  const mediaDir = await mkdtemp(path.join(tmpdir(), "openqlow-line-image-media-"));
+  process.env.OPENQLOW_ROOT = root;
+  process.env.OPENQLOW_MEDIA_DIR = mediaDir;
+  await saveRecord(root, pendingRecord("FG-20260608-303"));
+  await writeFile(path.join(mediaDir, "choice.png"), "fake", "utf8");
+
+  const selected = await executeLineCommand("画像 1");
+  assert.equal(selected.handled, true);
+  assert.equal(selected.ok, true);
+  assert.equal(selected.action, "image_choice");
+  assert.match(selected.message, /目視確認/);
+
+  const withMedia = JSON.parse(await readFile(path.join(root, "state", "FG-20260608-303.json"), "utf8"));
+  assert.deepEqual(withMedia.mediaFiles, [path.join(mediaDir, "choice.png")]);
+
+  const none = await executeLineCommand("画像なし");
+  assert.equal(none.handled, true);
+  assert.equal(none.ok, true);
+  assert.equal(none.action, "image_choice");
+  assert.match(none.message, /画像なし/);
+
+  const cleared = JSON.parse(await readFile(path.join(root, "state", "FG-20260608-303.json"), "utf8"));
+  assert.deepEqual(cleared.mediaFiles, []);
+}
+
 async function testMediaPostCommandCreatesApprovalCandidate(): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "openqlow-line-media-root-"));
   process.env.OPENQLOW_ROOT = root;
@@ -139,6 +245,9 @@ await testPushCommandSkipsWhenNoChanges();
 await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
 await testNonCommandIsNotHandled();
+await testRevisionCommandUpdatesPendingDraft();
+await testInsertCommandAttachesWhitelistedMedia();
+await testImageChoiceCommandSelectsAndClearsMedia();
 await testMediaPostCommandCreatesApprovalCandidate();
 
 console.log("line command tests passed");
