@@ -29,12 +29,36 @@ if [[ ! -f "${COORD_FILE}" ]]; then
   exit 1
 fi
 
-# Step 1: 他AIの最新を取得
+# Step 1: 他AIの最新を取得（未ステージング差分は自動stash）
 echo "===== Step 1: git pull origin main ====="
-git pull origin main --rebase || {
+
+STASHED=0
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+  echo "ℹ️  未コミット差分を自動 stash します"
+  if git stash push -u -m "auto-stash by start-work.sh @ $(date +%Y%m%d_%H%M)" >/dev/null 2>&1; then
+    STASHED=1
+  else
+    echo "❌ stash に失敗しました。手動で対応してください。" >&2
+    exit 1
+  fi
+fi
+
+if ! git pull origin main --rebase 2>&1; then
   echo "❌ git pull に失敗しました。コンフリクト等を確認してください。" >&2
+  if [[ "${STASHED}" -eq 1 ]]; then
+    echo "ℹ️  stash した差分は 'git stash pop' で戻せます" >&2
+  fi
   exit 1
-}
+fi
+
+# stash した差分を戻す
+if [[ "${STASHED}" -eq 1 ]]; then
+  if git stash pop >/dev/null 2>&1; then
+    echo "✅ stash を戻しました"
+  else
+    echo "⚠️  stash pop でコンフリクト発生。'git status' で確認してください" >&2
+  fi
+fi
 
 # Step 2: COORDINATION.md にロック追記
 echo ""
