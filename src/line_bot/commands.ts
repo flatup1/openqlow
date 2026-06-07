@@ -11,10 +11,15 @@ import {
 import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js";
 import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
 import {
+  buildCategoryListMessage,
   buildExpenseReport,
+  exportExpenseCsv,
+  isExpenseCategoryCommand,
   parseExpenseCommand,
+  parseExpenseCsvCommand,
   parseExpenseReportCommand,
   recordExpense,
+  taxAmount,
 } from "../commands/expense_ledger.js";
 import { SessionStore } from "../conversation/session_store.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
@@ -33,7 +38,9 @@ export type LineCommandAction =
   | "media_post_candidate"
   | "monthly_report"
   | "expense_record"
-  | "expense_report";
+  | "expense_report"
+  | "expense_csv"
+  | "expense_categories";
 
 export interface LineCommandResult {
   handled: boolean;
@@ -246,7 +253,8 @@ async function executeExpenseRecord(text: string, opts: ExecuteLineCommandOption
 
   try {
     const result = await recordExpense(parsed.entry, { now: opts.now });
-    const { date, amount, category, memo } = result.entry;
+    const { date, amount, category, memo, taxRate } = result.entry;
+    const tax = taxAmount(amount, taxRate);
     return {
       handled: true,
       ok: true,
@@ -254,13 +262,14 @@ async function executeExpenseRecord(text: string, opts: ExecuteLineCommandOption
       message: [
         "OPENQLOW: 経費を記録しました。",
         `- 日付: ${date}`,
-        `- 金額: ¥${amount.toLocaleString("ja-JP")}`,
+        `- 金額: ¥${amount.toLocaleString("ja-JP")}（税込 ${taxRate}% / 内消費税 ¥${tax.toLocaleString("ja-JP")}）`,
         `- カテゴリ: ${category}`,
         memo ? `- メモ: ${memo}` : "- メモ: (なし)",
+        parsed.knownCategory ? "" : "※ 標準の勘定科目には無い言葉です。一覧は「/経費カテゴリ」で確認できます。",
         "",
         "GitHubへ反映するには「/push」を送ってください。",
-      ].join("\n"),
-      meta: { date, amount, category, ledgerFile: result.ledgerFile },
+      ].filter(Boolean).join("\n"),
+      meta: { date, amount, category, taxRate, tax, knownCategory: parsed.knownCategory, ledgerFile: result.ledgerFile },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -297,6 +306,41 @@ async function executeExpenseReport(text: string, opts: ExecuteLineCommandOption
       meta: { yearMonth: req.yearMonth, error: message },
     };
   }
+}
+
+async function executeExpenseCsv(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  const req = parseExpenseCsvCommand(text, opts.now ?? new Date());
+  if (!req) return undefined;
+
+  try {
+    const result = await exportExpenseCsv(req);
+    return {
+      handled: true,
+      ok: result.ok,
+      action: "expense_csv",
+      message: result.message,
+      meta: { yearMonth: result.yearMonth, count: result.count, file: result.file },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_csv",
+      message: `OPENQLOW: 経費CSVの書き出しに失敗しました。\n理由: ${message}`,
+      meta: { yearMonth: req.yearMonth, error: message },
+    };
+  }
+}
+
+function executeExpenseCategoryList(text: string): LineCommandResult | undefined {
+  if (!isExpenseCategoryCommand(text)) return undefined;
+  return {
+    handled: true,
+    ok: true,
+    action: "expense_categories",
+    message: buildCategoryListMessage(),
+  };
 }
 
 export async function executeLineCommand(text: string, opts: ExecuteLineCommandOptions = {}): Promise<LineCommandResult> {
@@ -356,6 +400,14 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
   // 2.6) /経費月報: その月の経費をカテゴリ別に集計して返信
   const expenseReport = await executeExpenseReport(text, opts);
   if (expenseReport) return expenseReport;
+
+  // 2.65) /経費CSV: その月の経費を CSV に書き出す
+  const expenseCsv = await executeExpenseCsv(text, opts);
+  if (expenseCsv) return expenseCsv;
+
+  // 2.68) /経費カテゴリ: 使える勘定科目の一覧を返す
+  const expenseCategories = executeExpenseCategoryList(text);
+  if (expenseCategories) return expenseCategories;
 
   // 2.7) /経費: 経費1件を Obsidian の台帳に記録（/push で GitHub へ）
   const expenseRecord = await executeExpenseRecord(text, opts);

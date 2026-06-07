@@ -3,19 +3,20 @@
 // 目的:
 //  - LINE / CLI から経費を1件ずつ記録する。
 //  - Obsidian Vault に機械可読(.jsonl) と 人が読む月別台帳(.md) の二本立てで追記する。
-//  - その月の経費をカテゴリ別に合計して LINE 1メッセージで返す。
+//  - その月の経費をカテゴリ別に合計し、消費税の目安も添えて LINE 1メッセージで返す。
+//  - 確定申告/表計算向けに月単位の CSV を書き出す。
 //  - 保存先は Obsidian なので、既存の /push コマンドでそのまま GitHub へ送れる。
 //
 // 記録コマンド:
 //   /経費 1200 消耗品 ジムの備品
+//   /経費 1200 消耗品 8% ジムの備品                ← 税率を指定（既定 10%）
 //   /経費 2026-06-01 1,200 会議費 打ち合わせ        ← 先頭に日付を置くと過去日付で記録
 //   /経費 ¥3000 交通費                              ← メモ省略可
 //
-// 月報コマンド:
-//   /経費月報            → 今月（JST）
-//   /経費月報 先月        → 先月
-//   /経費月報 2026-05     → 指定月
-//   /経費月報 5 / 5月     → 今年の指定月
+// 集計コマンド:
+//   /経費月報 [今月|先月|YYYY-MM|M月]
+//   /経費CSV  [今月|先月|YYYY-MM|M月]   → 月の CSV を書き出す
+//   /経費カテゴリ                        → 使えるカテゴリ（勘定科目）一覧
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -25,6 +26,7 @@ import { formatDateInTimeZone } from "../utils/date.js";
 const EXPENSE_DIRECTORY_RELATIVE = "6_システム/openqlow_expenses";
 const LEDGER_JSONL = "expenses.jsonl";
 const LINE_SAFE_CHARS = 4800; // LINE 5000 字制限に余裕を持たせる
+const DEFAULT_TAX_RATE = 10; // 税込み前提。既定の消費税率(%)
 
 // 記録コマンドの先頭語（スラッシュ有無どちらでも可）
 const EXPENSE_ALIASES = new Set([
@@ -35,16 +37,42 @@ const EXPENSE_REPORT_ALIASES = new Set([
   "経費月報", "/経費月報", "経費集計", "/経費集計", "経費レポート", "/経費レポート",
   "けいひげっぽう", "/けいひげっぽう",
 ]);
+// CSV 出力コマンドの先頭語（head() で小文字化されるので csv は小文字で持つ）
+const EXPENSE_CSV_ALIASES = new Set([
+  "経費csv", "/経費csv", "経費エクスポート", "/経費エクスポート",
+]);
+// カテゴリ一覧コマンドの先頭語
+const EXPENSE_CATEGORY_ALIASES = new Set([
+  "経費カテゴリ", "/経費カテゴリ", "経費科目", "/経費科目", "勘定科目", "/勘定科目",
+]);
+
+// 勘定科目（よく使うもの）。入力エイリアス → 正規名。
+const CATEGORY_ALIASES: Record<string, string> = {
+  "消耗品": "消耗品費", "消耗品費": "消耗品費", "備品": "消耗品費",
+  "交通費": "旅費交通費", "旅費": "旅費交通費", "旅費交通費": "旅費交通費", "交通": "旅費交通費", "ガソリン": "旅費交通費",
+  "会議費": "会議費", "打ち合わせ": "会議費", "ミーティング": "会議費",
+  "接待": "接待交際費", "交際費": "接待交際費", "接待交際費": "接待交際費",
+  "通信費": "通信費", "通信": "通信費", "携帯": "通信費", "ネット": "通信費",
+  "水道光熱費": "水道光熱費", "光熱費": "水道光熱費", "電気": "水道光熱費", "水道": "水道光熱費", "ガス": "水道光熱費",
+  "家賃": "地代家賃", "地代家賃": "地代家賃", "賃料": "地代家賃",
+  "広告": "広告宣伝費", "広告宣伝費": "広告宣伝費", "宣伝": "広告宣伝費",
+  "図書": "新聞図書費", "書籍": "新聞図書費", "新聞図書費": "新聞図書費", "本": "新聞図書費",
+  "外注": "外注費", "外注費": "外注費",
+  "研修": "研修費", "研修費": "研修費", "セミナー": "研修費",
+  "消耗品以外": "雑費", "雑費": "雑費",
+};
+const CANONICAL_CATEGORIES = [...new Set(Object.values(CATEGORY_ALIASES))];
 
 export interface ExpenseEntry {
   date: string; // YYYY-MM-DD (JST)
-  amount: number; // 円（整数）
+  amount: number; // 円（税込・整数）
   category: string;
   memo: string;
+  taxRate?: number; // 消費税率(%)。未指定は DEFAULT_TAX_RATE 扱い。
 }
 
 export type ParsedExpenseCommand =
-  | { ok: true; entry: ExpenseEntry }
+  | { ok: true; entry: ExpenseEntry; knownCategory: boolean }
   | { ok: false; error: string };
 
 function normalize(text: string): string {
@@ -62,6 +90,11 @@ function head(text: string): string {
   return first.toLowerCase();
 }
 
+/** コマンド本体（先頭トークン）を除いた引数部分。 */
+function argPart(text: string): string {
+  return normalize(text).split(/\s+/).slice(1).join(" ").trim();
+}
+
 /** "/経費 ..." 形式かどうか（中身の正否は問わない）。 */
 export function isExpenseCommand(text: string): boolean {
   return EXPENSE_ALIASES.has(head(text));
@@ -70,6 +103,29 @@ export function isExpenseCommand(text: string): boolean {
 /** "/経費月報 ..." 形式かどうか。 */
 export function isExpenseReportCommand(text: string): boolean {
   return EXPENSE_REPORT_ALIASES.has(head(text));
+}
+
+/** "/経費CSV ..." 形式かどうか。 */
+export function isExpenseCsvCommand(text: string): boolean {
+  return EXPENSE_CSV_ALIASES.has(head(text));
+}
+
+/** "/経費カテゴリ" 形式かどうか。 */
+export function isExpenseCategoryCommand(text: string): boolean {
+  return EXPENSE_CATEGORY_ALIASES.has(head(text));
+}
+
+/** 入力カテゴリを正規の勘定科目に寄せる。未知ならそのまま、known=false。 */
+export function normalizeCategory(input: string): { category: string; known: boolean } {
+  const key = input.trim();
+  const canonical = CATEGORY_ALIASES[key];
+  if (canonical) return { category: canonical, known: true };
+  return { category: key, known: false };
+}
+
+/** 使える勘定科目の一覧。 */
+export function listCategories(): string[] {
+  return CANONICAL_CATEGORIES;
 }
 
 /** "1,200" / "¥1200" / "1200円" / "1200" を整数の円に変換。失敗時 undefined。 */
@@ -81,10 +137,28 @@ function parseAmount(token: string): number | undefined {
   return value;
 }
 
+/** "8%" / "税10%" / "非課税" 等を税率(%)に。税トークンでなければ undefined。 */
+function parseTaxToken(token: string): number | undefined {
+  const t = token.normalize("NFKC");
+  if (/^(非課税|不課税)$/.test(t)) return 0;
+  const m = t.match(/^(?:税)?(\d{1,2})[%％]$/);
+  if (m) {
+    const rate = Number.parseInt(m[1], 10);
+    if (rate === 0 || rate === 8 || rate === 10) return rate;
+  }
+  return undefined;
+}
+
+/** 税込金額から内税（消費税）を四捨五入で求める。 */
+export function taxAmount(amountIncludingTax: number, taxRate = DEFAULT_TAX_RATE): number {
+  if (taxRate <= 0) return 0;
+  return Math.round(amountIncludingTax - amountIncludingTax / (1 + taxRate / 100));
+}
+
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
- * "/経費 [日付] 金額 カテゴリ [メモ...]" を ExpenseEntry に変換する。
+ * "/経費 [日付] 金額 [税率] カテゴリ [メモ...]" を ExpenseEntry に変換する。
  * /経費 系の先頭語でなければ undefined（別コマンドとして無視させる）。
  */
 export function parseExpenseCommand(
@@ -93,15 +167,11 @@ export function parseExpenseCommand(
 ): ParsedExpenseCommand | undefined {
   if (!isExpenseCommand(text)) return undefined;
 
-  const normalized = normalize(text);
-  const afterCommand = normalized.replace(/^\/?(?:経費|けいひ|出費|expense)\s*/i, "");
+  const afterCommand = argPart(text);
   const tokens = afterCommand.split(" ").filter((t) => t.length > 0);
 
   if (tokens.length === 0) {
-    return {
-      ok: false,
-      error: usage(),
-    };
+    return { ok: false, error: usage() };
   }
 
   let date = formatDateInTimeZone(now);
@@ -126,20 +196,26 @@ export function parseExpenseCommand(
   }
   index += 1;
 
-  const category = tokens[index];
-  if (!category) {
-    return {
-      ok: false,
-      error: `カテゴリ（勘定科目）が足りません。\n${usage()}`,
-    };
+  // 残りトークンから税率トークン（8% 等）を1つ抜き取る（位置自由）
+  const rest = tokens.slice(index);
+  let taxRate = DEFAULT_TAX_RATE;
+  const taxIndex = rest.findIndex((t) => parseTaxToken(t) !== undefined);
+  if (taxIndex >= 0) {
+    taxRate = parseTaxToken(rest[taxIndex])!;
+    rest.splice(taxIndex, 1);
   }
-  index += 1;
 
-  const memo = tokens.slice(index).join(" ");
+  const categoryRaw = rest.shift();
+  if (!categoryRaw) {
+    return { ok: false, error: `カテゴリ（勘定科目）が足りません。\n${usage()}` };
+  }
+  const { category, known } = normalizeCategory(categoryRaw);
+  const memo = rest.join(" ");
 
   return {
     ok: true,
-    entry: { date, amount, category, memo },
+    knownCategory: known,
+    entry: { date, amount, category, memo, taxRate },
   };
 }
 
@@ -148,6 +224,7 @@ function usage(): string {
     "使い方: /経費 金額 カテゴリ メモ",
     "例: /経費 1200 消耗品 ジムの備品",
     "例: /経費 2026-06-01 3000 交通費 セミナー往復",
+    "税率を変える時: /経費 800 新聞図書費 8%（軽減税率）",
   ].join("\n");
 }
 
@@ -158,12 +235,12 @@ export interface RecordExpenseOptions {
 }
 
 export interface RecordExpenseResult {
-  entry: ExpenseEntry;
+  entry: Required<ExpenseEntry>;
   jsonlFile: string;
   ledgerFile: string;
 }
 
-function expenseDir(opts: RecordExpenseOptions): string {
+function expenseDir(opts: { dirOverride?: string }): string {
   return opts.dirOverride ?? obsidianPath(EXPENSE_DIRECTORY_RELATIVE);
 }
 
@@ -175,25 +252,28 @@ export async function recordExpense(
   const dir = expenseDir(opts);
   await fs.mkdir(dir, { recursive: true });
 
-  const ts = (opts.now ?? new Date()).toISOString();
-  const payload = {
-    ts,
+  const taxRate = entry.taxRate ?? DEFAULT_TAX_RATE;
+  const resolved: Required<ExpenseEntry> = {
     date: entry.date,
     amount: entry.amount,
     category: entry.category,
     memo: entry.memo,
+    taxRate,
   };
+
+  const ts = (opts.now ?? new Date()).toISOString();
+  const payload = { ts, ...resolved };
 
   const jsonlFile = path.join(dir, LEDGER_JSONL);
   await fs.appendFile(jsonlFile, `${JSON.stringify(payload)}\n`, "utf8");
 
   const yearMonth = entry.date.slice(0, 7);
   const ledgerFile = path.join(dir, `expenses-${yearMonth}.md`);
-  const line = `| ${entry.date} | ${formatYen(entry.amount)} | ${entry.category} | ${entry.memo || "-"} |`;
+  const line = `| ${resolved.date} | ${formatYen(resolved.amount)} | ${resolved.taxRate}% | ${resolved.category} | ${resolved.memo || "-"} |`;
   await ensureLedgerHeader(ledgerFile, yearMonth);
   await fs.appendFile(ledgerFile, `${line}\n`, "utf8");
 
-  return { entry, jsonlFile, ledgerFile };
+  return { entry: resolved, jsonlFile, ledgerFile };
 }
 
 async function ensureLedgerHeader(file: string, yearMonth: string): Promise<void> {
@@ -204,8 +284,8 @@ async function ensureLedgerHeader(file: string, yearMonth: string): Promise<void
     const header = [
       `# 経費台帳 ${yearMonth}`,
       "",
-      "| 日付 | 金額 | カテゴリ | メモ |",
-      "| --- | ---: | --- | --- |",
+      "| 日付 | 金額(税込) | 税率 | カテゴリ | メモ |",
+      "| --- | ---: | ---: | --- | --- |",
       "",
     ].join("\n");
     await fs.writeFile(file, header, "utf8");
@@ -216,46 +296,10 @@ function formatYen(amount: number): string {
   return `¥${amount.toLocaleString("ja-JP")}`;
 }
 
-// --- 月報（集計） ---
+// --- 月の読み込み・解決（report / csv 共通） ---
 
-export interface ExpenseReportRequest {
+export interface ExpenseMonthRequest {
   yearMonth: string; // YYYY-MM
-}
-
-/** "/経費月報 [arg]" から YYYY-MM を抽出する。別コマンドなら undefined。 */
-export function parseExpenseReportCommand(
-  text: string,
-  now: Date = new Date(),
-  timeZone = "Asia/Tokyo",
-): ExpenseReportRequest | undefined {
-  if (!isExpenseReportCommand(text)) return undefined;
-
-  const normalized = normalize(text);
-  const afterCommand = normalized.replace(
-    /^\/?(?:経費月報|経費集計|経費レポート|けいひげっぽう)\s*/,
-    "",
-  );
-  const arg = afterCommand.trim();
-
-  if (!arg || arg === "今月" || arg === "this") {
-    return { yearMonth: formatYearMonth(now, timeZone) };
-  }
-  if (arg === "先月" || arg === "last") {
-    return { yearMonth: formatYearMonth(shiftMonths(now, -1, timeZone), timeZone) };
-  }
-
-  const ym = arg.match(/^(\d{4})[-\/](\d{1,2})$/);
-  if (ym) {
-    return { yearMonth: `${ym[1]}-${ym[2].padStart(2, "0")}` };
-  }
-
-  const monthOnly = arg.match(/^(\d{1,2})月?$/);
-  if (monthOnly) {
-    const year = formatYearMonth(now, timeZone).slice(0, 4);
-    return { yearMonth: `${year}-${monthOnly[1].padStart(2, "0")}` };
-  }
-
-  return undefined;
 }
 
 function formatYearMonth(date: Date, timeZone: string): string {
@@ -284,46 +328,99 @@ function shiftMonths(date: Date, delta: number, timeZone: string): Date {
   return new Date(Date.UTC(targetYear, normalizedMonth, 1, 12, 0, 0));
 }
 
+/** "今月/先月/YYYY-MM/M月/M" を YYYY-MM に解決。未対応なら undefined。 */
+function monthFromArg(arg: string, now: Date, timeZone: string): string | undefined {
+  if (!arg || arg === "今月" || arg === "this") return formatYearMonth(now, timeZone);
+  if (arg === "先月" || arg === "last") return formatYearMonth(shiftMonths(now, -1, timeZone), timeZone);
+
+  const ym = arg.match(/^(\d{4})[-\/](\d{1,2})$/);
+  if (ym) return `${ym[1]}-${ym[2].padStart(2, "0")}`;
+
+  const monthOnly = arg.match(/^(\d{1,2})月?$/);
+  if (monthOnly) {
+    const year = formatYearMonth(now, timeZone).slice(0, 4);
+    return `${year}-${monthOnly[1].padStart(2, "0")}`;
+  }
+  return undefined;
+}
+
+/** "/経費月報 [arg]" から YYYY-MM を抽出する。別コマンドなら undefined。 */
+export function parseExpenseReportCommand(
+  text: string,
+  now: Date = new Date(),
+  timeZone = "Asia/Tokyo",
+): ExpenseMonthRequest | undefined {
+  if (!isExpenseReportCommand(text)) return undefined;
+  const yearMonth = monthFromArg(argPart(text), now, timeZone);
+  return yearMonth ? { yearMonth } : undefined;
+}
+
+/** "/経費CSV [arg]" から YYYY-MM を抽出する。別コマンドなら undefined。 */
+export function parseExpenseCsvCommand(
+  text: string,
+  now: Date = new Date(),
+  timeZone = "Asia/Tokyo",
+): ExpenseMonthRequest | undefined {
+  if (!isExpenseCsvCommand(text)) return undefined;
+  const yearMonth = monthFromArg(argPart(text), now, timeZone);
+  return yearMonth ? { yearMonth } : undefined;
+}
+
+// --- 月報（集計） ---
+
 export interface ExpenseReportResult {
   ok: boolean;
   yearMonth: string;
   message: string;
-  total: number;
+  total: number; // 税込合計
+  taxTotal: number; // 内税（消費税）の目安合計
   count: number;
   byCategory: Array<{ category: string; amount: number; count: number }>;
 }
 
-export interface BuildExpenseReportOptions {
+export interface ReadLedgerOptions {
   dirOverride?: string;
   readFile?: (p: string) => Promise<string>;
 }
 
-/** 指定月の経費を jsonl から集計し、LINE 用1メッセージに整形して返す。 */
-export async function buildExpenseReport(
-  req: ExpenseReportRequest,
-  opts: BuildExpenseReportOptions = {},
-): Promise<ExpenseReportResult> {
+/** 指定月の経費を jsonl から読み込む（日付昇順）。台帳が無ければ空配列。 */
+async function readMonthEntries(
+  yearMonth: string,
+  opts: ReadLedgerOptions,
+): Promise<Required<ExpenseEntry>[] | undefined> {
   const dir = opts.dirOverride ?? obsidianPath(EXPENSE_DIRECTORY_RELATIVE);
   const readFile = opts.readFile ?? ((p) => fs.readFile(p, "utf-8"));
-  const jsonlPath = path.join(dir, LEDGER_JSONL);
-
   let raw: string;
   try {
-    raw = await readFile(jsonlPath);
+    raw = await readFile(path.join(dir, LEDGER_JSONL));
   } catch {
+    return undefined; // 台帳ファイル自体が無い
+  }
+  return parseLedger(raw)
+    .filter((e) => e.date.startsWith(`${yearMonth}-`))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** 指定月の経費を集計し、LINE 用1メッセージに整形して返す。 */
+export async function buildExpenseReport(
+  req: ExpenseMonthRequest,
+  opts: ReadLedgerOptions = {},
+): Promise<ExpenseReportResult> {
+  const entries = await readMonthEntries(req.yearMonth, opts);
+
+  if (entries === undefined) {
     return emptyReport(req.yearMonth, "経費台帳がまだありません。\n「/経費 金額 カテゴリ メモ」で1件目を記録できます。");
   }
-
-  const entries = parseLedger(raw).filter((e) => e.date.startsWith(`${req.yearMonth}-`));
-
   if (entries.length === 0) {
     return emptyReport(req.yearMonth, "この月の経費はまだありません。");
   }
 
   const byCategoryMap = new Map<string, { amount: number; count: number }>();
   let total = 0;
+  let taxTotal = 0;
   for (const entry of entries) {
     total += entry.amount;
+    taxTotal += taxAmount(entry.amount, entry.taxRate);
     const current = byCategoryMap.get(entry.category) ?? { amount: 0, count: 0 };
     current.amount += entry.amount;
     current.count += 1;
@@ -337,24 +434,21 @@ export async function buildExpenseReport(
   const lines = [
     `[OPENQLOW 経費月報] ${req.yearMonth}`,
     "",
-    `合計: ${formatYen(total)}（${entries.length}件）`,
+    `合計(税込): ${formatYen(total)}（${entries.length}件）`,
+    `うち消費税(目安): ${formatYen(taxTotal)}`,
     "",
     "カテゴリ別:",
-    ...byCategory.map(
-      (c) => `- ${c.category}: ${formatYen(c.amount)}（${c.count}件）`,
-    ),
+    ...byCategory.map((c) => `- ${c.category}: ${formatYen(c.amount)}（${c.count}件）`),
   ];
 
-  const { text, truncated } = truncateForLine(lines.join("\n"), LINE_SAFE_CHARS);
-  if (truncated) {
-    // 末尾は注記済み
-  }
+  const { text } = truncateForLine(lines.join("\n"), LINE_SAFE_CHARS);
 
   return {
     ok: true,
     yearMonth: req.yearMonth,
     message: text,
     total,
+    taxTotal,
     count: entries.length,
     byCategory,
   };
@@ -366,14 +460,15 @@ function emptyReport(yearMonth: string, body: string): ExpenseReportResult {
     yearMonth,
     message: [`[OPENQLOW 経費月報] ${yearMonth}`, "", body].join("\n"),
     total: 0,
+    taxTotal: 0,
     count: 0,
     byCategory: [],
   };
 }
 
-/** jsonl 本文を ExpenseEntry の配列に。壊れた行は飛ばす。 */
-export function parseLedger(raw: string): ExpenseEntry[] {
-  const entries: ExpenseEntry[] = [];
+/** jsonl 本文を ExpenseEntry の配列に。壊れた行は飛ばす。税率欠落は既定値。 */
+export function parseLedger(raw: string): Required<ExpenseEntry>[] {
+  const entries: Required<ExpenseEntry>[] = [];
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -389,6 +484,7 @@ export function parseLedger(raw: string): ExpenseEntry[] {
           amount: obj.amount,
           category: obj.category,
           memo: typeof obj.memo === "string" ? obj.memo : "",
+          taxRate: typeof obj.taxRate === "number" ? obj.taxRate : DEFAULT_TAX_RATE,
         });
       }
     } catch {
@@ -396,6 +492,87 @@ export function parseLedger(raw: string): ExpenseEntry[] {
     }
   }
   return entries;
+}
+
+// --- CSV 出力 ---
+
+const CSV_HEADER = ["日付", "金額(税込)", "消費税率", "消費税(内税)", "カテゴリ", "メモ"];
+
+function csvCell(value: string): string {
+  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+/** ExpenseEntry の配列を CSV 文字列にする（ヘッダ付き、CRLF 区切り）。 */
+export function buildExpenseCsv(entries: Required<ExpenseEntry>[]): string {
+  const rows = entries.map((e) => [
+    e.date,
+    String(e.amount),
+    `${e.taxRate}%`,
+    String(taxAmount(e.amount, e.taxRate)),
+    e.category,
+    e.memo,
+  ]);
+  return [CSV_HEADER, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+
+export interface ExportCsvResult {
+  ok: boolean;
+  yearMonth: string;
+  file?: string;
+  count: number;
+  message: string;
+}
+
+export interface ExportCsvOptions extends ReadLedgerOptions {}
+
+/**
+ * 指定月の経費を CSV（Excel 互換の UTF-8 BOM 付き）として
+ * expenses-YYYY-MM.csv に書き出す。
+ */
+export async function exportExpenseCsv(
+  req: ExpenseMonthRequest,
+  opts: ExportCsvOptions = {},
+): Promise<ExportCsvResult> {
+  const entries = await readMonthEntries(req.yearMonth, opts);
+  if (!entries || entries.length === 0) {
+    return {
+      ok: false,
+      yearMonth: req.yearMonth,
+      count: 0,
+      message: `${req.yearMonth} の経費がまだありません。CSV は作りませんでした。`,
+    };
+  }
+
+  const dir = opts.dirOverride ?? obsidianPath(EXPENSE_DIRECTORY_RELATIVE);
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, `expenses-${req.yearMonth}.csv`);
+  const bom = "﻿"; // Excel で文字化けしないように
+  await fs.writeFile(file, bom + buildExpenseCsv(entries), "utf8");
+
+  return {
+    ok: true,
+    yearMonth: req.yearMonth,
+    file,
+    count: entries.length,
+    message: [
+      `[OPENQLOW 経費CSV] ${req.yearMonth}（${entries.length}件）を書き出しました。`,
+      file,
+      "",
+      "GitHubへ反映するには「/push」を送ってください。",
+    ].join("\n"),
+  };
+}
+
+/** /経費カテゴリ への返信メッセージ。 */
+export function buildCategoryListMessage(): string {
+  return [
+    "[OPENQLOW 経費カテゴリ] よく使う勘定科目:",
+    ...CANONICAL_CATEGORIES.map((c) => `- ${c}`),
+    "",
+    "※ 一覧に無い言葉でもそのまま記録できます（後で直せます）。",
+    "※ 「消耗品」「交通費」などの略称は自動で正式名に寄せます。",
+  ].join("\n");
 }
 
 function truncateForLine(text: string, max: number): { text: string; truncated: boolean } {
