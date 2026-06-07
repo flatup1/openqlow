@@ -52,9 +52,7 @@ export function buildTodoReplyLines(answers: Record<string, string | undefined>)
   if (todos.length === 0) return [];
   return [
     "",
-    "今日やることはこの3つです：",
+    "今日やること:",
     ...todos.map((todo, i) => `${i + 1}. ${todo}`),
-    "",
-    "必要なら、このままLINE下書きも作れます。",
   ];
 }

@@ -2,10 +2,9 @@
 // systemd timer (OnCalendar=*-*-* 07:00:00 Asia/Tokyo) から呼び出される想定。
 //
 // 動作:
-//   1. JIN_LINE_USER_ID 向けに対話モード morning セッションを事前作成
-//      （webhook で「日報」と打ったのと同じ状態にしておく）
-//   2. ようこそメッセージ + Q1 (1/8) を LINE Push API で送信
-//   3. Jin が次に LINE で何か返信すると、それが Q1 の答えになる
+//   1. JIN_LINE_USER_ID 向けに「かんたん日報」セッションを事前作成
+//   2. 1通で返信できる短い入力例を LINE Push API で送信
+//   3. Jin が次に LINE で返信すると、その1通を日報として保存する
 //
 // 安全装置:
 //   - JIN_LINE_USER_ID 未設定なら何もしない
@@ -55,8 +54,6 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
   const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
   const message = [
     `☀ おはようございます (${dateJst})`,
-    "",
-    "今日の日報を始めます。1問ずつ聞きます。",
     "",
     dialog.reply,
   ].join("\n");

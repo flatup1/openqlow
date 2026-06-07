@@ -79,7 +79,12 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
   if (!parsed) {
     return {
       ok: false,
-      message: "No approval command found. Expected: ok / OK FG-YYYYMMDD-NNN / OK FG-YYYYMMDD-NNN all / 修正 FG-YYYYMMDD-NNN: comment / NO FG-YYYYMMDD-NNN"
+      message: [
+        "受け取りました。",
+        "日報として残すなら、体験・入会・口コミ・今日やることを1通で送ってください。",
+        "例: 体験ひかりちゃん1名 入会予定 今日やること広告",
+        "投稿候補を作るなら「投稿」と送ってください。",
+      ].join("\n"),
     };
   }
 

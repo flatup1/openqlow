@@ -68,7 +68,7 @@ import { extractTopThreeTodos, buildTodoReplyLines } from "./daily_report_todo.j
     today_top_task: "LP更新",
     followup_needed: "山田さん",
   });
-  assert.ok(lines.includes("今日やることはこの3つです："));
+  assert.ok(lines.includes("今日やること:"));
   assert.ok(lines.includes("1. 今日のタスク: LP更新"));
   assert.ok(lines.includes("2. 返信・フォロー: 山田さん"));
 }

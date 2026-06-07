@@ -175,7 +175,9 @@ assert.equal(isMemoryCommandText("hello"), false);
 {
   const store = await makeStore();
   const r = await routeMemoryText("nobody-user", "なし", { store });
-  assert.equal(r.route, "no_match");
+  assert.equal(r.route, "command");
+  assert.equal(r.meta?.mode, "simple_daily");
+  assert.match(r.reply, /保存しました/);
 }
 
 // 13. ワンショット記録：/日記 本文 → 1往復で保存
@@ -202,97 +204,83 @@ assert.equal(isMemoryCommandText("hello"), false);
   assert.equal(await store.exists(userId), false, "セッションは自動破棄");
 }
 
-// 14b. /おはよう（デフォルト） → 対話モード（1問ずつ）
+// 14b. /おはよう（デフォルト） → かんたん日報モード
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/おはよう", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
-  assert.match(r.reply, /1問ずつ聞きます/);
-  assert.match(r.reply, /1\/8: 昨日、体験/);
+  assert.match(r.reply, /1通で送ってください/);
+  assert.doesNotMatch(r.reply, /1問ずつ聞きます/);
   const s = await store.load(userId);
-  assert.equal(s?.activeGenre, "morning", "dialog mode は morning genre を即開始");
-  assert.equal(s?.step, "awaiting_genre_detail");
+  assert.equal(s?.activeGenre, undefined);
+  assert.equal(s?.step, "awaiting_bulk_morning");
   assert.equal(s?.activeGenreQuestionIndex, 0);
-  assert.equal(r.meta?.mode, "morning_dialog");
+  assert.equal(r.meta?.mode, "simple_daily_prompt");
 }
 
-// 14b-bis. /日報 もデフォルト対話モード
+// 14b-bis. /日報 もかんたん日報モード
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/日報", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
-  assert.match(r.reply, /1問ずつ聞きます/);
-  assert.match(r.reply, /1\/8: 昨日、体験/);
+  assert.match(r.reply, /1通で送ってください/);
 }
 
-// 14b-tri. /おはよう まとめ → 旧来のテンプレ一括モード
+// 14b-tri. /おはよう まとめ → かんたん日報モードに統一
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/おはよう まとめ", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
-  assert.match(r.reply, /まとめて送ってください/);
-  assert.match(r.reply, /1\. 昨日の体験/);
-  assert.match(r.reply, /8\. 今日の最優先タスク/);
+  assert.match(r.reply, /1通で送ってください/);
+  assert.doesNotMatch(r.reply, /1\. 昨日の体験/);
   const s = await store.load(userId);
   assert.equal(s?.step, "awaiting_bulk_morning");
   assert.equal(r.meta?.mode, "morning_interview");
 }
 
-// 14b-quad. /日報 bulk もテンプレ一括
+// 14b-quad. /日報 bulk もかんたん日報モード
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/日報 bulk", { store });
-  assert.match(r.reply, /まとめて送ってください/);
+  assert.match(r.reply, /1通で送ってください/);
 }
 
-// 14c. /朝 もエイリアス（デフォルト対話モード）
+// 14c. /朝 もエイリアス（かんたん日報モード）
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/朝", { store });
   assert.equal(r.route, "command");
   assert.ok(r.ok);
-  assert.match(r.reply, /1問ずつ聞きます/);
-  assert.match(r.reply, /1\/8: 昨日、体験/);
+  assert.match(r.reply, /1通で送ってください/);
 }
 
-// 14c-dialog. 対話モード: 8回の往復で完走 → 自動保存＋ToDo3つ
+// 14c-dialog. かんたん日報: 1通で自動保存＋ToDo3つ
 {
   await setVaultTmp();
   const store = await makeStore();
   await routeMemoryText(userId, "/日報", { store });
-  // Q1〜Q7 を順番に回答
-  const r1 = await routeMemoryText(userId, "山田さん女性", { store });
-  assert.match(r1.reply, /2\/8: 入会/);
-  await routeMemoryText(userId, "なし", { store });           // Q2
-  await routeMemoryText(userId, "佐藤さん料金", { store });  // Q3 入会検討
-  await routeMemoryText(userId, "なし", { store });           // Q4 フォロー
-  await routeMemoryText(userId, "なし", { store });           // Q5 口コミ
-  await routeMemoryText(userId, "せとさん", { store });       // Q6 退会リスク
-  await routeMemoryText(userId, "なし", { store });           // Q7 気になる
-  const last = await routeMemoryText(userId, "看板撮影", { store }); // Q8 → 自動保存
-  assert.match(last.reply, /保存しました/, `Q8回答後: ${last.reply}`);
-  assert.match(last.reply, /今日やることはこの3つ/);
+  const last = await routeMemoryText(userId, [
+    "体験 山田さん女性",
+    "入会迷ってる人 佐藤さん料金",
+    "休みがち せとさん",
+    "今日やること 看板撮影",
+  ].join("\n"), { store });
+  assert.match(last.reply, /保存しました/);
+  assert.match(last.reply, /今日やること:/);
   assert.match(last.reply, /今日のタスク: 看板撮影/);
   assert.match(last.reply, /入会検討中の方へ声かけ: 佐藤さん料金/);
   assert.equal(await store.exists(userId), false, "完走後はセッション破棄");
 }
 
-// 14c-dialog-typo. 対話モードで「なひ」「無」「-」等の typo を「なし」に救済
+// 14c-dialog-typo. かんたん日報で「なひ」「無」「-」等の typo を「なし」に救済
 {
   await setVaultTmp();
   const store = await makeStore();
   await routeMemoryText(userId, "/日報", { store });
-  await routeMemoryText(userId, "なひ", { store });    // Q1: typo
-  await routeMemoryText(userId, "無", { store });      // Q2: 漢字
-  await routeMemoryText(userId, "-", { store });        // Q3: 記号
-  await routeMemoryText(userId, "no", { store });       // Q4: 英字
-  await routeMemoryText(userId, "ナシ", { store });    // Q5: カナ
-  await routeMemoryText(userId, "ない", { store });    // Q6
-  await routeMemoryText(userId, "特になし", { store }); // Q7
-  const last = await routeMemoryText(userId, "システム構築", { store }); // Q8
+  const last = await routeMemoryText(userId, "体験 なひ 入会 無 返信 - 口コミ ナシ 休みがち ない 今日 システム構築", { store });
   assert.match(last.reply, /保存しました/);
   // 「なし」しか残らない項目はToDoに出ない（typo救済が効いている証拠）
   assert.match(last.reply, /今日のタスク: システム構築/);
@@ -308,8 +296,8 @@ assert.equal(isMemoryCommandText("hello"), false);
   // 「日報まとめ」（スペース無し）で bulk モードに切替できる
   const r = await routeMemoryText(userId, "日報まとめ", { store });
   assert.equal(r.route, "command", "concatenated form is recognized as command");
-  assert.match(r.reply, /まとめて送ってください/);
-  assert.equal(r.meta?.mode, "morning_interview", "switched to bulk mode");
+  assert.match(r.reply, /1通で送ってください/);
+  assert.equal(r.meta?.mode, "morning_interview", "switched to simple daily mode");
 }
 
 // 14e-bis. スラッシュ付き連結形「/日報まとめ」も同様
@@ -317,14 +305,14 @@ assert.equal(isMemoryCommandText("hello"), false);
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/日報まとめ", { store });
   assert.equal(r.route, "command");
-  assert.match(r.reply, /まとめて送ってください/);
+  assert.match(r.reply, /1通で送ってください/);
 }
 
-// 14e-tri. ヒント文に「日報まとめ」(スペース無し) が含まれる
+// 14e-tri. ヒント文は日報まとめを要求しない
 {
   const store = await makeStore();
   const r = await routeMemoryText(userId, "/日報", { store });
-  assert.match(r.reply, /日報まとめ/, "ヒントはスペース無し表記");
+  assert.doesNotMatch(r.reply, /日報まとめ/);
   assert.doesNotMatch(r.reply, /日報 まとめ/, "古いスペース有り表記が残っていない");
 }
 
@@ -345,9 +333,9 @@ assert.equal(isMemoryCommandText("hello"), false);
     "8. 体験者にLINEする",
   ].join("\n"), { store });
   assert.match(last.reply, /保存しました/, `自動保存応答: ${last.reply}`);
-  assert.equal(last.meta?.mode, "bulk_morning");
+  assert.equal(last.meta?.mode, "simple_daily");
   // 8項目仕様: ToDo3つ提案が返信に含まれる（today_top_task が埋まっているため）
-  assert.match(last.reply, /今日やることはこの3つ/);
+  assert.match(last.reply, /今日やること:/);
   assert.match(last.reply, /今日のタスク: 体験者にLINEする/);
   assert.equal(await store.exists(userId), false, "まとめ回答保存後はセッション破棄");
 }

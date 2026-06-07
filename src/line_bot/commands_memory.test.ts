@@ -46,20 +46,19 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /1問ずつ聞きます/);
-  assert.match(result.message, /1\/8: 昨日、体験/);
+  assert.match(result.message, /1通で送ってください/);
+  assert.doesNotMatch(result.message, /1問ずつ聞きます/);
+  assert.doesNotMatch(result.message, /1\/8: 昨日、体験/);
 }
 
-// 2c-bis. /おはよう まとめ で旧テンプレ送信モード
+// 2c-bis. /おはよう まとめ でも、かんたん日報プロンプトに統一
 {
   const store = await makeStore();
   const result = await executeLineCommand("おはよう まとめ", { userId, memorySessionStore: store });
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /まとめて送ってください/);
-  assert.match(result.message, /1\. 昨日の体験/);
-  assert.match(result.message, /3\. 入会迷ってる人/);
-  assert.match(result.message, /5\. 口コミ頼めそうな人/);
-  assert.match(result.message, /8\. 今日の最優先タスク/);
+  assert.match(result.message, /1通で送ってください/);
+  assert.match(result.message, /体験 ひかりちゃん1名/);
+  assert.doesNotMatch(result.message, /1\. 昨日の体験/);
 }
 
 // 2d. /おはよう 後の番号つきまとめ回答を1回で保存する
@@ -87,22 +86,98 @@ const userId = "test-line-user-001";
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
   assert.match(result.message, /保存しました/);
-  assert.match(result.message, /投稿ID: FG-\d{8}-9\d\d/);
-  assert.match(result.message, /投稿準備まで: OK FG-\d{8}-9\d\d all/);
-  assert.match(result.message, /Threadsのみ: OK FG-\d{8}-9\d\d threads/);
-  const stateFiles = await readdir(path.join(root, "state"));
+  assert.match(result.message, /投稿候補を作るなら「投稿」/);
+  assert.doesNotMatch(result.message, /投稿ID: FG-\d{8}-9\d\d/);
+  const stateFiles = await readdir(path.join(root, "state")).catch(() => []);
   const recordFile = stateFiles.find((file) => /^FG-\d{8}-9\d\d\.json$/.test(file));
-  assert.ok(recordFile, "朝回答から投稿候補レコードが作られる");
-  const record = JSON.parse(await readFile(path.join(root, "state", recordFile), "utf8"));
-  assert.equal(record.status, "pending_approval");
-  assert.ok(record.drafts.some((draft: { platform: string }) => draft.platform === "threads"));
-  assert.doesNotMatch(JSON.stringify(record.drafts), /Aさん|料金案内|体験者にLINEする/);
-  await approveRecord(record.id, `OK ${record.id} all`);
-  const queue = JSON.parse(await readFile(path.join(root, "state", "publish_queue", `${record.id}.json`), "utf8"));
-  assert.deepEqual(queue.destinations, ["google_business", "threads", "line_voom"]);
-  assert.equal(queue.instructions.threads.humanFinalClickRequired, true);
-  assert.equal(queue.instructions.line_voom.mode, "browser_assist_only");
-  assert.equal(result.meta?.mode, "bulk_morning");
+  assert.equal(recordFile, undefined, "日報保存だけでは投稿候補レコードを作らない");
+  assert.equal(result.meta?.mode, "simple_daily");
+}
+
+// 2e. かんたん日報: 朝セッション後の自由文1通を保存し、投稿候補は自動表示しない
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-simple-morning-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-simple-morning-root-"));
+  process.env.OPENQLOW_ROOT = root;
+  const store = await makeStore();
+  await executeLineCommand("日報", { userId, memorySessionStore: store });
+
+  const result = await executeLineCommand([
+    "体験ひかりちゃん1名",
+    "入会予定あり",
+    "気になる会員 森田さん",
+    "口コミ レディースと全会員",
+    "今日やること 広告を打つ",
+  ].join("\n"), { userId, memorySessionStore: store });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /保存しました/);
+  assert.match(result.message, /今日やること:/);
+  assert.match(result.message, /広告を打つ/);
+  assert.match(result.message, /投稿候補を作るなら「投稿」/);
+  assert.doesNotMatch(result.message, /投稿ID: FG-/);
+  assert.doesNotMatch(result.message, /投稿準備まで: OK FG-/);
+  assert.doesNotMatch(result.message, /No approval command found/);
+  assert.equal(result.meta?.mode, "simple_daily");
+}
+
+// 2f. かんたん日報: 番号が崩れた1行回答も保存する
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-simple-numbered-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const store = await makeStore();
+  await executeLineCommand("日報", { userId, memorySessionStore: store });
+
+  const result = await executeLineCommand(
+    "1. 昨日の体験： ひかりちゃん2. 入会： 1 3. 入会迷ってる人： バク4. 返信・フォローが必要な人： 5. 口コミ頼めそうな人： 6. 加瀬さん 休みがち・退会しそうな人： 7. 気になる会員： 8. 今日の最優先タスク： システム完成",
+    { userId, memorySessionStore: store },
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.match(result.message, /保存しました/);
+  assert.match(result.message, /システム完成/);
+  assert.doesNotMatch(result.message, /読み取れませんでした/);
+}
+
+// 2g. セッション無しでも日報っぽい自由文は No approval command に流さず保存する
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-simple-no-session-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const store = await makeStore();
+  const result = await executeLineCommand(
+    "ok 体験ひかりちゃん1名 入会予定あり 今日やること 広告を打つ",
+    { userId, memorySessionStore: store },
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /保存しました/);
+  assert.doesNotMatch(result.message, /No approval command found/);
+}
+
+// 2h. 「投稿」だけで直近日報ベースの投稿候補を1件作り、次操作は ok だけにする
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-simple-post-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-simple-post-root-"));
+  process.env.OPENQLOW_ROOT = root;
+  const store = await makeStore();
+  const result = await executeLineCommand("投稿", { userId, memorySessionStore: store });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "memory_keeper");
+  assert.match(result.message, /投稿候補です/);
+  assert.match(result.message, /投稿準備するなら「ok」/);
+  assert.doesNotMatch(result.message, /OK FG-/);
+  assert.doesNotMatch(result.message, /投稿準備まで/);
+  const stateFiles = await readdir(path.join(root, "state"));
+  assert.ok(stateFiles.some((file) => /^FG-\d{8}-9\d\d\.json$/.test(file)));
 }
 
 // 3. /中止 でセッション破棄

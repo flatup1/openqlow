@@ -31,7 +31,7 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
   delete process.env.OPENQLOW_MORNING_PUSH_DISABLED;
 }
 
-// 3. 正常パス: push 呼ばれ、セッション事前作成され、メッセージに 1/8 と日付が含まれる
+// 3. 正常パス: push 呼ばれ、かんたん日報セッションが事前作成される
 {
   await setRootTmp();
   const pushCalls: Array<{ text: string; opts: unknown }> = [];
@@ -49,8 +49,10 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
   assert.equal(pushCalls.length, 1, "push が1回呼ばれる");
   assert.match(pushCalls[0].text, /おはようございます/);
   assert.match(pushCalls[0].text, /2026-06-06/, "JST 日付が入る");
-  assert.match(pushCalls[0].text, /1\/8: 昨日、体験/, "Q1が含まれる");
-  assert.match(pushCalls[0].text, /日報まとめ/, "ヒント含む");
+  assert.match(pushCalls[0].text, /昨日のFLATUPを1通で送ってください/);
+  assert.match(pushCalls[0].text, /体験 ひかりちゃん1名/);
+  assert.doesNotMatch(pushCalls[0].text, /1\/8: 昨日、体験/);
+  assert.doesNotMatch(pushCalls[0].text, /1問ずつ/);
 
   // セッションファイルが事前作成されている
   const conversationsDir = path.join(process.env.OPENQLOW_ROOT!, "state", "conversations");
