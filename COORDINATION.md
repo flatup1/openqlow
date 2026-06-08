@@ -38,7 +38,7 @@
 | `openqlow/src/privacy/` | Codex | open | 2026-06-06 |
 | `openqlow/deploy/` | Codex | open | 2026-06-06 |
 | `openqlow/scripts/` | Codex | open | 2026-06-06 |
-| `openqlow/browser-adapters/` | Claude | open | 2026-06-08 |
+| `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/` | 共有 | open | - |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
 | `flatup-ai-os/src/ai/` | Codex | open | 2026-06-06 |
@@ -74,22 +74,22 @@
 
 ## 4. 既知の役割分担（2026-06-06時点）
 
-### Claude（コンテンツ層 + ブラウザ専用アダプタ）
+### Claude（コンテンツ層）
 - ブランド表現・キャンペーン規約・知識（canon_2026.md）
 - テーマ生成・本文テンプレート
 - 投稿レビュー・採点
 - 顧客対応文面ドラフト
 - ドキュメント整備
-- **Google Business / LINE VOOM 専用ブラウザ投稿アダプタ**（`browser-adapters/`）
 
-### Codex（フロー層）
+### Codex（フロー層 + ブラウザ投稿全般）
 - LINE webhook・コマンドルーティング
 - 承認フロー（OK/修正/NO）
 - VPS Monitor / systemd / cloudflared
 - 日報パーサ・スケジューラ
 - VPSデプロイ運用
 - 自己修復ロジック
-- **汎用ブラウザ投稿ランナー** `scripts/mac-browser-poster.mjs`（受け口を守る）
+- 汎用ブラウザ投稿ランナー `scripts/mac-browser-poster.mjs`
+- **Google Business / LINE VOOM 専用アダプタ** `scripts/adapters/`（半自動・JIN視覚確認）
 
 ---
 

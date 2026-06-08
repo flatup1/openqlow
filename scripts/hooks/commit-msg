@@ -55,7 +55,7 @@ if [[ -z "${CHANGED_FILES}" ]]; then
 fi
 
 if [[ "${AI_PREFIX}" == "claude" ]]; then
-  ALLOWED_PATTERNS="^(src/sources/|src/distribution/|src/generators/|browser-adapters/|COORDINATION\\.md|AGENTS\\.md|docs/|CLAUDE\\.md|HANDOFF)"
+  ALLOWED_PATTERNS="^(src/sources/|src/distribution/|src/generators/|COORDINATION\\.md|AGENTS\\.md|docs/|CLAUDE\\.md|HANDOFF)"
   OTHER_AI="codex"
 elif [[ "${AI_PREFIX}" == "codex" ]]; then
   ALLOWED_PATTERNS="^(src/scheduler/|src/monitor/|src/line_bot/|src/safety/|src/approval/|src/commands/|src/publish/|src/adapters/|src/conversation/|src/state/|src/privacy/|deploy/|scripts/|COORDINATION\\.md|AGENTS\\.md|docs/|HANDOFF)"
