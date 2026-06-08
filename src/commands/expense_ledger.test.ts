@@ -83,6 +83,22 @@ const FIXED_NOW = new Date("2026-06-04T05:00:00Z"); // JST 14:00 → 2026-06-04
   assert.equal(c.entry.taxRate, 0);
 }
 
+// 5.1b) 税トークンは金額直後/カテゴリ直後だけ拾い、メモ中の "10%" 等は巻き込まない
+{
+  // 末尾メモの "10%" は税率にされず、メモとして残る（既定税率のまま）
+  const a = parseExpenseCommand("/経費 5000 接待交際費 二次会 10%", FIXED_NOW);
+  assert.ok(a && a.ok);
+  assert.equal(a.entry.taxRate, 10); // 既定（メモの10%は無視）
+  assert.equal(a.entry.memo, "二次会 10%");
+
+  // 金額直後の税トークンも有効
+  const b = parseExpenseCommand("/経費 1200 8% 消耗品 メモ", FIXED_NOW);
+  assert.ok(b && b.ok);
+  assert.equal(b.entry.taxRate, 8);
+  assert.equal(b.entry.category, "消耗品費");
+  assert.equal(b.entry.memo, "メモ");
+}
+
 // 5.2) 未知カテゴリはそのまま通し、knownCategory=false
 {
   const parsed = parseExpenseCommand("/経費 1200 謎科目 メモ", FIXED_NOW);
@@ -136,6 +152,10 @@ const FIXED_NOW = new Date("2026-06-04T05:00:00Z"); // JST 14:00 → 2026-06-04
   assert.equal(parseExpenseReportCommand("/経費月報 5月", FIXED_NOW)?.yearMonth, "2026-05");
   assert.equal(parseExpenseReportCommand("/経費月報 3", FIXED_NOW)?.yearMonth, "2026-03");
   assert.equal(parseExpenseReportCommand("/経費", FIXED_NOW), undefined);
+  // 月の範囲外・解釈不能は undefined（→ ハンドラ側でヘルプ表示）
+  assert.equal(parseExpenseReportCommand("/経費月報 2026-13", FIXED_NOW), undefined);
+  assert.equal(parseExpenseReportCommand("/経費月報 13月", FIXED_NOW), undefined);
+  assert.equal(parseExpenseReportCommand("/経費月報 来月", FIXED_NOW), undefined);
 }
 
 // --- parseLedger ---

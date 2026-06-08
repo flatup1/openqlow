@@ -65,6 +65,21 @@ const ENTRIES: ExpenseEntry[] = [
   assert.ok(csv.includes(",未払金,"));
 }
 
+// 日付表記を差し替えられる（和暦など）
+{
+  const csv = buildYayoiCsv([ENTRIES[0]], { formatDate: () => "R8/6/1" });
+  assert.ok(csv.includes(",R8/6/1,"));
+}
+
+// 想定外の税率でも 税区分文字列 と 税額 の率が一致する（既定値に丸めない）
+{
+  const csv = buildYayoiCsv([{ date: "2026-06-01", amount: 1050, category: "雑費", memo: "", taxRate: 5 }]);
+  assert.ok(csv.includes(",課対仕入5%,"), "税区分に実レートが出る");
+  // 税額は 5% で計算: round(1050 - 1050/1.05) = 50
+  assert.ok(csv.includes(",50,"), "税額も 5% 計算で整合");
+  assert.ok(!csv.includes("課対仕入10%"), "既定の10%に丸められない");
+}
+
 // --- buildExport（登録ディスパッチ + 未対応フォーマット） ---
 
 {

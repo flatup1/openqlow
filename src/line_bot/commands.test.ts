@@ -133,6 +133,29 @@ async function testMediaPostCommandCreatesApprovalCandidate(): Promise<void> {
   assert.deepEqual(saved.mediaFiles, ["/tmp/post.mp4"]);
 }
 
+async function testExpenseReportRejectsBadMonthWithHelp(): Promise<void> {
+  // コマンドは認識するが月指定が不正 → 落ちずにヘルプを返す
+  const result = await executeLineCommand("/経費月報 来月", {
+    now: new Date("2026-06-04T05:00:00.000Z"),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.action, "expense_report");
+  assert.match(result.message, /月の指定が読めませんでした/);
+}
+
+async function testExpenseCsvRejectsBadMonthWithHelp(): Promise<void> {
+  const result = await executeLineCommand("/経費CSV 弥生 2026-13", {
+    now: new Date("2026-06-04T05:00:00.000Z"),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.action, "expense_csv");
+  assert.match(result.message, /月の指定が読めませんでした/);
+}
+
 await testAppendCommandWritesDailyLog();
 await testAppendCommandRequiresBody();
 await testPushCommandSkipsWhenNoChanges();
@@ -140,5 +163,7 @@ await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
 await testNonCommandIsNotHandled();
 await testMediaPostCommandCreatesApprovalCandidate();
+await testExpenseReportRejectsBadMonthWithHelp();
+await testExpenseCsvRejectsBadMonthWithHelp();
 
 console.log("line command tests passed");

@@ -194,13 +194,16 @@ export function parseExpenseCommand(
   }
   index += 1;
 
-  // 残りトークンから税率トークン（8% 等）を1つ抜き取る（位置自由）
+  // 税率トークン（8% 等）は「金額の直後」または「カテゴリの直後」だけで拾う。
+  // メモ中に出てくる "10%" や "非課税" を巻き込まないよう、位置を限定する。
   const rest = tokens.slice(index);
   let taxRate = DEFAULT_TAX_RATE;
-  const taxIndex = rest.findIndex((t) => parseTaxToken(t) !== undefined);
-  if (taxIndex >= 0) {
-    taxRate = parseTaxToken(rest[taxIndex])!;
-    rest.splice(taxIndex, 1);
+  let taxSeen = false;
+
+  if (rest.length > 0 && parseTaxToken(rest[0]) !== undefined) {
+    taxRate = parseTaxToken(rest[0])!;
+    rest.shift();
+    taxSeen = true;
   }
 
   const categoryRaw = rest.shift();
@@ -208,6 +211,12 @@ export function parseExpenseCommand(
     return { ok: false, error: `カテゴリ（勘定科目）が足りません。\n${usage()}` };
   }
   const { category, known } = normalizeCategory(categoryRaw);
+
+  if (!taxSeen && rest.length > 0 && parseTaxToken(rest[0]) !== undefined) {
+    taxRate = parseTaxToken(rest[0])!;
+    rest.shift();
+  }
+
   const memo = rest.join(" ");
 
   return {
@@ -332,14 +341,19 @@ function monthFromArg(arg: string, now: Date, timeZone: string): string | undefi
   if (arg === "先月" || arg === "last") return formatYearMonth(shiftMonths(now, -1, timeZone), timeZone);
 
   const ym = arg.match(/^(\d{4})[-\/](\d{1,2})$/);
-  if (ym) return `${ym[1]}-${ym[2].padStart(2, "0")}`;
+  if (ym && inMonthRange(ym[2])) return `${ym[1]}-${ym[2].padStart(2, "0")}`;
 
   const monthOnly = arg.match(/^(\d{1,2})月?$/);
-  if (monthOnly) {
+  if (monthOnly && inMonthRange(monthOnly[1])) {
     const year = formatYearMonth(now, timeZone).slice(0, 4);
     return `${year}-${monthOnly[1].padStart(2, "0")}`;
   }
   return undefined;
+}
+
+function inMonthRange(month: string): boolean {
+  const m = Number.parseInt(month, 10);
+  return m >= 1 && m <= 12;
 }
 
 /** "/経費月報 [arg]" から YYYY-MM を抽出する。別コマンドなら undefined。 */
@@ -526,6 +540,8 @@ export interface ExportCsvOptions extends ReadLedgerOptions {
   format?: ExportFormat;
   /** 経費の相手（貸方）勘定科目。個人事業主の既定は事業主借。 */
   creditAccount?: string;
+  /** YYYY-MM-DD → 各ソフトの日付表記へ変換（弥生で和暦にしたい時など）。 */
+  formatDate?: (isoDate: string) => string;
 }
 
 const FORMAT_LABEL: Record<ExportFormat, string> = {
@@ -557,7 +573,10 @@ export async function exportExpenseCsv(
     };
   }
 
-  const artifact = buildExport(format, entries, { creditAccount: opts.creditAccount });
+  const artifact = buildExport(format, entries, {
+    creditAccount: opts.creditAccount,
+    formatDate: opts.formatDate,
+  });
   if (!artifact.supported) {
     return {
       ok: false,

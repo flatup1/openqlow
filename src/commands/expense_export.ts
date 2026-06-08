@@ -83,7 +83,11 @@ const YAYOI_TAX_CLASS_PURCHASE: Record<number, string> = {
 };
 
 function yayoiPurchaseTaxClass(taxRate: number): string {
-  return YAYOI_TAX_CLASS_PURCHASE[taxRate] ?? YAYOI_TAX_CLASS_PURCHASE[DEFAULT_TAX_RATE];
+  const known = YAYOI_TAX_CLASS_PURCHASE[taxRate];
+  if (known) return known;
+  // 想定外の税率（手編集 jsonl 等）でも税区分と税額がズレないよう、
+  // 既定値に丸めず実レートを明示する（弥生側で要確認になる）。
+  return taxRate > 0 ? `課対仕入${taxRate}%` : "対象外";
 }
 
 /**

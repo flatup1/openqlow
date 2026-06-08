@@ -15,6 +15,8 @@ import {
   buildExpenseReport,
   exportExpenseCsv,
   isExpenseCategoryCommand,
+  isExpenseCsvCommand,
+  isExpenseReportCommand,
   parseExpenseCommand,
   parseExpenseCsvCommand,
   parseExpenseReportCommand,
@@ -284,8 +286,17 @@ async function executeExpenseRecord(text: string, opts: ExecuteLineCommandOption
 }
 
 async function executeExpenseReport(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  if (!isExpenseReportCommand(text)) return undefined;
+
   const req = parseExpenseReportCommand(text, opts.now ?? new Date());
-  if (!req) return undefined;
+  if (!req) {
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_report",
+      message: "OPENQLOW: 月の指定が読めませんでした。\n例: /経費月報 ／ /経費月報 先月 ／ /経費月報 2026-05 ／ /経費月報 5月",
+    };
+  }
 
   try {
     const result = await buildExpenseReport(req);
@@ -309,8 +320,17 @@ async function executeExpenseReport(text: string, opts: ExecuteLineCommandOption
 }
 
 async function executeExpenseCsv(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  if (!isExpenseCsvCommand(text)) return undefined;
+
   const req = parseExpenseCsvCommand(text, opts.now ?? new Date());
-  if (!req) return undefined;
+  if (!req) {
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_csv",
+      message: "OPENQLOW: 月の指定が読めませんでした。\n例: /経費CSV ／ /経費CSV 弥生 ／ /経費CSV 弥生 2026-05",
+    };
+  }
 
   try {
     const result = await exportExpenseCsv(req);
