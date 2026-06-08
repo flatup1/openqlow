@@ -142,6 +142,20 @@ async function testNonCommandIsNotHandled(): Promise<void> {
   assert.equal(result.handled, false);
 }
 
+async function testHelpCommandShowsJuniorHighModeReply(): Promise<void> {
+  const result = await executeLineCommand("ヘルプ");
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "help");
+  assert.match(result.message, /今できる返信/);
+  assert.match(result.message, /ok/);
+  assert.match(result.message, /修正 文/);
+  assert.match(result.message, /画像 1/);
+  assert.match(result.message, /やめる/);
+  assert.doesNotMatch(result.message, /FG-\d{8}-\d{3}/);
+}
+
 async function testRevisionCommandUpdatesPendingDraft(): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "openqlow-line-revision-root-"));
   process.env.OPENQLOW_ROOT = root;
@@ -245,6 +259,7 @@ await testPushCommandSkipsWhenNoChanges();
 await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
 await testNonCommandIsNotHandled();
+await testHelpCommandShowsJuniorHighModeReply();
 await testRevisionCommandUpdatesPendingDraft();
 await testInsertCommandAttachesWhitelistedMedia();
 await testImageChoiceCommandSelectsAndClearsMedia();
