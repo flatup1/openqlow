@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { rememberApprovalCandidate } from "../approval/shortcut.js";
+import { saveRecord } from "../state/file_store.js";
+import type { DraftRecord } from "../types.js";
+import { executeLineCommand } from "./commands.js";
+import { executeApprovalText } from "./approval_dispatch.js";
+
+function pendingRecord(id: string): DraftRecord {
+  return {
+    id,
+    idea: {
+      id,
+      date: "2026-06-08",
+      theme: "承認ショートカット",
+      angle: "日報セッションより承認を優先する",
+      audience: "local_narita",
+      source: "obsidian_inbox",
+      valueConnection: "okを投稿準備承認として扱う。",
+    },
+    drafts: [{
+      id: `${id}_threads`,
+      ideaId: id,
+      approvalId: id,
+      platform: "threads",
+      publicationLevel: "level_2_draft",
+      body: "FLATUP GYMは初心者でも安心して始められます。",
+      hashtags: ["FLATUPGYM"],
+      cta: "",
+      safetyNotes: [],
+      createdAt: "2026-06-08T00:00:00.000Z",
+    }],
+    status: "pending_approval",
+    approvalMessage: "候補",
+    createdAt: "2026-06-08T00:00:00.000Z",
+    updatedAt: "2026-06-08T00:00:00.000Z",
+  };
+}
+
+const root = await mkdtemp(path.join(tmpdir(), "openqlow-approval-dispatch-root-"));
+const vault = await mkdtemp(path.join(tmpdir(), "openqlow-approval-dispatch-vault-"));
+process.env.OPENQLOW_ROOT = root;
+process.env.OBSIDIAN_VAULT_ROOT = vault;
+
+const id = "FG-20260608-401";
+const userId = "test-approval-dispatch-user";
+await saveRecord(root, pendingRecord(id));
+await rememberApprovalCandidate(root, id);
+
+const daily = await executeLineCommand("日報", { userId });
+assert.equal(daily.handled, true);
+assert.equal(daily.action, "memory_keeper");
+
+const approved = await executeApprovalText("ok", userId);
+assert.equal(approved.ok, true);
+assert.equal(approved.action, "approved");
+assert.equal(approved.id, id);
+assert.match(String(approved.message), /投稿準備キュー/);
+assert.doesNotMatch(String(approved.message), /日報として読み取れません/);
+
+const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+assert.equal(saved.status, "saved");
+
+console.log("approval dispatch tests passed");
