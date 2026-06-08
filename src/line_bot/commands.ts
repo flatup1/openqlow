@@ -10,6 +10,19 @@ import {
 } from "../commands/memory_keeper.js";
 import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js";
 import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
+import {
+  buildCategoryListMessage,
+  buildExpenseReport,
+  exportExpenseCsv,
+  isExpenseCategoryCommand,
+  isExpenseCsvCommand,
+  isExpenseReportCommand,
+  parseExpenseCommand,
+  parseExpenseCsvCommand,
+  parseExpenseReportCommand,
+  recordExpense,
+  taxAmount,
+} from "../commands/expense_ledger.js";
 import { SessionStore } from "../conversation/session_store.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { createMediaPublishCandidate } from "../publish/media_candidate.js";
@@ -25,7 +38,11 @@ export type LineCommandAction =
   | "memory_keeper"
   | "owner_info"
   | "media_post_candidate"
-  | "monthly_report";
+  | "monthly_report"
+  | "expense_record"
+  | "expense_report"
+  | "expense_csv"
+  | "expense_categories";
 
 export interface LineCommandResult {
   handled: boolean;
@@ -223,6 +240,129 @@ async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOption
   }
 }
 
+async function executeExpenseRecord(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  const parsed = parseExpenseCommand(text, opts.now ?? new Date());
+  if (!parsed) return undefined;
+
+  if (!parsed.ok) {
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_record",
+      message: `OPENQLOW: 経費を記録できませんでした。\n${parsed.error}`,
+    };
+  }
+
+  try {
+    const result = await recordExpense(parsed.entry, { now: opts.now });
+    const { date, amount, category, memo, taxRate } = result.entry;
+    const tax = taxAmount(amount, taxRate);
+    return {
+      handled: true,
+      ok: true,
+      action: "expense_record",
+      message: [
+        "OPENQLOW: 経費を記録しました。",
+        `- 日付: ${date}`,
+        `- 金額: ¥${amount.toLocaleString("ja-JP")}（税込 ${taxRate}% / 内消費税 ¥${tax.toLocaleString("ja-JP")}）`,
+        `- カテゴリ: ${category}`,
+        memo ? `- メモ: ${memo}` : "- メモ: (なし)",
+        parsed.knownCategory ? "" : "※ 標準の勘定科目には無い言葉です。一覧は「/経費カテゴリ」で確認できます。",
+        "",
+        "GitHubへ反映するには「/push」を送ってください。",
+      ].filter(Boolean).join("\n"),
+      meta: { date, amount, category, taxRate, tax, knownCategory: parsed.knownCategory, ledgerFile: result.ledgerFile },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_record",
+      message: `OPENQLOW: 経費の保存に失敗しました。\n理由: ${message}`,
+      meta: { error: message },
+    };
+  }
+}
+
+async function executeExpenseReport(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  if (!isExpenseReportCommand(text)) return undefined;
+
+  const req = parseExpenseReportCommand(text, opts.now ?? new Date());
+  if (!req) {
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_report",
+      message: "OPENQLOW: 月の指定が読めませんでした。\n例: /経費月報 ／ /経費月報 先月 ／ /経費月報 2026-05 ／ /経費月報 5月",
+    };
+  }
+
+  try {
+    const result = await buildExpenseReport(req);
+    return {
+      handled: true,
+      ok: true,
+      action: "expense_report",
+      message: result.message,
+      meta: { yearMonth: result.yearMonth, total: result.total, count: result.count },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_report",
+      message: `OPENQLOW: 経費月報の生成に失敗しました。\n理由: ${message}`,
+      meta: { yearMonth: req.yearMonth, error: message },
+    };
+  }
+}
+
+async function executeExpenseCsv(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  if (!isExpenseCsvCommand(text)) return undefined;
+
+  const req = parseExpenseCsvCommand(text, opts.now ?? new Date());
+  if (!req) {
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_csv",
+      message: "OPENQLOW: 月の指定が読めませんでした。\n例: /経費CSV ／ /経費CSV 弥生 ／ /経費CSV 弥生 2026-05",
+    };
+  }
+
+  try {
+    const result = await exportExpenseCsv(req);
+    return {
+      handled: true,
+      ok: result.ok,
+      action: "expense_csv",
+      message: result.message,
+      meta: { yearMonth: result.yearMonth, format: result.format, count: result.count, file: result.file },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "expense_csv",
+      message: `OPENQLOW: 経費CSVの書き出しに失敗しました。\n理由: ${message}`,
+      meta: { yearMonth: req.yearMonth, error: message },
+    };
+  }
+}
+
+function executeExpenseCategoryList(text: string): LineCommandResult | undefined {
+  if (!isExpenseCategoryCommand(text)) return undefined;
+  return {
+    handled: true,
+    ok: true,
+    action: "expense_categories",
+    message: buildCategoryListMessage(),
+  };
+}
+
 export async function executeLineCommand(text: string, opts: ExecuteLineCommandOptions = {}): Promise<LineCommandResult> {
   // 0) オーナー情報: 「今何してる」「妻向け」等 → 家族向け説明を返す
   //    （誰でも聞ける情報なので allowlist チェック前に処理して OK）
@@ -276,6 +416,22 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
   // 2.5) /月報: その月の日報を日付順にまとめて返信（記憶係より前で確定させる）
   const monthly = await executeMonthlyReport(text, opts);
   if (monthly) return monthly;
+
+  // 2.6) /経費月報: その月の経費をカテゴリ別に集計して返信
+  const expenseReport = await executeExpenseReport(text, opts);
+  if (expenseReport) return expenseReport;
+
+  // 2.65) /経費CSV: その月の経費を CSV に書き出す
+  const expenseCsv = await executeExpenseCsv(text, opts);
+  if (expenseCsv) return expenseCsv;
+
+  // 2.68) /経費カテゴリ: 使える勘定科目の一覧を返す
+  const expenseCategories = executeExpenseCategoryList(text);
+  if (expenseCategories) return expenseCategories;
+
+  // 2.7) /経費: 経費1件を Obsidian の台帳に記録（/push で GitHub へ）
+  const expenseRecord = await executeExpenseRecord(text, opts);
+  if (expenseRecord) return expenseRecord;
 
   // 3) 記憶係: /昨日の記録 /保存用ログ /中止 と、進行中セッションへの回答
   const memory = await executeMemoryKeeper(text, opts);

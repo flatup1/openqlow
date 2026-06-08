@@ -3,6 +3,15 @@ import { runDailyCheck } from "./scheduler/daily_check.js";
 import { runHealthcheckWithAlert } from "./monitor/healthcheck.js";
 import { runPublishAssist, runPublishPanel } from "./publish/browser_assist_cli.js";
 import { runBrowserPostRunnerCli } from "./publish/browser_post_runner_cli.js";
+import {
+  buildCategoryListMessage,
+  buildExpenseReport,
+  exportExpenseCsv,
+  parseExpenseCommand,
+  parseExpenseCsvCommand,
+  parseExpenseReportCommand,
+  recordExpense,
+} from "./commands/expense_ledger.js";
 
 const [command, id, ...responseParts] = process.argv.slice(2);
 const response = responseParts.join(" ");
@@ -89,6 +98,48 @@ if (command === "publish:browser-run") {
   process.exit(result.ok ? 0 : 1);
 }
 
+if (command === "expense") {
+  // 例: npm run dev -- expense 1200 消耗品 ジムの備品
+  const parsed = parseExpenseCommand(`/経費 ${[id, ...responseParts].join(" ")}`);
+  if (!parsed || !parsed.ok) {
+    console.error(parsed && !parsed.ok ? parsed.error : "Usage: npm run dev -- expense <金額> <カテゴリ> [メモ]");
+    process.exit(1);
+  }
+  const result = await recordExpense(parsed.entry);
+  console.log(`Recorded expense: ${result.entry.date} ¥${result.entry.amount.toLocaleString("ja-JP")} ${result.entry.category}`);
+  console.log(`Ledger: ${result.ledgerFile}`);
+  process.exit(0);
+}
+
+if (command === "expense:report") {
+  // 例: npm run dev -- expense:report 2026-06
+  const req = parseExpenseReportCommand(`/経費月報 ${[id, ...responseParts].join(" ")}`.trim());
+  if (!req) {
+    console.error("Usage: npm run dev -- expense:report [YYYY-MM|先月|今月|M月]");
+    process.exit(1);
+  }
+  const result = await buildExpenseReport(req);
+  console.log(result.message);
+  process.exit(0);
+}
+
+if (command === "expense:csv") {
+  // 例: npm run dev -- expense:csv yayoi 2026-06 ／ expense:csv 2026-06
+  const req = parseExpenseCsvCommand(`/経費CSV ${[id, ...responseParts].join(" ")}`.trim());
+  if (!req) {
+    console.error("Usage: npm run dev -- expense:csv [yayoi|汎用] [YYYY-MM|先月|今月|M月]");
+    process.exit(1);
+  }
+  const result = await exportExpenseCsv(req);
+  console.log(result.message);
+  process.exit(result.ok ? 0 : 1);
+}
+
+if (command === "expense:categories") {
+  console.log(buildCategoryListMessage());
+  process.exit(0);
+}
+
 console.error(`Unknown command: ${command}`);
-console.error("Commands: generate, daily-check, approve <post-id> \"OK <post-id>\", publish:assist <post-id>, publish:panel <post-id>, publish:browser-run <post-id>, reject <post-id> \"reason\", revise <post-id> \"note\", monitor");
+console.error("Commands: generate, daily-check, approve <post-id> \"OK <post-id>\", publish:assist <post-id>, publish:panel <post-id>, publish:browser-run <post-id>, reject <post-id> \"reason\", revise <post-id> \"note\", expense <金額> <カテゴリ> [メモ], expense:report [YYYY-MM], expense:csv [YYYY-MM], expense:categories, monitor");
 process.exit(1);
