@@ -35,6 +35,40 @@
 - 無ければ `state/FG-*.json` から最新の `pending_approval` を探す。
 - それも無ければ **undefined**（→ webhook 側で「受け取りました…」返信）。
 
+## 3.5 切り分け結果（2026-06-07 追記・確定）
+
+JIN が `日報` を送ったところ **即返信あり**（08:40）。これにより:
+- ✅ webhook プロセス生存（#2 除外）
+- ✅ JIN は承認者として認識（#1 送信者ID 除外）
+- ✅ 返信トークン正常（#3 除外）
+
+→ 問題は **`ok` の処理中だけ**で発生。下表 #4 ではなく、**処理中の例外**が濃厚（§4.5）。
+
+## 4.5 真因（ほぼ確定）：処理中の例外で無言終了
+
+`src/line_bot/webhook.ts` の `try/catch`：
+- L155-164：`executeApproval` 実行 → `replyLineMessage`（返信）を呼ぶ。
+- **L165-170：`executeApproval` が throw すると catch に入り、`console.error` と
+  エラーJSON応答のみ。`replyLineMessage` を呼ばない＝LINE に返信が出ない。**
+
+`ok` の流れ（`executeApproval` 内）：
+1. `expandApprovalShortcut` が候補を見つけ `OK FG-20260608-003 all` に展開。
+2. `approveRecord` → `createBrowserPanel` → **`runFinalPublish`（最終投稿）** を実行。
+3. ここで throw すると **無言終了 → JIN には無反応**。
+
+throw の有力候補：
+- **(a) 最終投稿の失敗**：VPS には Mac/Chrome が無く、ブラウザ投稿/最終投稿が実行できず例外。
+- **(b) Phase1 の投稿拒否**：README 記載「Phase 1 は `level_3_scheduled` / `level_4_publish` を
+  承認時に物理的に拒否」。候補が投稿レベルだと `approveRecord` が throw。
+- `日報` は投稿処理を通らないので正常に返信できる（症状と整合）。
+
+### 直すべき2点
+1. **例外時もユーザーに返信する**：catch（webhook.ts L165-170）で `replyLineMessage` を呼び、
+   「投稿準備でエラー。半自動で確認してください」等を返す（無言にしない）。
+2. **素の `ok` の意味を見直す**：現状 `ok` は最終投稿まで走る（§6）。VPS 環境で最終投稿が
+   できないなら、`ok` は **下書き保存／ブラウザ投稿キュー止まり**にする等、環境に合った既定へ。
+   いずれにせよ「投稿できていないのに成功扱いしない」を維持。
+
 ## 4. 原因の切り分け（可能性が高い順）
 
 | # | 原因 | 根拠 | 切り分け方法 |
