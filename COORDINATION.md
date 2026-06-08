@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-06-06
+最終更新: 2026-06-08
 
 ---
 
@@ -38,6 +38,7 @@
 | `openqlow/src/privacy/` | Codex | open | 2026-06-06 |
 | `openqlow/deploy/` | Codex | open | 2026-06-06 |
 | `openqlow/scripts/` | Codex | open | 2026-06-06 |
+| `openqlow/browser-adapters/` | Claude | open | 2026-06-08 |
 | `openqlow/docs/` | 共有 | open | - |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
 | `flatup-ai-os/src/ai/` | Codex | open | 2026-06-06 |
@@ -73,12 +74,13 @@
 
 ## 4. 既知の役割分担（2026-06-06時点）
 
-### Claude（コンテンツ層）
+### Claude（コンテンツ層 + ブラウザ専用アダプタ）
 - ブランド表現・キャンペーン規約・知識（canon_2026.md）
 - テーマ生成・本文テンプレート
 - 投稿レビュー・採点
 - 顧客対応文面ドラフト
 - ドキュメント整備
+- **Google Business / LINE VOOM 専用ブラウザ投稿アダプタ**（`browser-adapters/`）
 
 ### Codex（フロー層）
 - LINE webhook・コマンドルーティング
@@ -87,6 +89,7 @@
 - 日報パーサ・スケジューラ
 - VPSデプロイ運用
 - 自己修復ロジック
+- **汎用ブラウザ投稿ランナー** `scripts/mac-browser-poster.mjs`（受け口を守る）
 
 ---
 
