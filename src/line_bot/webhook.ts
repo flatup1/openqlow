@@ -1,10 +1,13 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { loadConfig } from "../config.js";
-import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily.js";
+import { approveRecord, rejectRecord } from "../scheduler/daily.js";
 import { parseApprovalCommand } from "../approval/command.js";
-import { expandApprovalShortcut } from "../approval/shortcut.js";
+import { expandApprovalShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
+import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
+import { loadRecord, saveRecord } from "../state/file_store.js";
+import { checkDraftSafety } from "../safety/check.js";
 import { executeLineCommand } from "./commands.js";
 import { formatErrorReply, formatWebhookReply, replyLineMessage } from "./reply.js";
 
@@ -104,8 +107,46 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
   }
 
   if (parsed.response === "revision") {
-    const record = await requestRevision(parsed.id, parsed.note ?? "");
-    return { ok: true, action: "needs_revision", id: record.id };
+    // id 省略時は直近の承認待ち候補を対象にする。
+    const id = parsed.id || (await resolveLatestPendingId(config.root)) || "";
+    if (!id) {
+      return {
+        ok: false,
+        message: "直せる投稿候補が見つかりませんでした。先に「投稿」で候補を作ってください。",
+      };
+    }
+    if (!isUsableRevisionText(parsed.note ?? "")) {
+      return {
+        ok: false,
+        message: ["何をどう直しますか？", "例: 修正 セールは6/10までに変更"].join("\n"),
+      };
+    }
+    const record = await loadRecord(config.root, id);
+    if (!record) {
+      return { ok: false, message: `投稿候補が見つかりませんでした: ${id}` };
+    }
+
+    // 入力テキストを新しい本文として反映（修正後は再承認待ちに戻す）。
+    const edited = applyBodyEdit(record, parsed.note);
+    await saveRecord(config.root, edited);
+
+    // 修正後の本文に安全チェックを再適用する。
+    const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
+    const message = safety.ok
+      ? [
+          "OPENQLOW: 下書きを直しました。これでいいですか？",
+          `ID: ${id}`,
+          "",
+          parsed.note,
+          "",
+          "OK / さらに修正 〇〇 / NO",
+        ].join("\n")
+      : [
+          "OPENQLOW: 直しましたが、安全チェックに引っかかりました。",
+          safety.issues.map(issue => issue.message).join(" / "),
+          "もう一度「修正 〇〇」で直してください。",
+        ].join("\n");
+    return { ok: true, action: "revised", id, message };
   }
 
   const record = await rejectRecord(parsed.id);

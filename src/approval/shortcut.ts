@@ -60,6 +60,25 @@ export async function rememberApprovalCandidate(root: string, id: string, now = 
   await writeFile(path.join(dir, "last_approval_candidate.json"), `${JSON.stringify(marker, null, 2)}\n`, "utf8");
 }
 
+/**
+ * 直近の「承認待ち」候補の id を返す。
+ * まず last_approval_candidate マーカーを優先し、無ければ createdAt 最新の pending を返す。
+ * 見つからなければ undefined。
+ */
+export async function resolveLatestPendingId(root: string): Promise<string | undefined> {
+  const last = await loadLastApprovalCandidate(root);
+  if (last) {
+    const lastRecord = await loadRecord(root, last.id);
+    if (lastRecord?.status === "pending_approval") return lastRecord.id;
+  }
+
+  const latest = (await loadStateRecords(root))
+    .filter((record) => record.status === "pending_approval")
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+
+  return latest?.id;
+}
+
 export async function expandApprovalShortcut(text: string, root: string): Promise<string | undefined> {
   if (!isOkOnly(text)) return undefined;
 

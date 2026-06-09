@@ -44,4 +44,26 @@ assert.deepEqual(parseApprovalCommand("修正 FG-20260530-001 もっと初心者
 
 assert.equal(parseApprovalCommand("OK FG-20260530-001 instagram"), undefined);
 
+// id を省略した修正（直近候補対象。id は空文字で返す）。
+assert.deepEqual(parseApprovalCommand("修正 セールは6/10までに変更"), {
+  response: "revision",
+  id: "",
+  raw: "修正 セールは6/10までに変更",
+  note: "セールは6/10までに変更",
+});
+
+assert.deepEqual(parseApprovalCommand("修正: もっと短く"), {
+  response: "revision",
+  id: "",
+  raw: "修正: もっと短く",
+  note: "もっと短く",
+});
+
+assert.deepEqual(parseApprovalCommand("修正"), {
+  response: "revision",
+  id: "",
+  raw: "修正",
+  note: "",
+});
+
 console.log("approval command tests passed");

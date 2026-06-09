@@ -54,6 +54,13 @@ export function parseApprovalCommand(text: string): ApprovalCommand | undefined 
     return { response: "revision", id: revision[1], raw, note: (revision[2] ?? "").trim() };
   }
 
+  // id を省略した修正（直近の承認待ち候補を対象にする）。
+  // 例: 「修正 セールは6/10までに変更」「修正: もっと短く」「修正」
+  const revisionNoId = normalized.match(/^修正(?:[:：・\s]+(.+))?$/);
+  if (revisionNoId) {
+    return { response: "revision", id: "", raw, note: (revisionNoId[1] ?? "").trim() };
+  }
+
   const reject = normalized.match(new RegExp(`^(?:NO|N|やめる|キャンセル|×|x|✕) (${APPROVAL_ID_REGEX})$`, "i"));
   if (reject) return { response: "reject", id: reject[1], raw };
 
