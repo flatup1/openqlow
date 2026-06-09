@@ -7,7 +7,8 @@ import { expandApprovalShortcut, resolveLatestPendingId } from "../approval/shor
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
 import { applyInsert, clearMedia, parseImageCommand, parseInsertCommand, resolveMediaDir } from "../publish/media_insert.js";
 import { applyLineMedia } from "../publish/line_media.js";
-import { createBrowserPanel } from "../publish/browser_panel.js";
+import { buildPostAssistMessage } from "../publish/post_assist.js";
+import { publishThreadsText } from "../publish/threads_api.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { executeLineCommand } from "./commands.js";
@@ -135,19 +136,43 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
 
   if (parsed.response === "OK") {
     const files = await approveRecord(parsed.id, parsed.raw);
-    const hasPublishDestinations = parsed.targets.some(target => target !== "drafts_only");
-    // `ok` は「投稿準備パネルまで」（半自動）。最終投稿は JIN が画面で行う。
-    // 完全自動（runFinalPublish）は投稿成功検証の完成後に明示フラグで解禁する想定
-    // （docs/HANDOFF_20260607_claude→codex_v2.md §7 / 機能①）。ここでは自動投稿しない。
-    const panel = hasPublishDestinations ? await createBrowserPanel(config.root, parsed.id) : undefined;
-    const message = [
-      hasPublishDestinations ? "OPENQLOW: 投稿準備をしました。最後は画面で投稿してください。" : "OPENQLOW: 下書きを保存しました。",
-      `ID: ${parsed.id}`,
-      panel ? `ブラウザ投稿パネル: ${panel}` : "",
-      panel ? "Threads / Googleビジネス / LINE VOOM は、このパネルから本文をコピーして確認できます。" : "",
-      panel ? "最終投稿ボタンは、Jinさんが画面で確認してから押してください。（自動では投稿しません）" : "",
+    const publishTargets = parsed.targets.filter(target => target !== "drafts_only");
+    if (publishTargets.length === 0) {
+      return {
+        ok: true,
+        action: "approved",
+        id: parsed.id,
+        saved: files,
+        message: ["OPENQLOW: 下書きを保存しました。", `ID: ${parsed.id}`].join("\n"),
+      };
+    }
+
+    // 携帯から最短で複数サイト投稿するためのアシスト（機能①）。
+    // Threads は API 自動投稿（postId が取れた時だけ成功扱い）。Google/VOOM はコピー＋リンク補助。
+    const record = await loadRecord(config.root, parsed.id);
+    const draft = record?.drafts.find(d => d.platform === "threads") ?? record?.drafts[0];
+    const body = [
+      draft?.body ?? "",
+      draft?.hashtags?.length ? draft.hashtags.map(tag => `#${tag}`).join(" ") : "",
     ].filter(Boolean).join("\n");
-    return { ok: true, action: "approved", id: parsed.id, saved: files, panel, message };
+    const hasMedia = Boolean(record?.mediaFiles?.length);
+
+    let threadsPostId: string | undefined;
+    const threadsUserId = process.env.THREADS_USER_ID ?? "";
+    const threadsToken = process.env.THREADS_ACCESS_TOKEN ?? "";
+    // メディア付きは API のテキスト投稿に乗らないため、自動投稿せず手動添付を案内する。
+    if (parsed.targets.includes("threads") && threadsUserId && threadsToken && !hasMedia) {
+      try {
+        const published = await publishThreadsText({ userId: threadsUserId, accessToken: threadsToken, text: body });
+        threadsPostId = published.postId;
+      } catch (error) {
+        // 失敗は postId 無し＝成功扱いにしない。詳細はログのみ（応答に秘密を出さない）。
+        console.error("[threads auto-post] failed:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    const message = buildPostAssistMessage({ body, targets: parsed.targets, threadsPostId, hasMedia });
+    return { ok: true, action: "approved", id: parsed.id, saved: files, threadsPostId, message };
   }
 
   if (parsed.response === "revision") {
