@@ -2,9 +2,10 @@
 node_modules/
 
 # ランタイム生成物（VPS と Mac で別物、コミットしない）
-state/
-drafts/
-logs/
+# 注: ルート直下のみ対象。ソースの src/state/ は除外しない（先頭スラッシュで限定）。
+/state/
+/drafts/
+/logs/
 *.log
 
 # 機密
