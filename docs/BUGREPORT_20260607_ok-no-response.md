@@ -7,6 +7,21 @@
 
 ---
 
+## 0. 対応状況（2026-06-09 追記）
+
+JIN 承認のもと Claude が Codex 領域を代行対応（Codex レート制限のため）。
+
+- ✅ **修正済み（コミット `816809a`）**：
+  1. 素の `ok` を「投稿準備パネルまで（半自動）」に統一。`runFinalPublish` の自動実行を外し、
+     最終投稿は JIN が画面で行う。完全自動は §7 / 機能① のとおり検証完成後に解禁。
+  2. webhook の catch で `replyLineMessage` を呼び、**例外時の無言終了を解消**。
+  3. `reply.ts` に `formatErrorReply`（既知エラーを安全な日本語に分類・秘密情報は出さない）を追加＋テスト緑。
+- ⏳ **残作業（JIN）**：
+  1. `src/state/file_store.ts`（＋test）を Mac/VPS の本物から git へ commit（**現状 git に無くビルド不能**）。
+     → 上がれば Claude が `npm test` フルで検証する。
+  2. 修正版 `reply.ts` / `webhook.ts` を VPS へ rsync デプロイ → LINE で `ok` が実際に直る。
+- 補足：スクショの候補は「Level 2: draft」のため Phase1 ロックではなく、§4.5 の最終投稿経路の例外が真因と確定。
+
 ## 1. 症状
 
 - LINE で投稿候補（例 `FG-20260608-003` / THREADS の親子キックボクシング本文）が提示された後、
