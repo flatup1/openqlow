@@ -74,10 +74,28 @@ verdict: `>=20 ship` / `>=15 polish` / `<15 rework`
 - 依存ゼロ。
 - 既存フロー（daily / approval / safety / publish）に**一切ワイヤリングしていない**。
 - 型は `craft_score.ts` 内に閉じ、`src/types.ts` を汚さない。
-- 撤去手順: `src/distribution/craft_score.ts` `src/distribution/recent_bodies.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies` 行を削除するだけ。
+- 撤去手順: `src/distribution/` の `craft_score.ts` `recent_bodies.ts` `expand_scored.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies`/`test:expand-scored` 行を削除するだけ。
+
+## 生成→採点→修復ループ（expand_scored / 方向性B）
+
+`src/distribution/expand_scored.ts` が「生成→採点→低い軸を修復→再採点→最良の安全な版を選ぶ」
+ループを実装する。**`expand.ts` 本体は改変しない**非侵襲ラッパー。
+
+- `improveDraft(platform, body, { recentBodies? })` — 本文の候補（原文＋決定的修復）を作り、
+  `checkDraftSafety` を通った中から「総合→新鮮さ→短さ」で最良を選ぶ。
+- `expandIdeaScored(idea, { recentByPlatform? })` — `expandIdea` を回し、各媒体を改善して
+  `{ drafts, improvements }` を返す。`recent_bodies.loadRecentBodies` の結果を渡せば freshness も効く。
+- 決定的修復（依存ゼロ・ブランド安全のみ）:
+  - やわらかい誘いが無ければ末尾に1行（誘い軸）
+  - X が長さ超過なら末尾行を削って収める（媒体適合軸）
+- LLM を使わないので“創作的再生成”ではなく“決定的修復”。全候補は安全チェックを必ず通る。
+
+実測: defaultBody フォールバックの idea で 3媒体すべて **+3点**（誘い修復）、安全維持。
 
 ## 既知の限界 / 次の一手（未実装）
 
-- 採点はヒューリスティック。LLM批評ではない（依存ゼロ方針のため）。
-- `expand.ts` に組み込んで「生成→採点→低スコアは再生成」ループにするのが次の自然な拡張（= 方向性B バリアント生成）。`scoreCraftWithHistory` で freshness は実データ判定できるので、再生成の判定材料に使える。
-- register が本文を持たない問題（approval-register は theme/angle のみ）。本文を register に持たせると突合が楽になるが、それは Codex領域（adapters）の変更なので要相談。
+- 採点も修復もヒューリスティック。LLM批評・LLM再生成ではない（依存ゼロ方針のため）。
+- 修復は「誘い」「X長さ」の2軸のみ。フック／具体性の自動修復は文意を壊しうるので未対応。
+- `expandIdeaScored` は本番 daily にはまだ未配線（使わなければ挙動は変わらない）。配線は要相談。
+- register が本文を持たない問題（approval-register は theme/angle のみ）。本文を register に持たせると
+  突合が楽になるが、それは Codex領域（adapters）の変更なので要相談。
