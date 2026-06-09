@@ -6,6 +6,7 @@ import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
 import { applyInsert, parseInsertCommand, resolveMediaDir } from "../publish/media_insert.js";
+import { applyLineMedia } from "../publish/line_media.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
@@ -33,7 +34,9 @@ function verifyLineSignature(rawBody: string, signature: string | string[] | und
 }
 
 interface ExtractedEvent {
-  text: string;
+  text?: string;
+  messageType?: string;
+  messageId?: string;
   userId?: string;
 }
 
@@ -44,31 +47,57 @@ function extractLineTexts(rawBody: string): { events: ExtractedEvent[]; linePayl
         type?: string;
         replyToken?: string;
         source?: { userId?: string };
-        message?: { type?: string; text?: string };
+        message?: { type?: string; text?: string; id?: string };
       }>;
     };
 
     if (!Array.isArray(payload.events)) {
-      return { events: [{ text: rawBody }], linePayload: false };
+      return { events: [{ text: rawBody, messageType: "text" }], linePayload: false };
     }
 
     const events: ExtractedEvent[] = [];
     let replyToken: string | undefined;
     for (const event of payload.events) {
-      if (event.type !== "message" || event.message?.type !== "text" || !event.message.text) continue;
+      if (event.type !== "message") continue;
+      const messageType = event.message?.type;
       const userId = event.source?.userId;
-      console.log(`LINE message received from ${userId || "unknown"}: ${event.message.text}`);
+
+      if (messageType === "text") {
+        if (!event.message?.text) continue;
+        console.log(`LINE message received from ${userId || "unknown"}: ${event.message.text}`);
+      } else if (messageType === "image" || messageType === "video") {
+        if (!event.message?.id) continue;
+        // バイナリ・取得URLはログに出さない（種別のみ）。
+        console.log(`LINE ${messageType} message received from ${userId || "unknown"}`);
+      } else {
+        continue;
+      }
+
       if (allowedApproverIds.size > 0 && !allowedApproverIds.has(userId || "")) {
         return { events: [], linePayload: true, ignored: "non_approver_user" };
       }
       replyToken ??= event.replyToken;
-      events.push({ text: event.message.text, userId });
+      events.push({ text: event.message?.text, messageType, messageId: event.message?.id, userId });
     }
 
     return { events, linePayload: true, replyToken };
   } catch {
-    return { events: [{ text: rawBody }], linePayload: false };
+    return { events: [{ text: rawBody, messageType: "text" }], linePayload: false };
   }
+}
+
+async function handleLineMedia(messageType: string, messageId: string): Promise<Record<string, unknown>> {
+  const config = loadConfig();
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+  return {
+    ...(await applyLineMedia({
+      root: config.root,
+      mediaDir: resolveMediaDir(),
+      messageId,
+      messageType,
+      token,
+    })),
+  };
 }
 
 async function executeApproval(text: string, userId?: string): Promise<Record<string, unknown>> {
@@ -196,7 +225,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
-        results.push(await executeApproval(ev.text, ev.userId));
+        if ((ev.messageType === "image" || ev.messageType === "video") && ev.messageId) {
+          results.push(await handleLineMedia(ev.messageType, ev.messageId));
+        } else {
+          results.push(await executeApproval(ev.text ?? "", ev.userId));
+        }
       }
       if (extracted.linePayload) {
         await replyLineMessage(extracted.replyToken, formatWebhookReply(results));
