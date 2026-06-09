@@ -5,7 +5,7 @@ import { approveRecord, rejectRecord } from "../scheduler/daily.js";
 import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
-import { applyInsert, parseInsertCommand, resolveMediaDir } from "../publish/media_insert.js";
+import { applyInsert, clearMedia, parseImageCommand, parseInsertCommand, resolveMediaDir } from "../publish/media_insert.js";
 import { applyLineMedia } from "../publish/line_media.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
@@ -110,6 +110,13 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
   const insert = parseInsertCommand(text);
   if (insert) {
     return { ...(await applyInsert(config.root, resolveMediaDir(), insert)) };
+  }
+
+  // 朝フロー（④）の「画像 N」「画像なし」：候補の画像を選ぶ／無しにする。
+  const image = parseImageCommand(text);
+  if (image) {
+    if (image.kind === "none") return { ...(await clearMedia(config.root)) };
+    return { ...(await applyInsert(config.root, resolveMediaDir(), { kind: "pick", index: image.index })) };
   }
 
   const approvalText = await expandApprovalShortcut(text, config.root) ?? text;

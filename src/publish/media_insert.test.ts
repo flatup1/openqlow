@@ -6,8 +6,11 @@ import type { DraftRecord } from "../types.js";
 import { saveRecord, loadRecord } from "../state/file_store.js";
 import {
   applyInsert,
+  buildImageCandidateBlock,
+  clearMedia,
   isAllowedMedia,
   listMediaCandidates,
+  parseImageCommand,
   parseInsertCommand,
   resolveMediaDir,
 } from "./media_insert.js";
@@ -122,10 +125,52 @@ async function testEmptyFolder(): Promise<void> {
   }
 }
 
+function testParseImageCommand(): void {
+  assert.deepEqual(parseImageCommand("画像 1"), { kind: "pick", index: 1 });
+  assert.deepEqual(parseImageCommand("画像2"), { kind: "pick", index: 2 });
+  assert.deepEqual(parseImageCommand("画像 ２"), { kind: "pick", index: 2 });
+  assert.deepEqual(parseImageCommand("画像なし"), { kind: "none" });
+  assert.deepEqual(parseImageCommand("画像 なし"), { kind: "none" });
+  assert.equal(parseImageCommand("画像"), undefined);
+  assert.equal(parseImageCommand("挿入 1"), undefined);
+}
+
+async function testClearMediaAndBlock(): Promise<void> {
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-img-"));
+  try {
+    const media = path.join(root, "media");
+    await mkdir(media, { recursive: true });
+    await writeFile(path.join(media, "a.jpg"), "x");
+
+    // 画像候補ブロック（あり）
+    const block = await buildImageCandidateBlock(media);
+    assert.match(block, /1\. a\.jpg/);
+    assert.match(block, /画像 1/);
+
+    // 空フォルダのブロック
+    const empty = await buildImageCandidateBlock(path.join(root, "none"));
+    assert.match(empty, /フォルダに画像がありません/);
+
+    // 画像なし → mediaFiles を空に
+    const rec = pendingRecord("FG-20260609-001");
+    rec.mediaFiles = ["/some/old.jpg"];
+    await saveRecord(root, rec);
+    const cleared = await clearMedia(root);
+    assert.equal(cleared.ok, true);
+    assert.match(cleared.message, /画像なしで進めます/);
+    const updated = await loadRecord(root, "FG-20260609-001");
+    assert.deepEqual(updated?.mediaFiles, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
 testIsAllowedMedia();
 testParseInsertCommand();
+testParseImageCommand();
 testResolveMediaDir();
 await testListAndAttach();
 await testEmptyFolder();
+await testClearMediaAndBlock();
 
 console.log("media insert tests passed");

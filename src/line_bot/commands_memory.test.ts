@@ -172,8 +172,10 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /投稿候補です/);
-  assert.match(result.message, /投稿準備するなら「ok」/);
+  // ④ 朝の1候補確認：本文1案＋画像候補＋「今日はこの内容でいいですか？」
+  assert.match(result.message, /今日はこの内容でいいですか？/);
+  assert.match(result.message, /画像の候補/);
+  assert.match(result.message, /OK で投稿準備/);
   assert.doesNotMatch(result.message, /OK FG-/);
   assert.doesNotMatch(result.message, /投稿準備まで/);
   const stateFiles = await readdir(path.join(root, "state"));

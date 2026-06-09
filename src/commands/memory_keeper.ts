@@ -14,6 +14,7 @@ import {
 import { saveCrmLog } from "../conversation/crm_log_generator.js";
 import { canonicalLineCommand, matchMorningConcatenated, normalizeLineText } from "../line_bot/normalize_command.js";
 import { createMorningPublishCandidate } from "../publish/morning_candidate.js";
+import { buildImageCandidateBlock, resolveMediaDir } from "../publish/media_insert.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
 import { buildTodoReplyLines } from "./daily_report_todo.js";
@@ -435,15 +436,18 @@ async function createSimplePostCandidate(): Promise<MemoryHandlerResult> {
       threads?.body ?? "",
       threads?.hashtags?.length ? threads.hashtags.map((tag) => `#${tag}`).join(" ") : "",
     ].filter(Boolean).join("\n");
+    // ④ 朝の1候補確認：本文1案＋画像候補（複数）を1メッセージで提示し、確認を求める。
+    const imageBlock = await buildImageCandidateBlock(resolveMediaDir());
     return {
       ok: true,
       reply: [
-        "投稿候補です。",
+        "今日はこの内容でいいですか？",
         "",
         body,
         "",
-        "投稿準備するなら「ok」",
-        "やめるなら「やめる」",
+        imageBlock,
+        "",
+        "OK で投稿準備、修正 〇〇 で本文修正、やめる で取り下げ。",
       ].join("\n"),
       meta: { mode: "simple_post", id: record.id },
     };

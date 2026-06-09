@@ -35,6 +35,17 @@ export function parseInsertCommand(text: string): InsertCommand | undefined {
   return { kind: "pick", index: Number(match[1]) };
 }
 
+export type ImageCommand = { kind: "pick"; index: number } | { kind: "none" };
+
+/** 朝フロー（④）の「画像 2」「画像なし」を解釈する。該当しなければ undefined。 */
+export function parseImageCommand(text: string): ImageCommand | undefined {
+  const normalized = text.normalize("NFKC").trim();
+  if (/^画像\s*(なし|無し)$/.test(normalized)) return { kind: "none" };
+  const match = normalized.match(/^画像[\s:：]*(\d+)$/);
+  if (match) return { kind: "pick", index: Number(match[1]) };
+  return undefined;
+}
+
 /** OPENQLOW_MEDIA_DIR を解決（未設定なら ~/openqlow/media）。先頭 ~ は HOME に展開。 */
 export function resolveMediaDir(env: NodeJS.ProcessEnv = process.env): string {
   const home = env.HOME || os.homedir() || "/Users/jin";
@@ -113,4 +124,33 @@ export async function applyInsert(
       "OK / 修正 〇〇 / NO",
     ].join("\n"),
   };
+}
+
+/** 「画像なし」：直近候補の添付メディアを空にする（④用）。 */
+export async function clearMedia(root: string): Promise<InsertResult> {
+  const id = await resolveLatestPendingId(root);
+  if (!id) {
+    return { ok: false, message: "対象の投稿候補がありません。先に「投稿」で候補を作ってください。" };
+  }
+  const record = await loadRecord(root, id);
+  if (!record) {
+    return { ok: false, message: `投稿候補が見つかりませんでした: ${id}` };
+  }
+  await saveRecord(root, { ...record, mediaFiles: [], updatedAt: new Date().toISOString() });
+  return {
+    ok: true,
+    action: "image_none",
+    id,
+    message: ["画像なしで進めます。", `ID: ${id}`, "", "OK / 修正 〇〇 / 挿入 / NO"].join("\n"),
+  };
+}
+
+/** 朝フロー（④）で本文の下に出す「画像の候補」ブロックを組み立てる。 */
+export async function buildImageCandidateBlock(mediaDir: string): Promise<string> {
+  const files = await listMediaCandidates(mediaDir);
+  if (files.length === 0) {
+    return ["画像の候補: フォルダに画像がありません。", "使いたい写真や動画は、このままLINEに送ってください。"].join("\n");
+  }
+  const list = files.map((file, index) => `${index + 1}. ${file}`).join("\n");
+  return ["画像の候補:", list, "→ 使う画像は「画像 1」、画像なしは「画像なし」。別の写真はLINEに直接送ってください。"].join("\n");
 }
