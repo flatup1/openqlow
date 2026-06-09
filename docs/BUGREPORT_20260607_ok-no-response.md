@@ -7,6 +7,21 @@
 
 ---
 
+## ✅ 解決（2026-06-09 本番検証済み）
+
+VPS に5ファイル（reply/webhook/command/shortcut/revise_content）をデプロイ＋webhook再起動後、
+本番 LINE で `ok` を送信 → 下記の新メッセージを確認。**ok 無反応バグは解消**。
+
+```
+OPENQLOW: 投稿準備をしました。最後は画面で投稿してください。
+ID: FG-20260609-902
+ブラウザ投稿パネル: /opt/openqlow/state/publish_assist/FG-20260609-902.html
+最終投稿ボタンは、Jinさんが画面で確認してから押してください。（自動では投稿しません）
+```
+
+- 半自動（投稿準備パネルまで）で停止 ✅／自動投稿しない ✅／無言終了なし ✅
+- デプロイ反映チェック：webhook.ts 新版=1／revise_content.ts 設置／service active。
+
 ## 0. 対応状況（2026-06-09 追記）
 
 JIN 承認のもと Claude が Codex 領域を代行対応（Codex レート制限のため）。
