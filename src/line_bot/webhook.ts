@@ -5,6 +5,7 @@ import { approveRecord, rejectRecord } from "../scheduler/daily.js";
 import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
+import { applyInsert, parseInsertCommand, resolveMediaDir } from "../publish/media_insert.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
@@ -75,6 +76,13 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
   if (lineCommand.handled) return { ...lineCommand };
 
   const config = loadConfig();
+
+  // 「挿入」「挿入 N」：メディアフォルダから画像/動画を下書きに添付する（機能③）。
+  const insert = parseInsertCommand(text);
+  if (insert) {
+    return { ...(await applyInsert(config.root, resolveMediaDir(), insert)) };
+  }
+
   const approvalText = await expandApprovalShortcut(text, config.root) ?? text;
   const parsed = parseApprovalCommand(approvalText);
   if (!parsed) {
