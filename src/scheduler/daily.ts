@@ -34,7 +34,7 @@ export async function runDaily(): Promise<DraftRecord[]> {
   const config = loadConfig();
   assertNoPublishRuntimeEnabled();
   const ideas = await generateDailyThree();
-  const records: DraftRecord[] = [];
+  const candidates: DraftRecord[] = [];
   const safetyByRecord = new Map<string, SafetyResult>();
 
   for (const [index, idea] of ideas.entries()) {
@@ -52,10 +52,22 @@ export async function runDaily(): Promise<DraftRecord[]> {
       createdAt: now,
       updatedAt: now,
     };
-    await saveRecord(config.root, record);
-    records.push(record);
+    candidates.push(record);
     safetyByRecord.set(record.id, safety);
   }
+
+  // 朝の連投をやめ、JIN に出すのは1本だけにする（④ 朝の1候補確認）。
+  // 内容が毎日同じにならないよう、日付でローテーションして選ぶ。
+  // 安全チェックNGの案は選ばない（全部NGなら何も出さない）。
+  const safeCandidates = candidates.filter((record) => safetyByRecord.get(record.id)?.ok);
+  if (safeCandidates.length === 0) {
+    console.error("[daily] no safe candidates today; nothing pushed");
+    return [];
+  }
+  const dateSeed = Number(safeCandidates[0].idea.date.replaceAll("-", ""));
+  const chosen = safeCandidates[dateSeed % safeCandidates.length];
+  const records: DraftRecord[] = [chosen];
+  await saveRecord(config.root, chosen);
 
   try {
     await logGeneration(records, safetyByRecord);
