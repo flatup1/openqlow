@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { formatWebhookReply, replyLineMessage } from "./reply.js";
+import { formatErrorReply, formatWebhookReply, replyLineMessage } from "./reply.js";
 
 async function testFormatWebhookReply(): Promise<void> {
   const text = formatWebhookReply([
@@ -52,9 +52,30 @@ async function testReplyLineMessageSkipsWithoutToken(): Promise<void> {
   assert.equal(result.mode, "skipped");
 }
 
+async function testFormatErrorReplyClassifies(): Promise<void> {
+  assert.match(formatErrorReply("Record not found: FG-1"), /見つかりませんでした/);
+  assert.match(formatErrorReply("Safety check failed: NG"), /安全チェック/);
+  assert.match(
+    formatErrorReply("Phase 1 physical publish lock blocked non-draft publication levels: x:level_4_publish"),
+    /Phase1の安全ロック/,
+  );
+  assert.match(formatErrorReply("Invalid approval. Required reply: OK FG-1"), /承認コマンドの形式/);
+  assert.match(formatErrorReply("LINE reply 400: bad"), /接続でエラー/);
+  assert.match(formatErrorReply("something unexpected"), /処理中にエラー/);
+}
+
+async function testFormatErrorReplyHidesRawSecrets(): Promise<void> {
+  // 生のエラーにトークンらしき文字列が混ざっても、返信にそのまま出さない。
+  const reply = formatErrorReply("threads publish failed: token=abcdef0123456789SECRET");
+  assert.doesNotMatch(reply, /SECRET/);
+  assert.doesNotMatch(reply, /abcdef0123456789/);
+}
+
 await testFormatWebhookReply();
 await testFormatWebhookReplyUsesCommandMessage();
 await testReplyLineMessageCallsLineApi();
 await testReplyLineMessageSkipsWithoutToken();
+await testFormatErrorReplyClassifies();
+await testFormatErrorReplyHidesRawSecrets();
 
 console.log("line reply tests passed");
