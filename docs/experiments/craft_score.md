@@ -28,9 +28,28 @@
 npx tsx src/distribution/craft_score.ts --platform x "本文..."
 echo "本文" | npx tsx src/distribution/craft_score.ts --platform threads
 
+# register の直近本文を覗く
+npx tsx src/distribution/recent_bodies.ts threads 12
+
 # テスト
-npx tsx src/distribution/craft_score.test.ts
+npm run test:craft-score
+npm run test:recent-bodies
 ```
+
+## register からの直近本文の自動読み込み（recent_bodies）
+
+`freshness` 軸は「直近投稿との非類似度」を測るが、当初は呼び出し側が `recentBodies`
+を手で渡す必要があった。`src/distribution/recent_bodies.ts` がこれを自動化する。
+
+- 本文の出どころ: adapters が保存する `drafts/<platform>/index.jsonl`（= register）と、
+  そこから参照される本文 `.md`。registers の JSONL（approval-register 等）は theme/angle
+  しか持たないため、**本文の唯一の出どころはドラフト .md** である。
+- `loadRecentBodies(platform, { root?, limit?, excludeId? })` が新しい順に本文を返す。
+  index が無ければ `[]`（freshness は中立3）。
+- `scoreCraftWithHistory(draft, opts)` が「register の直近本文」と突き合わせて採点する。
+  採点対象自身（同一ID）は自動で比較から除外。
+- adapters (Codex領域) は**読み取りのみ**。`.md` 形式に読み取り側で軽く依存し、形式が
+  変わったら `extractBody` だけ直せばよい。
 
 ```ts
 import { scoreCraft, formatCraftReport } from "./craft_score.js";
@@ -55,10 +74,10 @@ verdict: `>=20 ship` / `>=15 polish` / `<15 rework`
 - 依存ゼロ。
 - 既存フロー（daily / approval / safety / publish）に**一切ワイヤリングしていない**。
 - 型は `craft_score.ts` 内に閉じ、`src/types.ts` を汚さない。
-- 撤去手順: `src/distribution/craft_score.ts` と `src/distribution/craft_score.test.ts`、本ドキュメントを削除するだけ。
+- 撤去手順: `src/distribution/craft_score.ts` `src/distribution/recent_bodies.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies` 行を削除するだけ。
 
 ## 既知の限界 / 次の一手（未実装）
 
 - 採点はヒューリスティック。LLM批評ではない（依存ゼロ方針のため）。
-- `expand.ts` に組み込んで「生成→採点→低スコアは再生成」ループにするのが次の自然な拡張（= 方向性B バリアント生成）。
-- register からの直近本文の自動読み込みは未配線（今は `recentBodies` を呼び出し側が渡す）。
+- `expand.ts` に組み込んで「生成→採点→低スコアは再生成」ループにするのが次の自然な拡張（= 方向性B バリアント生成）。`scoreCraftWithHistory` で freshness は実データ判定できるので、再生成の判定材料に使える。
+- register が本文を持たない問題（approval-register は theme/angle のみ）。本文を register に持たせると突合が楽になるが、それは Codex領域（adapters）の変更なので要相談。
