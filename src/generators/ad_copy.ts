@@ -11,7 +11,7 @@
 //
 // 広告は AIKA 個人の1:1返信ではなく媒体向けの配信文のため、末尾「AIKA」署名は付けない。
 
-import { FLATUP_INFO } from "./inquiry_reply.js";
+import { FLATUP_INFO } from "./shared.js";
 
 export type AdSegment =
   | "women_beginner"

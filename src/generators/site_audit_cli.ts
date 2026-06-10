@@ -9,6 +9,7 @@
 
 import { readFile } from "node:fs/promises";
 import { auditSite, type AuditSeverity, type SiteAuditInput } from "./site_audit.js";
+import { parseFlags } from "./shared.js";
 
 const SEVERITY_MARK: Record<AuditSeverity, string> = {
   good: "✅",
@@ -17,18 +18,10 @@ const SEVERITY_MARK: Record<AuditSeverity, string> = {
 };
 
 export function parseArgs(argv: string[]): { file?: string; label?: string } {
-  const opts: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "";
-      opts[key] = value;
-    }
-  }
+  const { flags } = parseFlags(argv);
   const out: { file?: string; label?: string } = {};
-  if (opts.file) out.file = opts.file;
-  if (opts.label) out.label = opts.label;
+  if (flags.file) out.file = flags.file;
+  if (flags.label) out.label = flags.label;
   return out;
 }
 

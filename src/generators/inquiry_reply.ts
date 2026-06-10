@@ -13,14 +13,20 @@
 // 永続化（見込み客の保存・ステータス管理）は state 層（Codex担当）の役割であり、
 // ここでは生成のみを行う。
 
-export type Gender = "female" | "male" | "unknown";
+import {
+  FLATUP_INFO,
+  composeSigned,
+  matchesAny,
+  type Attribute,
+  type Gender,
+  type Temperature,
+} from "./shared.js";
+
+// 共有の正本値・型を再エクスポート（既存の import 経路を維持）
+export { FLATUP_INFO } from "./shared.js";
+export type { Attribute, Gender, Temperature } from "./shared.js";
+
 export type AgeGroup = "kids" | "teen" | "adult" | "senior" | "unknown";
-
-/** 見込み客の属性分類 */
-export type Attribute = "kids" | "women" | "men" | "parent_child" | "senior" | "beginner";
-
-/** 温度感（入会への近さ） */
-export type Temperature = "high" | "mid" | "low";
 
 /** 見込み客管理表に入れる優先度 */
 export type Priority = "A" | "B" | "C";
@@ -73,36 +79,6 @@ export interface InquiryReplyResult {
   notes: string[];
 }
 
-/**
- * FLATUP GYM 基本情報（正本値）。
- * AIはこの値を勝手に変更してはいけない。料金改定時はここだけを更新する。
- */
-export const FLATUP_INFO = {
-  trialFirst: "初回体験500円",
-  visitorSecond: "2回目以降ビジター3,000円",
-  priceKids: "キッズ7,700円",
-  priceWomen: "女性8,800円",
-  priceMen: "男性9,900円",
-  joinFee: "入会金10,000円",
-  bring: "動きやすい服・タオル・水",
-  parking: "専用駐車場あり",
-  scheduleKids: "火曜・木曜18:00、土曜13:00",
-  scheduleLadies: "土曜14:00",
-  bookingMen: "平日19:00以降",
-  bookingWomen: "月曜・水曜・土曜",
-  noBooking: "日曜・祝日は原則体験不可",
-} as const;
-
-const SIGN = "AIKA";
-
-interface Keyword {
-  re: RegExp;
-}
-
-function has(text: string, patterns: RegExp[]): boolean {
-  return patterns.some(re => re.test(text));
-}
-
 /** 「60歳」「65才」のような明示年齢が60以上ならシニアとみなす。 */
 function isSeniorByAge(text: string): boolean {
   const match = text.match(/(\d{2,3})\s*(?:歳|才)/);
@@ -111,15 +87,15 @@ function isSeniorByAge(text: string): boolean {
 
 function detectAttribute(input: InquiryInput): Attribute {
   const text = input.message;
-  const kidsHit = has(text, [/子供|子ども|こども|小学生|幼児|キッズ|息子|娘|何歳|未就学|園児/]);
-  const parentHit = has(text, [/親子|一緒に|私も子供|私も子ども/]);
+  const kidsHit = matchesAny(text, [/子供|子ども|こども|小学生|幼児|キッズ|息子|娘|何歳|未就学|園児/]);
+  const parentHit = matchesAny(text, [/親子|一緒に|私も子供|私も子ども/]);
   const womenHit =
-    input.gender === "female" || has(text, [/女性|女子|私(は|も)?女|女です|ママ|主婦/]);
-  const menHit = input.gender === "male" || has(text, [/男性|男子|男です|僕|俺|主人|旦那/]);
+    input.gender === "female" || matchesAny(text, [/女性|女子|私(は|も)?女|女です|ママ|主婦/]);
+  const menHit = input.gender === "male" || matchesAny(text, [/男性|男子|男です|僕|俺|主人|旦那/]);
   const seniorHit =
     input.ageGroup === "senior" ||
     isSeniorByAge(text) ||
-    has(text, [/シニア|高齢|還暦|定年|60代|70代|80代/]);
+    matchesAny(text, [/シニア|高齢|還暦|定年|60代|70代|80代/]);
 
   if (kidsHit && (parentHit || womenHit)) return "parent_child";
   if (input.ageGroup === "kids" || kidsHit) return "kids";
@@ -131,14 +107,14 @@ function detectAttribute(input: InquiryInput): Attribute {
 
 function detectTemperature(input: InquiryInput): Temperature {
   const text = input.message;
-  const hot = has(text, [
+  const hot = matchesAny(text, [
     /体験(した|を|希望|予約|に行|できま)/,
     /予約/,
     /入会|入りたい|通いたい|始めたい|やってみたい/,
     /いつ(なら|から|空|が)|何時|空いて|空き/,
     /申し込/,
   ]);
-  const cool = has(text, [/検討|また今度|そのうち|まだ迷|とりあえず(料金|値段)?だけ/]);
+  const cool = matchesAny(text, [/検討|また今度|そのうち|まだ迷|とりあえず(料金|値段)?だけ/]);
   if (hot) return "high";
   if (cool) return "low";
   return "mid";
@@ -147,12 +123,12 @@ function detectTemperature(input: InquiryInput): Temperature {
 function detectPurpose(input: InquiryInput): string {
   if (input.purpose && input.purpose.trim()) return input.purpose.trim();
   const text = input.message;
-  if (has(text, [/ダイエット|痩せ|やせ|減量|体型/])) return "ダイエット";
-  if (has(text, [/運動不足|体力|健康|なまっ/])) return "運動不足";
-  if (has(text, [/護身|身を守|防犯|危ない目/])) return "護身";
-  if (has(text, [/習い事|礼儀|挨拶|集中力|しつけ/])) return "習い事・教育";
-  if (has(text, [/自信|内気|引っ込み|いじめ|メンタル/])) return "自信をつけたい";
-  if (has(text, [/ストレス|発散|スッキリ/])) return "ストレス発散";
+  if (matchesAny(text, [/ダイエット|痩せ|やせ|減量|体型/])) return "ダイエット";
+  if (matchesAny(text, [/運動不足|体力|健康|なまっ/])) return "運動不足";
+  if (matchesAny(text, [/護身|身を守|防犯|危ない目/])) return "護身";
+  if (matchesAny(text, [/習い事|礼儀|挨拶|集中力|しつけ/])) return "習い事・教育";
+  if (matchesAny(text, [/自信|内気|引っ込み|いじめ|メンタル/])) return "自信をつけたい";
+  if (matchesAny(text, [/ストレス|発散|スッキリ/])) return "ストレス発散";
   return "運動・健康づくり";
 }
 
@@ -218,7 +194,7 @@ function trialInviteLine(priceShown: boolean): string {
 
 // 「怖い・不安・きつい」等の不安に直接応える安心材料（無ければ空文字）。
 function concernReassurance(text: string): string {
-  if (has(text, [/怖|こわ|不安|痛|きつ|ハード|ついていけ|運動神経|苦手/])) {
+  if (matchesAny(text, [/怖|こわ|不安|痛|きつ|ハード|ついていけ|運動神経|苦手/])) {
     return "「怖い・きつそう」と感じる方も多いですが、痛みを伴う激しいスパーリングは行いませんので、ご自分のペースで無理なく進められます。";
   }
   return "";
@@ -237,15 +213,11 @@ function priceSummary(attribute: Attribute): string {
 }
 
 function wantsPrice(text: string): boolean {
-  return has(text, [/料金|値段|月会費|会費|費用|いくら|金額|価格/]);
+  return matchesAny(text, [/料金|値段|月会費|会費|費用|いくら|金額|価格/]);
 }
 
 function bookingAsk(guidance: string): string {
   return `${guidance}。ご都合の良い日程はございますか？`;
-}
-
-function compose(lines: string[]): string {
-  return [...lines.filter(Boolean), SIGN].join("\n");
 }
 
 function buildReplies(
@@ -259,7 +231,7 @@ function buildReplies(
   const reassurance = concernReassurance(input.message);
   const showPrice = wantsPrice(input.message);
 
-  const polite = compose([
+  const polite = composeSigned([
     "お問い合わせありがとうございます😊",
     empathy,
     reassurance,
@@ -269,12 +241,12 @@ function buildReplies(
     bookingAsk(guidance),
   ]);
 
-  const short = compose([
+  const short = composeSigned([
     `お問い合わせありがとうございます😊 ${empathy}`,
     `初回体験は500円です。${bookingAsk(guidance)}`,
   ]);
 
-  const bookingFocused = compose([
+  const bookingFocused = composeSigned([
     "お問い合わせありがとうございます😊",
     empathy,
     reassurance,
@@ -283,14 +255,14 @@ function buildReplies(
     "お日にちが決まりましたら、こちらで体験のご案内をさせていただきます。",
   ]);
 
-  const followUp24h = compose([
+  const followUp24h = composeSigned([
     "先日はお問い合わせありがとうございました😊",
     `体験についてですが、${guidance}。`,
     "初回は500円で、初心者の方でも無理なく体験できますのでご安心ください。",
     "ご都合いかがでしょうか？",
   ]);
 
-  const followUp3d = compose([
+  const followUp3d = composeSigned([
     "その後、いかがでしょうか😊",
     "もしご都合が合わないようでしたら、別の曜日や時間帯でも調整できますので、お気軽にお知らせください。",
     "まずは初回体験500円で、雰囲気だけでも見にいらしていただけたら嬉しいです。",

@@ -11,29 +11,18 @@ import {
   type Gender,
   type TrialFollowupInput,
 } from "./trial_followup.js";
+import { parseFlags, section } from "./shared.js";
 
 export function parseArgs(argv: string[]): TrialFollowupInput {
-  const opts: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "";
-      opts[key] = value;
-    }
-  }
+  const { flags } = parseFlags(argv);
   const input: TrialFollowupInput = {};
-  if (opts.gender) input.gender = opts.gender as Gender;
-  if (opts.age) input.ageBand = opts.age;
-  if (opts.reaction) input.reaction = opts.reaction;
-  if (opts.good) input.goodPoint = opts.good;
-  if (opts.concern) input.concern = opts.concern;
-  if (opts.status) input.enrollmentStatus = opts.status;
+  if (flags.gender) input.gender = flags.gender as Gender;
+  if (flags.age) input.ageBand = flags.age;
+  if (flags.reaction) input.reaction = flags.reaction;
+  if (flags.good) input.goodPoint = flags.good;
+  if (flags.concern) input.concern = flags.concern;
+  if (flags.status) input.enrollmentStatus = flags.status;
   return input;
-}
-
-function section(title: string, body: string): string {
-  return `\n■ ${title}\n${body}`;
 }
 
 export function renderResult(input: TrialFollowupInput): string {

@@ -10,6 +10,8 @@
 //   - これは簡易ヒューリスティックチェック。最終判断は人間が行う。
 //   - 改善案の文面は FLATUP のやさしいトーン（怒鳴らない・初心者安心・初回500円）に寄せる。
 
+import { matchesAny as any, countMatches as count } from "./shared.js";
+
 export type AuditSeverity = "good" | "warn" | "missing";
 
 export interface AuditFinding {
@@ -46,14 +48,6 @@ function toVisibleText(content: string): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function any(text: string, patterns: RegExp[]): boolean {
-  return patterns.some(re => re.test(text));
-}
-
-function count(text: string, patterns: RegExp[]): number {
-  return patterns.reduce((n, re) => n + (re.test(text) ? 1 : 0), 0);
 }
 
 type Check = (text: string) => AuditFinding;

@@ -13,31 +13,20 @@ import {
   type AdPlatform,
   type AdSegment,
 } from "./ad_copy.js";
+import { parseFlags, section } from "./shared.js";
 
 const SEGMENT_LABELS = AD_SEGMENTS.join(" | ");
 
 export function parseArgs(argv: string[]): { segment?: AdSegment; platform?: AdPlatform } {
-  const opts: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "";
-      opts[key] = value;
-    }
-  }
+  const { flags } = parseFlags(argv);
   const out: { segment?: AdSegment; platform?: AdPlatform } = {};
-  if (opts.segment && (AD_SEGMENTS as string[]).includes(opts.segment)) {
-    out.segment = opts.segment as AdSegment;
+  if (flags.segment && (AD_SEGMENTS as string[]).includes(flags.segment)) {
+    out.segment = flags.segment as AdSegment;
   }
-  if (opts.platform === "google" || opts.platform === "instagram" || opts.platform === "line") {
-    out.platform = opts.platform;
+  if (flags.platform === "google" || flags.platform === "instagram" || flags.platform === "line") {
+    out.platform = flags.platform;
   }
   return out;
-}
-
-function section(title: string, body: string): string {
-  return `\n■ ${title}\n${body}`;
 }
 
 export function renderResult(segment: AdSegment, platform?: AdPlatform): string {

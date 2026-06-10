@@ -10,6 +10,7 @@ import {
   type Gender,
   type InquiryInput,
 } from "./inquiry_reply.js";
+import { parseFlags, section } from "./shared.js";
 
 const ATTRIBUTE_LABEL: Record<string, string> = {
   kids: "キッズ",
@@ -34,29 +35,14 @@ const NEXT_ACTION_LABEL: Record<string, string> = {
 };
 
 export function parseArgs(argv: string[]): InquiryInput {
-  const positional: string[] = [];
-  const opts: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "";
-      opts[key] = value;
-    } else {
-      positional.push(token);
-    }
-  }
-  const message = (opts.message ?? positional.join(" ")).trim();
+  const { flags, positional } = parseFlags(argv);
+  const message = (flags.message ?? positional.join(" ")).trim();
   const input: InquiryInput = { message };
-  if (opts.gender) input.gender = opts.gender as Gender;
-  if (opts.purpose) input.purpose = opts.purpose;
-  if (opts.time) input.preferredTime = opts.time;
-  if (opts.memo) input.memo = opts.memo;
+  if (flags.gender) input.gender = flags.gender as Gender;
+  if (flags.purpose) input.purpose = flags.purpose;
+  if (flags.time) input.preferredTime = flags.time;
+  if (flags.memo) input.memo = flags.memo;
   return input;
-}
-
-function section(title: string, body: string): string {
-  return `\n■ ${title}\n${body}`;
 }
 
 export function renderResult(input: InquiryInput): string {

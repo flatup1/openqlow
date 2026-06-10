@@ -15,16 +15,15 @@
 
 import {
   FLATUP_INFO,
+  composeSigned,
   type Attribute,
   type Gender,
   type Temperature,
-} from "./inquiry_reply.js";
+} from "./shared.js";
 
-// 正本値・共通型は inquiry_reply を単一ソースとして再エクスポートする（二重管理しない）。
-export { FLATUP_INFO } from "./inquiry_reply.js";
-export type { Attribute, Gender, Temperature } from "./inquiry_reply.js";
-
-const SIGN = "AIKA";
+// 正本値・共通型は shared を単一ソースとして再エクスポートする（二重管理しない）。
+export { FLATUP_INFO } from "./shared.js";
+export type { Attribute, Gender, Temperature } from "./shared.js";
 
 export interface TrialFollowupInput {
   /** 性別（任意。interview trial の gender に対応） */
@@ -134,21 +133,17 @@ function reassuranceLine(concern?: string): string {
   return "気になる点は遠慮なくお聞きください。安心して通っていただけるようサポートします。";
 }
 
-function compose(lines: string[]): string {
-  return [...lines.filter(Boolean), SIGN].join("\n");
-}
-
 function buildSameDayThanks(input: TrialFollowupInput, temperature: Temperature): string {
   const enrolled = temperature === "high" && /^(はい|入会|済|した)/.test((input.enrollmentStatus ?? "").trim());
   if (enrolled) {
-    return compose([
+    return composeSigned([
       "本日は体験とご入会、ありがとうございました😊",
       reactionLine(input),
       "これから一緒に、無理なく続けていきましょう。",
       "通い方やペースなど、気になる点があればいつでもお声がけください。",
     ]);
   }
-  return compose([
+  return composeSigned([
     "本日は体験にお越しいただきありがとうございました😊",
     reactionLine(input),
     "最初は不安もあると思いますが、FLATUP GYMは初心者の方が無理なく続けられるようサポートしています。",
@@ -157,7 +152,7 @@ function buildSameDayThanks(input: TrialFollowupInput, temperature: Temperature)
 }
 
 function buildNextDayFollow(input: TrialFollowupInput): string {
-  return compose([
+  return composeSigned([
     "昨日は体験お疲れさまでした😊",
     "体を動かしてみて、いかがでしたか？",
     reassuranceLine(input.concern),
@@ -168,14 +163,14 @@ function buildNextDayFollow(input: TrialFollowupInput): string {
 function buildEnrollmentInfo(input: TrialFollowupInput, attribute: Attribute, temperature: Temperature): string {
   if (temperature === "low") {
     // 見送り気味の方には押し込まない
-    return compose([
+    return composeSigned([
       "本日はありがとうございました😊",
       "今回はタイミングが合わなくても、まったく問題ありません。",
       `もしまた気が向かれた際は、${FLATUP_INFO.trialFirst}でいつでも体験いただけます。`,
       "またお会いできるのを楽しみにしています。",
     ]);
   }
-  return compose([
+  return composeSigned([
     "FLATUP GYMにご興味をお持ちいただきありがとうございます😊",
     `ご入会いただく場合は、月会費${priceTier(attribute)}と、別途${FLATUP_INFO.joinFee}でご案内しております。`,
     "次回ご来館時にそのままお手続きできます。",
@@ -185,7 +180,7 @@ function buildEnrollmentInfo(input: TrialFollowupInput, attribute: Attribute, te
 }
 
 function buildReviewRequest(): string {
-  return compose([
+  return composeSigned([
     "本日はありがとうございました😊",
     "もしよろしければ、今後FLATUP GYMを検討される方の参考になるよう、Google口コミにご協力いただけますと嬉しいです。",
     "一言だけでも大丈夫です。",
