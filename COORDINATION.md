@@ -81,6 +81,7 @@
 - 顧客対応文面ドラフト
   - 集客AI司令塔「問い合わせ返信AIKA」 `src/generators/inquiry_reply.ts`（生成のみ・自動送信なし）
   - 集客AI司令塔「体験後フォロー＋口コミ依頼」 `src/generators/trial_followup.ts`（trialインタビュー項目を入力に流用・状態管理は持たない）
+  - 集客AI司令塔「広告文生成」 `src/generators/ad_copy.ts`（ターゲット×媒体・配信なし）
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）
