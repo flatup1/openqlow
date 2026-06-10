@@ -96,13 +96,21 @@ function priceTier(attribute: Attribute): string {
   }
 }
 
+// 体験中の様子（緊張・不安寄りの語）。これらは生文を断定せず、別の受けにする。
+const TENSION_RE = /緊張|不安|硬|おとなし|戸惑|泣|怖|ぎこちな/;
+
 /** 体験中の様子から、当日お礼に添える一言を作る（無ければ汎用文）。 */
 function reactionLine(input: TrialFollowupInput): string {
   const note = (input.goodPoint || input.reaction || "").trim();
   if (!note) {
     return "初めての環境の中、最後までよく頑張っていらっしゃいました。";
   }
-  return `${note}、とても良い時間だったと感じています。`;
+  // 緊張・不安寄りの様子に「良い時間でした」と断定すると噛み合わないため、別表現にする。
+  if (TENSION_RE.test(note)) {
+    return "最初は少し緊張されていたかもしれませんが、最後までよく取り組んでいらっしゃいました。";
+  }
+  // ポジティブ／中立の様子は引用形で自然につなぐ。
+  return `体験中の「${note}」というご様子、しっかり拝見していました。`;
 }
 
 /** 不安点に応じた、翌日フォローでの安心材料。 */

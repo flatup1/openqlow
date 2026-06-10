@@ -19,13 +19,19 @@ const considering = generateTrialFollowup({
 });
 assert(considering.attribute === "women", `attribute=women, got ${considering.attribute}`);
 assert(considering.temperature === "mid", `検討中 => mid temperature, got ${considering.temperature}`);
-assert(considering.messages.sameDayThanks.includes("ミット打ち"), "same-day thanks weaves the reaction");
+assert(considering.messages.sameDayThanks.includes("「ミット打ちが楽しそうでした」"), "positive reaction is quoted naturally in same-day thanks");
+assert(!considering.messages.sameDayThanks.includes("とても良い時間だったと感じています"), "drops the awkward fixed phrase");
 assert(considering.messages.nextDayFollow.includes("料金面"), "concern=料金 => price reassurance in next-day follow");
 assert(considering.messages.enrollmentInfo.includes(FLATUP_INFO.priceWomen), "women enrollment info uses women price");
 assert(considering.messages.enrollmentInfo.includes(FLATUP_INFO.joinFee), "enrollment info mentions join fee");
 for (const msg of Object.values(considering.messages)) {
   assert(msg.trimEnd().endsWith("AIKA"), "every follow-up message is signed AIKA");
 }
+
+// --- 緊張寄りの様子：断定せず別の受けにする（生文を直挿ししない） ------------
+const tense = generateTrialFollowup({ reaction: "最初は緊張していた", enrollmentStatus: "保留" });
+assert(tense.messages.sameDayThanks.includes("緊張されていたかもしれませんが"), "tension reaction => softened phrasing");
+assert(!tense.messages.sameDayThanks.includes("緊張していた、"), "raw tension note is not directly asserted as good time");
 
 // --- キッズ：入会案内にキッズ料金 --------------------------------------------
 const kids = generateTrialFollowup({ ageBand: "キッズ", enrollmentStatus: "保留" });
