@@ -19,8 +19,29 @@ npm run dev -- generate
 npm run dev -- approve <post-id> "OK <post-id>"
 npm run dev -- revise <post-id> "revision note"
 npm run dev -- reject <post-id> "reason"
+npm run inquiry -- "<問い合わせ文>"
 npm run test
 ```
+
+## 集客AI司令塔 / 問い合わせ返信AIKA（第1段階）
+
+LINE / Instagram DM に届いた問い合わせ文を貼ると、AIKA 口調の返信案（丁寧・短め・予約誘導強め）と
+追客文（24時間後・3日後）、見込み客管理用の属性分類（属性 / 温度感 / 目的 / 次アクション / 優先度）を生成します。
+
+```bash
+npm run inquiry -- "小学生の子供に習わせたいのですが初心者でも大丈夫ですか？"
+npm run inquiry -- "ダイエットで通いたい女性です。料金を教えてください" --gender female
+```
+
+オプション: `--gender female|male` `--purpose <目的>` `--time <希望時間>` `--memo <メモ>`
+
+設計方針:
+
+- 生成のみ。**自動送信は一切しません**。必ず人間が確認してから送信します。
+- 料金・スケジュールは `src/generators/inquiry_reply.ts` の `FLATUP_INFO`（正本値）のみを使用し、AIが勝手に変更しません。
+- 医療的・法律的な断定や強引な営業文は避け、初心者・女性・キッズが安心できる表現に寄せています。
+- 返信は基本「AIKA」で締めます。
+- 見込み客の保存・ステータス管理（永続化）は state 層の役割で、本モジュールは含みません（第2段階）。
 
 ## Safety Rules
 
