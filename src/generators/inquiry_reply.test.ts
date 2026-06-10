@@ -63,6 +63,35 @@ assert(
   "notes must warn that auto-send is disabled",
 );
 
+// --- 最適化: 「男です」単独で男性に分類し、案内を平日夜に絞る -----------------
+const manBare = generateInquiryReply({ message: "護身術として習いたい男です。" });
+assert(manBare.classification.attribute === "men", `男です => men, got ${manBare.classification.attribute}`);
+assert(manBare.replies.polite.includes(FLATUP_INFO.bookingMen), "男です reply guides weekday evening");
+assert(!manBare.replies.polite.includes(FLATUP_INFO.bookingWomen), "男 confirmed => does not also list women days");
+
+// --- 最適化: 「60歳」でシニアに分類 ------------------------------------------
+const senior = generateInquiryReply({ message: "60歳ですが運動不足解消で通えますか" });
+assert(senior.classification.attribute === "senior", `60歳 => senior, got ${senior.classification.attribute}`);
+
+// --- 最適化: 料金表示時は「初回体験は500円ですので」を重複させない -----------
+const womanPrice = generateInquiryReply({ message: "料金を教えてください。女性です。" });
+assert(womanPrice.replies.polite.includes("初回体験500円"), "price line still present");
+assert(
+  !womanPrice.replies.polite.includes("初回体験は500円ですので"),
+  "price-shown reply must not repeat the long trial-price phrase",
+);
+assert(womanPrice.replies.polite.includes("まずは一度、雰囲気を見に"), "price-shown reply uses the short invite line");
+assert(
+  (womanPrice.replies.polite.match(/500円/g) ?? []).length === 1,
+  "500円 appears exactly once when price is shown",
+);
+
+// --- 最適化: 不安キーワードに安心の一言を返す --------------------------------
+const scary = generateInquiryReply({ message: "怖くないですか？運動神経も悪いです" });
+assert(scary.replies.polite.includes("激しいスパーリングは行いません"), "fear keyword => reassurance line in polite reply");
+const calm = generateInquiryReply({ message: "初心者ですが大丈夫ですか？" });
+assert(!calm.replies.polite.includes("怖い・きつそう"), "no reassurance line when no concern keyword");
+
 // --- 空メッセージはエラー -----------------------------------------------------
 let threw = false;
 try {

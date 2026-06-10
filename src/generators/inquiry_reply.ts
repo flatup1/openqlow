@@ -103,15 +103,23 @@ function has(text: string, patterns: RegExp[]): boolean {
   return patterns.some(re => re.test(text));
 }
 
+/** 「60歳」「65才」のような明示年齢が60以上ならシニアとみなす。 */
+function isSeniorByAge(text: string): boolean {
+  const match = text.match(/(\d{2,3})\s*(?:歳|才)/);
+  return match ? Number(match[1]) >= 60 : false;
+}
+
 function detectAttribute(input: InquiryInput): Attribute {
   const text = input.message;
   const kidsHit = has(text, [/子供|子ども|こども|小学生|幼児|キッズ|息子|娘|何歳|未就学|園児/]);
   const parentHit = has(text, [/親子|一緒に|私も子供|私も子ども/]);
   const womenHit =
-    input.gender === "female" || has(text, [/女性|女子|私(は|も)?女|ママ|主婦/]);
-  const menHit = input.gender === "male" || has(text, [/男性|男子|僕|俺|主人|旦那/]);
+    input.gender === "female" || has(text, [/女性|女子|私(は|も)?女|女です|ママ|主婦/]);
+  const menHit = input.gender === "male" || has(text, [/男性|男子|男です|僕|俺|主人|旦那/]);
   const seniorHit =
-    input.ageGroup === "senior" || has(text, [/シニア|高齢|60代|70代|還暦|定年/]);
+    input.ageGroup === "senior" ||
+    isSeniorByAge(text) ||
+    has(text, [/シニア|高齢|還暦|定年|60代|70代|80代/]);
 
   if (kidsHit && (parentHit || womenHit)) return "parent_child";
   if (input.ageGroup === "kids" || kidsHit) return "kids";
@@ -201,7 +209,20 @@ function strengthLine(attribute: Attribute): string {
   }
 }
 
-const TRIAL_LINE = `初回体験は500円ですので、まずは一度雰囲気を見にいらしていただけたらと思います。`;
+// 体験への誘い文。料金行を既に出している場合は「初回体験は500円」の重複を避けて短縮する。
+function trialInviteLine(priceShown: boolean): string {
+  return priceShown
+    ? "まずは一度、雰囲気を見にいらしていただけたらと思います。"
+    : "初回体験は500円ですので、まずは一度雰囲気を見にいらしていただけたらと思います。";
+}
+
+// 「怖い・不安・きつい」等の不安に直接応える安心材料（無ければ空文字）。
+function concernReassurance(text: string): string {
+  if (has(text, [/怖|こわ|不安|痛|きつ|ハード|ついていけ|運動神経|苦手/])) {
+    return "「怖い・きつそう」と感じる方も多いですが、痛みを伴う激しいスパーリングは行いませんので、ご自分のペースで無理なく進められます。";
+  }
+  return "";
+}
 
 function priceSummary(attribute: Attribute): string {
   const tier =
@@ -235,14 +256,16 @@ function buildReplies(
   const { attribute } = classification;
   const empathy = empathyLine(attribute);
   const strength = strengthLine(attribute);
+  const reassurance = concernReassurance(input.message);
   const showPrice = wantsPrice(input.message);
 
   const polite = compose([
     "お問い合わせありがとうございます😊",
     empathy,
+    reassurance,
     strength,
     showPrice ? priceSummary(attribute) : "",
-    TRIAL_LINE,
+    trialInviteLine(showPrice),
     bookingAsk(guidance),
   ]);
 
@@ -254,7 +277,8 @@ function buildReplies(
   const bookingFocused = compose([
     "お問い合わせありがとうございます😊",
     empathy,
-    TRIAL_LINE,
+    reassurance,
+    trialInviteLine(false),
     `${guidance}。たとえば今週か来週で、ご都合の良いお日にちがあればお聞かせください。`,
     "お日にちが決まりましたら、こちらで体験のご案内をさせていただきます。",
   ]);
