@@ -6,9 +6,13 @@ import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
 import { applyInsert, clearMedia, parseImageCommand, parseInsertCommand, resolveMediaDir } from "../publish/media_insert.js";
-import { applyLineMedia } from "../publish/line_media.js";
+import { applyLineMedia, mediaContentType, safeMediaPath } from "../publish/line_media.js";
 import { buildPostAssistMessage } from "../publish/post_assist.js";
-import { publishThreadsText } from "../publish/threads_api.js";
+import { publishThreadsImage, publishThreadsText } from "../publish/threads_api.js";
+import { publishInstagramImage } from "../publish/instagram_api.js";
+import { publishXPost } from "../publish/x_api.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { executeLineCommand } from "./commands.js";
@@ -160,19 +164,68 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
     let threadsPostId: string | undefined;
     const threadsUserId = process.env.THREADS_USER_ID ?? "";
     const threadsToken = process.env.THREADS_ACCESS_TOKEN ?? "";
-    // メディア付きは API のテキスト投稿に乗らないため、自動投稿せず手動添付を案内する。
-    if (parsed.targets.includes("threads") && threadsUserId && threadsToken && !hasMedia) {
+    // 公開ベースURL（cloudflaredトンネル等）。設定されていれば写真付きでもAPI自動投稿できる。
+    const publicBaseUrl = (process.env.OPENQLOW_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+    if (parsed.targets.includes("threads") && threadsUserId && threadsToken) {
       try {
-        const published = await publishThreadsText({ userId: threadsUserId, accessToken: threadsToken, text: body });
-        threadsPostId = published.postId;
+        if (!hasMedia) {
+          const published = await publishThreadsText({ userId: threadsUserId, accessToken: threadsToken, text: body });
+          threadsPostId = published.postId;
+        } else if (publicBaseUrl) {
+          // 先頭の画像を公開URL（このwebhookの /openqlow/media/ 配信）経由で添付して投稿する。
+          const first = record?.mediaFiles?.[0] ?? "";
+          const name = path.basename(first);
+          if (safeMediaPath(resolveMediaDir(), name)) {
+            const imageUrl = `${publicBaseUrl}/openqlow/media/${encodeURIComponent(name)}`;
+            const published = await publishThreadsImage({ userId: threadsUserId, accessToken: threadsToken, text: body, imageUrl });
+            threadsPostId = published.postId;
+          }
+        }
+        // hasMedia かつ publicBaseUrl 未設定の場合は自動投稿しない（リンク案内にfallback）。
       } catch (error) {
         // 失敗は postId 無し＝成功扱いにしない。詳細はログのみ（応答に秘密を出さない）。
         console.error("[threads auto-post] failed:", error instanceof Error ? error.message : String(error));
       }
     }
 
-    const message = buildPostAssistMessage({ body, targets: parsed.targets, threadsPostId, hasMedia });
-    return { ok: true, action: "approved", id: parsed.id, saved: files, threadsPostId, message };
+    // X：4キーが設定されていれば自動投稿（写真があれば添付）。tweet id が取れた時だけ成功。
+    let xPostId: string | undefined;
+    const xCreds = {
+      apiKey: process.env.X_API_KEY ?? "",
+      apiSecret: process.env.X_API_SECRET ?? "",
+      accessToken: process.env.X_ACCESS_TOKEN ?? "",
+      accessSecret: process.env.X_ACCESS_SECRET ?? "",
+    };
+    if (xCreds.apiKey && xCreds.apiSecret && xCreds.accessToken && xCreds.accessSecret) {
+      try {
+        const first = record?.mediaFiles?.[0];
+        const mediaBytes = first ? await readFile(first).catch(() => undefined) : undefined;
+        const published = await publishXPost({ creds: xCreds, text: body, mediaBytes });
+        xPostId = published.tweetId;
+      } catch (error) {
+        console.error("[x auto-post] failed:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    // Instagram：トークン＋IGユーザーID＋写真＋公開URLが揃っていれば自動投稿（IGは画像必須）。
+    let igPostId: string | undefined;
+    const igUserId = process.env.IG_USER_ID ?? "";
+    const igToken = process.env.IG_ACCESS_TOKEN ?? "";
+    if (igUserId && igToken && hasMedia && publicBaseUrl) {
+      try {
+        const name = path.basename(record?.mediaFiles?.[0] ?? "");
+        if (safeMediaPath(resolveMediaDir(), name)) {
+          const imageUrl = `${publicBaseUrl}/openqlow/media/${encodeURIComponent(name)}`;
+          const published = await publishInstagramImage({ igUserId, accessToken: igToken, imageUrl, caption: body });
+          igPostId = published.postId;
+        }
+      } catch (error) {
+        console.error("[instagram auto-post] failed:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    const message = buildPostAssistMessage({ body, targets: parsed.targets, threadsPostId, xPostId, igPostId, hasMedia });
+    return { ok: true, action: "approved", id: parsed.id, saved: files, threadsPostId, xPostId, igPostId, message };
   }
 
   if (parsed.response === "revision") {
@@ -224,6 +277,23 @@ async function executeApproval(text: string, userId?: string): Promise<Record<st
 
 const server = http.createServer(async (req, res) => {
   const requestPath = new URL(req.url || "/", "http://localhost").pathname;
+
+  // 画像/動画の公開配信（Threads等のAPIが画像をダウンロードするための公開URL）。
+  // ファイル名のみ許可（パストラバーサル防止）。メディアフォルダ外は配信しない。
+  if (req.method === "GET" && requestPath.startsWith("/openqlow/media/")) {
+    const name = decodeURIComponent(requestPath.slice("/openqlow/media/".length));
+    const filePath = safeMediaPath(resolveMediaDir(), name);
+    const data = filePath ? await readFile(filePath).catch(() => null) : null;
+    if (!data) {
+      res.writeHead(404);
+      res.end("not found");
+      return;
+    }
+    res.writeHead(200, { "content-type": mediaContentType(name), "cache-control": "no-store" });
+    res.end(data);
+    return;
+  }
+
   if (req.method !== "POST" || !webhookPaths.has(requestPath)) {
     res.writeHead(404);
     res.end("not found");

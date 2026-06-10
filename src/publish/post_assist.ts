@@ -14,6 +14,10 @@ export interface PostAssistInput {
   targets: PublishTarget[];
   /** Threads を API 自動投稿できた場合の postId。失敗/未投稿なら undefined。 */
   threadsPostId?: string;
+  /** X を API 自動投稿できた場合の tweetId。 */
+  xPostId?: string;
+  /** Instagram を API 自動投稿できた場合の postId。 */
+  igPostId?: string;
   /** 添付メディアがある場合は true（各アプリで手動添付が必要、と案内する）。 */
   hasMedia?: boolean;
 }
@@ -31,6 +35,12 @@ export function buildPostAssistMessage(input: PostAssistInput): string {
     } else {
       lines.push("【Threads】タップで本文入り → 投稿:", buildThreadsIntentUrl(input.body));
     }
+  }
+  if (input.xPostId) {
+    lines.push(`【X】✅ 自動投稿しました（id: ${input.xPostId}）`);
+  }
+  if (input.igPostId) {
+    lines.push(`【Instagram】✅ 自動投稿しました（id: ${input.igPostId}）`);
   }
   if (want.has("google_business")) {
     lines.push("【Google ビジネス】開いて本文を貼り付け → 投稿:", "https://business.google.com/posts");

@@ -32,6 +32,29 @@ interface FetchedContent {
   contentType: string;
 }
 
+/**
+ * メディア配信用の安全なパス解決。ファイル名のみ（英数._-）を許可し、
+ * パストラバーサル（../ や / 入り）は null を返す。
+ */
+export function safeMediaPath(dir: string, name: string): string | null {
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name.includes("..")) return null;
+  return path.join(dir, name);
+}
+
+/** 配信時の Content-Type（拡張子ベース、未知は octet-stream）。 */
+export function mediaContentType(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+  const map: Record<string, string> = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".heic": "image/heic",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
+
 /** content-type（無ければメッセージ種別）から保存拡張子を決める。 */
 export function extFromContentType(contentType: string | null | undefined, messageType: string): string {
   const key = (contentType ?? "").split(";")[0].trim().toLowerCase();
