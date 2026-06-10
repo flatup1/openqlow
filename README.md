@@ -22,6 +22,7 @@ npm run dev -- reject <post-id> "reason"
 npm run inquiry -- "<問い合わせ文>"
 npm run trial-followup -- --gender female --status 検討中
 npm run ad-copy -- --segment women_beginner
+npm run site-audit -- --file ./index.html
 npm run test
 ```
 
@@ -81,6 +82,21 @@ platform（任意）: `google | instagram | line`（省略時は全媒体）
 - 誇大表現（必ず痩せる等）・ビフォーアフター煽り・体型否定は使わない方針です。
 - 料金は `FLATUP_INFO` の初回体験500円を再利用します。
 - 広告は媒体向け配信文のため「AIKA」署名は付けません。
+
+## 集客AI司令塔 / サイト改善チェック
+
+公式サイトのテキスト/HTML を渡すと、初心者女性・キッズ保護者の視点で
+**体験予約導線 / 料金の分かりやすさ / 初心者・女性の安心感 / キッズ導線 / アクセス・駐車場 / 問い合わせ(LINE)導線**
+の6観点をチェックし、改善メモとスコアを出します。
+
+```bash
+npm run site-audit -- --label トップページ --file ./index.html
+cat index.html | npm run site-audit -- --label トップページ
+```
+
+- **ライブ取得はしません**。サイトを保存したファイル、またはページのテキストを入力します（決定的・テスト可能なため）。
+- HTMLタグ・script・style は除去し、可視テキストで判定します。
+- ルールベースの簡易チェックです。最終判断は人間が行います。
 
 ## Safety Rules
 
