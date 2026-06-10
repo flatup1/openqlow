@@ -20,6 +20,7 @@ npm run dev -- approve <post-id> "OK <post-id>"
 npm run dev -- revise <post-id> "revision note"
 npm run dev -- reject <post-id> "reason"
 npm run inquiry -- "<問い合わせ文>"
+npm run trial-followup -- --gender female --status 検討中
 npm run test
 ```
 
@@ -41,7 +42,26 @@ npm run inquiry -- "ダイエットで通いたい女性です。料金を教え
 - 料金・スケジュールは `src/generators/inquiry_reply.ts` の `FLATUP_INFO`（正本値）のみを使用し、AIが勝手に変更しません。
 - 医療的・法律的な断定や強引な営業文は避け、初心者・女性・キッズが安心できる表現に寄せています。
 - 返信は基本「AIKA」で締めます。
-- 見込み客の保存・ステータス管理（永続化）は state 層の役割で、本モジュールは含みません（第2段階）。
+
+見込み客の保存・ステータス管理は新規 DB を作らず、既存の朝インタビュー（`src/conversation/interview_flow.ts` の inquiry/trial ジャンル）＋ CRM ログ（`crm_log_generator`）＋ ToDo 抽出（`commands/daily_report_todo.ts`）運用を活かす方針です。
+
+## 集客AI司令塔 / 体験後フォロー生成
+
+体験に来た方の属性・様子・不安点・入会温度感を渡すと、AIKA 口調で
+**当日お礼／翌日フォロー／入会案内／Google口コミ依頼** の4文を生成します。
+既存の朝インタビュー（trial ジャンル）の回答 `gender / age_band / reaction / hesitation_reason / enrollment_status` をそのまま入力に使えます。
+
+```bash
+npm run trial-followup -- --gender female --age 30代 --reaction "ミット打ちが楽しそう" --concern 料金 --status 検討中
+```
+
+オプション: `--gender female|male` `--age <年齢層>` `--reaction <様子>` `--good <良かった点>` `--concern <不安点>` `--status はい|保留|検討中|いいえ`
+
+- 入会温度感（status）に応じて表現を調整し、見送り気味の方には**押し込まない**入会案内にします。
+- 料金は `FLATUP_INFO`（正本値）を再利用し、二重管理しません。
+- 口コミ依頼は良い体験の直後に送る前提の文面です。
+
+> 注: SNS 投稿生成は既存の `generators/daily_three`・`mma_topic` → `distribution/expand` → `publish/*` パイプラインが担当します（本ツール群では再実装しません）。
 
 ## Safety Rules
 

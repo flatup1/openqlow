@@ -79,7 +79,8 @@
 - テーマ生成・本文テンプレート
 - 投稿レビュー・採点
 - 顧客対応文面ドラフト
-  - 集客AI司令塔 第1段階「問い合わせ返信AIKA」 `src/generators/inquiry_reply.ts`（生成のみ・自動送信なし）
+  - 集客AI司令塔「問い合わせ返信AIKA」 `src/generators/inquiry_reply.ts`（生成のみ・自動送信なし）
+  - 集客AI司令塔「体験後フォロー＋口コミ依頼」 `src/generators/trial_followup.ts`（trialインタビュー項目を入力に流用・状態管理は持たない）
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）
