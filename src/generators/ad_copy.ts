@@ -131,12 +131,11 @@ const SEGMENTS: Record<AdSegment, SegmentDef> = {
 const TRIAL_CTA = `初回体験は${FLATUP_INFO.trialFirst.replace("初回体験", "").trim()}。まずは見学だけでもお気軽にどうぞ。`;
 
 function buildGoogle(def: SegmentDef): GoogleAd {
+  // Google レスポンシブ検索広告の制限: 見出し半角30字(全角15)・説明文半角90字(全角45)。
+  // value / proof / CTA を別々の説明文に分け、各文を制限内に収める。
   return {
     headlines: ["成田のキックボクシング", def.shortHead, "初回体験500円"],
-    descriptions: [
-      `${def.value}`,
-      `${def.proof} ${TRIAL_CTA}`,
-    ],
+    descriptions: [def.value, def.proof, TRIAL_CTA],
   };
 }
 
@@ -177,7 +176,7 @@ export function generateAdCopy(input: AdCopyInput): AdCopyResult {
     "⚠ これは下書きです。自動配信はしません。配信前に必ず内容を確認してください。",
     "誇大表現（必ず痩せる等）・ビフォーアフター煽り・体型を否定する表現は避けています。",
     "料金は正本（FLATUP_INFO）の初回体験500円を使用しています。変更時は正本を更新してください。",
-    "Google広告の見出しは全角15文字・説明文は全角45文字程度が目安です。媒体の文字数制限に合わせて調整してください。",
+    "Google広告は見出し全角15文字・説明文全角45文字以内に収めています（説明文は価値/安心/CTAの3本）。",
   ];
 
   return { segment: input.segment, label: def.label, variant, notes };

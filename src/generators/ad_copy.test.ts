@@ -21,6 +21,22 @@ for (const segment of AD_SEGMENTS) {
   assert(r.notes.some(n => n.includes("自動配信はしません")), `${segment}: notes warn no auto-publish`);
 }
 
+// --- Google広告の文字数制限を守る（見出し半角30 / 説明文半角90 以内） -------
+// 半角=1 / 全角=2 で概算（Googleの字幅ルールに合わせる）。
+const halfWidth = (s: string): number =>
+  [...s].reduce((n, ch) => n + (ch.charCodeAt(0) <= 0xff ? 1 : 2), 0);
+for (const segment of AD_SEGMENTS) {
+  const g = generateAdCopy({ segment }).variant.google;
+  for (const h of g.headlines) {
+    assert(halfWidth(h) <= 30, `${segment}: headline within 30 half-width: "${h}" (${halfWidth(h)})`);
+  }
+  for (const d of g.descriptions) {
+    assert(halfWidth(d) <= 90, `${segment}: description within 90 half-width: "${d}" (${halfWidth(d)})`);
+  }
+  // 説明文は 価値 / 安心 / CTA の3本
+  assert(g.descriptions.length === 3, `${segment}: 3 google descriptions`);
+}
+
 // --- セグメントごとに文面が差し替わる ---------------------------------------
 const women = generateAdCopy({ segment: "women_beginner" });
 const kids = generateAdCopy({ segment: "kids" });
