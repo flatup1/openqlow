@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
+import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
@@ -136,7 +137,8 @@ const server = http.createServer(async (req, res) => {
         if (ev.kind === "media") {
           results.push(await executeLineMedia(ev));
         } else {
-          results.push(await executeApprovalText(ev.text ?? "", ev.userId));
+          const crmResult = await executeLineCrmIntake({ text: ev.text ?? "", lineUserId: ev.userId });
+          results.push(crmResult.handled ? crmResult : await executeApprovalText(ev.text ?? "", ev.userId));
         }
       }
       if (extracted.linePayload) {
