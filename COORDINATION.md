@@ -25,6 +25,7 @@
 | `openqlow/src/sources/` | Claude | open | 2026-06-06 |
 | `openqlow/src/distribution/` | Claude | open | 2026-06-06 |
 | `openqlow/src/generators/` | Claude | open | 2026-06-06 |
+| `openqlow/src/crm/` | Claude | open | 2026-06-11 |
 | `openqlow/src/scheduler/` | Codex | open | 2026-06-06 |
 | `openqlow/src/monitor/` | Codex | open | 2026-06-06 |
 | `openqlow/src/line_bot/` | Codex | open | 2026-06-06 |

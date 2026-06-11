@@ -98,6 +98,33 @@ cat index.html | npm run site-audit -- --label トップページ
 - HTMLタグ・script・style は除去し、可視テキストで判定します。
 - ルールベースの簡易チェックです。最終判断は人間が行います。
 
+## 見込み客CRM（AI永久集客エンジンの土台）
+
+見込み客の記録・追客漏れの見える化・体験後フォロー・日次レポート・自己修復ログを、
+依存ゼロのTypeScriptで実装したCRMです（SQLiteの代わりにJSONファイルストア）。
+**AIは営業参謀であり、送信・予約確定・料金変更はしません。最終判断は人間が行います。**
+
+```bash
+# 見込み客を登録（最終連絡日時を自動付与）
+npm run crm -- add --name 山田 --gender female --category female --status waiting_reply --inquiry "初心者でも大丈夫ですか"
+# 一覧・ステータス更新
+npm run crm -- list
+npm run crm -- status 1 replied
+# 追客漏れ／体験後フォロー／口コミ依頼の候補を見える化
+npm run crm -- followups
+# 日次集客レポートを生成して保存（推奨メッセージはAIKAジェネレータを再利用）
+npm run crm -- daily-report
+# 自己修復ログ（記録と修復案のみ・自動修復なし）
+npm run crm -- log-error api_error "401 Unauthorized"
+```
+
+- データ保存先は `OPENQLOW_DATA_DIR`（既定 `./data`）。`data/`・`reports/`・`logs/` は
+  個人情報を含むため `.gitignore` 済み（コミットしない）。
+- 追客抽出条件: 返信漏れ=`waiting_reply/replied` かつ最終連絡から24h経過かつ未入会／
+  体験後フォロー=`trial_done`＋体験日あり＋未入会／口コミ=`joined`。
+- LLMを使う場合のプロンプトは `src/crm/ai_prompts.ts`（APIキー不要・貼り付け用）。
+- 状態の永続化は将来 `node:sqlite` へ差し替え可能な構造です。
+
 ## Safety Rules
 
 - No direct SNS publishing.
