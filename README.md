@@ -105,7 +105,9 @@ cat index.html | npm run site-audit -- --label トップページ
 **AIは営業参謀であり、送信・予約確定・料金変更はしません。最終判断は人間が行います。**
 
 ```bash
-# 見込み客を登録（最終連絡日時を自動付与）
+# 問い合わせ文を貼るだけで台帳に下書き登録（属性・温度感A/B/C・返信案を自動生成）
+npm run crm -- intake --message "小学生の子供に習わせたい。初心者でも大丈夫ですか" --name 田中 --source LINE
+# 手動でも登録できる（最終連絡日時を自動付与）
 npm run crm -- add --name 山田 --gender female --category female --status waiting_reply --inquiry "初心者でも大丈夫ですか"
 # 一覧・ステータス更新
 npm run crm -- list

@@ -15,7 +15,9 @@ import { openProspectStore } from "./store.js";
 import { buildDailyReport, saveDailyReport } from "./daily_report.js";
 import { getFollowupNeeded, getReviewRequestCandidates, getTrialFollowupNeeded } from "./queries.js";
 import { logError, type ErrorType } from "./self_repair.js";
+import { buildProspectFromInquiry } from "./intake.js";
 import { PROSPECT_STATUSES, type ProspectInput, type ProspectStatus } from "./prospect.js";
+import type { Gender } from "../generators/shared.js";
 
 const baseDir = process.env.OPENQLOW_DATA_DIR || path.join(process.cwd(), "data");
 const storeFile = path.join(baseDir, "prospects.json");
@@ -48,6 +50,22 @@ async function main(argv: string[]): Promise<number> {
       if (!input.lastContactAt) input.lastContactAt = new Date().toISOString();
       const created = await store.create(input);
       console.log(`登録しました: #${created.id} ${created.name || "(無名)"} [${created.status}]`);
+      return 0;
+    }
+    case "intake": {
+      const message = (flags.message ?? positional.join(" ")).trim();
+      if (!message) {
+        console.error('Usage: crm intake --message "<問い合わせ文>" [--name 田中] [--gender female|male] [--source LINE]');
+        return 1;
+      }
+      const { prospect, replyDraft } = buildProspectFromInquiry(
+        { message, gender: flags.gender as Gender | undefined },
+        { name: flags.name, contactSource: flags.source },
+      );
+      const created = await store.create(prospect);
+      console.log(`台帳に下書き登録しました: #${created.id} ${created.name || "(無名)"}`);
+      console.log(`属性:${created.category} / 温度感:${created.temperature} / 目的:${created.purpose} / 次アクション:${created.nextAction}`);
+      console.log("\n■ 返信下書き（確認して送信してください・自動送信はしません）\n" + replyDraft);
       return 0;
     }
     case "list": {
@@ -105,7 +123,7 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     default:
-      console.error("Commands: add | list | status <id> <status> | followups | daily-report | log-error <type> <message>");
+      console.error("Commands: intake --message <文> | add | list | status <id> <status> | followups | daily-report | log-error <type> <message>");
       return 1;
   }
 }
