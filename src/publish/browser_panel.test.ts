@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createBrowserPanel } from "./browser_panel.js";
@@ -41,9 +41,24 @@ const record: DraftRecord = {
 };
 
 await saveRecord(tmp, record);
-await createPublishQueueEntry(tmp, record, ["threads", "google_business", "line_voom"]);
+const publicMediaDir = path.join(tmp, "public", "media");
+const localMediaDir = path.join(tmp, "local", "media");
+await mkdir(publicMediaDir, { recursive: true });
+await mkdir(localMediaDir, { recursive: true });
+const publicImage = path.join(publicMediaDir, "post.jpg");
+const localImage = path.join(localMediaDir, "local.jpg");
+await writeFile(publicImage, "image");
+await writeFile(localImage, "image");
+await createPublishQueueEntry(tmp, record, ["threads", "google_business", "line_voom"], new Date("2026-05-30T00:00:00.000Z"), {
+  mediaFiles: [publicImage, localImage],
+});
 
-const file = await createBrowserPanel(tmp, "FG-20260530-004");
+const file = await createBrowserPanel(tmp, "FG-20260530-004", {
+  env: {
+    OPENQLOW_PUBLIC_MEDIA_DIR: publicMediaDir,
+    OPENQLOW_PUBLIC_MEDIA_BASE_URL: "https://media.example.com/openqlow/",
+  },
+});
 const html = await readFile(file, "utf8");
 
 assert.match(file, /FG-20260530-004\.html$/);
@@ -57,6 +72,11 @@ assert.match(html, /https:\/\/manager\.line\.biz\//);
 assert.match(html, /navigator\.clipboard\.writeText/);
 assert.match(html, /最終投稿ボタンは押さない/);
 assert.match(html, /子どもが安心して挑戦できる/);
+assert.match(html, /画像確認/);
+assert.match(html, /https:\/\/media\.example\.com\/openqlow\/post\.jpg/);
+assert.match(html, /local\.jpg/);
+assert.match(html, /Googleは画像URLをコピー/);
+assert.match(html, /LINE VOOMは画像ファイルをアップロード/);
 
 await rm(tmp, { recursive: true, force: true });
 
