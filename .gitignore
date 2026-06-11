@@ -2,7 +2,7 @@
 node_modules/
 
 # ランタイム生成物（VPS と Mac で別物、コミットしない）
-state/
+/state/
 drafts/
 logs/
 *.log
