@@ -5,6 +5,10 @@ export interface PublishThreadsTextInput {
   fetchImpl?: typeof fetch;
 }
 
+export interface PublishThreadsImageInput extends PublishThreadsTextInput {
+  imageUrl: string;
+}
+
 export interface PublishThreadsTextResult {
   creationId: string;
   postId: string;
@@ -29,17 +33,16 @@ function requireString(value: unknown, label: string): string {
   throw new Error(`Threads API response missing ${label}`);
 }
 
-export async function publishThreadsText(input: PublishThreadsTextInput): Promise<PublishThreadsTextResult> {
+async function publishThreadsContainer(input: {
+  userId: string;
+  accessToken: string;
+  body: URLSearchParams;
+  fetchImpl?: typeof fetch;
+}): Promise<PublishThreadsTextResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const createBody = new URLSearchParams({
-    media_type: "TEXT",
-    text: input.text,
-    access_token: input.accessToken,
-  });
-
   const create = await fetchImpl(`https://graph.threads.net/v1.0/${input.userId}/threads`, {
     method: "POST",
-    body: createBody,
+    body: input.body,
   });
   const createJson = await readJson(create);
   const creationId = requireString(createJson.id, "creation id");
@@ -56,4 +59,35 @@ export async function publishThreadsText(input: PublishThreadsTextInput): Promis
   const postId = requireString(publishJson.id, "post id");
 
   return { creationId, postId };
+}
+
+export async function publishThreadsText(input: PublishThreadsTextInput): Promise<PublishThreadsTextResult> {
+  const createBody = new URLSearchParams({
+    media_type: "TEXT",
+    text: input.text,
+    access_token: input.accessToken,
+  });
+
+  return publishThreadsContainer({
+    userId: input.userId,
+    accessToken: input.accessToken,
+    body: createBody,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+export async function publishThreadsImage(input: PublishThreadsImageInput): Promise<PublishThreadsTextResult> {
+  const createBody = new URLSearchParams({
+    media_type: "IMAGE",
+    image_url: input.imageUrl,
+    text: input.text,
+    access_token: input.accessToken,
+  });
+
+  return publishThreadsContainer({
+    userId: input.userId,
+    accessToken: input.accessToken,
+    body: createBody,
+    fetchImpl: input.fetchImpl,
+  });
 }
