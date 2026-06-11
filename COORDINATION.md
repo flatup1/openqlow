@@ -41,6 +41,7 @@
 | `openqlow/scripts/` | Codex | open | 2026-06-06 |
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/` | 共有 | open | - |
+| `openqlow/docs/superpowers/specs/` | 共有 | open | 2026-06-12 |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
 | `flatup-ai-os/src/ai/` | Codex | open | 2026-06-06 |
 | `flatup-ai-os/src/utils/` | Codex | open | 2026-06-06 |
