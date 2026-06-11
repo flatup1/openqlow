@@ -47,6 +47,8 @@ export interface Prospect {
   id: number;
   name: string;
   contactSource: string;
+  /** 外部チャネルの安定ID（例: LINE userId）。同一客の重複登録防止に使う */
+  externalId: string;
   gender: string;
   ageGroup: string;
   category: ProspectCategory;
@@ -74,6 +76,7 @@ export type ProspectInput = Partial<Omit<Prospect, "id" | "createdAt" | "updated
 const DEFAULTS: Omit<Prospect, "id" | "createdAt" | "updatedAt"> = {
   name: "",
   contactSource: "",
+  externalId: "",
   gender: "",
   ageGroup: "",
   category: "unknown",

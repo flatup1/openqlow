@@ -84,6 +84,8 @@
   - 集客AI司令塔「体験後フォロー＋口コミ依頼」 `src/generators/trial_followup.ts`（trialインタビュー項目を入力に流用・状態管理は持たない）
   - 集客AI司令塔「広告文生成」 `src/generators/ad_copy.ts`（ターゲット×媒体・配信なし）
   - 集客AI司令塔「サイト改善チェック」 `src/generators/site_audit.ts`（入力テキスト評価・ネットワーク取得なし）
+  - 見込み客CRM `src/crm/`（台帳・追客抽出・日報・自己修復ログ・intake）
+  - LINE接続口 `src/crm/line_intake.ts`（webhook配線はCodexへハンドオフ → `docs/HANDOFF_2026-06-11_claude→codex.md`）
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）

@@ -15,6 +15,7 @@ export interface ProspectStore {
   create(input: ProspectInput): Promise<Prospect>;
   getAll(): Promise<Prospect[]>;
   get(id: number): Promise<Prospect | undefined>;
+  findByExternalId(externalId: string): Promise<Prospect | undefined>;
   update(id: number, patch: ProspectInput): Promise<Prospect | undefined>;
   remove(id: number): Promise<boolean>;
 }
@@ -66,6 +67,12 @@ export function openProspectStore(filePath: string, now: () => Date = () => new 
     async get(id) {
       const list = await readAll(filePath);
       return list.find(p => p.id === id);
+    },
+
+    async findByExternalId(externalId) {
+      if (!externalId) return undefined;
+      const list = await readAll(filePath);
+      return list.find(p => p.externalId === externalId);
     },
 
     async update(id, patch) {
