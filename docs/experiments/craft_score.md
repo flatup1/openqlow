@@ -74,7 +74,7 @@ verdict: `>=20 ship` / `>=15 polish` / `<15 rework`
 - 依存ゼロ。
 - 既存フロー（daily / approval / safety / publish）に**一切ワイヤリングしていない**。
 - 型は `craft_score.ts` 内に閉じ、`src/types.ts` を汚さない。
-- 撤去手順: `src/distribution/` の `craft_score.ts` `recent_bodies.ts` `expand_scored.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies`/`test:expand-scored` 行を削除するだけ。
+- 撤去手順: `src/distribution/` の `craft_score.ts` `recent_bodies.ts` `expand_scored.ts` `score_ledger.ts` `score_insight.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies`/`test:expand-scored`/`test:score-ledger`/`test:score-insight` 行を削除するだけ。生成された `craft-score-ledger.jsonl` も消す。
 
 ## 生成→採点→修復ループ（expand_scored / 方向性B）
 
@@ -92,10 +92,33 @@ verdict: `>=20 ship` / `>=15 polish` / `<15 rework`
 
 実測: defaultBody フォールバックの idea で 3媒体すべて **+3点**（誘い修復）、安全維持。
 
+## スコアの永続化＋実測突合（score_ledger / score_insight / 方向性C）
+
+改善ループの入口。craft スコアを“データ化”し、実エンゲージメントと突き合わせて
+「どの軸が効くか」を出す。
+
+- `src/distribution/score_ledger.ts` — craft スコアを追記型 JSONL（`craft-score-ledger.jsonl`）に貯める。
+  既存の register/log 形式は触らず独自ファイルに書く。`entriesFromImprovements` で
+  `expandIdeaScored` の結果をそのまま台帳化できる。
+- `src/distribution/score_insight.ts` — 台帳と Codex の `performance-log.jsonl`（**読み取り専用**）を
+  `recordId` で突合し、各軸とエンゲージメント（いいね/コメント/保存/シェアの重み付き和）の
+  **相関(Pearson)** を計算。`buildCraftInsight` / `formatInsight` / CLI。
+
+```bash
+npx tsx src/distribution/score_insight.ts   # 台帳×実測のインサイトを表示
+npm run test:score-ledger
+npm run test:score-insight
+```
+
+実測が貯まるまでは相関を出さず「採点 N 件 / 実測あり M 件」と進捗を返す（3件以上で相関表示）。
+媒体ごとのスコアは recordId 単位に平均集約してから突合する。
+
 ## 既知の限界 / 次の一手（未実装）
 
 - 採点も修復もヒューリスティック。LLM批評・LLM再生成ではない（依存ゼロ方針のため）。
 - 修復は「誘い」「X長さ」の2軸のみ。フック／具体性の自動修復は文意を壊しうるので未対応。
-- `expandIdeaScored` は本番 daily にはまだ未配線（使わなければ挙動は変わらない）。配線は要相談。
+- `expandIdeaScored` も score_ledger 記録も本番 daily にはまだ**未配線**（使わなければ挙動は変わらない）。配線は要相談。
+- `performance-log.jsonl` は現状 metrics が pending（null）。実測の取り込みは Codex領域の運用なので、
+  相関が出るのは実数値が入り始めてから。相関 n は少数のうちは過信しない（3件は最低ライン）。
 - register が本文を持たない問題（approval-register は theme/angle のみ）。本文を register に持たせると
   突合が楽になるが、それは Codex領域（adapters）の変更なので要相談。
