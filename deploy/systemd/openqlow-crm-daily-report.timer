@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OPENQLOW CRM daily report at 08:05 JST
+
+[Timer]
+OnCalendar=*-*-* 08:05:00 Asia/Tokyo
+Persistent=true
+Unit=openqlow-crm-daily-report.service
+
+[Install]
+WantedBy=timers.target

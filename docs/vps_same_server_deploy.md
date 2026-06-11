@@ -77,6 +77,7 @@ sudo nano /etc/openqlow/openqlow.env
 
 ```dotenv
 OPENQLOW_ROOT=/opt/openqlow
+OPENQLOW_DATA_DIR=/home/flatup/openqlow-data
 OPENQLOW_LINE_PORT=8787
 OPENQLOW_DRY_RUN=true
 LINE_CHANNEL_SECRET=OPENQLOW専用LINEの値
@@ -88,13 +89,28 @@ BACKUP_APPROVER_LINE_USER_ID=副承認者のLINE userId（任意）
 本番Pushするまでは `OPENQLOW_DRY_RUN=true` のままでよいです。
 Phase 1ではSNS公開ランタイムそのものを使わないため、`OPENQLOW_ENABLE_PUBLIC_POSTING=true` は設定しません。
 
+## CRMデータ保存先
+
+見込み客台帳・日報・自己修復ログは、リポジトリ外の `/home/flatup/openqlow-data` に保存します。
+`openqlow-crm-daily-report.service` は `User=openqlow` で動くため、`openqlow` ユーザーが書き込める権限にします。
+
+```bash
+sudo mkdir -p /home/flatup/openqlow-data/{reports/daily,logs/self_repair}
+sudo chown -R openqlow:openqlow /home/flatup/openqlow-data
+```
+
+`OPENQLOW_DATA_DIR` が未設定だと `/opt/openqlow/data` に保存されるため、本番では必ず `/etc/openqlow/openqlow.env` に設定してください。
+
 ## systemd
 
 ```bash
 sudo bash /opt/openqlow/deploy/scripts/install-openqlow-vps.sh
+sudo cp /opt/openqlow/deploy/systemd/openqlow-crm-daily-report.* /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl start openqlow-webhook.service
 sudo systemctl start openqlow-daily.timer
 sudo systemctl start openqlow-monitor.timer
+sudo systemctl enable --now openqlow-crm-daily-report.timer
 sudo systemctl start openqlow-morning.timer   # 毎朝 07:00 JST に LINE push（要 JIN_LINE_USER_ID + LINE_CHANNEL_ACCESS_TOKEN）
 sudo systemctl status openqlow-webhook.service
 sudo systemctl list-timers 'openqlow-*'
@@ -111,7 +127,10 @@ sudo systemctl stop openqlow-morning.timer
 ```bash
 journalctl -u openqlow-webhook.service -f
 journalctl -u openqlow-daily.service -n 100
+journalctl -u openqlow-crm-daily-report -n 20
 journalctl -u openqlow-monitor.service -n 100
+systemctl list-timers | grep openqlow-crm
+ls /home/flatup/openqlow-data/reports/daily/
 ```
 
 ## nginx

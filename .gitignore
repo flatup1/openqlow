@@ -2,10 +2,14 @@
 node_modules/
 
 # ランタイム生成物（VPS と Mac で別物、コミットしない）
-state/
+/state/
 drafts/
 logs/
 *.log
+
+# CRM ランタイムデータ（見込み客PII・日報は個人情報を含むためコミットしない）
+data/
+reports/
 
 # 機密
 .env
