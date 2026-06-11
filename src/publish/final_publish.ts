@@ -4,6 +4,7 @@ import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
 import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.js";
 import type { PublishDestination, PublishQueueEntry } from "./publisher_types.js";
+import { resolvePublicMediaUrl } from "./public_media.js";
 import { publishThreadsImage, publishThreadsText } from "./threads_api.js";
 
 export interface FinalPublishResult {
@@ -82,7 +83,8 @@ export async function runFinalPublish(
         browserDestinations.push(destination);
         continue;
       }
-      if (mediaFile && !isThreadsImageUrl(mediaFile)) {
+      const mediaUrl = mediaFile ? await resolvePublicMediaUrl(mediaFile, env) : undefined;
+      if (mediaFile && !isThreadsImageUrl(mediaUrl ?? "")) {
         browserDestinations.push(destination);
         continue;
       }
@@ -98,12 +100,12 @@ export async function runFinalPublish(
         continue;
       }
       const text = draftText(draft);
-      const published = mediaFile
+      const published = mediaUrl
         ? await publishThreadsImage({
           userId,
           accessToken,
           text,
-          imageUrl: mediaFile,
+          imageUrl: mediaUrl,
           fetchImpl: opts.fetchImpl,
         })
         : await publishThreadsText({
