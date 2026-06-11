@@ -26,11 +26,17 @@ assert(ig.launchUrl === null, "instagram has no prefill link");
 assert(ig.launchKind === "copy_only", "instagram is copy_only");
 assert(ig.finalText.includes("ワンコイン体験"), "IG finalText still available for copy");
 
+// ── 画像リマインド(B): 媒体ごとに「手で1枚付けてね」案内が出る ──
+assert(x.mediaHint?.includes("画像ボタン"), "X should hint attaching an image by hand");
+assert(ig.mediaHint?.includes("必須"), "instagram should say an image is required");
+assert(buildKitItem({ platform: "line", body: safeBody }).mediaHint === null, "line has no media hint");
+
 // ── 再ゲート(C): 承認後に危険が混ざっていたらリンクを作らない ──
 const unsafe = buildKitItem({ platform: "x", body: "体験希望は090-1234-5678へ連絡してください。FLATUP GYM" });
 assert(!unsafe.safe, "phone number should fail the re-gate");
 assert(unsafe.launchUrl === null, "unsafe copy must not produce a launch link");
 assert(unsafe.blockedReasons.length > 0, "unsafe copy should report block reasons");
+assert(unsafe.mediaHint === null, "blocked copy should not show a media hint");
 
 // 営業CTAも再ゲートで弾く
 const salesy = buildKitItem({ platform: "x", body: "体験は公式LINEからお気軽にご連絡ください。FLATUP GYM" });

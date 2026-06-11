@@ -38,6 +38,8 @@ export interface PublishKitItem {
   /** 投稿画面を本文入りで開くリンク。プリフィル不可の媒体や非安全時は null。 */
   launchUrl: string | null;
   launchKind: LaunchKind;
+  /** 画像添付のリマインド。リンクでは画像を渡せないので手で付ける案内。不要なら null。 */
+  mediaHint: string | null;
 }
 
 export interface PublishKit {
@@ -70,6 +72,20 @@ function buildLaunchUrl(platform: string, finalText: string): { url: string | nu
   }
 }
 
+// 起動リンク／コピー運用のどちらでも、画像は本文と一緒に自動では渡せない（媒体・ブラウザの仕様）。
+// 「手で1枚付ける」案内を媒体ごとに出す。instagram は画像必須なので強めの文言。
+function mediaHintFor(platform: string): string | null {
+  switch (platform) {
+    case "instagram":
+      return "📷 画像が必須です。投稿画面で写真（または動画）を選んでください。";
+    case "x":
+    case "threads":
+      return "📷 写真を付けたい場合は、開いた投稿画面で画像ボタンから1枚選んでください（本文は入力済み）。";
+    default:
+      return null;
+  }
+}
+
 export function buildKitItem(draft: DraftInput): PublishKitItem {
   const finalText = renderFinalText(draft.body, draft.hashtags);
   const safety = checkDraftSafety(finalText); // ← 公開直前の再ゲート(C)
@@ -86,6 +102,7 @@ export function buildKitItem(draft: DraftInput): PublishKitItem {
     warnings,
     launchUrl: launch.url,
     launchKind: launch.kind,
+    mediaHint: safety.ok ? mediaHintFor(draft.platform) : null,
   };
 }
 
@@ -107,9 +124,10 @@ export function formatKitItem(item: PublishKitItem): string {
   }
   const launch = item.launchUrl ? `起動リンク: ${item.launchUrl}` : "起動リンク: なし（コピーして手動投稿）";
   const warn = item.warnings.length ? `\n  ⚠ ${item.warnings.join(" / ")}` : "";
+  const media = item.mediaHint ? `\n  ${item.mediaHint}` : "";
   return [
     `[${item.platform}] ✅ 安全チェック済み`,
-    `  ${launch}${warn}`,
+    `  ${launch}${warn}${media}`,
     `  --- コピー用 ---`,
     item.finalText
       .split("\n")
