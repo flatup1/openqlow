@@ -74,7 +74,7 @@ verdict: `>=20 ship` / `>=15 polish` / `<15 rework`
 - 依存ゼロ。
 - 既存フロー（daily / approval / safety / publish）に**一切ワイヤリングしていない**。
 - 型は `craft_score.ts` 内に閉じ、`src/types.ts` を汚さない。
-- 撤去手順: `src/distribution/` の `craft_score.ts` `recent_bodies.ts` `expand_scored.ts` `score_ledger.ts` `score_insight.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies`/`test:expand-scored`/`test:score-ledger`/`test:score-insight` 行を削除するだけ。生成された `craft-score-ledger.jsonl` も消す。
+- 撤去手順: `src/distribution/` の `craft_score.ts` `recent_bodies.ts` `expand_scored.ts` `score_ledger.ts` `score_insight.ts` `publish_kit.ts` と各 `*.test.ts`、本ドキュメント、`package.json` の `test:craft-score`/`test:recent-bodies`/`test:expand-scored`/`test:score-ledger`/`test:score-insight`/`test:publish-kit` 行を削除するだけ。生成された `craft-score-ledger.jsonl` も消す。
 
 ## 生成→採点→修復ループ（expand_scored / 方向性B）
 
@@ -112,6 +112,26 @@ npm run test:score-insight
 
 実測が貯まるまでは相関を出さず「採点 N 件 / 実測あり M 件」と進捗を返す（3件以上で相関表示）。
 媒体ごとのスコアは recordId 単位に平均集約してから突合する。
+
+## 公開キット生成（publish_kit / 外部公開を簡単に × 安全そのまま）
+
+承認済みドラフトを「コピー用本文 ＋ X/Threads の投稿画面起動リンク」に変換する。
+**ネットワーク送信も自動投稿もしない。最後に投稿を押すのは人間のまま＝安全モデル不変。**
+
+- `buildKitItem(draft)` / `buildPublishKit(record)` — 各本文を `checkDraftSafety` で
+  **公開直前に再ゲート(C)** し、通ったものだけ起動リンク付きキットにする。危険・営業CTAが
+  混ざっていればリンクは作らない（安全はそのまま、むしろ少し堅い）。
+- 起動リンク: **X** = `https://twitter.com/intent/tweet?text=…`、**Threads** =
+  `https://www.threads.net/intent/post?text=…`（どちらも本文プリフィル対応の公式機能）。
+  Instagram 等はプリフィルが無いので `copy_only`（コピー用本文だけ提供）。
+
+```bash
+npx tsx src/distribution/publish_kit.ts --platform x --tags 成田市,FLATUPGYM "本文..."
+npm run test:publish-kit
+```
+
+「簡単さ」＝タップで本文入りの投稿画面が開く（コピペ・打ち直しゼロ）。
+LINEに流す配線(B) は Codex領域なので、ここでは「キットを作る」までに留める。
 
 ## 既知の限界 / 次の一手（未実装）
 
