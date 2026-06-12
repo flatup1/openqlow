@@ -26,6 +26,7 @@ export type LineCommandAction =
   | "git_push"
   | "memory_keeper"
   | "owner_info"
+  | "help"
   | "revision"
   | "media_insert"
   | "image_choice"
@@ -68,6 +69,26 @@ function parseAppendCommand(text: string): string | undefined {
 
 function isPushCommand(text: string): boolean {
   return canonicalLineCommand(text) === "/push";
+}
+
+function isHelpCommand(text: string): boolean {
+  const normalized = normalizeLineText(text).toLowerCase();
+  return ["ヘルプ", "help", "?", "？", "使い方"].includes(normalized);
+}
+
+function helpMessage(): string {
+  return [
+    "今できる返信",
+    "",
+    "ok → 進める",
+    "修正 文 → 文を直す",
+    "画像 1 → 画像を選ぶ",
+    "画像なし → 画像なし",
+    "やめる → 中止",
+    "",
+    "朝はこれだけ:",
+    "日報 → 投稿 → 画像 1 → ok",
+  ].join("\n");
 }
 
 async function appendLineMemo(body: string, opts: ExecuteLineCommandOptions): Promise<string> {
@@ -276,6 +297,15 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
       ok: true,
       action: "owner_info",
       message: getOwnerInfoReply(),
+    };
+  }
+
+  if (isHelpCommand(text)) {
+    return {
+      handled: true,
+      ok: true,
+      action: "help",
+      message: helpMessage(),
     };
   }
 

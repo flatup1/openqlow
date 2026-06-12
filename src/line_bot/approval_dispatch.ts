@@ -1,5 +1,5 @@
 import { parseApprovalCommand } from "../approval/command.js";
-import { expandApprovalShortcut } from "../approval/shortcut.js";
+import { expandApprovalShortcut, expandRejectionShortcut } from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily.js";
@@ -46,7 +46,10 @@ async function handleParsedApproval(
 
 export async function executeApprovalText(text: string, userId?: string): Promise<Record<string, unknown>> {
   const config = loadConfig();
-  const approvalText = await expandApprovalShortcut(text, config.root) ?? text;
+  const approvalText =
+    await expandApprovalShortcut(text, config.root)
+    ?? await expandRejectionShortcut(text, config.root)
+    ?? text;
   const okShortcutUsed = approvalText !== text;
   const parsed = parseApprovalCommand(approvalText);
 

@@ -39,28 +39,47 @@ function pendingRecord(id: string): DraftRecord {
   };
 }
 
-const root = await mkdtemp(path.join(tmpdir(), "openqlow-approval-dispatch-root-"));
-const vault = await mkdtemp(path.join(tmpdir(), "openqlow-approval-dispatch-vault-"));
-process.env.OPENQLOW_ROOT = root;
-process.env.OBSIDIAN_VAULT_ROOT = vault;
+async function withTempEnv<T>(fn: (root: string, vault: string) => Promise<T>): Promise<T> {
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-approval-dispatch-root-"));
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-approval-dispatch-vault-"));
+  process.env.OPENQLOW_ROOT = root;
+  process.env.OBSIDIAN_VAULT_ROOT = vault;
+  return fn(root, vault);
+}
 
-const id = "FG-20260608-401";
-const userId = "test-approval-dispatch-user";
-await saveRecord(root, pendingRecord(id));
-await rememberApprovalCandidate(root, id);
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-401";
+  const userId = "test-approval-dispatch-user";
+  await saveRecord(root, pendingRecord(id));
+  await rememberApprovalCandidate(root, id);
 
-const daily = await executeLineCommand("日報", { userId });
-assert.equal(daily.handled, true);
-assert.equal(daily.action, "memory_keeper");
+  const daily = await executeLineCommand("日報", { userId });
+  assert.equal(daily.handled, true);
+  assert.equal(daily.action, "memory_keeper");
 
-const approved = await executeApprovalText("ok", userId);
-assert.equal(approved.ok, true);
-assert.equal(approved.action, "approved");
-assert.equal(approved.id, id);
-assert.match(String(approved.message), /投稿準備キュー/);
-assert.doesNotMatch(String(approved.message), /日報として読み取れません/);
+  const approved = await executeApprovalText("ok", userId);
+  assert.equal(approved.ok, true);
+  assert.equal(approved.action, "approved");
+  assert.equal(approved.id, id);
+  assert.match(String(approved.message), /投稿準備キュー/);
+  assert.doesNotMatch(String(approved.message), /日報として読み取れません/);
 
-const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
-assert.equal(saved.status, "saved");
+  const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+  assert.equal(saved.status, "saved");
+});
+
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-402";
+  await saveRecord(root, pendingRecord(id));
+  await rememberApprovalCandidate(root, id);
+
+  const rejected = await executeApprovalText("やめる", "test-approval-dispatch-user");
+  assert.equal(rejected.ok, true);
+  assert.equal(rejected.action, "rejected");
+  assert.equal(rejected.id, id);
+
+  const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+  assert.equal(saved.status, "rejected");
+});
 
 console.log("approval dispatch tests passed");

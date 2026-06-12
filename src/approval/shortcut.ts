@@ -11,6 +11,11 @@ function isOkOnly(text: string): boolean {
   return text.normalize("NFKC").trim().toLowerCase() === "ok";
 }
 
+function isRejectOnly(text: string): boolean {
+  const normalized = text.normalize("NFKC").trim().toLowerCase();
+  return ["no", "n", "やめる", "キャンセル", "x", "×", "✕"].includes(normalized);
+}
+
 async function loadStateRecords(root: string): Promise<DraftRecord[]> {
   const dir = path.join(root, "state");
   const files = await readdir(dir).catch(() => []);
@@ -77,4 +82,23 @@ export async function expandApprovalShortcut(text: string, root: string): Promis
 
   if (!latest) return undefined;
   return `OK ${latest.id} all`;
+}
+
+export async function expandRejectionShortcut(text: string, root: string): Promise<string | undefined> {
+  if (!isRejectOnly(text)) return undefined;
+
+  const last = await loadLastApprovalCandidate(root);
+  if (last) {
+    const lastRecord = await loadRecord(root, last.id);
+    if (lastRecord?.status === "pending_approval") {
+      return `NO ${lastRecord.id}`;
+    }
+  }
+
+  const latest = (await loadStateRecords(root))
+    .filter((record) => record.status === "pending_approval")
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+
+  if (!latest) return undefined;
+  return `NO ${latest.id}`;
 }
