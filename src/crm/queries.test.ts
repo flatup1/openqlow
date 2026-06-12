@@ -39,6 +39,13 @@ assert(!followups.includes(newInquiry), "new_inquiry excluded (not waiting/repli
 const noContact = make({ name: "G", status: "waiting_reply", lastContactAt: "" });
 assert(getFollowupNeeded([noContact], now).length === 1, "missing lastContactAt treated as overdue");
 
+// しきい値は調整可能（48hにすると36h前のwaitingは対象外、12hにすると6h前も対象）
+const at36h = make({ name: "H36", status: "waiting_reply", lastContactAt: old }); // 36h前
+const at6h = make({ name: "H6", status: "waiting_reply", lastContactAt: recent }); // 6h前
+assert(getFollowupNeeded([at36h], now, 48).length === 0, "48h threshold excludes 36h-old");
+assert(getFollowupNeeded([at36h], now, 24).length === 1, "24h threshold includes 36h-old");
+assert(getFollowupNeeded([at6h], now, 4).length === 1, "4h threshold includes 6h-old");
+
 // --- getTrialFollowupNeeded ---------------------------------------------------
 const trialDone = make({ name: "H", status: "trial_done", trialDate: "2026-06-09", joined: 0 });
 const trialDoneJoined = make({ name: "I", status: "trial_done", trialDate: "2026-06-09", joined: 1 });
