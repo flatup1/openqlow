@@ -31,6 +31,28 @@ assert(x.mediaHint?.includes("画像ボタン"), "X should hint attaching an ima
 assert(ig.mediaHint?.includes("必須"), "instagram should say an image is required");
 assert(buildKitItem({ platform: "line", body: safeBody }).mediaHint === null, "line has no media hint");
 
+// ── X 文字数制限(140字): 以内ならリンクあり、超過ならリンクを作らない ──
+assert(x.charLimit === 140, "X limit should be 140");
+assert(x.withinLimit, "short X copy is within 140");
+assert([...x.finalText].length === x.charCount, "charCount counts code points");
+
+const longBody = "あ".repeat(150);
+const longX = buildKitItem({ platform: "x", body: longBody });
+assert(longX.safe, "long body is still safe (length is separate from safety)");
+assert(!longX.withinLimit, "150 chars exceeds the 140 limit");
+assert(longX.launchUrl === null, "over-limit X copy must not produce a launch link");
+assert(longX.charCount === 150, "150 chars counted");
+assert(formatKitItem(longX).includes("オーバー"), "over-limit item is clearly marked");
+
+// 他媒体は文字数上限なし（同じ長文でもリンクは作る）
+const longThreads = buildKitItem({ platform: "threads", body: longBody });
+assert(longThreads.charLimit === null, "threads has no char limit");
+assert(longThreads.withinLimit && longThreads.launchUrl !== null, "threads is not length-gated");
+
+// 絵文字も1字として数える
+const emoji = buildKitItem({ platform: "x", body: "🥊" });
+assert(emoji.charCount === 1, "a single emoji counts as 1 char");
+
 // ── 再ゲート(C): 承認後に危険が混ざっていたらリンクを作らない ──
 const unsafe = buildKitItem({ platform: "x", body: "体験希望は090-1234-5678へ連絡してください。FLATUP GYM" });
 assert(!unsafe.safe, "phone number should fail the re-gate");

@@ -35,11 +35,17 @@ export interface PublishKitItem {
   blockedReasons: string[];
   /** 警告（severity=warn のメッセージ）。 */
   warnings: string[];
-  /** 投稿画面を本文入りで開くリンク。プリフィル不可の媒体や非安全時は null。 */
+  /** 投稿画面を本文入りで開くリンク。プリフィル不可の媒体・非安全・長さ超過時は null。 */
   launchUrl: string | null;
   launchKind: LaunchKind;
   /** 画像添付のリマインド。リンクでは画像を渡せないので手で付ける案内。不要なら null。 */
   mediaHint: string | null;
+  /** 最終テキストの文字数（絵文字・サロゲートペアを1字として数える）。 */
+  charCount: number;
+  /** この媒体の文字数上限。上限なしの媒体は null。 */
+  charLimit: number | null;
+  /** 文字数が上限以内か。超過していると起動リンクは作らない。 */
+  withinLimit: boolean;
 }
 
 export interface PublishKit {
@@ -56,6 +62,16 @@ function renderFinalText(body: string, hashtags: string[] = []): string {
     .map(tag => (tag.startsWith("#") ? tag : `#${tag}`))
     .join(" ");
   return tags ? `${body.trim()}\n\n${tags}` : body.trim();
+}
+
+// 媒体ごとの文字数上限（運用ポリシー）。X は短く刺すため 140 字に絞る。上限なしは未設定。
+const CHAR_LIMITS: Record<string, number> = {
+  x: 140,
+};
+
+// 絵文字やサロゲートペアを1字として数える（[...str].length は code point 単位）。
+function countChars(text: string): number {
+  return [...text].length;
 }
 
 // 各 SNS の「投稿画面を本文入りで開く」公式 intent エンドポイント。
@@ -92,7 +108,13 @@ export function buildKitItem(draft: DraftInput): PublishKitItem {
   const blockedReasons = safety.issues.filter(i => i.severity === "block").map(i => i.message);
   const warnings = safety.issues.filter(i => i.severity === "warn").map(i => i.message);
 
-  const launch = safety.ok ? buildLaunchUrl(draft.platform, finalText) : { url: null, kind: "copy_only" as LaunchKind };
+  const charCount = countChars(finalText);
+  const charLimit = CHAR_LIMITS[draft.platform] ?? null;
+  const withinLimit = charLimit === null || charCount <= charLimit;
+
+  // 起動リンクは「安全」かつ「長さが上限以内」のときだけ作る。超過分は人が削ってから。
+  const canLaunch = safety.ok && withinLimit;
+  const launch = canLaunch ? buildLaunchUrl(draft.platform, finalText) : { url: null, kind: "copy_only" as LaunchKind };
 
   return {
     platform: draft.platform,
@@ -103,6 +125,9 @@ export function buildKitItem(draft: DraftInput): PublishKitItem {
     launchUrl: launch.url,
     launchKind: launch.kind,
     mediaHint: safety.ok ? mediaHintFor(draft.platform) : null,
+    charCount,
+    charLimit,
+    withinLimit,
   };
 }
 
@@ -122,11 +147,22 @@ export function formatKitItem(item: PublishKitItem): string {
       ...item.blockedReasons.map(r => `    - ${r}`),
     ].join("\n");
   }
-  const launch = item.launchUrl ? `起動リンク: ${item.launchUrl}` : "起動リンク: なし（コピーして手動投稿）";
+  const count =
+    item.charLimit !== null
+      ? `  文字数: ${item.charCount} / ${item.charLimit}`
+      : `  文字数: ${item.charCount}`;
+  const overBy = item.charLimit !== null ? item.charCount - item.charLimit : 0;
+  const launch = item.withinLimit
+    ? item.launchUrl
+      ? `起動リンク: ${item.launchUrl}`
+      : "起動リンク: なし（コピーして手動投稿）"
+    : `起動リンク: なし（${overBy}字オーバー。${item.charLimit}字以内に縮めてください）`;
   const warn = item.warnings.length ? `\n  ⚠ ${item.warnings.join(" / ")}` : "";
   const media = item.mediaHint ? `\n  ${item.mediaHint}` : "";
+  const head = item.withinLimit ? `[${item.platform}] ✅ 安全チェック済み` : `[${item.platform}] ⚠ 文字数オーバー`;
   return [
-    `[${item.platform}] ✅ 安全チェック済み`,
+    head,
+    count,
     `  ${launch}${warn}${media}`,
     `  --- コピー用 ---`,
     item.finalText
