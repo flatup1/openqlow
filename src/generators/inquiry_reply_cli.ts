@@ -63,6 +63,7 @@ export function renderResult(input: InquiryInput): string {
     section("③ 予約誘導を強めた返信文", r.bookingFocused),
     section("④ 24時間後の追客文", r.followUp24h),
     section("⑤ 3日後の追客文", r.followUp3d),
+    ...(r.obstacleConsult ? [section("⑥ 難条件の相談（途中参加など）への返信", r.obstacleConsult)] : []),
     section("注意", result.notes.map(n => `- ${n}`).join("\n")),
     "=====================================================================",
   ];
