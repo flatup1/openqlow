@@ -64,57 +64,72 @@ function renderFinalText(body: string, hashtags: string[] = []): string {
   return tags ? `${body.trim()}\n\n${tags}` : body.trim();
 }
 
-// 媒体ごとの文字数上限（運用ポリシー）。X は短く刺すため 140 字に絞る。上限なしは未設定。
-const CHAR_LIMITS: Record<string, number> = {
-  x: 140,
-};
-
 // 絵文字やサロゲートペアを1字として数える（[...str].length は code point 単位）。
 function countChars(text: string): number {
   return [...text].length;
 }
 
-// 各 SNS の「投稿画面を本文入りで開く」公式 intent エンドポイント。
-// X / Threads は text プリフィルに対応。Instagram 等はフィード投稿のプリフィルが無い。
-function buildLaunchUrl(platform: string, finalText: string): { url: string | null; kind: LaunchKind } {
-  const encoded = encodeURIComponent(finalText);
-  switch (platform) {
-    case "x":
-      return { url: `https://twitter.com/intent/tweet?text=${encoded}`, kind: "x_intent" };
-    case "threads":
-      return { url: `https://www.threads.net/intent/post?text=${encoded}`, kind: "threads_intent" };
-    default:
-      return { url: null, kind: "copy_only" }; // instagram / line / youtube はコピー運用
-  }
+// 媒体ごとの挙動を1か所に集約（単一の真実）。媒体を足すときはここに1エントリ追加するだけ。
+//   intent   : 投稿画面を本文入りで開く公式 intent URL を作る関数。プリフィル不可なら null。
+//   charLimit: 文字数上限（運用ポリシー）。上限なしは null。
+//   mediaHint: 画像はリンクで渡せないため手で付ける案内。不要なら null。
+interface PlatformConfig {
+  intent: ((encoded: string) => string) | null;
+  launchKind: LaunchKind;
+  charLimit: number | null;
+  mediaHint: string | null;
 }
 
-// 起動リンク／コピー運用のどちらでも、画像は本文と一緒に自動では渡せない（媒体・ブラウザの仕様）。
-// 「手で1枚付ける」案内を媒体ごとに出す。instagram は画像必須なので強めの文言。
-function mediaHintFor(platform: string): string | null {
-  switch (platform) {
-    case "instagram":
-      return "📷 画像が必須です。投稿画面で写真（または動画）を選んでください。";
-    case "x":
-    case "threads":
-      return "📷 写真を付けたい場合は、開いた投稿画面で画像ボタンから1枚選んでください（本文は入力済み）。";
-    default:
-      return null;
-  }
+const IMAGE_OPTIONAL_HINT = "📷 写真を付けたい場合は、開いた投稿画面で画像ボタンから1枚選んでください（本文は入力済み）。";
+
+const PLATFORMS: Record<string, PlatformConfig> = {
+  // X は短く刺すため 140 字に絞る。
+  x: {
+    intent: encoded => `https://twitter.com/intent/tweet?text=${encoded}`,
+    launchKind: "x_intent",
+    charLimit: 140,
+    mediaHint: IMAGE_OPTIONAL_HINT,
+  },
+  threads: {
+    intent: encoded => `https://www.threads.net/intent/post?text=${encoded}`,
+    launchKind: "threads_intent",
+    charLimit: null,
+    mediaHint: IMAGE_OPTIONAL_HINT,
+  },
+  // instagram はフィード投稿のプリフィルが無くコピー運用。画像は必須。
+  instagram: {
+    intent: null,
+    launchKind: "copy_only",
+    charLimit: null,
+    mediaHint: "📷 画像が必須です。投稿画面で写真（または動画）を選んでください。",
+  },
+};
+
+// 未知の媒体（line / youtube 等）はリンク・上限・案内なしのコピー運用。
+const DEFAULT_PLATFORM: PlatformConfig = { intent: null, launchKind: "copy_only", charLimit: null, mediaHint: null };
+
+function platformConfig(platform: string): PlatformConfig {
+  return PLATFORMS[platform] ?? DEFAULT_PLATFORM;
 }
 
 export function buildKitItem(draft: DraftInput): PublishKitItem {
   const finalText = renderFinalText(draft.body, draft.hashtags);
+  const cfg = platformConfig(draft.platform);
+
   const safety = checkDraftSafety(finalText); // ← 公開直前の再ゲート(C)
-  const blockedReasons = safety.issues.filter(i => i.severity === "block").map(i => i.message);
-  const warnings = safety.issues.filter(i => i.severity === "warn").map(i => i.message);
+  const blockedReasons: string[] = [];
+  const warnings: string[] = [];
+  for (const issue of safety.issues) {
+    if (issue.severity === "block") blockedReasons.push(issue.message);
+    else if (issue.severity === "warn") warnings.push(issue.message);
+  }
 
   const charCount = countChars(finalText);
-  const charLimit = CHAR_LIMITS[draft.platform] ?? null;
-  const withinLimit = charLimit === null || charCount <= charLimit;
+  const withinLimit = cfg.charLimit === null || charCount <= cfg.charLimit;
 
-  // 起動リンクは「安全」かつ「長さが上限以内」のときだけ作る。超過分は人が削ってから。
-  const canLaunch = safety.ok && withinLimit;
-  const launch = canLaunch ? buildLaunchUrl(draft.platform, finalText) : { url: null, kind: "copy_only" as LaunchKind };
+  // 起動リンクは「安全」かつ「長さが上限以内」かつ「プリフィル対応媒体」のときだけ作る。
+  const canLaunch = safety.ok && withinLimit && cfg.intent !== null;
+  const launchUrl = canLaunch ? cfg.intent!(encodeURIComponent(finalText)) : null;
 
   return {
     platform: draft.platform,
@@ -122,11 +137,11 @@ export function buildKitItem(draft: DraftInput): PublishKitItem {
     safe: safety.ok,
     blockedReasons,
     warnings,
-    launchUrl: launch.url,
-    launchKind: launch.kind,
-    mediaHint: safety.ok ? mediaHintFor(draft.platform) : null,
+    launchUrl,
+    launchKind: launchUrl ? cfg.launchKind : "copy_only",
+    mediaHint: safety.ok ? cfg.mediaHint : null,
     charCount,
-    charLimit,
+    charLimit: cfg.charLimit,
     withinLimit,
   };
 }
