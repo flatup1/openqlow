@@ -109,9 +109,12 @@ cat index.html | npm run site-audit -- --label トップページ
 npm run crm -- intake --message "小学生の子供に習わせたい。初心者でも大丈夫ですか" --name 田中 --source LINE
 # 手動でも登録できる（最終連絡日時を自動付与）
 npm run crm -- add --name 山田 --gender female --category female --status waiting_reply --inquiry "初心者でも大丈夫ですか"
-# 一覧・ステータス更新
+# 一覧・名前で検索・ステータス更新（状態は日本語OK）
 npm run crm -- list
-npm run crm -- status 1 replied
+npm run crm -- find 田中
+npm run crm -- status 1 入会      # 返信した / 体験予約 / 体験済み / 入会 / 見送り（英語コードも可）
+# その人向けの返信下書きを個別に出す（日報からは外し、必要な時だけ）
+npm run crm -- draft 1
 # 追客漏れ／体験後フォロー／口コミ依頼の候補を見える化
 npm run crm -- followups
 # 日次集客レポートを生成して保存（推奨メッセージはAIKAジェネレータを再利用）
@@ -122,6 +125,8 @@ npm run crm -- log-error api_error "401 Unauthorized"
 
 - データ保存先は `OPENQLOW_DATA_DIR`（既定 `./data`）。`data/`・`reports/`・`logs/` は
   個人情報を含むため `.gitignore` 済み（コミットしない）。
+- 追客とみなす経過時間は `OPENQLOW_FOLLOWUP_HOURS`（既定24）で調整可能（多すぎなら48等）。
+- 日報は「誰に何を」だけの短い形。長い返信文は載せず、`crm draft <番号>` で個別に出します。
 - 追客抽出条件: 返信漏れ=`waiting_reply/replied` かつ最終連絡から24h経過かつ未入会／
   体験後フォロー=`trial_done`＋体験日あり＋未入会／口コミ=`joined`。
 - LLMを使う場合のプロンプトは `src/crm/ai_prompts.ts`（APIキー不要・貼り付け用）。

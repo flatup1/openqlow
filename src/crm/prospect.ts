@@ -43,6 +43,34 @@ export const PROSPECT_CATEGORIES: ProspectCategory[] = [
   "unknown",
 ];
 
+/** 日本語などの別名 → 正規ステータス。crm status を日本語で打てるようにする。 */
+const STATUS_ALIASES: Record<string, ProspectStatus> = {
+  "新規": "new_inquiry",
+  "問い合わせ": "new_inquiry",
+  "返信した": "replied",
+  "返信済み": "replied",
+  "返信待ち": "waiting_reply",
+  "要フォロー": "followup_needed",
+  "フォロー": "followup_needed",
+  "体験予約": "trial_scheduled",
+  "予約": "trial_scheduled",
+  "体験済み": "trial_done",
+  "体験": "trial_done",
+  "入会": "joined",
+  "入会済み": "joined",
+  "見送り": "lost",
+  "失注": "lost",
+  "保管": "archived",
+  "アーカイブ": "archived",
+};
+
+/** 入力（英語コード or 日本語別名）を正規ステータスに解決する。未知なら undefined。 */
+export function resolveStatus(input: string): ProspectStatus | undefined {
+  const t = (input ?? "").trim();
+  if ((PROSPECT_STATUSES as string[]).includes(t)) return t as ProspectStatus;
+  return STATUS_ALIASES[t];
+}
+
 export interface Prospect {
   id: number;
   name: string;

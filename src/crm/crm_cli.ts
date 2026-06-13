@@ -16,11 +16,40 @@ import { buildDailyReport, saveDailyReport } from "./daily_report.js";
 import { getFollowupNeeded, getReviewRequestCandidates, getTrialFollowupNeeded } from "./queries.js";
 import { logError, type ErrorType } from "./self_repair.js";
 import { buildProspectFromInquiry } from "./intake.js";
-import { PROSPECT_STATUSES, type ProspectInput, type ProspectStatus } from "./prospect.js";
+import { resolveStatus, type Prospect, type ProspectInput, type ProspectStatus } from "./prospect.js";
+import { generateInquiryReply } from "../generators/inquiry_reply.js";
+import { generateTrialFollowup } from "../generators/trial_followup.js";
 import type { Gender } from "../generators/shared.js";
 
 const baseDir = process.env.OPENQLOW_DATA_DIR || path.join(process.cwd(), "data");
 const storeFile = path.join(baseDir, "prospects.json");
+const followupHours = Number(process.env.OPENQLOW_FOLLOWUP_HOURS) || 24;
+
+function coerceGender(value: string): Gender {
+  if (value === "female" || /女/.test(value)) return "female";
+  if (value === "male" || /男/.test(value)) return "male";
+  return "unknown";
+}
+
+/** 見込み客1人に合った返信下書きを返す（status に応じて生成器を使い分け）。 */
+function draftFor(p: Prospect): string {
+  const gender = coerceGender(p.gender);
+  if (p.status === "joined") {
+    return generateTrialFollowup({ gender }).messages.reviewRequest;
+  }
+  if (p.status === "trial_done") {
+    return generateTrialFollowup({
+      gender,
+      ageBand: p.ageGroup,
+      concern: p.memo || p.lostReason,
+      enrollmentStatus: p.trialStatus,
+    }).messages.nextDayFollow;
+  }
+  return generateInquiryReply({
+    message: p.inquiryText?.trim() || "体験について相談したい",
+    gender,
+  }).replies.followUp24h;
+}
 
 function flagsToProspectInput(flags: Record<string, string>): ProspectInput {
   const input: ProspectInput = {};
@@ -81,9 +110,10 @@ async function main(argv: string[]): Promise<number> {
     }
     case "status": {
       const id = Number(positional[0] ?? flags.id);
-      const status = (positional[1] ?? flags.to) as ProspectStatus;
-      if (!id || !PROSPECT_STATUSES.includes(status)) {
-        console.error(`Usage: crm status <id> <${PROSPECT_STATUSES.join("|")}>`);
+      const status = resolveStatus(positional[1] ?? flags.to ?? "");
+      if (!id || !status) {
+        console.error("Usage: crm status <番号> <状態>");
+        console.error("  状態（日本語OK）: 返信した / 体験予約 / 体験済み / 入会 / 見送り など（英語コードも可）");
         return 1;
       }
       const updated = await store.update(id, { status, lastContactAt: new Date().toISOString() });
@@ -94,6 +124,33 @@ async function main(argv: string[]): Promise<number> {
       console.log(`#${id} を ${status} に更新しました。`);
       return 0;
     }
+    case "find": {
+      const query = (positional.join(" ") || flags.name || "").trim();
+      if (!query) {
+        console.error("Usage: crm find <名前の一部>");
+        return 1;
+      }
+      const hits = (await store.getAll()).filter(p => (p.name || "").includes(query));
+      if (!hits.length) {
+        console.log(`「${query}」に一致する見込み客はいません。`);
+        return 0;
+      }
+      for (const p of hits) {
+        console.log(`#${p.id} ${p.name || "(無名)"} | ${p.category} | ${p.status} | 温度:${p.temperature || "-"}`);
+      }
+      return 0;
+    }
+    case "draft": {
+      const id = Number(positional[0] ?? flags.id);
+      const p = id ? await store.get(id) : undefined;
+      if (!p) {
+        console.error("Usage: crm draft <番号>（その人向けの返信下書きを出します）");
+        return 1;
+      }
+      console.log(`■ #${p.id} ${p.name || "(無名)"} 向け 返信下書き（確認して送信・自動送信なし）\n`);
+      console.log(draftFor(p));
+      return 0;
+    }
     case "followups": {
       const all = await store.getAll();
       const now = new Date();
@@ -102,14 +159,14 @@ async function main(argv: string[]): Promise<number> {
         if (!list.length) console.log("  なし");
         for (const p of list) console.log(`  #${p.id} ${p.name || "(無名)"}`);
       };
-      print("追客漏れ候補", getFollowupNeeded(all, now));
+      print("追客漏れ候補", getFollowupNeeded(all, now, followupHours));
       print("体験後フォロー候補", getTrialFollowupNeeded(all));
       print("口コミ依頼候補", getReviewRequestCandidates(all));
       return 0;
     }
     case "daily-report": {
       const all = await store.getAll();
-      const { markdown, dateIso } = buildDailyReport(all, new Date());
+      const { markdown, dateIso } = buildDailyReport(all, new Date(), { followupHours });
       const { filePath } = await saveDailyReport(markdown, dateIso, baseDir);
       console.log(markdown);
       console.log(`\n保存しました: ${filePath}`);
@@ -123,7 +180,7 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     default:
-      console.error("Commands: intake --message <文> | add | list | status <id> <status> | followups | daily-report | log-error <type> <message>");
+      console.error("Commands: intake --message <文> | add | list | find <名前> | status <番号> <状態> | draft <番号> | followups | daily-report | log-error <type> <message>");
       return 1;
   }
 }

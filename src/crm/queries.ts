@@ -16,15 +16,20 @@ function hoursSince(iso: string, now: Date): number {
 
 /**
  * 追客漏れ候補。
- * 条件: status が waiting_reply または replied / 最終連絡から24時間以上 /
+ * 条件: status が waiting_reply または replied / 最終連絡から thresholdHours 以上 /
  *       未入会 / lost・archived ではない。
+ * @param thresholdHours 追客対象とみなす経過時間（既定24h・運用で調整可能）
  */
-export function getFollowupNeeded(prospects: Prospect[], now: Date = new Date()): Prospect[] {
+export function getFollowupNeeded(
+  prospects: Prospect[],
+  now: Date = new Date(),
+  thresholdHours = 24,
+): Prospect[] {
   // status を waiting_reply/replied に限定している時点で lost・archived は除外済み。
   return prospects.filter(p =>
     (p.status === "waiting_reply" || p.status === "replied") &&
     p.joined === 0 &&
-    hoursSince(p.lastContactAt, now) >= 24,
+    hoursSince(p.lastContactAt, now) >= thresholdHours,
   );
 }
 

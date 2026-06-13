@@ -1,8 +1,8 @@
-// openQLOW 日次集客レポート生成（指示書フォーマット準拠）
+// openQLOW 日次集客レポート生成（指示書フォーマット準拠・短く読みやすい版）
 //
 // 見込み客データから「新規問い合わせ／返信漏れ／追客／体験予約／体験後フォロー／
 // 口コミ依頼／入会・失注／改善Top3／コメント」の Markdown を生成する。
-// 推奨メッセージは既存の AIKA ジェネレータ（inquiry_reply / trial_followup）を再利用する。
+// 日報は「誰に何を」だけに絞り、長い返信下書きは載せない（`crm draft <id>` で個別に出す）。
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,45 +14,13 @@ import {
   getTrialFollowupNeeded,
   getTrialScheduled,
 } from "./queries.js";
-import { generateInquiryReply } from "../generators/inquiry_reply.js";
-import { generateTrialFollowup } from "../generators/trial_followup.js";
-import type { Gender } from "../generators/shared.js";
-
-function coerceGender(value: string): Gender {
-  if (value === "female" || /女/.test(value)) return "female";
-  if (value === "male" || /男/.test(value)) return "male";
-  return "unknown";
-}
 
 function nameOf(p: Prospect): string {
   return p.name?.trim() || `#${p.id}`;
 }
 
-function followUpMessageFor(p: Prospect): string {
-  const message = p.inquiryText?.trim() || "体験について相談したい";
-  return generateInquiryReply({ message, gender: coerceGender(p.gender) }).replies.followUp24h;
-}
-
-function trialFollowMessageFor(p: Prospect): string {
-  return generateTrialFollowup({
-    gender: coerceGender(p.gender),
-    ageBand: p.ageGroup,
-    concern: p.lostReason || p.memo,
-    enrollmentStatus: p.trialStatus,
-  }).messages.nextDayFollow;
-}
-
-function reviewMessageFor(p: Prospect): string {
-  return generateTrialFollowup({ gender: coerceGender(p.gender) }).messages.reviewRequest;
-}
-
 function bullet(lines: string[]): string {
   return lines.length ? lines.join("\n") : "- なし";
-}
-
-function indentMessage(msg: string): string {
-  // 複数行メッセージを箇条書きの下にインデント表示する
-  return msg.split("\n").map(line => `    ${line}`).join("\n");
 }
 
 export interface DailyReport {
@@ -60,13 +28,23 @@ export interface DailyReport {
   dateIso: string;
 }
 
+export interface DailyReportOptions {
+  /** 追客対象とみなす経過時間（既定24h） */
+  followupHours?: number;
+}
+
 /** 見込み客一覧から日次レポートの Markdown を生成する（I/Oなし）。 */
-export function buildDailyReport(prospects: Prospect[], now: Date = new Date()): DailyReport {
+export function buildDailyReport(
+  prospects: Prospect[],
+  now: Date = new Date(),
+  options: DailyReportOptions = {},
+): DailyReport {
+  const followupHours = options.followupHours ?? 24;
   const dateIso = now.toISOString();
   const date = dateIso.slice(0, 10);
 
   const newInquiries = getNewInquiriesOn(prospects, dateIso);
-  const followupNeeded = getFollowupNeeded(prospects, now);
+  const followupNeeded = getFollowupNeeded(prospects, now, followupHours);
   const replyMissing = followupNeeded.filter(p => p.status === "waiting_reply");
   const chasing = [
     ...followupNeeded.filter(p => p.status === "replied"),
@@ -95,31 +73,19 @@ export function buildDailyReport(prospects: Prospect[], now: Date = new Date()):
   lines.push(`- 内容：${newInquiries.map(p => `${nameOf(p)}（${p.category}/${p.purpose || "目的未記録"}）`).join("、") || "なし"}`);
   lines.push("");
   lines.push("## 2. 返信漏れ候補");
-  lines.push(bullet(replyMissing.map(p => `- ${nameOf(p)} / 最終連絡：${p.lastContactAt || "未記録"} / 推奨：今日中に一次返信`)));
+  lines.push(bullet(replyMissing.map(p => `- ${nameOf(p)} / 最終連絡：${p.lastContactAt?.slice(0, 16) || "未記録"} → 今日中に返信`)));
   lines.push("");
   lines.push("## 3. 追客候補");
-  lines.push(
-    chasing.length
-      ? chasing.map(p => [`- ${nameOf(p)} / 状態：${p.status}`, "  推奨メッセージ：", indentMessage(followUpMessageFor(p))].join("\n")).join("\n")
-      : "- なし",
-  );
+  lines.push(bullet(chasing.map(p => `- ${nameOf(p)} / 状態：${p.status} → 返信案: crm draft ${p.id}`)));
   lines.push("");
   lines.push("## 4. 体験予約済み");
   lines.push(bullet(trialScheduled.map(p => `- ${nameOf(p)} / 体験予定日：${p.trialDate || "未定"}`)));
   lines.push("");
   lines.push("## 5. 体験後フォロー候補");
-  lines.push(
-    trialFollowups.length
-      ? trialFollowups.map(p => [`- ${nameOf(p)} / 体験日：${p.trialDate}`, "  推奨メッセージ：", indentMessage(trialFollowMessageFor(p))].join("\n")).join("\n")
-      : "- なし",
-  );
+  lines.push(bullet(trialFollowups.map(p => `- ${nameOf(p)} / 体験日：${p.trialDate} → フォロー案: crm draft ${p.id}`)));
   lines.push("");
   lines.push("## 6. 口コミ依頼候補");
-  lines.push(
-    reviewCandidates.length
-      ? reviewCandidates.map(p => [`- ${nameOf(p)} / 状態：入会済み`, "  推奨メッセージ：", indentMessage(reviewMessageFor(p))].join("\n")).join("\n")
-      : "- なし",
-  );
+  lines.push(bullet(reviewCandidates.map(p => `- ${nameOf(p)} / 入会済み → 依頼文: crm draft ${p.id}`)));
   lines.push("");
   lines.push("## 7. 入会・失注状況");
   lines.push(`- 入会（本日）：${joinedToday.length}`);
@@ -131,8 +97,8 @@ export function buildDailyReport(prospects: Prospect[], now: Date = new Date()):
   lines.push("");
   lines.push("## 9. openQLOWコメント");
   lines.push(
-    `本日の見込み客は計${prospects.length}名。返信漏れ${replyMissing.length}・追客${chasing.length}・体験後フォロー${trialFollowups.length}・口コミ依頼${reviewCandidates.length}が要対応です。` +
-      "まずは返信漏れを優先し、人間が内容を確認してから送信してください（自動送信はしません）。",
+    `見込み客 計${prospects.length}名。返信漏れ${replyMissing.length}・追客${chasing.length}・体験後フォロー${trialFollowups.length}・口コミ依頼${reviewCandidates.length}が要対応。` +
+      "返信案は `crm draft <番号>` で出せます。送信は必ず人間が確認してから（自動送信はしません）。",
   );
   lines.push("");
 
