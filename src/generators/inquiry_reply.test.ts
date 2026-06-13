@@ -20,6 +20,13 @@ assert(kids.replies.polite.includes(FLATUP_INFO.scheduleKids), "kids reply menti
 assert(kids.replies.polite.trimEnd().endsWith("AIKA"), "polite reply is signed AIKA");
 assert(kids.replies.short.trimEnd().endsWith("AIKA"), "short reply is signed AIKA");
 assert(kids.replies.bookingFocused.trimEnd().endsWith("AIKA"), "booking reply is signed AIKA");
+// 予約意思がある人向け：名前・種目・希望日時を一度に確認し、記入例と候補枠を見せる
+assert(kids.replies.bookingFocused.includes("①お名前"), "booking asks name");
+assert(kids.replies.bookingFocused.includes("②体験したい種目"), "booking asks discipline");
+assert(kids.replies.bookingFocused.includes("③ご希望の曜日と時間"), "booking asks day and time together");
+assert(kids.replies.bookingFocused.includes("例："), "booking shows a fill-in example");
+assert(kids.replies.bookingFocused.includes("初回500円"), "booking mentions trial price");
+assert(!kids.replies.bookingFocused.includes("どの種目に興味がありますか"), "booking does NOT split the question across turns");
 
 // --- 女性・ダイエット・料金あり：属性=women、温度=high、料金行が入る ----------
 const woman = generateInquiryReply({
@@ -91,6 +98,23 @@ const scary = generateInquiryReply({ message: "怖くないですか？運動神
 assert(scary.replies.polite.includes("激しいスパーリングは行いません"), "fear keyword => reassurance line in polite reply");
 const calm = generateInquiryReply({ message: "初心者ですが大丈夫ですか？" });
 assert(!calm.replies.polite.includes("怖い・きつそう"), "no reassurance line when no concern keyword");
+
+// --- 場面2：難条件の相談（希望種目を変えない・必要情報を聞く・代替案・会話を終わらせない） ---
+const obstacle = generateInquiryReply({ message: "レスリング希望です。仕事後に途中参加できますか？" });
+assert(obstacle.replies.obstacleConsult, "obstacle reply is generated for attendance-difficulty question");
+assert(obstacle.replies.obstacleConsult!.includes("レスリングクラス"), "echoes the requested discipline (no redirect)");
+assert(!obstacle.replies.obstacleConsult!.includes("キックボクシング"), "does NOT redirect to kickboxing");
+assert(obstacle.replies.obstacleConsult!.includes("到着できそうな時間"), "asks the info needed to confirm");
+assert(obstacle.replies.obstacleConsult!.includes("別の日時をご案内"), "offers an alternative, keeps the conversation open");
+assert(obstacle.replies.obstacleConsult!.trimEnd().endsWith("AIKA"), "obstacle reply is signed AIKA");
+
+// 種目が無くても汎用クラス名で成立
+const obstacleNoDiscipline = generateInquiryReply({ message: "仕事が終わってからだと間に合うか不安です" });
+assert(obstacleNoDiscipline.replies.obstacleConsult!.includes("ご希望のクラス"), "generic class when discipline not stated");
+
+// 難条件でない通常問い合わせには付かない
+const normal = generateInquiryReply({ message: "初心者ですが大丈夫ですか？" });
+assert(!normal.replies.obstacleConsult, "no obstacle reply for a normal inquiry");
 
 // --- 空メッセージはエラー -----------------------------------------------------
 let threw = false;

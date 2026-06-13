@@ -15,6 +15,7 @@
 
 import {
   FLATUP_INFO,
+  AIKA_SIGN,
   composeSigned,
   matchesAny,
   type Attribute,
@@ -68,6 +69,8 @@ export interface InquiryReplies {
   followUp24h: string;
   /** 3日後の追客文 */
   followUp3d: string;
+  /** 難条件の相談（途中参加など）への返信。該当する問い合わせの時だけ生成 */
+  obstacleConsult?: string;
 }
 
 export interface InquiryReplyResult {
@@ -220,6 +223,80 @@ function bookingAsk(guidance: string): string {
   return `${guidance}。ご都合の良い日程はございますか？`;
 }
 
+// 体験予約の意思がある方への返信。
+// 質問を小分けにせず「名前・種目・希望日時」を一度に確認し、候補枠と記入例を見せ、
+// 会話を終わらせない（難しい条件でも代替提案できる前提）。初心者の不安も最後に消す。
+//
+// ※ 種目・候補枠はジムの正本値。変更時はここを更新する。
+//   （現行の属性別スケジュール FLATUP_INFO とは別に、予約返信は統一の固定枠を案内する方針）
+const BOOKING = {
+  disciplines: "キックボクシング／柔術",
+  weekdaySlots: ["午前10:00〜12:00", "夜19:00以降"],
+  example: "「松元、キックボクシング、6月16日19:00希望」",
+};
+
+// 問い合わせ文で言及された種目を拾う（勝手に別種目へ変えないため）。
+const DISCIPLINE_PATTERNS: Array<[RegExp, string]> = [
+  [/レスリング/, "レスリング"],
+  [/柔術|ブラジリアン|bjj/i, "柔術"],
+  [/キック|ボクシング/, "キックボクシング"],
+];
+
+function mentionedDiscipline(text: string): string | undefined {
+  for (const [re, name] of DISCIPLINE_PATTERNS) if (re.test(text)) return name;
+  return undefined;
+}
+
+// 「途中参加できるか」「仕事後で間に合うか」等の“難しい条件”の相談かどうか。
+function hasAttendanceObstacle(text: string): boolean {
+  return matchesAny(text, [
+    /途中参加|途中から|間に合わ|間に合う|間に合い|仕事後|仕事の後|遅れて|遅刻|終わってから|時間に合うか/,
+  ]);
+}
+
+// 難条件の相談への返信：希望種目を変えず、確認に必要な情報を聞き、代替案を出して会話を終わらせない。
+function buildObstacleReply(discipline?: string): string {
+  const klass = discipline ? `${discipline}クラス` : "ご希望のクラス";
+  return [
+    "お問い合わせありがとうございます😊",
+    "",
+    "お仕事後ですと、開始時間に間に合わない場合もありますよね。",
+    `${klass}への途中参加が可能か、担当者へ確認いたします。`,
+    "",
+    "差し支えなければ、",
+    "・到着できそうな時間",
+    "・ご希望の曜日",
+    "を教えていただけますか？",
+    "",
+    "途中参加が難しい場合も、参加しやすい別の日時をご案内いたしますので、まずはお気軽にご相談ください😊",
+    AIKA_SIGN,
+  ].join("\n");
+}
+
+function buildBookingReply(): string {
+  return [
+    "お問い合わせありがとうございます😊",
+    "体験は初回500円でご参加いただけます！",
+    "",
+    "平日は、",
+    ...BOOKING.weekdaySlots.map(slot => `・${slot}`),
+    "でご案内可能です。",
+    "",
+    "ご予約のため、次の3点を教えてください。",
+    "",
+    "①お名前",
+    "②体験したい種目",
+    `　${BOOKING.disciplines}`,
+    "③ご希望の曜日と時間",
+    "",
+    "例：",
+    BOOKING.example,
+    "",
+    "初めての方にも無理のない内容で進めますので、安心してお越しください😊",
+    AIKA_SIGN,
+  ].join("\n");
+}
+
 function buildReplies(
   input: InquiryInput,
   classification: InquiryClassification,
@@ -246,14 +323,7 @@ function buildReplies(
     `初回体験は500円です。${bookingAsk(guidance)}`,
   ]);
 
-  const bookingFocused = composeSigned([
-    "お問い合わせありがとうございます😊",
-    empathy,
-    reassurance,
-    trialInviteLine(false),
-    `${guidance}。たとえば今週か来週で、ご都合の良いお日にちがあればお聞かせください。`,
-    "お日にちが決まりましたら、こちらで体験のご案内をさせていただきます。",
-  ]);
+  const bookingFocused = buildBookingReply();
 
   const followUp24h = composeSigned([
     "先日はお問い合わせありがとうございました😊",
@@ -268,7 +338,11 @@ function buildReplies(
     "まずは初回体験500円で、雰囲気だけでも見にいらしていただけたら嬉しいです。",
   ]);
 
-  return { polite, short, bookingFocused, followUp24h, followUp3d };
+  const obstacleConsult = hasAttendanceObstacle(input.message)
+    ? buildObstacleReply(mentionedDiscipline(input.message))
+    : undefined;
+
+  return { polite, short, bookingFocused, followUp24h, followUp3d, obstacleConsult };
 }
 
 function decideNextAction(temperature: Temperature): NextAction {
