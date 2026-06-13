@@ -46,6 +46,10 @@ const man = generateInquiryReply({
 });
 assert(man.classification.attribute === "men", `men attribute, got ${man.classification.attribute}`);
 assert(man.replies.polite.includes(FLATUP_INFO.bookingMen), "men reply includes weekday-evening booking");
+// 男性には「火木土（男性インストラクター在籍）」＋平日夜の両方を案内する
+assert(man.replies.polite.includes("火曜・木曜・土曜"), "men reply recommends 火木土");
+assert(man.replies.polite.includes("男性インストラクター"), "men reply highlights male instructor days");
+assert(man.replies.polite.includes("平日19:00以降"), "men reply also keeps weekday-evening option");
 assert(man.classification.purpose === "運動不足", "purpose=運動不足");
 
 // --- 低温度（検討中・料金だけ）：温度=low、優先度=C -----------------------------

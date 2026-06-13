@@ -31,7 +31,7 @@ export const FLATUP_INFO = {
   parking: "専用駐車場あり",
   scheduleKids: "火曜・木曜18:00、土曜13:00",
   scheduleLadies: "土曜14:00",
-  bookingMen: "平日19:00以降",
+  bookingMen: "火曜・木曜・土曜（男性インストラクター在籍）、または平日19:00以降",
   bookingWomen: "月曜・水曜・土曜",
   noBooking: "日曜・祝日は原則体験不可",
 } as const;
