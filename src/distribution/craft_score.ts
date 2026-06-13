@@ -12,6 +12,8 @@
 // COORDINATION.md で Claude に割り当てられた「投稿レビュー・採点」に対応する。
 // ─────────────────────────────────────────────────────────────────────────
 
+import { weightedLength, X_WEIGHTED_LIMIT } from "./text_metrics.js";
+
 export type CraftPlatform = "x" | "instagram" | "threads" | "line" | "unknown";
 
 export interface CraftDimension {
@@ -51,15 +53,6 @@ function firstNonEmptyLine(text: string): string {
   return text.split(/\r?\n/).map(l => l.trim()).find(Boolean) ?? "";
 }
 
-// 全角を含むおおまかな表示長。X は CJK を重く数えるため CJK=2 で近似。
-function weightedLength(text: string): number {
-  let len = 0;
-  for (const ch of text) {
-    len += /[　-ヿ㐀-鿿＀-￯]/.test(ch) ? 2 : 1;
-  }
-  return len;
-}
-
 // 文字 bigram 集合。短文どうしの「ほぼ同じ」を素朴に検出する。
 function bigrams(text: string): Set<string> {
   const compact = text.replace(/\s+/g, "");
@@ -87,7 +80,8 @@ function scoreHook(text: string): CraftDimension {
   const hasQuestion = /[？?]/.test(head);
   const hasQuote = /[「『][^」』]+[」』]/.test(head);
   const hasNumber = /[0-9０-９]|¥|円|月-/.test(head);
-  const isPunchy = weightedLength(head) > 0 && weightedLength(head) <= 32;
+  const headLen = weightedLength(head);
+  const isPunchy = headLen > 0 && headLen <= 32;
   const isBareThemeLabel = head.length > 0 && head.length <= 14 && !hasQuestion && !hasQuote && !hasNumber;
 
   if (hasQuestion) score += 1;
@@ -149,8 +143,6 @@ function scoreSpecificity(text: string): CraftDimension {
     hints,
   };
 }
-
-const X_WEIGHTED_LIMIT = 280; // X は CJK=2 換算で約140文字相当
 
 function scorePlatformFit(text: string, platform: CraftPlatform): CraftDimension {
   const hints: string[] = [];

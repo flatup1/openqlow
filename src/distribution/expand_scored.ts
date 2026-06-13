@@ -16,17 +16,9 @@ import type { ContentIdea, PlatformDraft } from "../types.js";
 import { expandIdea } from "./expand.js";
 import { scoreCraft, type CraftScore, type CraftPlatform } from "./craft_score.js";
 import { checkDraftSafety } from "../safety/check.js";
+import { weightedLength, X_WEIGHTED_LIMIT } from "./text_metrics.js";
 
 const SOFT_INVITE = "ワンコイン体験500円から、空気を感じに。";
-const X_WEIGHTED_LIMIT = 280; // craft_score の X 長さ基準に揃える
-
-function weightedLength(text: string): number {
-  let len = 0;
-  for (const ch of text) {
-    len += /[　-ヿ㐀-鿿＀-￯]/.test(ch) ? 2 : 1;
-  }
-  return len;
-}
 
 // ── 決定的な修復変換 ──────────────────────────────────────────────────────
 
