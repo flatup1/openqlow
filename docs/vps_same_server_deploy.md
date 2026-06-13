@@ -89,6 +89,46 @@ BACKUP_APPROVER_LINE_USER_ID=副承認者のLINE userId（任意）
 本番Pushするまでは `OPENQLOW_DRY_RUN=true` のままでよいです。
 Phase 1ではSNS公開ランタイムそのものを使わないため、`OPENQLOW_ENABLE_PUBLIC_POSTING=true` は設定しません。
 
+## 投稿メディア公開URL（任意）
+
+写真付き投稿をThreads APIへ渡したい場合だけ、公開メディア置き場を有効化します。
+未設定のままなら、今まで通りブラウザで手動確認するため挙動は変わりません。
+
+⚠ この置き場の画像は、URLを知れば誰でも見られます。投稿する宣材だけ置いてください。私的・顧客画像は置かないでください。
+
+```dotenv
+OPENQLOW_MEDIA_DIR=/var/www/openqlow-media
+OPENQLOW_PUBLIC_MEDIA_DIR=/var/www/openqlow-media
+OPENQLOW_PUBLIC_MEDIA_BASE_URL=https://YOUR_DOMAIN/openqlow/media/
+```
+
+VPSで公開フォルダを作ります。
+
+```bash
+sudo mkdir -p /var/www/openqlow-media
+sudo chown -R openqlow:www-data /var/www/openqlow-media
+sudo chmod 2750 /var/www/openqlow-media
+```
+
+nginxの既存 `server { ... }` に追加します。
+
+```nginx
+location /openqlow/media/ {
+    alias /var/www/openqlow-media/;
+    autoindex off;
+}
+```
+
+反映と確認:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+sudo -u openqlow sh -c 'printf media-ok > /var/www/openqlow-media/health.txt'
+curl -i https://YOUR_DOMAIN/openqlow/media/health.txt
+sudo rm /var/www/openqlow-media/health.txt
+```
+
 ## CRMデータ保存先
 
 見込み客台帳・日報・自己修復ログは、リポジトリ外の `/home/flatup/openqlow-data` に保存します。
