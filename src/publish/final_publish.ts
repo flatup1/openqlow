@@ -4,7 +4,8 @@ import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
 import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.js";
 import type { PublishDestination, PublishQueueEntry } from "./publisher_types.js";
-import { publishThreadsText } from "./threads_api.js";
+import { resolvePublicMediaUrl } from "./public_media.js";
+import { publishThreadsImage, publishThreadsText } from "./threads_api.js";
 
 export interface FinalPublishResult {
   recordId: string;
@@ -34,6 +35,14 @@ function draftText(draft: PlatformDraft): string {
 
 function threadsDraft(drafts: PlatformDraft[]): PlatformDraft | undefined {
   return drafts.find(draft => draft.platform === "threads") ?? drafts[0];
+}
+
+function isRemoteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function isThreadsImageUrl(value: string): boolean {
+  return isRemoteUrl(value) && /\.(?:jpg|jpeg|png|webp)(?:[?#].*)?$/i.test(value);
 }
 
 async function loadQueue(root: string, id: string): Promise<PublishQueueEntry> {
@@ -69,7 +78,13 @@ export async function runFinalPublish(
 
   for (const destination of queue.destinations) {
     if (destination === "threads") {
-      if (queue.mediaFiles?.length) {
+      const mediaFile = queue.mediaFiles?.[0];
+      if (queue.mediaFiles && queue.mediaFiles.length > 1) {
+        browserDestinations.push(destination);
+        continue;
+      }
+      const mediaUrl = mediaFile ? await resolvePublicMediaUrl(mediaFile, env) : undefined;
+      if (mediaFile && !isThreadsImageUrl(mediaUrl ?? "")) {
         browserDestinations.push(destination);
         continue;
       }
@@ -84,12 +99,21 @@ export async function runFinalPublish(
         result.skipped.push({ destination, reason: "Threads draft is missing" });
         continue;
       }
-      const published = await publishThreadsText({
-        userId,
-        accessToken,
-        text: draftText(draft),
-        fetchImpl: opts.fetchImpl,
-      });
+      const text = draftText(draft);
+      const published = mediaUrl
+        ? await publishThreadsImage({
+          userId,
+          accessToken,
+          text,
+          imageUrl: mediaUrl,
+          fetchImpl: opts.fetchImpl,
+        })
+        : await publishThreadsText({
+          userId,
+          accessToken,
+          text,
+          fetchImpl: opts.fetchImpl,
+        });
       result.published.push({ destination, externalId: published.postId });
       continue;
     }
