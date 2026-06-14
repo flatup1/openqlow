@@ -8,12 +8,17 @@ async function readProspects(dataDir: string): Promise<Array<Record<string, unkn
   return JSON.parse(await readFile(path.join(dataDir, "prospects.json"), "utf8")) as Array<Record<string, unknown>>;
 }
 
-async function testOnlyExplicitInquiryTextIsParsed(): Promise<void> {
+async function testInquiryTextIsParsedExceptOperationalCommands(): Promise<void> {
   assert.equal(parseLineCrmInquiryText("OK FG-20260611-001"), undefined);
+  assert.equal(parseLineCrmInquiryText("ok"), undefined);
+  assert.equal(parseLineCrmInquiryText("日報"), undefined);
+  assert.equal(parseLineCrmInquiryText("投稿"), undefined);
+  assert.equal(parseLineCrmInquiryText("画像 1"), undefined);
   assert.equal(parseLineCrmInquiryText("/push"), undefined);
   assert.equal(parseLineCrmInquiryText("記憶係 今日のログ"), undefined);
   assert.equal(parseLineCrmInquiryText("問い合わせ: 小学生の体験を相談したいです"), "小学生の体験を相談したいです");
   assert.equal(parseLineCrmInquiryText("問い合わせ： 女性でも初心者で大丈夫ですか？"), "女性でも初心者で大丈夫ですか？");
+  assert.equal(parseLineCrmInquiryText("小学生の体験を相談したいです"), undefined);
 }
 
 async function testCommandTextDoesNotCreateProspect(): Promise<void> {
@@ -33,12 +38,13 @@ async function testCommandTextDoesNotCreateProspect(): Promise<void> {
   }
 }
 
-async function testManualInquiryCreatesOwnerNotificationWithoutReplyDraftInWebhookMessage(): Promise<void> {
+async function testExplicitOwnerInquiryCreatesNotificationWithoutCustomerAutoReply(): Promise<void> {
   const dataDir = await mkdtemp(path.join(tmpdir(), "openqlow-line-crm-data-"));
   const notifications: string[] = [];
   try {
     const result = await executeLineCrmIntake({
       lineUserId: "Uowner",
+      approver: true,
       text: "問い合わせ: 小学生の子供に習わせたい。初心者でも大丈夫ですか？",
       dataDir,
       now: () => new Date("2026-06-11T09:00:00.000Z"),
@@ -53,10 +59,11 @@ async function testManualInquiryCreatesOwnerNotificationWithoutReplyDraftInWebho
     assert.equal(result.action, "crm_intake");
     assert.match(result.message, /CRMに登録しました/);
     assert.doesNotMatch(result.message, /AIKA/);
+    assert.equal(result.replyToSender, false);
 
     const prospects = await readProspects(dataDir);
     assert.equal(prospects.length, 1);
-    assert.match(String(prospects[0].externalId), /^manual:Uowner:/);
+    assert.equal(prospects[0].externalId, "Uowner");
     assert.equal(prospects[0].contactSource, "LINE");
     assert.equal(prospects[0].inquiryText, "小学生の子供に習わせたい。初心者でも大丈夫ですか？");
     assert.equal(notifications.length, 1);
@@ -68,30 +75,53 @@ async function testManualInquiryCreatesOwnerNotificationWithoutReplyDraftInWebho
   }
 }
 
-async function testManualInquiryDoesNotMergeDifferentTextsFromOwner(): Promise<void> {
+async function testNonApproverInquiryDoesNotCreateProspect(): Promise<void> {
   const dataDir = await mkdtemp(path.join(tmpdir(), "openqlow-line-crm-data-"));
   try {
-    const base = {
-      lineUserId: "Uowner",
+    const result = await executeLineCrmIntake({
+      lineUserId: "Ucustomer",
+      approver: false,
+      text: "問い合わせ: 体験したいです",
       dataDir,
-      notifyOwner: async () => ({ ok: true, mode: "dry_run" as const }),
-      now: () => new Date("2026-06-11T09:00:00.000Z"),
-    };
+      notifyOwner: async () => ({ ok: true, mode: "dry_run" }),
+    });
 
-    await executeLineCrmIntake({ ...base, text: "問い合わせ: 子どもの体験を相談したいです" });
-    await executeLineCrmIntake({ ...base, text: "問い合わせ: 子どもの体験を相談したいです" });
-    await executeLineCrmIntake({ ...base, text: "問い合わせ: 女性クラスの雰囲気を知りたいです" });
-
-    const prospects = await readProspects(dataDir);
-    assert.equal(prospects.length, 2);
+    assert.equal(result.handled, false);
+    await assert.rejects(readProspects(dataDir), /ENOENT/);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
 }
 
-await testOnlyExplicitInquiryTextIsParsed();
+async function testSameLineUserUpdatesExistingProspect(): Promise<void> {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "openqlow-line-crm-data-"));
+  try {
+    const base = {
+      lineUserId: "Uowner",
+      approver: true,
+      dataDir,
+      notifyOwner: async () => ({ ok: true, mode: "dry_run" as const }),
+      now: () => new Date("2026-06-11T09:00:00.000Z"),
+    };
+
+    const first = await executeLineCrmIntake({ ...base, text: "問い合わせ: 子どもの体験を相談したいです" });
+    const second = await executeLineCrmIntake({ ...base, text: "問い合わせ: 女性クラスの雰囲気を知りたいです" });
+
+    const prospects = await readProspects(dataDir);
+    assert.equal(first.meta?.created, true);
+    assert.equal(second.meta?.created, false);
+    assert.equal(prospects.length, 1);
+    assert.equal(prospects[0].externalId, "Uowner");
+    assert.equal(prospects[0].inquiryText, "女性クラスの雰囲気を知りたいです");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
+await testInquiryTextIsParsedExceptOperationalCommands();
 await testCommandTextDoesNotCreateProspect();
-await testManualInquiryCreatesOwnerNotificationWithoutReplyDraftInWebhookMessage();
-await testManualInquiryDoesNotMergeDifferentTextsFromOwner();
+await testExplicitOwnerInquiryCreatesNotificationWithoutCustomerAutoReply();
+await testNonApproverInquiryDoesNotCreateProspect();
+await testSameLineUserUpdatesExistingProspect();
 
 console.log("line crm intake tests passed");
