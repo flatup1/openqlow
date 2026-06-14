@@ -68,10 +68,39 @@ function flagsToProspectInput(flags: Record<string, string>): ProspectInput {
   return input;
 }
 
+function printHelp(): void {
+  console.log(`CRM（集客・追客アシスタント）の使い方
+
+  npm run crm -- <コマンド>
+
+■ よく使う
+  intake --message "<問い合わせ文>"   問い合わせを取り込み、返信下書きまで一気に出す
+  followups                            今フォローすべき人の一覧（横に返信下書きの出し方も表示）
+  draft <番号>                         その人向けの返信下書きを出す（自動送信はしません）
+  daily-report                         今日の集計レポートを作って保存
+
+■ 名簿の操作
+  list                                 登録ぜんぶを一覧表示
+  find <名前の一部>                    名前で探す
+  status <番号> <状態>                 状態を更新（例: new/replied/trial/joined/lost）
+  add [--name 田中 --gender female ...] 手動で1件登録
+
+■ その他
+  log-error <種別> <メッセージ>        うまく動かない時の記録を残す
+  help                                 この使い方を表示
+
+ヒント: どのコマンドも勝手にメッセージを送りません。送るのは必ず人の最終確認のあとです。`);
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   const { flags, positional } = parseFlags(rest);
   const store = openProspectStore(storeFile);
+
+  if (!command || command === "help" || command === "--help" || command === "-h") {
+    printHelp();
+    return 0;
+  }
 
   switch (command) {
     case "add": {
@@ -184,7 +213,7 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     default:
-      console.error("Commands: intake --message <文> | add | list | find <名前> | status <番号> <状態> | draft <番号> | followups | daily-report | log-error <type> <message>");
+      console.error(`不明なコマンド: ${command}\n使い方は \`npm run crm -- help\` で確認できます。`);
       return 1;
   }
 }
