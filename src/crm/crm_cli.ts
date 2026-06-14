@@ -156,12 +156,16 @@ async function main(argv: string[]): Promise<number> {
       const now = new Date();
       const print = (title: string, list: { id: number; name: string }[]) => {
         console.log(`\n■ ${title}（${list.length}件）`);
-        if (!list.length) console.log("  なし");
-        for (const p of list) console.log(`  #${p.id} ${p.name || "(無名)"}`);
+        if (!list.length) {
+          console.log("  なし");
+          return;
+        }
+        for (const p of list) console.log(`  #${p.id} ${p.name || "(無名)"}　→ 返信案: crm draft ${p.id}`);
       };
       print("追客漏れ候補", getFollowupNeeded(all, now, followupHours));
       print("体験後フォロー候補", getTrialFollowupNeeded(all));
       print("口コミ依頼候補", getReviewRequestCandidates(all));
+      console.log("\nヒント: 返信下書きは `npm run crm -- draft <番号>` で出せます（自動送信なし）。");
       return 0;
     }
     case "daily-report": {
