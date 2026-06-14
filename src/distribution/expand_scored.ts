@@ -71,9 +71,11 @@ export function improveDraft(
   const score = (b: string): CraftScore => scoreCraft(b, { platform, recentBodies: options.recentBodies });
   const before = score(body);
 
+  // variantsFor は先頭に原文 body を含むため、原文候補は before を使い回して二重採点を避ける
+  // （scoreCraft は純関数なので同じ入力なら結果は同一。freshness の bigram 再計算も省ける）。
   const safeCandidates = variantsFor(platform, body)
     .filter(candidate => checkDraftSafety(candidate).ok)
-    .map(candidate => ({ body: candidate, score: score(candidate) }));
+    .map(candidate => ({ body: candidate, score: candidate === body ? before : score(candidate) }));
 
   // 総合 → 新鮮さ → 短さ の優先で最良を選ぶ。
   safeCandidates.sort(
