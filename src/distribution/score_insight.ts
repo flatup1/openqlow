@@ -156,8 +156,11 @@ function valueOf(agg: RecordAggregate, key: CraftDimensionKey): number {
 export async function buildCraftInsight(
   options: { ledgerPath?: string; perfPath?: string } = {},
 ): Promise<CraftInsight> {
-  const ledger = await readCraftLedger({ path: options.ledgerPath });
-  const perf = await readPerformance({ path: options.perfPath });
+  // 台帳と実測ログは別ファイルで互いに独立なので並列に読む（逐次 await だと直列待ちになる）。
+  const [ledger, perf] = await Promise.all([
+    readCraftLedger({ path: options.ledgerPath }),
+    readPerformance({ path: options.perfPath }),
+  ]);
   const aggregates = aggregateLedger(ledger);
 
   // クラフトと実エンゲージメントが両方あるレコードのペアを作る
