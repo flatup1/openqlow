@@ -1,0 +1,12 @@
+[Unit]
+Description=OPENQLOW Threads long-lived token refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=openqlow
+Group=openqlow
+WorkingDirectory=/opt/openqlow
+EnvironmentFile=/etc/openqlow/openqlow.env
+ExecStart=/usr/bin/npm run threads:refresh

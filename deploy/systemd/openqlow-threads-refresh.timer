@@ -1,0 +1,9 @@
+[Unit]
+Description=Run OPENQLOW Threads token refresh weekly
+
+[Timer]
+OnCalendar=Mon *-*-* 04:30:00 Asia/Tokyo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

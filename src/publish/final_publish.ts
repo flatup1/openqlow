@@ -6,6 +6,7 @@ import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.
 import type { PublishDestination, PublishQueueEntry } from "./publisher_types.js";
 import { resolvePublicMediaUrl } from "./public_media.js";
 import { publishThreadsImage, publishThreadsText } from "./threads_api.js";
+import { getActiveThreadsToken } from "./threads_token.js";
 
 export interface FinalPublishResult {
   recordId: string;
@@ -89,7 +90,8 @@ export async function runFinalPublish(
         continue;
       }
       const userId = envValue(env, "THREADS_USER_ID");
-      const accessToken = envValue(env, "THREADS_ACCESS_TOKEN");
+      // 保存済みの長期トークンを優先し、無ければ env の短期トークンにフォールバック。
+      const accessToken = await getActiveThreadsToken(root, env);
       const draft = threadsDraft(record.drafts);
       if (!userId || !accessToken) {
         result.skipped.push({ destination, reason: "THREADS_USER_ID or THREADS_ACCESS_TOKEN is missing" });
