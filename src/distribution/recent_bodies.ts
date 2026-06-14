@@ -90,9 +90,14 @@ export async function loadRecentBodies(
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
     .slice(0, limit);
 
+  // 各ドラフトファイルは独立に読めるので並列化する（逐次 await だと件数分だけ直列待ちになる）。
+  // Promise.all は入力順を保つので、新しい順の並びはそのまま維持される。
+  const texts = await Promise.all(
+    entries.map(entry => readFile(entry.file, "utf8").catch(() => "")),
+  );
+
   const bodies: string[] = [];
-  for (const entry of entries) {
-    const text = await readFile(entry.file, "utf8").catch(() => "");
+  for (const text of texts) {
     const body = extractBody(text);
     if (body) bodies.push(body);
   }
