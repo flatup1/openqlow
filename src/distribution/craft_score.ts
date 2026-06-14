@@ -70,6 +70,14 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return inter / (a.size + b.size - inter);
 }
 
+// ── 採点に使う語彙・パターン（何を「具体的/情景/つかみ」と見なすかの一覧） ──────
+const HAS_QUESTION = /[？?]/;                       // 問いかけ
+const HAS_QUOTE = /[「『][^」』]+[」』]/;              // 声・セリフ
+const HEAD_HAS_NUMBER = /[0-9０-９]|¥|円|月-/;        // 冒頭の数字・金額
+const HAS_NUMBER = /[0-9０-９]|¥|円|￥/;              // 本文の数字・金額
+const HAS_PROPER_NOUN = /(UIZIN|初陣|親子割|バンテージ|太陽のジム|FLATUP|成田)/; // 固有名詞
+const HAS_SCENE = /(ミット|ハイタッチ|鏡|横顔|拍手|抱擁|笑い合|並んで|見守る)/;   // 情景描写
+
 // ── 各軸の採点 ───────────────────────────────────────────────────────────
 
 function scoreHook(text: string): CraftDimension {
@@ -77,9 +85,9 @@ function scoreHook(text: string): CraftDimension {
   const hints: string[] = [];
   let score = 2; // 平凡な見出しの基準点
 
-  const hasQuestion = /[？?]/.test(head);
-  const hasQuote = /[「『][^」』]+[」』]/.test(head);
-  const hasNumber = /[0-9０-９]|¥|円|月-/.test(head);
+  const hasQuestion = HAS_QUESTION.test(head);
+  const hasQuote = HAS_QUOTE.test(head);
+  const hasNumber = HEAD_HAS_NUMBER.test(head);
   const headLen = weightedLength(head);
   const isPunchy = headLen > 0 && headLen <= 32;
   const isBareThemeLabel = head.length > 0 && head.length <= 14 && !hasQuestion && !hasQuote && !hasNumber;
@@ -115,9 +123,9 @@ function scoreSpecificity(text: string): CraftDimension {
   const hints: string[] = [];
   let score = 2;
 
-  const hasNumber = /[0-9０-９]|¥|円|￥/.test(text);
-  const hasProperNoun = /(UIZIN|初陣|親子割|バンテージ|太陽のジム|FLATUP|成田)/.test(text);
-  const hasScene = /(ミット|ハイタッチ|鏡|横顔|拍手|抱擁|笑い合|並んで|見守る)/.test(text);
+  const hasNumber = HAS_NUMBER.test(text);
+  const hasProperNoun = HAS_PROPER_NOUN.test(text);
+  const hasScene = HAS_SCENE.test(text);
   const abstractOnly = !hasNumber && !hasProperNoun && !hasScene;
 
   if (hasNumber) score += 1;
