@@ -3,7 +3,7 @@
 // SQLite 相当の最小 CRUD を提供する。1オーナー運用前提のため単純なファイル読み書き。
 // created_at / updated_at は自動付与。id は AUTOINCREMENT 相当（max(id)+1）。
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   normalizeProspectInput,
@@ -33,7 +33,11 @@ async function readAll(filePath: string): Promise<Prospect[]> {
 
 async function writeAll(filePath: string, list: Prospect[]): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(list, null, 2) + "\n", "utf8");
+  // 一時ファイルに書き切ってから rename（同一ディレクトリ内なので原子的）。
+  // 保存の途中で中断しても本体（名簿）が壊れない。
+  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  await writeFile(tmpPath, JSON.stringify(list, null, 2) + "\n", "utf8");
+  await rename(tmpPath, filePath);
 }
 
 /**
