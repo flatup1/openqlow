@@ -1,4 +1,4 @@
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openProspectStore } from "./store.js";
@@ -52,6 +52,10 @@ try {
   assert((await store.remove(2)) === true, "remove existing returns true");
   assert((await store.remove(2)) === false, "remove missing returns false");
   assert((await store.getAll()).length === 1, "one prospect left");
+
+  // 原子的書き込み: 一時ファイルが残らない（保存後はデータ本体だけ）
+  const entries = await readdir(dir);
+  assert(entries.length === 1 && entries[0] === "prospects.json", "no leftover temp files after writes");
 
   console.log("crm store tests passed");
 } finally {
