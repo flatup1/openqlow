@@ -1,7 +1,10 @@
 import http from "node:http";
 import crypto from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
+import { mediaDirectoryForEnv } from "../publish/media_library.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
@@ -99,8 +102,50 @@ async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, u
   };
 }
 
+const MEDIA_PREFIX = "/openqlow/media/";
+const MEDIA_CONTENT_TYPES: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".heic": "image/heic",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+};
+
+function mediaContentType(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+  return MEDIA_CONTENT_TYPES[ext] ?? "application/octet-stream";
+}
+
+// LINE で保存した画像/動画を公開配信する（Threads/Instagram 等が画像を取得するための公開URL）。
+// ファイル名のみ許可（パストラバーサル防止）。GET 専用。webhook は openqlow ユーザーで動くため読める。
+async function serveMedia(requestPath: string, res: http.ServerResponse): Promise<void> {
+  const name = decodeURIComponent(requestPath.slice(MEDIA_PREFIX.length));
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name.includes("..")) {
+    res.writeHead(400);
+    res.end("bad request");
+    return;
+  }
+  const file = path.join(mediaDirectoryForEnv(), name);
+  const data = await readFile(file).catch(() => null);
+  if (!data) {
+    res.writeHead(404);
+    res.end("not found");
+    return;
+  }
+  res.writeHead(200, { "content-type": mediaContentType(name), "cache-control": "no-store" });
+  res.end(data);
+}
+
 const server = http.createServer(async (req, res) => {
   const requestPath = new URL(req.url || "/", "http://localhost").pathname;
+
+  if (req.method === "GET" && requestPath.startsWith(MEDIA_PREFIX)) {
+    await serveMedia(requestPath, res);
+    return;
+  }
+
   if (req.method !== "POST" || !webhookPaths.has(requestPath)) {
     res.writeHead(404);
     res.end("not found");
