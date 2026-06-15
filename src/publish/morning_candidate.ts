@@ -34,13 +34,9 @@ function allDraftText(drafts: PlatformDraft[]): string {
 
 function buildThreadsBody(): string {
   return [
-    "昨日のFLATUP GYM記録。",
-    "",
-    "体験、入会、返信、気になる会員さんのことを整理しました。",
-    "今日も一人ひとりが安心して続けられるように、できることを丁寧に進めます。",
-    "",
     "強さは、急に作るものではなく、昨日より少しだけ自分と向き合う積み重ね。",
-    "成田の世界一やさしい格闘技ジムとして、今日も静かに前へ進みます。",
+    "成田の世界一やさしい格闘技ジム、FLATUP GYM。",
+    "今日も、一人ひとりが安心して挑戦できる場所であり続けます。",
   ].join("\n");
 }
 
@@ -75,7 +71,7 @@ export async function createMorningPublishCandidate(
       platform: "threads",
       publicationLevel: "level_2_draft",
       body: buildThreadsBody(),
-      hashtags: ["FLATUPGYM", "成田", "キックボクシング"],
+      hashtags: ["FLATUPGYM"],
       cta: "",
       safetyNotes: [
         "朝の内部記録から個人名や個別対応の詳細は出さない。",
