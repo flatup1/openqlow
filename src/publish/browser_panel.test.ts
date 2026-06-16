@@ -53,15 +53,23 @@ await createPublishQueueEntry(tmp, record, ["threads", "google_business", "line_
   mediaFiles: [publicImage, localImage],
 });
 
-const file = await createBrowserPanel(tmp, "FG-20260530-004", {
+// 配信ディレクトリ＝公開ディレクトリ（VPSと同じ構成）にして、パネルが公開URLで返ることを確認。
+const returned = await createBrowserPanel(tmp, "FG-20260530-004", {
   env: {
+    OPENQLOW_MEDIA_DIR: publicMediaDir,
     OPENQLOW_PUBLIC_MEDIA_DIR: publicMediaDir,
     OPENQLOW_PUBLIC_MEDIA_BASE_URL: "https://media.example.com/openqlow/",
   },
 });
-const html = await readFile(file, "utf8");
+// iPhone からタップできる公開URLを返す（VPSファイルパスではない）。
+assert.equal(returned, "https://media.example.com/openqlow/panel-FG-20260530-004.html");
 
-assert.match(file, /FG-20260530-004\.html$/);
+// パネル本体は publish_assist と配信ディレクトリの両方に書き出される。
+const localPanel = path.join(tmp, "state", "publish_assist", "FG-20260530-004.html");
+const servedPanel = path.join(publicMediaDir, "panel-FG-20260530-004.html");
+const html = await readFile(localPanel, "utf8");
+assert.equal(html, await readFile(servedPanel, "utf8"));
+
 assert.match(html, /<title>openQLOW Publish Assist - FG-20260530-004<\/title>/);
 assert.match(html, /Threads/);
 assert.match(html, /Google Business Profile/);
@@ -74,6 +82,7 @@ assert.match(html, /最終投稿ボタンは押さない/);
 assert.match(html, /子どもが安心して挑戦できる/);
 assert.match(html, /画像確認/);
 assert.match(html, /https:\/\/media\.example\.com\/openqlow\/post\.jpg/);
+assert.match(html, /<img class="preview" src="https:\/\/media\.example\.com\/openqlow\/post\.jpg"/);
 assert.match(html, /local\.jpg/);
 assert.match(html, /Googleは画像URLをコピー/);
 assert.match(html, /LINE VOOMは画像ファイルをアップロード/);

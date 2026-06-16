@@ -4,6 +4,7 @@ import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
 import type { PublishDestination, PublishQueueEntry } from "./publisher_types.js";
 import { resolvePublicMediaUrl, type PublicMediaEnv } from "./public_media.js";
+import { mediaDirectoryForEnv } from "./media_library.js";
 
 const LABELS: Record<PublishDestination, string> = {
   threads: "Threads",
@@ -62,12 +63,17 @@ async function renderMediaSection(mediaFiles: string[] = [], env: PublicMediaEnv
   const items = await Promise.all(mediaFiles.map(async (file, index) => {
     const publicUrl = await resolvePublicMediaUrl(file, env);
     const fileName = path.basename(file);
+    // 公開URLがあれば実画像をプレビュー表示（投稿前に映り込みを目で確認するため）。
+    const preview = publicUrl
+      ? `<img class="preview" src="${escapeHtml(publicUrl)}" alt="${escapeHtml(fileName)}" loading="lazy">`
+      : "";
     const publicLine = publicUrl
       ? `<div class="media-row"><span>画像URL:</span><code>${escapeHtml(publicUrl)}</code><button type="button" data-copy="${escapeHtml(publicUrl)}">画像URLをコピー</button></div>`
       : `<div class="media-row muted">画像URLなし。Googleは手動確認、LINE VOOMはファイルアップロードで進めます。</div>`;
     return `
       <li>
         <strong>${index + 1}. ${escapeHtml(fileName)}</strong>
+        ${preview}
         <div class="media-row"><span>ファイル:</span><code>${escapeHtml(file)}</code><button type="button" data-copy="${escapeHtml(file)}">ファイルパスをコピー</button></div>
         ${publicLine}
       </li>`;
@@ -100,13 +106,14 @@ function renderCard(destination: PublishDestination, draft: PlatformDraft): stri
 export async function createBrowserPanel(
   root: string,
   id: string,
-  opts: { env?: PublicMediaEnv } = {},
+  opts: { env?: Record<string, string | undefined> } = {},
 ): Promise<string> {
+  const env = opts.env ?? process.env;
   const queue = await loadQueue(root, id);
   const record = await loadRecord(root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
 
-  const mediaSection = await renderMediaSection(queue.mediaFiles, opts.env);
+  const mediaSection = await renderMediaSection(queue.mediaFiles, env);
   const cards = queue.destinations
     .map(destination => renderCard(destination, draftForDestination(record.drafts, destination)))
     .join("\n");
@@ -134,6 +141,7 @@ export async function createBrowserPanel(
     .step { background: #eef6ff; border-left: 4px solid #3b82f6; padding: 10px; margin: 12px 0 0; }
     .open, button { border: 1px solid #9fb3c8; background: #102a43; color: white; border-radius: 6px; padding: 9px 12px; text-decoration: none; font-size: 14px; cursor: pointer; }
     textarea { box-sizing: border-box; width: 100%; min-height: 190px; margin: 12px 0; border: 1px solid #bcccdc; border-radius: 6px; padding: 12px; font-size: 15px; line-height: 1.6; resize: vertical; white-space: pre-wrap; }
+    .preview { display: block; width: 100%; max-width: 360px; height: auto; margin: 10px 0; border-radius: 8px; border: 1px solid #d9e2ec; }
   </style>
 </head>
 <body>
@@ -159,5 +167,19 @@ export async function createBrowserPanel(
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `${id}.html`);
   await writeFile(file, html, "utf8");
+
+  // 公開メディア配信が有効なら、同じ仕組み（nginx ^~ /openqlow/media/ + cloudflared）で
+  // パネルを配信し、iPhone からタップで開けるURLを返す。
+  // 配信ディレクトリ(OPENQLOW_MEDIA_DIR)と公開ディレクトリ(OPENQLOW_PUBLIC_MEDIA_DIR)が
+  // 同一のときだけURLが解決する（VPSはこの設定）。解決できなければローカルパスを返す。
+  if (env.OPENQLOW_PUBLIC_MEDIA_DIR && env.OPENQLOW_PUBLIC_MEDIA_BASE_URL) {
+    const mediaDir = mediaDirectoryForEnv(env);
+    await mkdir(mediaDir, { recursive: true });
+    const servedFile = path.join(mediaDir, `panel-${id}.html`);
+    await writeFile(servedFile, html, "utf8");
+    const url = await resolvePublicMediaUrl(servedFile, env);
+    if (url) return url;
+  }
+
   return file;
 }

@@ -111,6 +111,7 @@ const MEDIA_CONTENT_TYPES: Record<string, string> = {
   ".heic": "image/heic",
   ".mp4": "video/mp4",
   ".mov": "video/quicktime",
+  ".html": "text/html; charset=utf-8",
 };
 
 function mediaContentType(name: string): string {

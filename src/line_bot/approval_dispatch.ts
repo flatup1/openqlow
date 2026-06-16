@@ -77,10 +77,10 @@ async function handleParsedApproval(
         : "OPENQLOW: 投稿準備キューを作りました。外部投稿はまだしていません。",
       `ID: ${parsed.id}`,
       published.length ? `投稿済み: ${published.join(" / ")}` : "",
-      queued.length ? `ブラウザで投稿: ${queued.join(" / ")}（パネルから本文コピー）` : "",
+      queued.length ? `手動投稿（パネルから本文コピー）: ${queued.join(" / ")}` : "",
       skipped.length ? `未投稿: ${skipped.join(" / ")}` : "",
-      panel ? `ブラウザ投稿パネル: ${panel}` : "",
-      "Googleビジネス / LINE VOOM はパネルから本文をコピーして投稿してください。",
+      panel ? `📋 投稿パネル（タップで開く）:\n${panel}` : "",
+      "Googleビジネス / LINE VOOM はパネルを開き、本文をコピー→各アプリに貼って投稿してください。",
     ].filter(Boolean).join("\n");
 
     return { ok: true, action: "approved", id: parsed.id, saved: files, panel, published, message };
