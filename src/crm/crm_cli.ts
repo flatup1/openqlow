@@ -80,7 +80,7 @@ function printHelp(): void {
   daily-report                         今日の集計レポートを作って保存
 
 ■ 名簿の操作
-  list                                 登録ぜんぶを一覧表示
+  list [--status 入会]                 一覧表示（--status で状態を絞り込み。日本語OK）
   find <名前の一部>                    名前で探す
   status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
   add [--name 田中 --gender female ...] 手動で1件登録
@@ -128,11 +128,23 @@ async function main(argv: string[]): Promise<number> {
     }
     case "list": {
       const all = await store.getAll();
-      if (!all.length) {
-        console.log("見込み客はまだ登録されていません。");
+      let rows = all;
+      let label = "全";
+      if (flags.status) {
+        const want = resolveStatus(flags.status);
+        if (!want) {
+          console.error(`不明な状態: ${flags.status}（例: 返信した / 体験予約 / 体験済み / 入会 / 見送り）`);
+          return 1;
+        }
+        rows = all.filter(p => p.status === want);
+        label = want;
+      }
+      if (!rows.length) {
+        console.log(flags.status ? `状態「${label}」の見込み客はいません。` : "見込み客はまだ登録されていません。");
         return 0;
       }
-      for (const p of all) {
+      console.log(`■ 一覧（${label}：${rows.length}件）`);
+      for (const p of rows) {
         console.log(`#${p.id} ${p.name || "(無名)"} | ${p.category} | ${p.status} | 温度:${p.temperature || "-"} | 最終連絡:${p.lastContactAt?.slice(0, 16) || "-"}`);
       }
       return 0;
