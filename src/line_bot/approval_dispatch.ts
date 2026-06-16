@@ -3,6 +3,8 @@ import { expandApprovalShortcut, expandRejectionShortcut } from "../approval/sho
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { runFinalPublish } from "../publish/final_publish.js";
+import { publishExtraPlatforms } from "../publish/extra_publish.js";
+import { loadRecord } from "../state/file_store.js";
 import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily.js";
 import { executeLineCommand } from "./commands.js";
 
@@ -51,6 +53,20 @@ async function handleParsedApproval(
     const published = publish?.published.map(item => `${item.destination}: ${item.externalId}`) ?? [];
     const queued = publish?.browserQueued.map(job => job.destination) ?? [];
     const skipped = publish?.skipped.map(item => `${item.destination}: ${item.reason}`) ?? [];
+
+    // X / Instagram（キーがあれば自動投稿）。Threadsと同じ本文＋写真を使う。
+    if (okShortcutUsed) {
+      const record = await loadRecord(config.root, parsed.id);
+      if (record) {
+        try {
+          const extra = await publishExtraPlatforms({ record });
+          for (const item of extra.published) published.push(`${item.platform}: ${item.externalId}`);
+          for (const item of extra.skipped) skipped.push(`${item.platform}: ${item.reason}`);
+        } catch (error) {
+          console.error("[extra-publish] failed:", error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
 
     const message = [
       published.length
