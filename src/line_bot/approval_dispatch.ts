@@ -1,11 +1,13 @@
 import { parseApprovalCommand } from "../approval/command.js";
-import { expandApprovalShortcut, expandRejectionShortcut } from "../approval/shortcut.js";
+import { expandApprovalShortcut, expandRejectionShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
+import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { runFinalPublish } from "../publish/final_publish.js";
 import { publishExtraPlatforms } from "../publish/extra_publish.js";
-import { loadRecord } from "../state/file_store.js";
-import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily.js";
+import { loadRecord, saveRecord } from "../state/file_store.js";
+import { checkDraftSafety } from "../safety/check.js";
+import { approveRecord, rejectRecord } from "../scheduler/daily.js";
 import { executeLineCommand } from "./commands.js";
 
 function fallbackMessage(): string {
@@ -84,8 +86,25 @@ async function handleParsedApproval(
   }
 
   if (parsed.response === "revision") {
-    const record = await requestRevision(parsed.id, parsed.note ?? "");
-    return { ok: true, action: "needs_revision", id: record.id };
+    // id 省略時は直近の承認待ち候補を対象に、本文をそのまま差し替える。
+    const id = parsed.id || (await resolveLatestPendingId(config.root)) || "";
+    if (!id) {
+      return { ok: false, message: "直せる投稿候補が見つかりませんでした。先に「投稿」で候補を作ってください。" };
+    }
+    if (!isUsableRevisionText(parsed.note ?? "")) {
+      return { ok: false, message: ["何をどう直しますか？", "例: 修正 もっとやさしい雰囲気で"].join("\n") };
+    }
+    const record = await loadRecord(config.root, id);
+    if (!record) {
+      return { ok: false, message: `投稿候補が見つかりませんでした: ${id}` };
+    }
+    const edited = applyBodyEdit(record, parsed.note ?? "");
+    await saveRecord(config.root, edited);
+    const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
+    const message = safety.ok
+      ? ["OPENQLOW: 下書きを直しました。これでいいですか？", `ID: ${id}`, "", parsed.note ?? "", "", "OK / さらに修正 〇〇 / NO"].join("\n")
+      : ["OPENQLOW: 直しましたが、安全チェックに引っかかりました。", safety.issues.map(issue => issue.message).join(" / "), "もう一度「修正 〇〇」で直してください。"].join("\n");
+    return { ok: true, action: "revised", id, message };
   }
 
   const record = await rejectRecord(parsed.id);
@@ -101,17 +120,14 @@ export async function executeApprovalText(text: string, userId?: string): Promis
   const okShortcutUsed = approvalText !== text;
   const parsed = parseApprovalCommand(approvalText);
 
-  // OK/NO must beat any ongoing memory session. Revision text remains a LINE
-  // command first so `修正 FG-...: 新本文` edits the draft instead of only
-  // marking it needs_revision.
-  if (parsed && parsed.response !== "revision") {
+  // OK / NO / 修正 などの承認コマンドは、進行中の日報セッションより先に処理する。
+  // （特に「修正 <新本文>」は本文編集なので、memory keeper に日報として保存されないようにする）
+  if (parsed) {
     return handleParsedApproval(parsed, okShortcutUsed);
   }
 
   const lineCommand = await executeLineCommand(text, { userId });
   if (lineCommand.handled) return { ...lineCommand };
-
-  if (parsed) return handleParsedApproval(parsed, okShortcutUsed);
 
   return {
     ok: false,
