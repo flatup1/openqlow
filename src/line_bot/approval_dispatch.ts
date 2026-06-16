@@ -1,6 +1,7 @@
 import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, expandRejectionShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
+import { rewriteDraftBody } from "../llm/rewrite.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { runFinalPublish } from "../publish/final_publish.js";
@@ -98,7 +99,27 @@ async function handleParsedApproval(
     if (!record) {
       return { ok: false, message: `投稿候補が見つかりませんでした: ${id}` };
     }
-    const edited = applyBodyEdit(record, parsed.note ?? "");
+
+    // 指示モード: 送られた文章は「新本文」ではなく「書き直しの指示」。
+    // ローカルLLM(Ollama)で今の本文を指示どおり書き直す。
+    // 失敗時は本文を一切書き換えず正直に伝える（変な本文の投稿事故を防ぐ）。
+    const baseDraft = record.drafts.find(draft => draft.platform === "threads") ?? record.drafts[0];
+    const currentBody = baseDraft?.body ?? "";
+    const rewrite = await rewriteDraftBody({ currentBody, instruction: parsed.note ?? "" });
+    if (!rewrite.ok) {
+      return {
+        ok: false,
+        action: "revise_failed",
+        id,
+        message: [
+          "OPENQLOW: うまく直せませんでした（本文は変えていません）。",
+          `理由: ${rewrite.reason}`,
+          "もう一度「修正 〇〇」で試すか、全文を自分で書くなら本文をそのまま送ってください。",
+        ].join("\n"),
+      };
+    }
+
+    const edited = applyBodyEdit(record, rewrite.body);
     await saveRecord(config.root, edited);
     const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
     const message = safety.ok
