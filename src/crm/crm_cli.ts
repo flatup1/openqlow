@@ -82,7 +82,7 @@ function printHelp(): void {
 ■ 名簿の操作
   list                                 登録ぜんぶを一覧表示
   find <名前の一部>                    名前で探す
-  status <番号> <状態>                 状態を更新（例: new/replied/trial/joined/lost）
+  status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
   add [--name 田中 --gender female ...] 手動で1件登録
 
 ■ その他
@@ -141,16 +141,20 @@ async function main(argv: string[]): Promise<number> {
       const id = Number(positional[0] ?? flags.id);
       const status = resolveStatus(positional[1] ?? flags.to ?? "");
       if (!id || !status) {
-        console.error("Usage: crm status <番号> <状態>");
+        console.error("Usage: crm status <番号> <状態> [--memo \"ひとことメモ\"]");
         console.error("  状態（日本語OK）: 返信した / 体験予約 / 体験済み / 入会 / 見送り など（英語コードも可）");
         return 1;
       }
-      const updated = await store.update(id, { status, lastContactAt: new Date().toISOString() });
+      const updated = await store.update(id, {
+        status,
+        lastContactAt: new Date().toISOString(),
+        ...(flags.memo ? { memo: flags.memo } : {}),
+      });
       if (!updated) {
         console.error(`#${id} が見つかりません。`);
         return 1;
       }
-      console.log(`#${id} を ${status} に更新しました。`);
+      console.log(`#${id} を ${status} に更新しました。${flags.memo ? `（メモ: ${flags.memo}）` : ""}`);
       return 0;
     }
     case "find": {
