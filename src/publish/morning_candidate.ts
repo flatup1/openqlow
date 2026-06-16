@@ -40,6 +40,13 @@ function buildThreadsBody(): string {
   ].join("\n");
 }
 
+/** 本文末尾に付けるLINE友だち追加リンク（OPENQLOW_LINE_ADD_URL があるときだけ）。 */
+function lineAddLink(env: Record<string, string | undefined> = process.env): string {
+  const url = (env.OPENQLOW_LINE_ADD_URL || "").trim();
+  if (!url) return "";
+  return `\n\n▼体験・ご質問は公式LINEから\n${url}`;
+}
+
 export async function createMorningPublishCandidate(
   input: MorningCandidateInput
 ): Promise<DraftRecord> {
@@ -70,7 +77,7 @@ export async function createMorningPublishCandidate(
       approvalId: id,
       platform: "threads",
       publicationLevel: "level_2_draft",
-      body: buildThreadsBody(),
+      body: buildThreadsBody() + lineAddLink(),
       hashtags: ["FLATUPGYM"],
       cta: "",
       safetyNotes: [

@@ -5,6 +5,8 @@ import path from "node:path";
 import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { mediaDirectoryForEnv } from "../publish/media_library.js";
+import { loadAwaitingPublish, clearAwaitingPublish } from "../approval/publish_gate.js";
+import { finalizePublish } from "../publish/finalize.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
@@ -94,6 +96,17 @@ async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, u
     messageType: event.messageType,
     token: process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "",
   });
+
+  // 「ok → 写真を直接送る」なら、添付に続けてそのまま自動投稿まで進める。
+  if (result.ok && result.id) {
+    const awaiting = await loadAwaitingPublish(config.root);
+    if (awaiting && awaiting.id === result.id) {
+      await clearAwaitingPublish(config.root);
+      const published = await finalizePublish(config.root, awaiting.id);
+      return { ok: published.ok, action: "approved", id: awaiting.id, message: published.message };
+    }
+  }
+
   return {
     ok: result.ok,
     action: "line_media_attached",

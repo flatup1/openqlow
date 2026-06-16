@@ -1,15 +1,18 @@
 import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, expandRejectionShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
+import { setAwaitingPublish, loadAwaitingPublish, clearAwaitingPublish } from "../approval/publish_gate.js";
 import { rewriteDraftBody } from "../llm/rewrite.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
-import { runFinalPublish } from "../publish/final_publish.js";
-import { publishExtraPlatforms } from "../publish/extra_publish.js";
+import { finalizePublish, photoPromptMessage } from "../publish/finalize.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { approveRecord, rejectRecord } from "../scheduler/daily.js";
 import { executeLineCommand } from "./commands.js";
+
+// ok の後の「写真の判断」を表すコマンド。これらが来たら自動投稿まで進める。
+const MEDIA_DECISION_ACTIONS = new Set(["image_choice", "media_insert"]);
 
 function fallbackMessage(): string {
   return [
@@ -27,9 +30,9 @@ async function handleParsedApproval(
   const config = loadConfig();
 
   if (parsed.response === "OK") {
-    const files = await approveRecord(parsed.id, parsed.raw);
     const hasPublishDestinations = parsed.targets.some(target => target !== "drafts_only");
     if (!hasPublishDestinations) {
+      const files = await approveRecord(parsed.id, parsed.raw);
       return {
         ok: true,
         action: "approved",
@@ -39,51 +42,37 @@ async function handleParsedApproval(
       };
     }
 
-    const panel = await createBrowserPanel(config.root, parsed.id);
-
-    // 素の「ok」ショートカット時は自動投稿まで実行（API対応＝Threads。写真は公開URL経由）。
-    // 明示の「OK <id> all」はパネルのみ（従来どおり）。
-    // 投稿成功（postId取得）したものだけ「投稿済み」と報告し、失敗・未対応は正直に出す。
-    let publish: Awaited<ReturnType<typeof runFinalPublish>> | undefined;
-    if (okShortcutUsed) {
+    // 明示の「OK <id> all」（ショートカットでない）は従来どおりパネルのみ（自動投稿しない）。
+    if (!okShortcutUsed) {
+      const files = await approveRecord(parsed.id, parsed.raw);
+      let panel: string | undefined;
       try {
-        publish = await runFinalPublish(config.root, parsed.id);
+        panel = await createBrowserPanel(config.root, parsed.id);
       } catch (error) {
-        console.error("[final-publish] failed:", error instanceof Error ? error.message : String(error));
+        console.error("[panel] failed:", error instanceof Error ? error.message : String(error));
       }
+      const message = [
+        "OPENQLOW: 投稿準備キューを作りました。",
+        `ID: ${parsed.id}`,
+        panel ? `📋 投稿パネル（タップで開く）:\n${panel}` : "",
+      ].filter(Boolean).join("\n");
+      return { ok: true, action: "approved", id: parsed.id, saved: files, panel, message };
     }
 
-    const published = publish?.published.map(item => `${item.destination}: ${item.externalId}`) ?? [];
-    const queued = publish?.browserQueued.map(job => job.destination) ?? [];
-    const skipped = publish?.skipped.map(item => `${item.destination}: ${item.reason}`) ?? [];
-
-    // X / Instagram（キーがあれば自動投稿）。Threadsと同じ本文＋写真を使う。
-    if (okShortcutUsed) {
-      const record = await loadRecord(config.root, parsed.id);
-      if (record) {
-        try {
-          const extra = await publishExtraPlatforms({ record });
-          for (const item of extra.published) published.push(`${item.platform}: ${item.externalId}`);
-          for (const item of extra.skipped) skipped.push(`${item.platform}: ${item.reason}`);
-        } catch (error) {
-          console.error("[extra-publish] failed:", error instanceof Error ? error.message : String(error));
-        }
-      }
+    // 素の「ok」: 写真ゲート。
+    // 写真の判断がまだ（mediaFiles 未設定）なら投稿せず、写真を聞いて停止する。
+    // 写真の判断済み（画像N / 画像なし）か、2回目のok なら投稿を実行する。
+    const record = await loadRecord(config.root, parsed.id);
+    const mediaDecided = record?.mediaFiles !== undefined;
+    const awaiting = await loadAwaitingPublish(config.root);
+    if (!mediaDecided && awaiting?.id !== parsed.id) {
+      await setAwaitingPublish(config.root, parsed.id);
+      return { ok: true, action: "awaiting_media", id: parsed.id, message: photoPromptMessage(parsed.id) };
     }
 
-    const message = [
-      published.length
-        ? "OPENQLOW: 自動投稿しました ✅（投稿できたものだけ）"
-        : "OPENQLOW: 投稿準備キューを作りました。外部投稿はまだしていません。",
-      `ID: ${parsed.id}`,
-      published.length ? `投稿済み: ${published.join(" / ")}` : "",
-      queued.length ? `手動投稿（パネルから本文コピー）: ${queued.join(" / ")}` : "",
-      skipped.length ? `未投稿: ${skipped.join(" / ")}` : "",
-      panel ? `📋 投稿パネル（タップで開く）:\n${panel}` : "",
-      "Googleビジネス / LINE VOOM はパネルを開き、本文をコピー→各アプリに貼って投稿してください。",
-    ].filter(Boolean).join("\n");
-
-    return { ok: true, action: "approved", id: parsed.id, saved: files, panel, published, message };
+    await clearAwaitingPublish(config.root);
+    const result = await finalizePublish(config.root, parsed.id);
+    return { ok: result.ok, action: "approved", id: parsed.id, published: result.published, message: result.message };
   }
 
   if (parsed.response === "revision") {
@@ -149,7 +138,19 @@ export async function executeApprovalText(text: string, userId?: string): Promis
   }
 
   const lineCommand = await executeLineCommand(text, { userId });
-  if (lineCommand.handled) return { ...lineCommand };
+  if (lineCommand.handled) {
+    // 「ok → 写真を選ぶ」の後の画像選択なら、添付に続けてそのまま自動投稿まで進める。
+    if (lineCommand.ok && typeof lineCommand.action === "string" && MEDIA_DECISION_ACTIONS.has(lineCommand.action)) {
+      const awaiting = await loadAwaitingPublish(config.root);
+      const targetId = (lineCommand.meta as { id?: string } | undefined)?.id ?? awaiting?.id;
+      if (awaiting && targetId === awaiting.id) {
+        await clearAwaitingPublish(config.root);
+        const result = await finalizePublish(config.root, awaiting.id);
+        return { ...lineCommand, action: "approved", id: awaiting.id, published: result.published, message: result.message };
+      }
+    }
+    return { ...lineCommand };
+  }
 
   return {
     ok: false,

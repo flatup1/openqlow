@@ -47,6 +47,7 @@ async function withTempEnv<T>(fn: (root: string, vault: string) => Promise<T>): 
   return fn(root, vault);
 }
 
+// ok は写真ゲートで一旦止まり、写真の判断（ここでは2回目のok=写真なし）で投稿が確定する。
 await withTempEnv(async (root) => {
   const id = "FG-20260608-401";
   const userId = "test-approval-dispatch-user";
@@ -57,12 +58,41 @@ await withTempEnv(async (root) => {
   assert.equal(daily.handled, true);
   assert.equal(daily.action, "memory_keeper");
 
+  // 1回目の ok: まだ投稿せず、写真を聞いて止まる。
+  const firstOk = await executeApprovalText("ok", userId);
+  assert.equal(firstOk.ok, true);
+  assert.equal(firstOk.action, "awaiting_media");
+  assert.equal(firstOk.id, id);
+  assert.match(String(firstOk.message), /写真/);
+  const notYet = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+  assert.equal(notYet.status, "pending_approval");
+
+  // 2回目の ok: 写真なしで投稿を確定する。
   const approved = await executeApprovalText("ok", userId);
   assert.equal(approved.ok, true);
   assert.equal(approved.action, "approved");
   assert.equal(approved.id, id);
-  assert.match(String(approved.message), /投稿準備キュー/);
+  assert.match(String(approved.message), /投稿準備キュー|自動投稿/);
   assert.doesNotMatch(String(approved.message), /日報として読み取れません/);
+
+  const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+  assert.equal(saved.status, "saved");
+});
+
+// ok の後に「画像なし」を送ると、添付判断に続けてそのまま投稿が確定する。
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-403";
+  const userId = "test-approval-dispatch-user";
+  await saveRecord(root, pendingRecord(id));
+  await rememberApprovalCandidate(root, id);
+
+  const firstOk = await executeApprovalText("ok", userId);
+  assert.equal(firstOk.action, "awaiting_media");
+
+  const decided = await executeApprovalText("画像なし", userId);
+  assert.equal(decided.ok, true);
+  assert.equal(decided.action, "approved");
+  assert.equal(decided.id, id);
 
   const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
   assert.equal(saved.status, "saved");
