@@ -122,8 +122,9 @@ async function handleParsedApproval(
     const edited = applyBodyEdit(record, rewrite.body);
     await saveRecord(config.root, edited);
     const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
+    // 確認メッセージには「AIが書き直した新しい本文」を出す（指示文ではない）。
     const message = safety.ok
-      ? ["OPENQLOW: 下書きを直しました。これでいいですか？", `ID: ${id}`, "", parsed.note ?? "", "", "OK / さらに修正 〇〇 / NO"].join("\n")
+      ? ["OPENQLOW: 下書きを直しました。これでいいですか？", `ID: ${id}`, "", rewrite.body, "", "OK / さらに修正 〇〇 / NO"].join("\n")
       : ["OPENQLOW: 直しましたが、安全チェックに引っかかりました。", safety.issues.map(issue => issue.message).join(" / "), "もう一度「修正 〇〇」で直してください。"].join("\n");
     return { ok: true, action: "revised", id, message };
   }
