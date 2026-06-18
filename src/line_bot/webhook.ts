@@ -1,10 +1,10 @@
 import http from "node:http";
-import crypto from "node:crypto";
 import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
+import { verifyLineSignature } from "./webhook_auth.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
@@ -13,17 +13,11 @@ const jinLineUserId = process.env.JIN_LINE_USER_ID || "";
 const backupApproverLineUserId = process.env.BACKUP_APPROVER_LINE_USER_ID || "";
 const allowedApproverIds = new Set([jinLineUserId, backupApproverLineUserId].filter(Boolean));
 
-function verifyLineSignature(rawBody: string, signature: string | string[] | undefined): boolean {
-  if (!channelSecret) {
-    return process.env.OPENQLOW_DRY_RUN !== "false";
-  }
-
-  const expected = crypto.createHmac("sha256", channelSecret).update(rawBody).digest("base64");
-  const actual = Array.isArray(signature) ? signature[0] : signature;
-  if (!actual) return false;
-  if (Buffer.byteLength(expected) !== Buffer.byteLength(actual)) return false;
-
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(actual));
+function isSignatureValid(rawBody: string, signature: string | string[] | undefined): boolean {
+  return verifyLineSignature(rawBody, signature, {
+    channelSecret,
+    dryRun: process.env.OPENQLOW_DRY_RUN !== "false",
+  });
 }
 
 interface ExtractedEvent {
@@ -112,7 +106,9 @@ const server = http.createServer(async (req, res) => {
     body += chunk;
   });
   req.on("end", async () => {
-    if (req.headers["content-type"]?.includes("application/json") && !verifyLineSignature(body, req.headers["x-line-signature"])) {
+    // 署名検証は content-type に依存させない。application/json 以外（text/plain 等）で
+    // 署名を回避し、承認者チェックの無いフォールバック経路へ流し込む攻撃を防ぐ。
+    if (!isSignatureValid(body, req.headers["x-line-signature"])) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: "invalid_line_signature" }));
       return;
