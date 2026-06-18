@@ -82,6 +82,7 @@ function printHelp(): void {
 ■ 名簿の操作
   list [--status 入会]                 一覧表示（--status で状態を絞り込み。日本語OK）
   find <名前の一部>                    名前で探す
+  show <番号>                          その人の詳しい情報をすべて表示
   status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
   add [--name 田中 --gender female ...] 手動で1件登録
 
@@ -183,6 +184,35 @@ async function main(argv: string[]): Promise<number> {
       for (const p of hits) {
         console.log(`#${p.id} ${p.name || "(無名)"} | ${p.category} | ${p.status} | 温度:${p.temperature || "-"}`);
       }
+      return 0;
+    }
+    case "show": {
+      const id = Number(positional[0] ?? flags.id);
+      const p = id ? await store.get(id) : undefined;
+      if (!p) {
+        console.error("Usage: crm show <番号>（その人の詳しい情報をすべて表示します）");
+        return 1;
+      }
+      const row = (label: string, value: unknown) =>
+        console.log(`  ${label}: ${value === "" || value === undefined || value === null ? "（未記録）" : value}`);
+      console.log(`■ #${p.id} ${p.name || "(無名)"}`);
+      row("状態", p.status);
+      row("属性", p.category);
+      row("温度感", p.temperature);
+      row("性別", p.gender);
+      row("年代", p.ageGroup);
+      row("目的", p.purpose);
+      row("流入元", p.contactSource);
+      row("問い合わせ", p.inquiryText);
+      row("メモ", p.memo);
+      row("体験日", p.trialDate);
+      row("体験の状況", p.trialStatus);
+      row("見送り理由", p.lostReason);
+      row("次アクション", p.nextAction);
+      row("最終連絡", p.lastContactAt?.slice(0, 16));
+      row("登録日", p.createdAt?.slice(0, 16));
+      row("更新日", p.updatedAt?.slice(0, 16));
+      console.log("\nヒント: 返信下書きは `npm run crm -- draft " + p.id + "` で出せます。");
       return 0;
     }
     case "draft": {
