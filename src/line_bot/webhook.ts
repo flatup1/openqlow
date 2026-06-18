@@ -4,10 +4,12 @@ import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
+import { formatLineMessageLog } from "./logging.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
+const healthPaths = new Set(["/openqlow/health"]);
 const channelSecret = process.env.LINE_CHANNEL_SECRET || "";
 const jinLineUserId = process.env.JIN_LINE_USER_ID || "";
 const backupApproverLineUserId = process.env.BACKUP_APPROVER_LINE_USER_ID || "";
@@ -32,6 +34,7 @@ interface ExtractedEvent {
   messageId?: string;
   messageType?: "image" | "video";
   userId?: string;
+  approver: boolean;
 }
 
 function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
@@ -46,7 +49,7 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
     };
 
     if (!Array.isArray(payload.events)) {
-      return { events: [{ kind: "text", text: rawBody }], linePayload: false };
+      return { events: [{ kind: "text", text: rawBody, approver: false }], linePayload: false };
     }
 
     const events: ExtractedEvent[] = [];
@@ -54,29 +57,28 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
     for (const event of payload.events) {
       if (event.type !== "message") continue;
       const userId = event.source?.userId;
-      if (allowedApproverIds.size > 0 && !allowedApproverIds.has(userId || "")) {
-        return { events: [], linePayload: true, ignored: "non_approver_user" };
-      }
+      const approver = allowedApproverIds.size === 0 || allowedApproverIds.has(userId || "");
       replyToken ??= event.replyToken;
 
       if (event.message?.type === "text" && event.message.text) {
-        console.log(`LINE message received from ${userId || "unknown"}: ${event.message.text}`);
-        events.push({ kind: "text", text: event.message.text, userId });
+        console.log(formatLineMessageLog(userId, event.message.text));
+        events.push({ kind: "text", text: event.message.text, userId, approver });
       }
 
-      if ((event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
+      if (approver && (event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
         events.push({
           kind: "media",
           messageId: event.message.id,
           messageType: event.message.type,
           userId,
+          approver,
         });
       }
     }
 
     return { events, linePayload: true, replyToken };
   } catch {
-    return { events: [{ kind: "text", text: rawBody }], linePayload: false };
+    return { events: [{ kind: "text", text: rawBody, approver: false }], linePayload: false };
   }
 }
 
@@ -101,6 +103,12 @@ async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, u
 
 const server = http.createServer(async (req, res) => {
   const requestPath = new URL(req.url || "/", "http://localhost").pathname;
+  if (req.method === "GET" && healthPaths.has(requestPath)) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, service: "openqlow-webhook" }));
+    return;
+  }
+
   if (req.method !== "POST" || !webhookPaths.has(requestPath)) {
     res.writeHead(404);
     res.end("not found");
@@ -137,12 +145,23 @@ const server = http.createServer(async (req, res) => {
         if (ev.kind === "media") {
           results.push(await executeLineMedia(ev));
         } else {
-          const crmResult = await executeLineCrmIntake({ text: ev.text ?? "", lineUserId: ev.userId });
-          results.push(crmResult.handled ? crmResult : await executeApprovalText(ev.text ?? "", ev.userId));
+          const crmResult = await executeLineCrmIntake({
+            text: ev.text ?? "",
+            lineUserId: ev.userId,
+            approver: ev.approver,
+          });
+          if (crmResult.handled) {
+            results.push(crmResult);
+          } else if (ev.approver) {
+            results.push(await executeApprovalText(ev.text ?? "", ev.userId));
+          } else {
+            results.push({ ok: true, action: "ignored_non_approver_text", replyToSender: false });
+          }
         }
       }
-      if (extracted.linePayload) {
-        await replyLineMessage(extracted.replyToken, formatWebhookReply(results));
+      const replyableResults = results.filter(result => result.replyToSender !== false);
+      if (extracted.linePayload && replyableResults.length > 0) {
+        await replyLineMessage(extracted.replyToken, formatWebhookReply(replyableResults));
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: results.every(result => result.ok === true), results }));

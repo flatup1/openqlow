@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import path from "node:path";
 import { intakeFromLineMessage } from "../crm/line_intake.js";
 import { logError as writeSelfRepairLog } from "../crm/self_repair.js";
@@ -11,6 +10,7 @@ export interface LineCrmIntakeResult extends Record<string, unknown> {
   handled: boolean;
   ok: boolean;
   message: string;
+  replyToSender?: boolean;
   action?: LineCrmIntakeAction;
   meta?: Record<string, unknown>;
 }
@@ -22,6 +22,7 @@ export interface ExecuteLineCrmIntakeOptions {
   lineUserId?: string;
   text: string;
   displayName?: string;
+  approver?: boolean;
   dataDir?: string;
   now?: () => Date;
   notifyOwner?: NotifyOwner;
@@ -29,20 +30,15 @@ export interface ExecuteLineCrmIntakeOptions {
 }
 
 export function parseLineCrmInquiryText(text: string): string | undefined {
-  const match = text.match(/^\s*問い合わせ\s*[:：]\s*([\s\S]*)$/);
-  if (!match) return undefined;
-  return match[1].trim();
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+
+  const explicit = trimmed.match(/^\s*問い合わせ\s*[:：]\s*([\s\S]*)$/);
+  return explicit ? explicit[1].trim() : undefined;
 }
 
 function defaultDataDir(): string {
   return process.env.OPENQLOW_DATA_DIR || path.join(process.cwd(), "data");
-}
-
-function buildManualExternalId(lineUserId: string | undefined, inquiryText: string): string {
-  const ownerId = lineUserId || "unknown";
-  const normalized = inquiryText.replace(/\s+/g, " ").trim();
-  const hash = crypto.createHash("sha256").update(`${ownerId}\n${normalized}`).digest("hex").slice(0, 16);
-  return `manual:${ownerId}:${hash}`;
 }
 
 function buildOwnerNotification(input: {
@@ -79,9 +75,17 @@ async function safeLogCrmError(opts: ExecuteLineCrmIntakeOptions, dataDir: strin
 }
 
 export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): Promise<LineCrmIntakeResult> {
+  if (opts.approver === false) {
+    return { handled: false, ok: false, message: "line crm intake requires approver" };
+  }
+
   const inquiryText = parseLineCrmInquiryText(opts.text);
   if (inquiryText === undefined) {
     return { handled: false, ok: false, message: "line crm intake not matched" };
+  }
+
+  if (!opts.lineUserId) {
+    return { handled: false, ok: false, message: "line crm intake requires line user id" };
   }
 
   if (!inquiryText) {
@@ -99,7 +103,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
   try {
     const result = await intakeFromLineMessage(
       {
-        lineUserId: buildManualExternalId(opts.lineUserId, inquiryText),
+        lineUserId: opts.lineUserId,
         text: inquiryText,
         displayName: opts.displayName,
       },
@@ -119,6 +123,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       handled: true,
       ok: notificationResult.ok,
       action: "crm_intake",
+      replyToSender: false,
       message: [
         `OPENQLOW: 問い合わせをCRMに${result.created ? "登録" : "更新"}しました。`,
         `ID: ${result.prospect.id}`,
@@ -138,6 +143,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       handled: true,
       ok: false,
       action: "crm_intake",
+      replyToSender: false,
       message: `OPENQLOW: 問い合わせのCRM登録に失敗しました。\n理由: ${message}`,
       meta: { error: message },
     };
