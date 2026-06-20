@@ -39,6 +39,11 @@
   (3) JIN 承認前に push した。
   → 危険ブランチは削除済み。原因は全て「§0 を最初に守らなかった」こと。
   対策として §0 に rule 6/7 と本チェックリストを追加。
+  さらに **technical guard** として `scripts/hooks/pre-push` を追加（2026-06-20）：
+  - origin/main より 25 コミット以上遅れた push を自動ブロック
+  - origin/main 比で 2000 行以上削除する push を自動ブロック
+  - ブランチ削除・main への push は対象外、`ALLOW_STALE_PUSH=1` で緊急脱出可
+  - 有効化: `bash scripts/hooks/install.sh`（各自のローカルで1回）
 
 ---
 

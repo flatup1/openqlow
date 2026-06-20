@@ -11,7 +11,7 @@ HOOK_TARGET_DIR="${REPO_ROOT}/.git/hooks"
 mkdir -p "${HOOK_TARGET_DIR}"
 
 # 各フックを symlink でインストール（コードはscripts/hooks/に保持）
-HOOKS=("pre-commit" "commit-msg")
+HOOKS=("pre-commit" "commit-msg" "pre-push")
 
 for hook in "${HOOKS[@]}"; do
   SOURCE="${HOOK_SOURCE_DIR}/${hook}"

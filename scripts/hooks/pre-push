@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Claude/Codex 協業のための pre-push フック
+#
+# 目的: 「古い local main から切った危険なブランチ」の push を物理的に止める。
+#   2026-06-20 の事故（56コミット遅れの main から枝を切り、origin/main より
+#   5850行少ない＝マージ即データ消失ブランチを push）の再発を防ぐ。
+#
+# 検査:
+#   (1) この push が origin/main より N コミット以上遅れていたら BLOCK（古い起点の疑い）
+#   (2) origin/main 比で M 行以上を削除していたら BLOCK（マージ事故の最終防波堤）
+#
+# 規約: COORDINATION.md §0 rule 6/7
+#
+# 緊急脱出（意図的に古い push をする時だけ）: ALLOW_STALE_PUSH=1 git push ...
+
+set -uo pipefail
+
+REMOTE_NAME="${1:-origin}"
+STALE_THRESHOLD="${OPENQLOW_STALE_THRESHOLD:-25}"        # origin/main より N コミット遅れたら危険
+DELETION_THRESHOLD="${OPENQLOW_DELETION_THRESHOLD:-2000}" # origin/main 比 N 行削除で危険
+
+if [[ "${ALLOW_STALE_PUSH:-}" == "1" ]]; then
+  echo "⚠️  pre-push: ALLOW_STALE_PUSH=1 のため同期チェックをスキップしました" >&2
+  exit 0
+fi
+
+# 最新の origin/main を静かに取得（オフライン等で失敗しても push は止めない）
+if ! git fetch -q "${REMOTE_NAME}" main 2>/dev/null; then
+  echo "⚠️  pre-push: ${REMOTE_NAME}/main を取得できませんでした（オフライン?）。安全確認をスキップします" >&2
+  exit 0
+fi
+
+MAIN_REF="refs/remotes/${REMOTE_NAME}/main"
+if ! git rev-parse -q --verify "${MAIN_REF}" >/dev/null 2>&1; then
+  echo "⚠️  pre-push: ${MAIN_REF} が見つかりません。安全確認をスキップします" >&2
+  exit 0
+fi
+
+BLOCKED=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -z "${local_sha:-}" ]] && continue
+  # ブランチ削除（local_sha が全0）はチェック対象外
+  [[ "${local_sha}" =~ ^0+$ ]] && continue
+  # main 自体への push はスキップ
+  [[ "${remote_ref}" == "refs/heads/main" ]] && continue
+
+  # (1) origin/main からの遅れコミット数
+  behind=$(git rev-list --count "${local_sha}..${MAIN_REF}" 2>/dev/null || echo 0)
+  if [[ "${behind}" -ge "${STALE_THRESHOLD}" ]]; then
+    echo "" >&2
+    echo "🛑 pre-push ブロック: ${remote_ref##*/} は ${REMOTE_NAME}/main より ${behind} コミット遅れています" >&2
+    echo "   → 古い main から枝を切った可能性大（2026-06-20 の事故と同じパターン）" >&2
+    echo "" >&2
+    echo "   正しい直し方:" >&2
+    echo "     git fetch origin" >&2
+    echo "     git checkout origin/main -b <新ブランチ名>" >&2
+    echo "     # 変更を移して commit し直す" >&2
+    echo "" >&2
+    echo "   どうしても古いまま push する場合（非推奨）:" >&2
+    echo "     ALLOW_STALE_PUSH=1 git push ..." >&2
+    echo "   規約: COORDINATION.md §0 rule 6/7" >&2
+    BLOCKED=1
+    continue
+  fi
+
+  # (2) origin/main 比の削除行数（main にあって branch に無い行 = 失われる作業）
+  deleted=$(git diff --numstat "${MAIN_REF}" "${local_sha}" 2>/dev/null | awk '{ d += $2 } END { print d+0 }')
+  if [[ "${deleted}" -ge "${DELETION_THRESHOLD}" ]]; then
+    echo "" >&2
+    echo "🛑 pre-push ブロック: ${REMOTE_NAME}/main 比で ${deleted} 行を削除しています（閾値 ${DELETION_THRESHOLD}）" >&2
+    echo "   → マージすると他AIの作業を大量に消す恐れ。意図的でなければ中断してください。" >&2
+    echo "   意図的な場合: ALLOW_STALE_PUSH=1 git push ..." >&2
+    BLOCKED=1
+    continue
+  fi
+done
+
+if [[ "${BLOCKED}" -eq 1 ]]; then
+  exit 1
+fi
+
+echo "✅ pre-push: ${REMOTE_NAME}/main 同期チェック通過" >&2
+exit 0
