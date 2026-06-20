@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-06-08
+最終更新: 2026-06-20
 
 ---
 
@@ -15,6 +15,30 @@
 3. **push 権限は JIN が持つ**。AIは commit までOK、push は JIN 承認後。
 4. **触りたい領域が他AI担当だったら、JIN に確認**。勝手に解除しない。
 5. **作業切替時はハンドオフ書を書く**：`docs/HANDOFF_<日付>_<from>→<to>.md`
+6. **ブランチは必ず最新 `origin/main` から切る**。`git fetch origin` → `git checkout origin/main -b <branch>` の順。**local main から直接枝を切らない**（古い local main から切ると、他AIの作業を消す危険なブランチができる）。
+7. **作業開始時と push 前に同期を確認する**：`git fetch origin` → `git status -sb`（origin との先行/遅延を見る）→ `git log --oneline -5 origin/main`（他AIの最新を把握）。**local main が origin より遅れていたら、その上で作業しない**。
+
+---
+
+## 0.1 事故防止チェックリスト（毎回・コミット/プッシュ前）
+
+```text
+□ COORDINATION.md を読んだ（§1 で自分の担当領域を確認した）
+□ git fetch origin した
+□ git status -sb で origin/main との差を確認した（◯ahead / ◯behind）
+□ 触ったファイルは全部「自分の担当領域」内か？（担当外なら handoff に切替）
+□ コミットメッセージ先頭は claude: / codex: / co-ai: / jin: のどれか
+□ ブランチは origin/main 起点か？（local main 起点はNG）
+□ push する前に JIN の承認を得たか？
+```
+
+### 過去事故ログ（同じ轍を踏まないために）
+- **2026-06-20 / Claude**: COORDINATION.md を読まずに作業開始 →
+  (1) Codex 領域 `scripts/` を編集しようとした、
+  (2) **56コミット遅れた local main から枝を切って push**し、origin/main より 5850 行少ない「マージ即データ消失」ブランチを作った、
+  (3) JIN 承認前に push した。
+  → 危険ブランチは削除済み。原因は全て「§0 を最初に守らなかった」こと。
+  対策として §0 に rule 6/7 と本チェックリストを追加。
 
 ---
 
