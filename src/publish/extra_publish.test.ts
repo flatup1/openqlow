@@ -60,7 +60,9 @@ const X_ENV = { X_API_KEY: "k", X_API_SECRET: "s", X_ACCESS_TOKEN: "at", X_ACCES
     const img = path.join(root, "a.jpg");
     await writeFile(img, "x");
     const fetchImpl = (async (url: string | URL) => {
-      if (String(url).includes("/media_publish")) return new Response(JSON.stringify({ id: "ig-post" }), { status: 200 });
+      const u = String(url);
+      if (u.includes("/media_publish")) return new Response(JSON.stringify({ id: "ig-post" }), { status: 200 });
+      if (u.includes("fields=status_code")) return new Response(JSON.stringify({ status_code: "FINISHED" }), { status: 200 });
       return new Response(JSON.stringify({ id: "ig-creation" }), { status: 200 });
     }) as typeof fetch;
     const r = await publishExtraPlatforms({

@@ -9,6 +9,9 @@ export interface PublishInstagramImageInput {
   imageUrl: string;
   caption: string;
   fetchImpl?: typeof fetch;
+  /** コンテナ準備待ちのポーリング設定（テスト用に調整可）。 */
+  pollAttempts?: number;
+  pollDelayMs?: number;
 }
 
 export interface PublishInstagramImageResult {
@@ -35,9 +38,39 @@ function requireString(value: unknown, label: string): string {
   throw new Error(`Instagram API response missing ${label}`);
 }
 
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * 画像コンテナが公開可能(FINISHED)になるまで待つ。
+ * Instagramは image_url から画像を取り込むのに時間がかかり、
+ * 取り込み完了前に media_publish するとエラー(9007/2207027)になる。
+ */
+async function waitForContainerReady(
+  base: string,
+  creationId: string,
+  accessToken: string,
+  fetchImpl: typeof fetch,
+  attempts: number,
+  delayMs: number,
+): Promise<void> {
+  for (let i = 0; i < attempts; i += 1) {
+    const url = `${base}/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`;
+    const res = await fetchImpl(url);
+    const status = (await readJson(res)).status_code;
+    if (status === "FINISHED") return;
+    if (status === "ERROR" || status === "EXPIRED") {
+      throw new Error(`Instagram container status ${String(status)}`);
+    }
+    if (i < attempts - 1) await sleep(delayMs);
+  }
+  throw new Error("Instagram container not ready (timeout)");
+}
+
 export async function publishInstagramImage(input: PublishInstagramImageInput): Promise<PublishInstagramImageResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const base = "https://graph.facebook.com/v19.0";
+  const pollAttempts = input.pollAttempts ?? 10;
+  const pollDelayMs = input.pollDelayMs ?? 3000;
 
   const createBody = new URLSearchParams({
     image_url: input.imageUrl,
@@ -46,6 +79,9 @@ export async function publishInstagramImage(input: PublishInstagramImageInput): 
   });
   const create = await fetchImpl(`${base}/${input.igUserId}/media`, { method: "POST", body: createBody });
   const creationId = requireString((await readJson(create)).id, "creation id");
+
+  // 取り込み完了を待ってから公開（即公開だと 9007「準備ができていません」になる）。
+  await waitForContainerReady(base, creationId, input.accessToken, fetchImpl, pollAttempts, pollDelayMs);
 
   const publishBody = new URLSearchParams({
     creation_id: creationId,
