@@ -1,6 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 import { pushAlert } from "../line_bot/notifier.js";
+import { loadConfig } from "../config.js";
+import { decideAlert, type AlertState } from "./alert_gate.js";
 import { formatSelfHealResult, runSystemdSelfHeal, servicesFromEnv } from "./systemd_self_heal.js";
 
 const execFileP = promisify(execFile);
@@ -226,7 +230,24 @@ export async function runHealthcheckWithAlert(): Promise<HealthReport> {
   const report = await runHealthcheck();
   const text = formatReport(report);
   console.log(text);
-  if (!report.ok) {
+
+  // 連続失敗・自己回復・頻度を見て「本当に必要な時だけ」通知する（騒音対策）。
+  const statePath = path.join(loadConfig().root, "state", "monitor_alert.json");
+  let prev: AlertState | undefined;
+  try {
+    prev = JSON.parse(await readFile(statePath, "utf8")) as AlertState;
+  } catch {
+    prev = undefined;
+  }
+  const { alert, state } = decideAlert(prev, report, new Date());
+  try {
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  } catch (err) {
+    console.error("monitor state save failed:", err);
+  }
+
+  if (alert) {
     try {
       await pushAlert(`${report.failures.length} services down`, text);
     } catch (err) {
