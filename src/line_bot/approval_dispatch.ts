@@ -2,6 +2,7 @@ import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, expandRejectionShortcut, resolveLatestPendingId } from "../approval/shortcut.js";
 import { applyBodyEdit, isUsableRevisionText } from "../approval/revise_content.js";
 import { setAwaitingPublish, loadAwaitingPublish, clearAwaitingPublish } from "../approval/publish_gate.js";
+import { setAwaitingRevision, loadAwaitingRevision, clearAwaitingRevision, looksLikeRevisionInstruction } from "../approval/revision_gate.js";
 import { rewriteDraftBody } from "../llm/rewrite.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
@@ -91,45 +92,50 @@ async function handleParsedApproval(
     if (!id) {
       return { ok: false, message: "直せる投稿候補が見つかりませんでした。先に「投稿」で候補を作ってください。" };
     }
+    // 「修正」だけ（指示なし）なら、次の一言を指示として待つ。
     if (!isUsableRevisionText(parsed.note ?? "")) {
-      return { ok: false, message: ["何をどう直しますか？", "例: 修正 もっとやさしい雰囲気で"].join("\n") };
+      await setAwaitingRevision(config.root, id);
+      return { ok: true, action: "awaiting_revision", id, message: ["何をどう直しますか？ そのまま一言で送ってください。", "例: もっとやさしく / 夏前に体を絞る話を入れて"].join("\n") };
     }
-    const record = await loadRecord(config.root, id);
-    if (!record) {
-      return { ok: false, message: `投稿候補が見つかりませんでした: ${id}` };
-    }
-
-    // 指示モード: 送られた文章は「新本文」ではなく「書き直しの指示」。
-    // ローカルLLM(Ollama)で今の本文を指示どおり書き直す。
-    // 失敗時は本文を一切書き換えず正直に伝える（変な本文の投稿事故を防ぐ）。
-    const baseDraft = record.drafts.find(draft => draft.platform === "threads") ?? record.drafts[0];
-    const currentBody = baseDraft?.body ?? "";
-    const rewrite = await rewriteDraftBody({ currentBody, instruction: parsed.note ?? "" });
-    if (!rewrite.ok) {
-      return {
-        ok: false,
-        action: "revise_failed",
-        id,
-        message: [
-          "OPENQLOW: うまく直せませんでした（本文は変えていません）。",
-          `理由: ${rewrite.reason}`,
-          "もう一度「修正 〇〇」で試すか、全文を自分で書くなら本文をそのまま送ってください。",
-        ].join("\n"),
-      };
-    }
-
-    const edited = applyBodyEdit(record, rewrite.body);
-    await saveRecord(config.root, edited);
-    const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
-    // 確認メッセージには「AIが書き直した新しい本文」を出す（指示文ではない）。下のボタンで操作。
-    const message = safety.ok
-      ? ["✏️ 直しました。これでいいですか？", "", rewrite.body].join("\n")
-      : ["直しましたが安全チェックに引っかかりました。", safety.issues.map(issue => issue.message).join(" / "), "もう一度「修正 〇〇」で直してください。"].join("\n");
-    return { ok: true, action: "revised", id, message, quickReplies: safety.ok ? approveQuickReplies() : undefined };
+    return applyRevision(config.root, id, parsed.note ?? "");
   }
 
+  await clearAwaitingRevision(config.root);
   const record = await rejectRecord(parsed.id);
   return { ok: true, action: "rejected", id: record.id };
+}
+
+/** 指示モードの本文書き直し（修正 〇〇 と「修正待ち→一言」の両方から使う）。 */
+async function applyRevision(root: string, id: string, instruction: string): Promise<Record<string, unknown>> {
+  await clearAwaitingRevision(root);
+  const record = await loadRecord(root, id);
+  if (!record) {
+    return { ok: false, message: `投稿候補が見つかりませんでした: ${id}` };
+  }
+  // 送られた文章は「新本文」ではなく「書き直しの指示」。LLMで今の本文を指示どおり書き直す。
+  // 失敗時は本文を一切書き換えず正直に伝える（変な本文の投稿事故を防ぐ）。
+  const baseDraft = record.drafts.find(draft => draft.platform === "threads") ?? record.drafts[0];
+  const currentBody = baseDraft?.body ?? "";
+  const rewrite = await rewriteDraftBody({ currentBody, instruction });
+  if (!rewrite.ok) {
+    return {
+      ok: false,
+      action: "revise_failed",
+      id,
+      message: [
+        "OPENQLOW: うまく直せませんでした（本文は変えていません）。",
+        `理由: ${rewrite.reason}`,
+        "もう一度「修正 〇〇」で試すか、全文を自分で書くなら本文をそのまま送ってください。",
+      ].join("\n"),
+    };
+  }
+  const edited = applyBodyEdit(record, rewrite.body);
+  await saveRecord(root, edited);
+  const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
+  const message = safety.ok
+    ? ["✏️ 直しました。これでいいですか？", "", rewrite.body].join("\n")
+    : ["直しましたが安全チェックに引っかかりました。", safety.issues.map(issue => issue.message).join(" / "), "もう一度「修正 〇〇」で直してください。"].join("\n");
+  return { ok: true, action: "revised", id, message, quickReplies: safety.ok ? approveQuickReplies() : undefined };
 }
 
 export async function executeApprovalText(text: string, userId?: string): Promise<Record<string, unknown>> {
@@ -145,6 +151,12 @@ export async function executeApprovalText(text: string, userId?: string): Promis
   // （特に「修正 <新本文>」は本文編集なので、memory keeper に日報として保存されないようにする）
   if (parsed) {
     return handleParsedApproval(parsed, okShortcutUsed);
+  }
+
+  // 「修正」だけ送られた直後の一言は、修正指示として拾う（実ログ最大の取りこぼし対策）。
+  const awaitingRev = await loadAwaitingRevision(config.root);
+  if (awaitingRev && looksLikeRevisionInstruction(text)) {
+    return applyRevision(config.root, awaitingRev.id, text.trim());
   }
 
   const lineCommand = await executeLineCommand(text, { userId });

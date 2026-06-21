@@ -112,4 +112,21 @@ await withTempEnv(async (root) => {
   assert.equal(saved.status, "rejected");
 });
 
+// 「修正」だけ → 次の一言が修正指示として拾われる（日報フォールバックに落ちない）。
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-404";
+  const userId = "test-approval-dispatch-user";
+  await saveRecord(root, pendingRecord(id));
+  await rememberApprovalCandidate(root, id);
+
+  const ask = await executeApprovalText("修正", userId);
+  assert.equal(ask.action, "awaiting_revision");
+  assert.match(String(ask.message), /何をどう直しますか/);
+
+  // 次の一言（指示）。LLM未接続なので書き直しは失敗するが、"revise系"に流れること＝拾えている証拠。
+  const instr = await executeApprovalText("もっとやさしく", userId);
+  assert.ok(["revised", "revise_failed"].includes(String(instr.action)), `expected revise route, got ${String(instr.action)}`);
+  assert.doesNotMatch(String(instr.message), /日報として残すなら/);
+});
+
 console.log("approval dispatch tests passed");
