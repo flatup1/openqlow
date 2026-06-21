@@ -3,6 +3,7 @@ import type { DraftRecord, PlatformDraft } from "../types.js";
 import { resolvePublicMediaUrl } from "./public_media.js";
 import { publishXPost, type XCredentials } from "./x_api.js";
 import { publishInstagramImage } from "./instagram_api.js";
+import { buildInstagramCaption } from "./instagram_caption.js";
 
 // X / Instagram への自動投稿（Threads以外のAPI対応媒体）。
 // キーが設定された媒体だけ投稿する。postId/tweetId が取れた時のみ成功扱い。
@@ -68,7 +69,9 @@ export async function publishExtraPlatforms(opts: PublishExtraOptions): Promise<
         result.skipped.push({ platform: "instagram", reason: "公開画像URLが未解決（OPENQLOW_PUBLIC_MEDIA_*未設定）" });
       } else {
         try {
-          const published = await publishInstagramImage({ igUserId, accessToken: igToken, imageUrl, caption: text, fetchImpl: opts.fetchImpl });
+          // Instagramは導線最適化したキャプション（CTA＋ローカルタグ／LINE生URLは外す）を使う。
+          const igCaption = buildInstagramCaption(opts.record, env);
+          const published = await publishInstagramImage({ igUserId, accessToken: igToken, imageUrl, caption: igCaption, fetchImpl: opts.fetchImpl });
           result.published.push({ platform: "instagram", externalId: published.postId });
         } catch (error) {
           result.skipped.push({ platform: "instagram", reason: errorReason(error) });
