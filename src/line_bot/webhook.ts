@@ -9,7 +9,7 @@ import { loadAwaitingPublish, clearAwaitingPublish } from "../approval/publish_g
 import { finalizePublish } from "../publish/finalize.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
-import { formatWebhookReply, replyLineMessage, extractQuickReplies } from "./reply.js";
+import { formatWebhookReply, replyLineMessage, extractQuickReplies, extractImages } from "./reply.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
@@ -203,6 +203,7 @@ const server = http.createServer(async (req, res) => {
       if (extracted.linePayload) {
         await replyLineMessage(extracted.replyToken, formatWebhookReply(results), {
           quickReplies: extractQuickReplies(results),
+          images: extractImages(results),
         });
       }
       res.writeHead(200, { "content-type": "application/json" });

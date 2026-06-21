@@ -6,6 +6,7 @@ import { rewriteDraftBody } from "../llm/rewrite.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { finalizePublish, photoPromptMessage, photoQuickReplies, approveQuickReplies } from "../publish/finalize.js";
+import { candidatePreviewUrls } from "../publish/media_library.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { approveRecord, rejectRecord } from "../scheduler/daily.js";
@@ -67,7 +68,16 @@ async function handleParsedApproval(
     const awaiting = await loadAwaitingPublish(config.root);
     if (!mediaDecided && awaiting?.id !== parsed.id) {
       await setAwaitingPublish(config.root, parsed.id);
-      return { ok: true, action: "awaiting_media", id: parsed.id, message: photoPromptMessage(), quickReplies: photoQuickReplies() };
+      // 候補写真を実際に表示してから選ばせる（「画像1が何か分からない」を解消）。
+      const previews = await candidatePreviewUrls(process.env, 3);
+      return {
+        ok: true,
+        action: "awaiting_media",
+        id: parsed.id,
+        message: photoPromptMessage(previews.length),
+        quickReplies: photoQuickReplies(previews.length),
+        images: previews,
+      };
     }
 
     await clearAwaitingPublish(config.root);

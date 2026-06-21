@@ -72,22 +72,32 @@ export async function finalizePublish(root: string, id: string): Promise<Finaliz
   return { ok: true, id, published, message, quickReplies: quickReplies.length ? quickReplies : undefined };
 }
 
-/** 写真選択プロンプト（短く。操作は下のボタン）。 */
-export function photoPromptMessage(): string {
+/** 写真選択プロンプト（短く。操作は下のボタン）。previewCount=表示した候補画像の枚数。 */
+export function photoPromptMessage(previewCount = 0): string {
+  if (previewCount <= 0) {
+    return [
+      "📸 写真はどうしますか？",
+      "使いたい写真があれば、このままLINEに送ってください。",
+      "写真なしで出すなら下のボタンを押してください。",
+    ].join("\n");
+  }
+  const order = previewCount === 1 ? "上の写真が「画像1」です" : `上の写真が順に「画像1」〜「画像${previewCount}」です`;
   return [
-    "📸 写真はどうしますか？",
-    "下のボタンで選べます。自分の写真を使うなら、このまま写真を送ってください。",
+    "📸 写真はどれにしますか？",
+    `${order}。下のボタンで選べます。`,
+    "別の写真を使うなら、このままLINEに送ってください。",
     "選んだら Threads・X に自動投稿します。",
   ].join("\n");
 }
 
-/** 写真選択ボタン（画像一覧 / 写真なし）。 */
-export function photoQuickReplies(): QuickReplyItem[] {
-  return [
-    { label: "📷 画像1", text: "画像 1" },
-    { label: "📷 画像2", text: "画像 2" },
-    { label: "写真なしで投稿", text: "画像なし" },
-  ];
+/** 写真選択ボタン（表示中の候補枚数ぶんの画像N ＋ 写真なし）。 */
+export function photoQuickReplies(previewCount = 0): QuickReplyItem[] {
+  const items: QuickReplyItem[] = [];
+  for (let i = 1; i <= previewCount; i += 1) {
+    items.push({ label: `📷 画像${i}`, text: `画像 ${i}` });
+  }
+  items.push({ label: "写真なしで投稿", text: "画像なし" });
+  return items;
 }
 
 /** 承認ボタン（これで投稿 / 修正 / やめる）。 */

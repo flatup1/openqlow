@@ -15,17 +15,29 @@ interface LineQuickReply {
   }>;
 }
 
-interface LineMessage {
+interface LineTextMessage {
   type: "text";
   text: string;
   quickReply?: LineQuickReply;
 }
 
+interface LineImageMessage {
+  type: "image";
+  originalContentUrl: string;
+  previewImageUrl: string;
+}
+
+type LineMessage = LineTextMessage | LineImageMessage;
+
 interface ReplyOptions {
   token?: string;
   fetchImpl?: typeof fetch;
   quickReplies?: QuickReplyItem[];
+  /** テキストの前に表示する画像の公開URL（写真候補のプレビュー等）。 */
+  images?: string[];
 }
+
+const LINE_MAX_MESSAGES = 5;
 
 const LINE_REPLY_ENDPOINT = "https://api.line.me/v2/bot/message/reply";
 const LINE_MESSAGE_MAX_CHARS = 5000;
@@ -44,6 +56,14 @@ export function extractQuickReplies(results: Array<Record<string, unknown>>): Qu
   if (!Array.isArray(items) || items.length === 0) return undefined;
   return items.filter((item): item is QuickReplyItem =>
     Boolean(item && typeof item === "object" && typeof (item as QuickReplyItem).label === "string"));
+}
+
+/** 結果オブジェクトから先頭に表示する画像URLを取り出す。 */
+export function extractImages(results: Array<Record<string, unknown>>): string[] | undefined {
+  const first = results[0];
+  const images = first?.images;
+  if (!Array.isArray(images) || images.length === 0) return undefined;
+  return images.filter((url): url is string => typeof url === "string" && /^https:\/\//.test(url));
 }
 
 function buildQuickReply(items: QuickReplyItem[]): LineQuickReply | undefined {
@@ -90,12 +110,16 @@ export async function replyLineMessage(
   }
 
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const message: LineMessage = { type: "text", text: trimForLine(text) };
+  const textMessage: LineTextMessage = { type: "text", text: trimForLine(text) };
   if (opts.quickReplies?.length) {
     const quickReply = buildQuickReply(opts.quickReplies);
-    if (quickReply) message.quickReply = quickReply;
+    if (quickReply) textMessage.quickReply = quickReply;
   }
-  const messages: LineMessage[] = [message];
+  // 画像プレビュー（あれば）→ テキスト＋ボタンの順。LINEは1リプライ最大5メッセージ。
+  const imageMessages: LineImageMessage[] = (opts.images ?? [])
+    .slice(0, LINE_MAX_MESSAGES - 1)
+    .map(url => ({ type: "image", originalContentUrl: url, previewImageUrl: url }));
+  const messages: LineMessage[] = [...imageMessages, textMessage];
   const res = await fetchImpl(LINE_REPLY_ENDPOINT, {
     method: "POST",
     headers: {

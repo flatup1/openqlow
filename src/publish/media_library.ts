@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { loadRecord, saveRecord } from "../state/file_store.js";
+import { resolvePublicMediaUrl } from "./public_media.js";
 import type { DraftRecord } from "../types.js";
 
 export interface MediaCandidate {
@@ -73,6 +74,26 @@ export async function listMediaCandidates(mediaDir = mediaDirectoryForEnv()): Pr
     });
   }
   return candidates;
+}
+
+/**
+ * 候補画像（画像1, 画像2…）の公開URLを順番に返す。
+ * 写真ゲートで「見えてから選ぶ」ため、LINEに実画像を表示するのに使う。
+ * 画像（image）のみ対象。公開URLが解決できないものは除外。
+ */
+export async function candidatePreviewUrls(
+  env: Record<string, string | undefined> = process.env,
+  limit = 3,
+): Promise<string[]> {
+  const candidates = (await listMediaCandidates(mediaDirectoryForEnv(env)))
+    .filter((candidate) => candidate.kind === "image")
+    .slice(0, limit);
+  const urls: string[] = [];
+  for (const candidate of candidates) {
+    const url = await resolvePublicMediaUrl(candidate.path, env);
+    if (url) urls.push(url);
+  }
+  return urls;
 }
 
 export async function latestPendingRecord(root: string): Promise<DraftRecord | undefined> {
