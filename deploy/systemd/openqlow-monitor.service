@@ -12,8 +12,8 @@ EnvironmentFile=/etc/openqlow/openqlow.env
 Environment=OPENQLOW_MONITOR_SYSTEMD=true
 Environment=OPENQLOW_MONITOR_SELF_HEAL=true
 Environment=OPENQLOW_MONITOR_SERVICES=openqlow-webhook.service
-ExecStart=/usr/bin/npm run monitor
-MemoryMax=256M
+ExecStart=/usr/bin/node dist/index.js monitor
+MemoryMax=160M
 CPUQuota=25%
 TasksMax=64
 OOMPolicy=stop

@@ -177,7 +177,12 @@ export interface HealthReport {
 }
 
 export function healthcheckNamesForEnv(env: NodeJS.ProcessEnv = process.env): string[] {
-  const names = ["openrouter"];
+  // OpenRouter への疎通確認は monitor 実行ごとに外部 API を1回叩く（10分間隔なら1日約144回）。
+  // 生成はルールベースで OpenRouter を使わない構成や、ローカル LLM（Ollama / AnythingLLM）
+  // 運用では OPENQLOW_CHECK_OPENROUTER=false にすると外部 AI 呼び出しを完全にゼロにできる。
+  // 既定は後方互換のため有効。
+  const names: string[] = [];
+  if (env.OPENQLOW_CHECK_OPENROUTER !== "false") names.push("openrouter");
   const systemdEnabled = env.OPENQLOW_MONITOR_SYSTEMD === "true";
   if (!systemdEnabled) names.push("line_webhook");
   if (env.OPENQLOW_CHECK_NGROK === "true") names.push("ngrok");

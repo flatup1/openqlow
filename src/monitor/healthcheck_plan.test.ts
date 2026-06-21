@@ -19,6 +19,18 @@ assert.deepEqual(
   "VPS運用では systemd 自己修復してから webhook を見る",
 );
 
+assert.deepEqual(
+  healthcheckNamesForEnv({ OPENQLOW_CHECK_OPENROUTER: "false" }),
+  ["line_webhook"],
+  "OpenRouterを使わない構成では外部AI疎通を完全にスキップできる",
+);
+
+assert.deepEqual(
+  healthcheckNamesForEnv({ OPENQLOW_CHECK_OPENROUTER: "false", OPENQLOW_CHECK_OLLAMA: "true" }),
+  ["line_webhook", "ollama"],
+  "ローカルLLM運用では OpenRouter を外して Ollama だけ見る",
+);
+
 assert.equal(lineWebhookAttemptsForEnv({}), 1, "通常はwebhook確認を1回だけ行う");
 assert.equal(
   lineWebhookAttemptsForEnv({ OPENQLOW_MONITOR_SYSTEMD: "true" }),

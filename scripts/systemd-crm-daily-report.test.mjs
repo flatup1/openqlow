@@ -10,7 +10,7 @@ assert.match(service, /Description=OPENQLOW CRM daily report generation/);
 assert.match(service, /Type=oneshot/);
 assert.match(service, /WorkingDirectory=\/opt\/openqlow/);
 assert.match(service, /EnvironmentFile=\/etc\/openqlow\/openqlow\.env/);
-assert.match(service, /ExecStart=\/usr\/bin\/npm run crm -- daily-report/);
+assert.match(service, /ExecStart=\/usr\/bin\/node dist\/crm\/crm_cli\.js daily-report/);
 assert.match(service, /ReadWritePaths=.*\/home\/flatup\/openqlow-data/);
 const execStart = service.split("\n").find(line => line.startsWith("ExecStart=")) ?? "";
 assert.doesNotMatch(execStart, /line|slack|mail|send|push|morning|reminder|serve/i);

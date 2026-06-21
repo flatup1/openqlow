@@ -4,6 +4,8 @@ Description=Run OPENQLOW evening reminder at 20:00 JST
 [Timer]
 OnCalendar=*-*-* 20:00:00 Asia/Tokyo
 Persistent=true
+# 夕方のLINEリマインダー。厳密に発火させる。
+AccuracySec=1s
 Unit=openqlow-reminder.service
 
 [Install]
