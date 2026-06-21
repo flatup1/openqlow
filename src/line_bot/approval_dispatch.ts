@@ -5,7 +5,7 @@ import { setAwaitingPublish, loadAwaitingPublish, clearAwaitingPublish } from ".
 import { rewriteDraftBody } from "../llm/rewrite.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
-import { finalizePublish, photoPromptMessage } from "../publish/finalize.js";
+import { finalizePublish, photoPromptMessage, photoQuickReplies, approveQuickReplies } from "../publish/finalize.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { approveRecord, rejectRecord } from "../scheduler/daily.js";
@@ -67,12 +67,12 @@ async function handleParsedApproval(
     const awaiting = await loadAwaitingPublish(config.root);
     if (!mediaDecided && awaiting?.id !== parsed.id) {
       await setAwaitingPublish(config.root, parsed.id);
-      return { ok: true, action: "awaiting_media", id: parsed.id, message: photoPromptMessage(parsed.id) };
+      return { ok: true, action: "awaiting_media", id: parsed.id, message: photoPromptMessage(), quickReplies: photoQuickReplies() };
     }
 
     await clearAwaitingPublish(config.root);
     const result = await finalizePublish(config.root, parsed.id);
-    return { ok: result.ok, action: "approved", id: parsed.id, published: result.published, message: result.message };
+    return { ok: result.ok, action: "approved", id: parsed.id, published: result.published, message: result.message, quickReplies: result.quickReplies };
   }
 
   if (parsed.response === "revision") {
@@ -111,11 +111,11 @@ async function handleParsedApproval(
     const edited = applyBodyEdit(record, rewrite.body);
     await saveRecord(config.root, edited);
     const safety = checkDraftSafety(edited.drafts.map(draft => draft.body).join("\n\n"));
-    // 確認メッセージには「AIが書き直した新しい本文」を出す（指示文ではない）。
+    // 確認メッセージには「AIが書き直した新しい本文」を出す（指示文ではない）。下のボタンで操作。
     const message = safety.ok
-      ? ["OPENQLOW: 下書きを直しました。これでいいですか？", `ID: ${id}`, "", rewrite.body, "", "OK / さらに修正 〇〇 / NO"].join("\n")
-      : ["OPENQLOW: 直しましたが、安全チェックに引っかかりました。", safety.issues.map(issue => issue.message).join(" / "), "もう一度「修正 〇〇」で直してください。"].join("\n");
-    return { ok: true, action: "revised", id, message };
+      ? ["✏️ 直しました。これでいいですか？", "", rewrite.body].join("\n")
+      : ["直しましたが安全チェックに引っかかりました。", safety.issues.map(issue => issue.message).join(" / "), "もう一度「修正 〇〇」で直してください。"].join("\n");
+    return { ok: true, action: "revised", id, message, quickReplies: safety.ok ? approveQuickReplies() : undefined };
   }
 
   const record = await rejectRecord(parsed.id);
@@ -146,7 +146,7 @@ export async function executeApprovalText(text: string, userId?: string): Promis
       if (awaiting && targetId === awaiting.id) {
         await clearAwaitingPublish(config.root);
         const result = await finalizePublish(config.root, awaiting.id);
-        return { ...lineCommand, action: "approved", id: awaiting.id, published: result.published, message: result.message };
+        return { ...lineCommand, action: "approved", id: awaiting.id, published: result.published, message: result.message, quickReplies: result.quickReplies };
       }
     }
     return { ...lineCommand };

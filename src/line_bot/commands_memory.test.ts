@@ -176,14 +176,10 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /投稿候補です/);
-  assert.match(result.message, /投稿先: Threads \/ Googleビジネスプロフィール \/ LINE VOOM/);
-  assert.match(result.message, /本文:/);
-  assert.match(result.message, /画像候補:/);
-  assert.match(result.message, /1\. morning-a\.jpg/);
-  assert.doesNotMatch(result.message, /ignore\.txt/);
-  assert.match(result.message, /投稿準備するなら: OK/);
-  assert.match(result.message, /今日はこの内容でいいですか/);
+  // 新UI: 短い案内＋タップ式ボタン（写真選択は ok の後の写真ゲートで行う）。
+  assert.match(result.message, /今日の投稿案/);
+  assert.match(result.message, /これで投稿/);
+  assert.ok(Array.isArray(result.quickReplies) && result.quickReplies.some((q) => q.text === "ok"));
   assert.doesNotMatch(result.message, /OK FG-/);
   assert.doesNotMatch(result.message, /投稿準備まで/);
   const stateFiles = await readdir(path.join(root, "state"));

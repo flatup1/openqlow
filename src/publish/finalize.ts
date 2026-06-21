@@ -4,11 +4,14 @@ import { publishExtraPlatforms } from "./extra_publish.js";
 import { approveRecord } from "../scheduler/daily.js";
 import { loadRecord } from "../state/file_store.js";
 
+import type { QuickReplyItem } from "../line_bot/reply.js";
+
 export interface FinalizeResult {
   ok: boolean;
   id: string;
   published: string[];
   message: string;
+  quickReplies?: QuickReplyItem[];
 }
 
 /**
@@ -54,31 +57,44 @@ export async function finalizePublish(root: string, id: string): Promise<Finaliz
     }
   }
 
+  // 返信は短く。詳細（ID・コマンド）は出さず、操作は下のボタンに寄せる。
   const message = [
     published.length
-      ? "OPENQLOW: 自動投稿しました ✅（投稿できたものだけ）"
-      : "OPENQLOW: 投稿準備キューを作りました。外部投稿はまだしていません。",
-    `ID: ${id}`,
-    published.length ? `投稿済み: ${published.join(" / ")}` : "",
-    queued.length ? `手動投稿（パネルから本文コピー）: ${queued.join(" / ")}` : "",
+      ? "✅ 自動投稿しました（" + published.map(p => p.split(":")[0]).join(" / ") + "）"
+      : "📝 投稿準備しました（外部への自動投稿はまだです）",
     skipped.length ? `未投稿: ${skipped.join(" / ")}` : "",
-    panel ? `📋 投稿パネル（タップで開く）:\n${panel}` : "",
-    "Googleビジネス / LINE VOOM はパネルを開き、本文をコピー→各アプリに貼って投稿してください。",
+    panel ? "Googleビジネス / LINE VOOM は下の「パネルを開く」から本文をコピーして投稿してください。" : "",
   ].filter(Boolean).join("\n");
 
-  return { ok: true, id, published, message };
+  const quickReplies: QuickReplyItem[] = [];
+  if (panel) quickReplies.push({ label: "📋 パネルを開く", uri: panel });
+
+  return { ok: true, id, published, message, quickReplies: quickReplies.length ? quickReplies : undefined };
 }
 
-/** 投稿候補に出す写真選択プロンプト。 */
-export function photoPromptMessage(id: string): string {
+/** 写真選択プロンプト（短く。操作は下のボタン）。 */
+export function photoPromptMessage(): string {
   return [
-    "OPENQLOW: 内容OKです。最後に写真を選んでください 📸",
-    `ID: ${id}`,
-    "",
-    "・一覧から選ぶ: 画像1 / 画像2",
-    "・自分の写真を使う: そのままLINEに写真を送る",
-    "・写真なしで投稿: 画像なし（または もう一度 ok）",
-    "",
-    "選んだら、そのまま Threads・X に自動投稿します。",
+    "📸 写真はどうしますか？",
+    "下のボタンで選べます。自分の写真を使うなら、このまま写真を送ってください。",
+    "選んだら Threads・X に自動投稿します。",
   ].join("\n");
+}
+
+/** 写真選択ボタン（画像一覧 / 写真なし）。 */
+export function photoQuickReplies(): QuickReplyItem[] {
+  return [
+    { label: "📷 画像1", text: "画像 1" },
+    { label: "📷 画像2", text: "画像 2" },
+    { label: "写真なしで投稿", text: "画像なし" },
+  ];
+}
+
+/** 承認ボタン（これで投稿 / 修正 / やめる）。 */
+export function approveQuickReplies(): QuickReplyItem[] {
+  return [
+    { label: "✅ これで投稿", text: "ok" },
+    { label: "✏️ 修正", text: "修正" },
+    { label: "❌ やめる", text: "NO" },
+  ];
 }

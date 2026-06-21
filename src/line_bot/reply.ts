@@ -1,19 +1,63 @@
+export interface QuickReplyItem {
+  label: string;
+  /** タップで送られるテキスト（uri 指定時は不要）。 */
+  text?: string;
+  /** 指定するとボタンはURLを開く（パネルを開く等）。 */
+  uri?: string;
+}
+
+interface LineQuickReply {
+  items: Array<{
+    type: "action";
+    action:
+      | { type: "message"; label: string; text: string }
+      | { type: "uri"; label: string; uri: string };
+  }>;
+}
+
 interface LineMessage {
   type: "text";
   text: string;
+  quickReply?: LineQuickReply;
 }
 
 interface ReplyOptions {
   token?: string;
   fetchImpl?: typeof fetch;
+  quickReplies?: QuickReplyItem[];
 }
 
 const LINE_REPLY_ENDPOINT = "https://api.line.me/v2/bot/message/reply";
 const LINE_MESSAGE_MAX_CHARS = 5000;
+const LINE_QUICK_REPLY_MAX = 13;
+const LINE_QUICK_LABEL_MAX = 20;
 
 function trimForLine(text: string): string {
   if (text.length <= LINE_MESSAGE_MAX_CHARS) return text;
   return text.slice(0, LINE_MESSAGE_MAX_CHARS - 20) + "\n...(truncated)";
+}
+
+/** 結果オブジェクトからクイックリプライ（タップ式ボタン）を取り出す。 */
+export function extractQuickReplies(results: Array<Record<string, unknown>>): QuickReplyItem[] | undefined {
+  const first = results[0];
+  const items = first?.quickReplies;
+  if (!Array.isArray(items) || items.length === 0) return undefined;
+  return items.filter((item): item is QuickReplyItem =>
+    Boolean(item && typeof item === "object" && typeof (item as QuickReplyItem).label === "string"));
+}
+
+function buildQuickReply(items: QuickReplyItem[]): LineQuickReply | undefined {
+  const usable = items.slice(0, LINE_QUICK_REPLY_MAX);
+  if (usable.length === 0) return undefined;
+  return {
+    items: usable.map(item => {
+      const label = item.label.slice(0, LINE_QUICK_LABEL_MAX);
+      if (item.uri) {
+        return { type: "action" as const, action: { type: "uri" as const, label, uri: item.uri } };
+      }
+      return { type: "action" as const, action: { type: "message" as const, label, text: item.text ?? label } };
+    }),
+  };
 }
 
 export function formatWebhookReply(results: Array<Record<string, unknown>>): string {
@@ -46,7 +90,12 @@ export async function replyLineMessage(
   }
 
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const messages: LineMessage[] = [{ type: "text", text: trimForLine(text) }];
+  const message: LineMessage = { type: "text", text: trimForLine(text) };
+  if (opts.quickReplies?.length) {
+    const quickReply = buildQuickReply(opts.quickReplies);
+    if (quickReply) message.quickReply = quickReply;
+  }
+  const messages: LineMessage[] = [message];
   const res = await fetchImpl(LINE_REPLY_ENDPOINT, {
     method: "POST",
     headers: {

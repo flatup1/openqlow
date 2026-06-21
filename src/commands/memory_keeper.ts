@@ -16,6 +16,8 @@ import { canonicalLineCommand, matchMorningConcatenated, normalizeLineText } fro
 import { createMorningPublishCandidate } from "../publish/morning_candidate.js";
 import { formatMediaCandidatesForLine, listMediaCandidates, mediaDirectoryForEnv } from "../publish/media_library.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
+import { approveQuickReplies } from "../publish/finalize.js";
+import type { QuickReplyItem } from "../line_bot/reply.js";
 import { loadConfig } from "../config.js";
 import { buildTodoReplyLines } from "./daily_report_todo.js";
 import { normalizeEmptyAnswer } from "./answer_normalize.js";
@@ -28,6 +30,8 @@ export interface MemoryHandlerResult {
   reply: string;
   /** デバッグ用、対応するメタ情報 */
   meta?: Record<string, unknown>;
+  /** LINEのタップ式ボタン（クイックリプライ）。 */
+  quickReplies?: QuickReplyItem[];
 }
 
 export interface MemoryHandlerOptions {
@@ -440,23 +444,15 @@ async function createSimplePostCandidate(): Promise<MemoryHandlerResult> {
     return {
       ok: true,
       reply: [
-        "投稿候補です。",
-        `投稿ID: ${record.id}`,
-        "投稿先: Threads / Googleビジネスプロフィール / LINE VOOM",
+        "📝 今日の投稿案です（Threads / X / Googleビジネス / LINE VOOM）",
         "",
-        "本文:",
         body,
         "",
-        formatMediaCandidatesForLine(mediaCandidates, 5),
-        "",
-        "修正するなら: 修正 新しい本文",
-        "一覧外を使うなら: 挿入",
-        "LINEに画像/動画を直接送っても添付できます。",
-        "投稿準備するなら: OK",
-        "やめるなら: NO " + record.id,
-        "",
-        "今日はこの内容でいいですか？",
+        "下のボタンで操作できます👇",
+        "・このまま出す → これで投稿",
+        "・直したい → 修正（例：修正 もっとやさしく）",
       ].join("\n"),
+      quickReplies: approveQuickReplies(),
       meta: { mode: "simple_post", id: record.id, mediaCandidateCount: mediaCandidates.length },
     };
   } catch (error) {

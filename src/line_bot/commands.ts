@@ -18,6 +18,7 @@ import { parseMediaCommand } from "../publish/media_command.js";
 import { applyImageChoiceCommand, attachMediaSelectionCommand, parseImageChoiceCommand, parseInsertMediaCommand } from "../publish/media_library.js";
 import { validateMediaPlan } from "../publish/media_rules.js";
 import { canonicalLineCommand, normalizeLineText } from "./normalize_command.js";
+import type { QuickReplyItem } from "./reply.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -40,6 +41,8 @@ export interface LineCommandResult {
   action?: LineCommandAction;
   /** メモリキーパー応答のメタ情報（デバッグ・ロギング用） */
   meta?: Record<string, unknown>;
+  /** LINEのタップ式ボタン（クイックリプライ）。 */
+  quickReplies?: QuickReplyItem[];
 }
 
 export interface ExecuteLineCommandOptions {
@@ -177,6 +180,7 @@ async function executeMemoryKeeper(text: string, opts: ExecuteLineCommandOptions
     ok: route.ok,
     action: "memory_keeper",
     message: route.reply,
+    quickReplies: route.quickReplies,
     meta: { route: route.route, ...(route.meta ?? {}) },
   };
 }
