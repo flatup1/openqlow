@@ -5,6 +5,7 @@ import type { ContentIdea, DraftRecord, PlatformDraft } from "../types.js";
 import { formatApprovalMessage } from "../approval/message.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { saveRecord } from "../state/file_store.js";
+import { generateRefinedPostBody } from "../llm/generate.js";
 
 export interface MorningCandidateInput {
   dateJst: string;
@@ -47,6 +48,22 @@ function lineAddLink(env: Record<string, string | undefined> = process.env): str
   return `\n\n▼体験・ご質問は公式LINEから\n${url}`;
 }
 
+/**
+ * その日の本文を決める。まずAIで新規生成し、生成本文が安全チェックを通れば採用。
+ * 生成失敗・安全NGのときは定型文にフォールバックする（事故ゼロ・毎日同じ文の問題だけ解消）。
+ */
+async function resolveThreadsBody(dateJst: string): Promise<string> {
+  const generated = await generateRefinedPostBody({ dateJst });
+  if (generated.ok) {
+    const safety = checkDraftSafety(generated.body);
+    if (safety.ok) return generated.body;
+    console.error("[morning] AI生成本文が安全チェックNG。定型文にフォールバックします。");
+  } else {
+    console.error(`[morning] AI生成に失敗。定型文にフォールバック: ${generated.reason}`);
+  }
+  return buildThreadsBody();
+}
+
 export async function createMorningPublishCandidate(
   input: MorningCandidateInput
 ): Promise<DraftRecord> {
@@ -70,6 +87,8 @@ export async function createMorningPublishCandidate(
     ],
   };
 
+  const threadsBody = (await resolveThreadsBody(input.dateJst)) + lineAddLink();
+
   const drafts: PlatformDraft[] = [
     {
       id: `${id}_threads`,
@@ -77,7 +96,7 @@ export async function createMorningPublishCandidate(
       approvalId: id,
       platform: "threads",
       publicationLevel: "level_2_draft",
-      body: buildThreadsBody() + lineAddLink(),
+      body: threadsBody,
       hashtags: ["FLATUPGYM"],
       cta: "",
       safetyNotes: [
