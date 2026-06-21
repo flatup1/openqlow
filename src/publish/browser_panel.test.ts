@@ -78,6 +78,9 @@ assert.match(html, /https:\/\/www\.threads\.net\//);
 assert.match(html, /https:\/\/business\.google\.com\//);
 assert.match(html, /https:\/\/manager\.line\.biz\//);
 assert.match(html, /navigator\.clipboard\.writeText/);
+// 1タップ: コピー＋投稿画面を開くボタンと、開くURL(data-url)があること。
+assert.match(html, /コピーして投稿画面を開く/);
+assert.match(html, /data-url="https:\/\/business\.google\.com\/posts"/);
 assert.match(html, /最終投稿ボタンは押さない/);
 assert.match(html, /子どもが安心して挑戦できる/);
 assert.match(html, /画像確認/);

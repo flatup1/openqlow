@@ -14,9 +14,22 @@ const LABELS: Record<PublishDestination, string> = {
 
 const URLS: Record<PublishDestination, string> = {
   threads: "https://www.threads.net/",
-  google_business: "https://business.google.com/",
+  google_business: "https://business.google.com/posts",
   line_voom: "https://manager.line.biz/",
 };
+
+// 投稿先を開くURL。env で実際の「投稿作成画面」のURLに差し替えると1タップで到達できる。
+const URL_ENV_KEYS: Partial<Record<PublishDestination, string>> = {
+  google_business: "OPENQLOW_GBP_POST_URL",
+  line_voom: "OPENQLOW_LINE_VOOM_POST_URL",
+  threads: "OPENQLOW_THREADS_POST_URL",
+};
+
+function destinationUrl(destination: PublishDestination, env: Record<string, string | undefined>): string {
+  const key = URL_ENV_KEYS[destination];
+  const override = key ? (env[key] || "").trim() : "";
+  return override || URLS[destination];
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -87,19 +100,18 @@ async function renderMediaSection(mediaFiles: string[] = [], env: PublicMediaEnv
     </section>`;
 }
 
-function renderCard(destination: PublishDestination, draft: PlatformDraft): string {
+function renderCard(destination: PublishDestination, draft: PlatformDraft, url: string): string {
   const label = LABELS[destination];
-  const url = URLS[destination];
   const text = textForDraft(draft);
   return `
     <section class="card">
       <div class="card-head">
         <h2>${escapeHtml(label)}</h2>
-        <a class="open" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">開く</a>
       </div>
       <p class="step">${escapeHtml(destinationStep(destination))}</p>
       <textarea readonly>${escapeHtml(text)}</textarea>
-      <button type="button" data-copy="${escapeHtml(text)}">本文をコピー</button>
+      <button type="button" class="primary" data-copy="${escapeHtml(text)}" data-url="${escapeHtml(url)}">📋 コピーして投稿画面を開く</button>
+      <button type="button" class="ghost" data-copy="${escapeHtml(text)}">本文だけコピー</button>
     </section>`;
 }
 
@@ -115,7 +127,7 @@ export async function createBrowserPanel(
 
   const mediaSection = await renderMediaSection(queue.mediaFiles, env);
   const cards = queue.destinations
-    .map(destination => renderCard(destination, draftForDestination(record.drafts, destination)))
+    .map(destination => renderCard(destination, draftForDestination(record.drafts, destination), destinationUrl(destination, env)))
     .join("\n");
 
   const html = `<!doctype html>
@@ -140,6 +152,8 @@ export async function createBrowserPanel(
     h2 { font-size: 18px; margin: 0; }
     .step { background: #eef6ff; border-left: 4px solid #3b82f6; padding: 10px; margin: 12px 0 0; }
     .open, button { border: 1px solid #9fb3c8; background: #102a43; color: white; border-radius: 6px; padding: 9px 12px; text-decoration: none; font-size: 14px; cursor: pointer; }
+    button.primary { display: block; width: 100%; background: #2563eb; border-color: #2563eb; font-weight: 700; padding: 14px; font-size: 16px; margin-bottom: 8px; }
+    button.ghost { background: white; color: #102a43; }
     textarea { box-sizing: border-box; width: 100%; min-height: 190px; margin: 12px 0; border: 1px solid #bcccdc; border-radius: 6px; padding: 12px; font-size: 15px; line-height: 1.6; resize: vertical; white-space: pre-wrap; }
     .preview { display: block; width: 100%; max-width: 360px; height: auto; margin: 10px 0; border-radius: 8px; border: 1px solid #d9e2ec; }
   </style>
@@ -154,8 +168,17 @@ export async function createBrowserPanel(
   <script>
     document.querySelectorAll("button[data-copy]").forEach((button) => {
       button.addEventListener("click", async () => {
-        await navigator.clipboard.writeText(button.dataset.copy || "");
-        button.textContent = "コピー済み";
+        try { await navigator.clipboard.writeText(button.dataset.copy || ""); } catch (e) {}
+        const url = button.dataset.url;
+        if (url) {
+          // 1タップで「本文コピー＋投稿画面を開く」。あとは貼り付け＋画像添付＋投稿だけ。
+          const original = button.textContent;
+          button.textContent = "コピー済み → 開きます…";
+          window.open(url, "_blank", "noreferrer");
+          setTimeout(() => { button.textContent = original; }, 2000);
+        } else {
+          button.textContent = "コピー済み";
+        }
       });
     });
   </script>
