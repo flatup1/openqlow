@@ -4,6 +4,9 @@ Description=Run OPENQLOW health monitor every 10 minutes
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=10min
+# 監視は厳密な時刻不要。許容幅と小さなジッタでウェイクアップを集約し負荷スパイクを避ける。
+AccuracySec=1min
+RandomizedDelaySec=20s
 Unit=openqlow-monitor.service
 
 [Install]

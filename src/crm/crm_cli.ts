@@ -275,7 +275,8 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-const invokedDirectly = process.argv[1]?.endsWith("crm_cli.ts");
+const invokedBasename = process.argv[1] ? path.basename(process.argv[1]) : "";
+const invokedDirectly = invokedBasename === "crm_cli.ts" || invokedBasename === "crm_cli.js";
 if (invokedDirectly) {
   const code = await main(process.argv.slice(2));
   process.exit(code);
