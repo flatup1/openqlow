@@ -56,7 +56,12 @@ export async function publishExtraPlatforms(opts: PublishExtraOptions): Promise<
       const published = await publishXPost({ creds: xCreds, text, mediaBytes, fetchImpl: opts.fetchImpl });
       result.published.push({ platform: "x", externalId: published.tweetId });
     } catch (error) {
-      result.skipped.push({ platform: "x", reason: errorReason(error) });
+      const reason = errorReason(error);
+      // Xの課金未設定(402)は保留運用中なので毎回の「未投稿」表示はしない（静音化）。
+      // 本物の不具合（権限・認証など）だけ報告する。
+      if (!/\b402\b/.test(reason)) {
+        result.skipped.push({ platform: "x", reason });
+      }
     }
   }
 

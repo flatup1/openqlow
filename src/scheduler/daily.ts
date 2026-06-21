@@ -30,10 +30,17 @@ function allDraftText(drafts: PlatformDraft[]): string {
   return drafts.map(draft => `${draft.body}\n${draft.cta}\n${draft.hashtags.join(" ")}`).join("\n\n");
 }
 
+export function dailyCountForEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(env.OPENQLOW_DAILY_COUNT);
+  if (Number.isInteger(raw) && raw >= 1 && raw <= 3) return raw;
+  return 1; // 既定: 朝は1本だけ（メッセージを増やさない）
+}
+
 export async function runDaily(): Promise<DraftRecord[]> {
   const config = loadConfig();
   assertNoPublishRuntimeEnabled();
-  const ideas = await generateDailyThree();
+  // 朝の投稿案は既定1本（3本はメッセージが多すぎて選びにくい、という運用フィードバック）。
+  const ideas = (await generateDailyThree()).slice(0, dailyCountForEnv());
   const records: DraftRecord[] = [];
   const safetyByRecord = new Map<string, SafetyResult>();
 

@@ -46,6 +46,14 @@ const X_ENV = { X_API_KEY: "k", X_API_SECRET: "s", X_ACCESS_TOKEN: "at", X_ACCES
   assert.equal(r.skipped[0].platform, "x");
 }
 
+// X: 402（課金未設定・保留運用）は「未投稿」に出さない（静音化）
+{
+  const fetchImpl = (async () => new Response(JSON.stringify({ title: "Payment Required" }), { status: 402 })) as typeof fetch;
+  const r = await publishExtraPlatforms({ record: record(), env: { ...X_ENV }, fetchImpl });
+  assert.equal(r.published.length, 0);
+  assert.equal(r.skipped.length, 0, "402は保留なので報告しない");
+}
+
 // Instagram: 写真なし → skipped（写真必須）
 {
   const r = await publishExtraPlatforms({ record: record(), env: { IG_USER_ID: "ig", IG_ACCESS_TOKEN: "t" } });

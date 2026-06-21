@@ -9,6 +9,7 @@ export interface MediaCandidate {
   name: string;
   path: string;
   sizeBytes: number;
+  mtimeMs: number;
   kind: "image" | "video";
 }
 
@@ -70,6 +71,7 @@ export async function listMediaCandidates(mediaDir = mediaDirectoryForEnv()): Pr
       name,
       path: file,
       sizeBytes: info.size,
+      mtimeMs: info.mtimeMs,
       kind,
     });
   }
@@ -85,8 +87,10 @@ export async function candidatePreviewUrls(
   env: Record<string, string | undefined> = process.env,
   limit = 3,
 ): Promise<string[]> {
+  // 直近に送った写真ほど上に。古い写真が候補に溜まる問題の解消（新しい順）。
   const candidates = (await listMediaCandidates(mediaDirectoryForEnv(env)))
     .filter((candidate) => candidate.kind === "image")
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
     .slice(0, limit);
   const urls: string[] = [];
   for (const candidate of candidates) {
