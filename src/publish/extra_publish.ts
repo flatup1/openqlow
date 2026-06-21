@@ -4,6 +4,9 @@ import { resolvePublicMediaUrl } from "./public_media.js";
 import { publishXPost, type XCredentials } from "./x_api.js";
 import { publishInstagramImage } from "./instagram_api.js";
 import { buildInstagramCaption } from "./instagram_caption.js";
+import { publishFacebookPost } from "./facebook_api.js";
+
+type ExtraPlatform = "x" | "instagram" | "facebook";
 
 // X / Instagram への自動投稿（Threads以外のAPI対応媒体）。
 // キーが設定された媒体だけ投稿する。postId/tweetId が取れた時のみ成功扱い。
@@ -11,8 +14,8 @@ import { buildInstagramCaption } from "./instagram_caption.js";
 // 鍵・トークンはログ・返信に出さない。
 
 export interface ExtraPublishResult {
-  published: Array<{ platform: "x" | "instagram"; externalId: string }>;
-  skipped: Array<{ platform: "x" | "instagram"; reason: string }>;
+  published: Array<{ platform: ExtraPlatform; externalId: string }>;
+  skipped: Array<{ platform: ExtraPlatform; reason: string }>;
 }
 
 function postText(record: DraftRecord): string {
@@ -54,6 +57,25 @@ export async function publishExtraPlatforms(opts: PublishExtraOptions): Promise<
       result.published.push({ platform: "x", externalId: published.tweetId });
     } catch (error) {
       result.skipped.push({ platform: "x", reason: errorReason(error) });
+    }
+  }
+
+  // ===== Facebook ページ（写真があれば写真投稿。リンクはクリック可能なので本文そのまま） =====
+  const fbPageId = env.FB_PAGE_ID ?? "";
+  const fbToken = env.FB_PAGE_ACCESS_TOKEN ?? "";
+  if (fbPageId && fbToken) {
+    try {
+      const imageUrl = mediaFile ? await resolvePublicMediaUrl(mediaFile, env) : undefined;
+      const published = await publishFacebookPost({
+        pageId: fbPageId,
+        accessToken: fbToken,
+        message: text,
+        imageUrl: imageUrl ?? undefined,
+        fetchImpl: opts.fetchImpl,
+      });
+      result.published.push({ platform: "facebook", externalId: published.postId });
+    } catch (error) {
+      result.skipped.push({ platform: "facebook", reason: errorReason(error) });
     }
   }
 
