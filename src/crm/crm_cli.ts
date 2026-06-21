@@ -75,7 +75,7 @@ function printHelp(): void {
 
 ■ よく使う
   intake --message "<問い合わせ文>"   問い合わせを取り込み、返信下書きまで一気に出す
-  followups                            今フォローすべき人の一覧（横に返信下書きの出し方も表示）
+  followups [--drafts]                 今フォローすべき人の一覧（--drafts で全員の返信下書きも一括表示）
   draft <番号>                         その人向けの返信下書きを出す（自動送信はしません）
   daily-report                         今日の集計レポートを作って保存
 
@@ -229,18 +229,29 @@ async function main(argv: string[]): Promise<number> {
     case "followups": {
       const all = await store.getAll();
       const now = new Date();
-      const print = (title: string, list: { id: number; name: string }[]) => {
+      const withDrafts = "drafts" in flags;
+      const print = (title: string, list: Prospect[]) => {
         console.log(`\n■ ${title}（${list.length}件）`);
         if (!list.length) {
           console.log("  なし");
           return;
         }
-        for (const p of list) console.log(`  #${p.id} ${p.name || "(無名)"}　→ 返信案: crm draft ${p.id}`);
+        for (const p of list) {
+          console.log(`  #${p.id} ${p.name || "(無名)"}　→ 返信案: crm draft ${p.id}`);
+          if (withDrafts) {
+            const draft = draftFor(p).split("\n").map(line => `      ${line}`).join("\n");
+            console.log(`    --- 返信下書き（確認して送信・自動送信なし） ---\n${draft}\n`);
+          }
+        }
       };
       print("追客漏れ候補", getFollowupNeeded(all, now, followupHours));
       print("体験後フォロー候補", getTrialFollowupNeeded(all));
       print("口コミ依頼候補", getReviewRequestCandidates(all));
-      console.log("\nヒント: 返信下書きは `npm run crm -- draft <番号>` で出せます（自動送信なし）。");
+      console.log(
+        withDrafts
+          ? "\nヒント: 上の下書きはそのまま確認して送れます（自動送信はしません）。"
+          : "\nヒント: 各候補の下書きを一括で出すなら `npm run crm -- followups --drafts`（自動送信なし）。",
+      );
       return 0;
     }
     case "daily-report": {
