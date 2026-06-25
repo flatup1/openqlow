@@ -17,6 +17,10 @@ updated: 2026-06-24
 - [[openqlow-safety-rules]] — まもるルール（安全のやくそく）
 - [[openqlow-glossary]] — 言葉じてん（むずかしい用語をやさしく）
 
+## 全体構想
+- [[perpetual-engine]] — ⭐ 永久機関：ログで自己改善し続ける第二の脳を1つのGitHubに統合する設計図
+- [[100-point-roadmap]] — 100点AIに必要なこと全部（認証・APIキー・サーバー・私の可否）
+
 ## 世界一優しい回答システム（4観点・100点）
 - [[kindest-ai-response-policy]] — ⭐ 出す前の4観点チェック（寄り添い/不自然さ/重複/優しさ）
 - [[flatup-canonical-faq]] — 答えをブレさせない単一正本（料金/予定/クラス/住所）
