@@ -29,6 +29,7 @@ export const FLATUP_INFO = {
   joinFee: "入会金10,000円",
   bring: "動きやすい服・タオル・水",
   parking: "専用駐車場あり",
+  gloveSet: "グローブ＋レガースのセット11,000円（体験時は貸出あり・購入は任意）",
   address: "成田市土屋516-4 2F（百香亭の上）",
   nearestStation: "成田駅",
   access: "成田駅からイオンモール行きのバスに乗り、イオンのバス停で下車、徒歩約5分",
