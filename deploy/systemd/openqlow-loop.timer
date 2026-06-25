@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OPENQLOW self-improvement loop daily at 04:30 JST
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Tokyo
+Persistent=true
+Unit=openqlow-loop.service
+
+[Install]
+WantedBy=timers.target

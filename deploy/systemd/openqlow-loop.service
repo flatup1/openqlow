@@ -1,0 +1,21 @@
+[Unit]
+Description=OPENQLOW self-improvement loop (ingest logs, score replies, propose improvements)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=openqlow
+Group=openqlow
+WorkingDirectory=/opt/openqlow
+EnvironmentFile=/etc/openqlow/openqlow.env
+ExecStart=/usr/bin/npm run loop
+MemoryMax=768M
+CPUQuota=60%
+TasksMax=128
+OOMPolicy=stop
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/openqlow /opt/obsidian-vault
