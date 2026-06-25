@@ -49,7 +49,20 @@ sources:
 4. **コンテンツ多様化**: OPENQLOWのテンプレ反復を減らし、日々のCRM記録(体験者の不安/喜びの声)を素材化。
 5. **可用性**: webhook/トンネルの死活監視と自動再起動を確実化（自己修復は一部あり）。
 
+## 改善実装（2026-06-25）— 世界一優しい回答システム
+4観点を自動採点するコードを実装し、テストで検証済み（`npm test` グリーン）。
+- `src/safety/response_quality.ts` … ①寄り添い ②不自然さ ③重複 ④優しさ を各25点・合計100点で採点。
+- `src/safety/response_quality.test.ts` … 実ログのNG例（機械的列挙／「只今担当者が対応中」スタック／既知の再質問／同一再送／煽り）を**低得点・reject**に、理想的な共感返信を**100/100 perfect**に固定。
+- 致命的な1観点があれば合計が高くても `reject`（全観点が水準を満たして初めて「優しい」）。
+- 規範ドキュメント: [[kindest-ai-response-policy]] / [[flatup-canonical-faq]] / [[24-7-operation-runbook]]。
+
+> 注: 過去ログの点数（歴史的事実）は変わらないが、**今後の返信はこのスコアラーで出す前に検証**できる。
+> 100点に到達するのは「全観点満点（共感＋正本一致＋重複なし＋優しさ満点）」の返信。
+
 ## 関連
+- [[kindest-ai-response-policy]] — 4観点の規範（出す前チェック）
+- [[flatup-canonical-faq]] — 事実をブレさせない単一正本
+- [[24-7-operation-runbook]] — 24時間止めない設定
 - [[aika-vs-openqlow]] — 攻めと守りの役割分担
 - [[openqlow-safety-rules]] / [[forbidden-actions]] — 守られている境界
 - [[second-brain]] — この採点を活かす知識基盤

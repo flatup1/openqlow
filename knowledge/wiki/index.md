@@ -17,6 +17,12 @@ updated: 2026-06-24
 - [[openqlow-safety-rules]] — まもるルール（安全のやくそく）
 - [[openqlow-glossary]] — 言葉じてん（むずかしい用語をやさしく）
 
+## 世界一優しい回答システム（4観点・100点）
+- [[kindest-ai-response-policy]] — ⭐ 出す前の4観点チェック（寄り添い/不自然さ/重複/優しさ）
+- [[flatup-canonical-faq]] — 答えをブレさせない単一正本（料金/予定/クラス/住所）
+- [[24-7-operation-runbook]] — 24時間止めないための設定
+- 実装＝ `src/safety/response_quality.ts`（+テスト。理想返信=100点 / NG例=reject）
+
 ## 正本・運用（AIの回答精度の土台）
 - [[ops-scorecard-2026-06]] — ⭐ 運用採点 2026-06（OPENQLOW 65点 / AIKA 64点）
 - [[aika-vs-openqlow]] — 守り(AIKA)と攻め(OPENQLOW)の役割分担
