@@ -43,6 +43,9 @@
 
 ---
 
+> 実装メモ（2026-06-25）: `tsconfig.json` の `rootDir: "src"` 制約により、共通層は **`src/shared/`** に配置する（top-level `shared/` ではない）。
+> **Phase A は実装・マージ済み**: `src/shared/canon.ts`（単一正本 `FLATUP_CANON`／`FLATUP_INFO` は再エクスポート）・`src/shared/response_quality.ts`（単一ゲート／`src/safety/response_quality.ts` は再エクスポートシム）・`src/shared/canon.test.ts`。`npm test` 緑。
+
 ## 3. 目標アーキテクチャ（正確な構成）
 ```
 flatup1/openqlow/
