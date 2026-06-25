@@ -11,6 +11,7 @@ import {
   type InquiryInput,
 } from "./inquiry_reply.js";
 import { parseFlags, section } from "./shared.js";
+import { gateInquiryReplies, renderGate } from "./reply_gate.js";
 
 const ATTRIBUTE_LABEL: Record<string, string> = {
   kids: "キッズ",
@@ -64,6 +65,7 @@ export function renderResult(input: InquiryInput): string {
     section("④ 24時間後の追客文", r.followUp24h),
     section("⑤ 3日後の追客文", r.followUp3d),
     ...(r.obstacleConsult ? [section("⑥ 難条件の相談（途中参加など）への返信", r.obstacleConsult)] : []),
+    section("品質チェック（世界一優しい回答・4観点100点）", renderGate(gateInquiryReplies(result))),
     section("注意", result.notes.map(n => `- ${n}`).join("\n")),
     "=====================================================================",
   ];
