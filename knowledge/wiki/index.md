@@ -20,6 +20,7 @@ updated: 2026-06-24
 ## 全体構想
 - [[perpetual-engine]] — ⭐ 永久機関：ログで自己改善し続ける第二の脳を1つのGitHubに統合する設計図
 - [[100-point-roadmap]] — 100点AIに必要なこと全部（認証・APIキー・サーバー・私の可否）
+- `docs/PERPETUAL_ENGINE_REQUIREMENTS.md` — ⭐ Codex着工用の正確な要件指示書（採点＋設計判断＋受け入れ基準R1〜R10）
 
 ## 世界一優しい回答システム（4観点・100点）
 - [[kindest-ai-response-policy]] — ⭐ 出す前の4観点チェック（寄り添い/不自然さ/重複/優しさ）
