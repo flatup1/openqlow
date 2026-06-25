@@ -17,6 +17,13 @@ updated: 2026-06-24
 - [[openqlow-safety-rules]] — まもるルール（安全のやくそく）
 - [[openqlow-glossary]] — 言葉じてん（むずかしい用語をやさしく）
 
+## 正本・運用（AIの回答精度の土台）
+- [[ops-scorecard-2026-06]] — ⭐ 運用採点 2026-06（OPENQLOW 65点 / AIKA 64点）
+- [[aika-vs-openqlow]] — 守り(AIKA)と攻め(OPENQLOW)の役割分担
+- [[forbidden-actions]] — 禁止行為（人間が決めること）
+- 正本データ → [[../sources/20260624-flatup-canon-facts|料金・スケジュール・コア原則]]
+- ドキュメント全カタログ → [[../sources/20260624-docs-catalog|docs/ の地図]]
+
 ## 仕組み・方法論
 - [[second-brain]] — AIで“第二の脳”を作る考え方
 - [[wiki-three-structures]] — ソース / ウィキ / CLAUDE.md の3構造
