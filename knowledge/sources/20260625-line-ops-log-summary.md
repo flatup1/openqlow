@@ -31,7 +31,7 @@ tags: [openqlow, operations, line, log, evaluation, privacy-redacted]
 3. **修正(revision)の不安定**: 「もっと優しく」等が効く時と、日報ハンドラに誤ルーティングされる時、OpenRouter 401/エラーで失敗する時がある。
 4. **インフラ系**: healthcheck で ngrok/launchd/line_webhook の fetch failed が頻発。git push 失敗（not a git repository / dubious ownership / sparse-checkout）。state ファイルへの EACCES。OpenRouter 401 "User not found"。
 5. **安全フィルタの誤検知**: 投稿ID "0260616-904" を phone_japanese と誤判定し保存をブロック。
-6. **正本未整合の販促表現**: 生成文に「親子割 月-¥500」「紹介バンテージ」等、正本(FLATUP_INFO)に無いオファーが登場（5-23頃まで "正本参照: 未設定"）。実在オファーか要確認。
+6. **正本未整合の販促表現**: 生成文に「親子割 月-¥500」「紹介バンテージ」等、正本(FLATUP_INFO)に無いオファーが登場（5-23頃まで "正本参照: 未設定"）。→ **2026-06-25 オーナー確認で実在と確定し、FLATUP_INFO・正本FAQに登録済み**（当時の課題は「正本未登録」だった点）。
 7. **知識Q&Aができない**: 6-07 にオーナーが「canon_2026.md を読み込んだか確認」(北極星コピー/親子割の兄弟ペア)を質問 → Bot は答えず "No approval command found"。**保存知識に基づく回答機能が無い**ことが露呈。
 
 ## コンテンツ傾向
