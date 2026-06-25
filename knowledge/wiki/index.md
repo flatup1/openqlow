@@ -10,6 +10,13 @@ updated: 2026-06-24
 
 この第二の脳の入口。主要なウィキページへの地図です。新しい主要トピックができたらここに追加します。
 
+## このプロジェクト (OPENQLOW) を中学生にもわかるように
+- [[openqlow-overview]] — ⭐ まずここ：OPENQLOWってなに？（ぜんたい地図）
+- [[openqlow-what-it-does]] — できること一覧（6グループ）
+- [[openqlow-parts-map]] — 部品の地図（src フォルダ＝なに係？）
+- [[openqlow-safety-rules]] — まもるルール（安全のやくそく）
+- [[openqlow-glossary]] — 言葉じてん（むずかしい用語をやさしく）
+
 ## 仕組み・方法論
 - [[second-brain]] — AIで“第二の脳”を作る考え方
 - [[wiki-three-structures]] — ソース / ウィキ / CLAUDE.md の3構造
