@@ -30,3 +30,8 @@ Thumbs.db
 
 # Obsidian ミラー（誤同期防止）
 obsidian-bridge/
+
+# 自己改善ループの日次出力（latest-scorecard.json はベースラインとして追跡）
+knowledge/sources/loop/scorecard-*.md
+knowledge/sources/loop/improvement-*.md
+knowledge/_inbox/
