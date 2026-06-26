@@ -1,4 +1,4 @@
-import { receptionReply, canonContext } from "./receptionist.js";
+import { receptionReply, receptionReplyAsync, canonContext } from "./receptionist.js";
 import { FLATUP_CANON } from "../shared/canon.js";
 
 function assert(condition: unknown, message: string): void {
@@ -36,5 +36,13 @@ const r4 = receptionReply("体験したい", () => harsh);
 assert(r4.source === "fallback", "reject-grade llm reply is replaced by fallback");
 assert(r4.reply !== harsh, "harsh reply is never returned");
 assert(r4.approved === true, "replacement is approved");
+
+// ⑤ async版（AIKAのlineReplyはPromise）: 成功→llm、例外→fallback、reject→差し替え
+const a1 = await receptionReplyAsync("体験したい", async () => goodLlm);
+assert(a1.source === "llm" && a1.approved, "async good llm approved");
+const a2 = await receptionReplyAsync("料金は？", async () => { throw new Error("401"); });
+assert(a2.source === "fallback" && a2.approved, "async throw -> fallback approved");
+const a3 = await receptionReplyAsync("体験したい", async () => harsh);
+assert(a3.source === "fallback" && a3.reply !== harsh, "async reject -> replaced");
 
 console.log("aika receptionist tests passed");

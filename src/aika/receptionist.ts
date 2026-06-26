@@ -84,3 +84,40 @@ export function receptionReply(
   const approved = quality.decision === "good" || quality.decision === "perfect";
   return { reply, source, quality, approved };
 }
+
+/**
+ * receptionReply の非同期版。AIKA(flatup-ai-os)の `lineReply(system,input): Promise<string>` のように
+ * LLM呼び出しが async な場合はこちらを使う。
+ *   const out = await receptionReplyAsync(input, () => lineReply(system, input));
+ */
+export async function receptionReplyAsync(
+  message: string,
+  generate: () => Promise<string>,
+  ctx: ReplyContext = {},
+): Promise<ReceptionResult> {
+  let reply: string;
+  let source: "llm" | "fallback";
+  try {
+    const r = await generate();
+    if (r && r.trim()) {
+      reply = r;
+      source = "llm";
+    } else {
+      reply = fallbackReply(message);
+      source = "fallback";
+    }
+  } catch {
+    reply = fallbackReply(message);
+    source = "fallback";
+  }
+
+  let quality = scoreResponseQuality(reply, ctx);
+  if (source === "llm" && quality.decision === "reject") {
+    reply = fallbackReply(message);
+    source = "fallback";
+    quality = scoreResponseQuality(reply, ctx);
+  }
+
+  const approved = quality.decision === "good" || quality.decision === "perfect";
+  return { reply, source, quality, approved };
+}
