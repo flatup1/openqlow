@@ -85,12 +85,12 @@ B-4. **スタック自動回復**: 「只今担当者が対応中」等で固ま
 B-5. **入力正規化**: 全角/半角・`／`→`/`・半角カナ・前後空白を吸収。承認/日報/修正のルーティングを明確分離（`src/line_bot/normalize_command.ts` の方針を流用）。
 B-6. **検証**: AIKAの返信を `scoreResponseQuality` に通すユニットテスト（実ログ由来のNG入力→`reject`、正本ベースの優しい回答→`good`/`perfect`）。
 
-### Phase C — 自己改善ループ（`scripts/loop/`）
-C-1. `ingest.ts`: 入力ディレクトリ（`OPENQLOW_LOG_INBOX`）の生ログを読み、`knowledge/sources/<YYYYMMDD>-<slug>.md` に frontmatter 付きで保存。**PII除去必須**（電話/メール/LINE userId/ペアリングコード/氏名はマスク）。既存 `src/safety/check.ts` のPIIパターンを再利用。
-C-2. `score.ts`: 対象返信群（生成 or ログ）を `scoreResponseQuality` で採点し、`knowledge/sources/scorecards/<date>.json` と `.md` を出力。集計（観点別平均・reject率・最低点）を含む。
-C-3. `report.ts`: 直近2回のscorecardを比較し、**回帰（点が下がった項目）と改善案**を Markdown で出力。改善案は「正本更新 / ゲート調整 / 文面修正」のどれかに分類し、**PR下書き**として `knowledge/sources/improvements/<date>.md` に保存（自動マージしない）。
-C-4. 3スクリプトに `*.test.ts` を付け `test` チェーンへ。`ingest` はPII除去を、`score` は集計値を、`report` は回帰検出をテスト。
-C-5. `deploy/systemd/openqlow-loop.service` + `.timer`（毎日1回）を追加。出力はPR or 下書き＝**人間承認**を必須にする。
+### Phase C — 自己改善ループ（`src/loop/`）
+C-1. `src/loop/ingest.ts`: `OPENQLOW_LOG_INBOX` があればそこを読む。未設定時は Vault の `01_DAILY_OPERATIONS/daily_logs/` を読む。取り込み先は `knowledge/sources/<YYYYMMDD>-<slug>.md`。**PII除去必須**（電話/メール/LINE userId/ペアリングコード/氏名敬称はマスク）。
+C-2. `src/loop/score.ts`: 対象返信群（生成 or ログ）を `scoreResponseQuality` で採点し、scorecardを出す。集計（観点別平均・reject率・最低点）を含む。
+C-3. `src/loop/report.ts`: 直近2回のscorecardを比較し、**回帰（点が下がった項目）と改善案**を Markdown で出力。改善案は「正本更新 / ゲート調整 / 文面修正」のどれかに分類し、**人間確認用の下書き**として保存（自動マージしない）。
+C-4. `npm run test:loop` で PII除去・JST日付・Vault `6_システム/openqlow_loop/` 保存・人間承認注記を検証する。
+C-5. `deploy/systemd/openqlow-loop.service` + `.timer`（毎日04:30 JST）を `npm run test:systemd-loop` で検証する。出力は下書き＝**人間承認**を必須にする。
 
 ### Phase D — 24時間インフラ
 D-1. **固定トンネル**: `deploy/systemd/cloudflared-openqlow.service` を用い、`OPENQLOW_PUBLIC_WEBHOOK_URL` を固定ドメインに。ngrok動的URL依存を撤廃。
