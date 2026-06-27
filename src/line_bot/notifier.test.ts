@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { pushLineMessage } from "./notifier.js";
+import { ForbiddenActionError } from "../safety/forbidden_actions.js";
 
 async function testLinePushIgnoresOpenqlowDryRunByDefault(): Promise<void> {
   const previous = process.env.OPENQLOW_DRY_RUN;
@@ -40,7 +41,46 @@ async function testLinePushCanBeDryRunExplicitly(): Promise<void> {
   assert.equal(result.mode, "dry_run");
 }
 
+async function testLinePushBlocksUnapprovedRecipient(): Promise<void> {
+  const previousJin = process.env.JIN_LINE_USER_ID;
+  process.env.JIN_LINE_USER_ID = "Ujin";
+  try {
+    await assert.rejects(
+      () => pushLineMessage("hello customer", { token: "line-token", userId: "Ucustomer" }),
+      (err: unknown) => err instanceof ForbiddenActionError && err.action === "send_to_customer_directly",
+    );
+  } finally {
+    if (previousJin === undefined) {
+      delete process.env.JIN_LINE_USER_ID;
+    } else {
+      process.env.JIN_LINE_USER_ID = previousJin;
+    }
+  }
+}
+
+async function testLinePushAllowsConfiguredJinRecipient(): Promise<void> {
+  const previousJin = process.env.JIN_LINE_USER_ID;
+  process.env.JIN_LINE_USER_ID = "Ujin";
+  try {
+    const result = await pushLineMessage("hello jin", {
+      dryRun: true,
+      token: "line-token",
+      userId: "Ujin",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "dry_run");
+  } finally {
+    if (previousJin === undefined) {
+      delete process.env.JIN_LINE_USER_ID;
+    } else {
+      process.env.JIN_LINE_USER_ID = previousJin;
+    }
+  }
+}
+
 await testLinePushIgnoresOpenqlowDryRunByDefault();
 await testLinePushCanBeDryRunExplicitly();
+await testLinePushBlocksUnapprovedRecipient();
+await testLinePushAllowsConfiguredJinRecipient();
 
 console.log("line notifier tests passed");
