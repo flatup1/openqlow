@@ -258,3 +258,39 @@ sudo systemctl disable openqlow-webhook.service openqlow-daily.timer openqlow-mo
 ```
 
 nginxから `/openqlow/webhook` location を外してreloadすれば、既存BOTには影響せず停止できます。
+
+## 固定トンネル移行手順（cloudflared quick tunnel → named tunnel）
+
+現状の `cloudflared-openqlow.service` は `cloudflared tunnel --url ...` のquick tunnelで、起動ごとにランダムな `*.trycloudflare.com` URLが発行されます。本番ドメイン（例: `line.flatupnarita.jp`）はこのURLを指していないため、VPS内nginxでは `/openqlow/health` が200でも外部からは404になります。固定URLにするには named tunnel への移行が必要です。
+
+**以下3手順はオーナー本人のCloudflareアカウントログインが必要なため、エージェントは代行できません。** VPSにSSHして手動で実行してください。
+
+```bash
+# 1. Cloudflareアカウントにログイン（ブラウザでの認可が必要）
+sudo cloudflared tunnel login
+
+# 2. named tunnelを作成（UUIDと認証情報ファイルが /etc/cloudflared/ に生成される）
+sudo cloudflared tunnel create openqlow
+
+# 3. 本番ドメインのDNSをこのtunnelに向ける
+sudo cloudflared tunnel route dns openqlow line.flatupnarita.jp
+```
+
+手順3完了後、以下を実行して反映します（このリポジトリ側の `deploy/cloudflared/config.yml` と `deploy/systemd/cloudflared-openqlow.service` の変更は済んでいます）:
+
+```bash
+sudo mkdir -p /etc/cloudflared
+sudo cp deploy/cloudflared/config.yml /etc/cloudflared/config.yml
+# credentials-file のパスをconfig.ymlに合わせて確認・調整
+sudo chown -R openqlow:openqlow /etc/cloudflared
+
+sudo systemctl daemon-reload
+sudo systemctl restart cloudflared-openqlow.service
+```
+
+検証:
+
+```bash
+curl https://line.flatupnarita.jp/openqlow/health
+# => "openqlow ok" が200で返れば固定トンネル化が完了
+```
