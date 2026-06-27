@@ -259,38 +259,57 @@ sudo systemctl disable openqlow-webhook.service openqlow-daily.timer openqlow-mo
 
 nginxから `/openqlow/webhook` location を外してreloadすれば、既存BOTには影響せず停止できます。
 
-## 固定トンネル移行手順（cloudflared quick tunnel → named tunnel）
+## 外部公開（`line.flatupnarita.jp` → このVPS）
 
-現状の `cloudflared-openqlow.service` は `cloudflared tunnel --url ...` のquick tunnelで、起動ごとにランダムな `*.trycloudflare.com` URLが発行されます。本番ドメイン（例: `line.flatupnarita.jp`）はこのURLを指していないため、VPS内nginxでは `/openqlow/health` が200でも外部からは404になります。固定URLにするには named tunnel への移行が必要です。
+VPS内nginxで `/openqlow/health` が200でも、本番ドメインのDNSが別サーバーを指していると外部からは404になる。これを解消して安定したHTTPS入口を用意する。
 
-**以下3手順はオーナー本人のCloudflareアカウントログインが必要なため、エージェントは代行できません。** VPSにSSHして手動で実行してください。
+### 採用方式: サブドメイン直結 + Let's Encrypt（本番で実施済み）
+
+ドメイン `flatupnarita.jp` のDNSはXserver（ネームサーバー `ns1〜5.xserver.jp`）で管理されており、apex/`www`/ワイルドカードはジムHP（別IP）を、MX/SPF/DKIMはメールを担っている。**ドメイン全体をCloudflareへ移管するとHP・メールを巻き込むリスクがある**ため、移管はせず、`line` サブドメイン1本だけをこのVPSへ向ける方式を採用した。
+
+1. **XserverのDNSレコード設定**で、`line.flatupnarita.jp` のAレコードをこのVPSのグローバルIPに変更する（apex/`www`/`*`/MX/SPF/DKIMは一切触らない）。
+
+   | ホスト名 | 種別 | 内容 |
+   |---|---|---|
+   | `line` | A | （このVPSのグローバルIP） |
+
+2. 反映を確認（Xserverは反映に数分〜1時間ほどかかる）。権威サーバーへ直接問い合わせるとキャッシュを避けられる:
+
+   ```bash
+   host line.flatupnarita.jp ns1.xserver.jp
+   # => 新しいIPが返ればOK
+   ```
+
+3. 新IPが返るようになってから、VPSでLet's Encrypt証明書を取得（nginxの80/443が外部開放されていること、UFWで許可済みであることが前提）:
+
+   ```bash
+   sudo certbot --nginx -d line.flatupnarita.jp
+   ```
+
+   certbotがnginx設定（`/etc/nginx/sites-enabled/openqlow.conf`）にHTTPSを自動で組み込み、自動更新タスクも設定する。
+
+4. 検証:
+
+   ```bash
+   curl -s -o /dev/null -w "%{http_code}\n" https://line.flatupnarita.jp/openqlow/health
+   # => 200 で完了
+   ```
+
+> 注意: DNS反映前に `certbot` を実行するとHTTP-01チャレンジが旧IPに飛んで `unauthorized (404)` で失敗する。必ず手順2で新IPを確認してから手順3へ進むこと。
+
+### 代替方式: cloudflared named tunnel
+
+VPSの80/443を外部公開したくない、またはCloudflareのDDoS/WAF前段を使いたい場合は、cloudflaredのnamed tunnelでもよい。ただし `cloudflared tunnel route dns` は対象ゾーンがCloudflare管理下にあることが前提のため、`flatupnarita.jp` をCloudflareへ移管する必要がある（＝上記のHP・メールを巻き込む判断が必要）。本リポジトリには `deploy/cloudflared/config.yml` と脱root化した `deploy/systemd/cloudflared-openqlow.service` を同梱しているが、**ゾーン移管を避ける運用では採用方式（サブドメイン直結）を推奨する。**
 
 ```bash
-# 1. Cloudflareアカウントにログイン（ブラウザでの認可が必要）
+# 以下はオーナー本人のCloudflareログインが必要（エージェント代行不可）
 sudo cloudflared tunnel login
-
-# 2. named tunnelを作成（UUIDと認証情報ファイルが /etc/cloudflared/ に生成される）
 sudo cloudflared tunnel create openqlow
-
-# 3. 本番ドメインのDNSをこのtunnelに向ける
 sudo cloudflared tunnel route dns openqlow line.flatupnarita.jp
-```
 
-手順3完了後、以下を実行して反映します（このリポジトリ側の `deploy/cloudflared/config.yml` と `deploy/systemd/cloudflared-openqlow.service` の変更は済んでいます）:
-
-```bash
 sudo mkdir -p /etc/cloudflared
 sudo cp deploy/cloudflared/config.yml /etc/cloudflared/config.yml
-# credentials-file のパスをconfig.ymlに合わせて確認・調整
 sudo chown -R openqlow:openqlow /etc/cloudflared
-
 sudo systemctl daemon-reload
 sudo systemctl restart cloudflared-openqlow.service
-```
-
-検証:
-
-```bash
-curl https://line.flatupnarita.jp/openqlow/health
-# => "openqlow ok" が200で返れば固定トンネル化が完了
 ```
