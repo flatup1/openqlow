@@ -5,6 +5,7 @@ import type { ContentIdea, DraftRecord, PlatformDraft } from "../types.js";
 import { formatApprovalMessage } from "../approval/message.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { saveRecord } from "../state/file_store.js";
+import { FLATUP_CANON } from "../shared/canon.js";
 
 export interface MorningCandidateInput {
   dateJst: string;
@@ -32,16 +33,58 @@ function allDraftText(drafts: PlatformDraft[]): string {
   return drafts.map(draft => `${draft.body}\n${draft.cta}\n${draft.hashtags.join(" ")}`).join("\n\n");
 }
 
-function buildThreadsBody(): string {
+// 公開投稿は内部記録（会員名・入会状況・個別対応）を一切出さず、ブランドの芯だけを温かく伝える。
+// 「世界一優しい格闘技ジム」の声で、初心者・女性・キッズ・保護者が安心できる招待文にする。
+// 料金などの事実は正本(FLATUP_CANON)から引き、毎日同じ文面にならないよう日付で選ぶ。
+function morningBodyVariants(): string[] {
+  const trial = FLATUP_CANON.trialFirst; // 例: 初回体験500円
   return [
-    "昨日のFLATUP GYM記録。",
-    "",
-    "体験、入会、返信、気になる会員さんのことを整理しました。",
-    "今日も一人ひとりが安心して続けられるように、できることを丁寧に進めます。",
-    "",
-    "強さは、急に作るものではなく、昨日より少しだけ自分と向き合う積み重ね。",
-    "成田の世界一やさしい格闘技ジムとして、今日も静かに前へ進みます。",
-  ].join("\n");
+    [
+      "「強くなりたい」も「ただ体を動かしたい」も、どちらも大歓迎です。",
+      "",
+      "FLATUP GYMは、怒鳴らない・威圧しない、初心者も女性もキッズも安心して通える格闘技ジム。",
+      `はじめての方は${trial}から、気軽にどうぞ。`,
+      "",
+      "勝ち負けより、挑戦するあなたを応援します。",
+    ].join("\n"),
+    [
+      "「格闘技ってこわい?」——大丈夫です。",
+      "",
+      "運動が苦手でも、体力に自信がなくても、一人ひとりのペースで始められます。",
+      "スタッフは、あなたの「できた」を一緒に喜ぶ仲間です。",
+      "",
+      `成田で、世界一優しい格闘技ジム。まずは見学・${trial}からどうぞ。`,
+    ].join("\n"),
+    [
+      "お子さんの「やってみたい」、お母さんの「私も動きたい」。",
+      "",
+      "FLATUP GYMは、キッズもレディースも安心して通える場所です。",
+      "できないことを責めない。できたことを、一緒に喜ぶ。",
+      "",
+      "そんな太陽みたいなジムで、はじめの一歩を踏み出しませんか。",
+    ].join("\n"),
+    [
+      "強さは、急に作るものじゃない。",
+      "昨日より少しだけ自分と向き合えた——それで十分かっこいいんです。",
+      "",
+      "FLATUP GYMは、その小さな一歩を静かに応援します。",
+      `初心者大歓迎。${trial}から、お待ちしています。`,
+    ].join("\n"),
+    [
+      "ここには、年齢も体力もバラバラの仲間がいます。",
+      "共通しているのは「自分のペースで前に進みたい」という気持ちだけ。",
+      "",
+      "怒鳴らない・比べない・置いていかない。",
+      "成田の世界一優しい格闘技ジム、FLATUP GYMです。",
+    ].join("\n"),
+  ];
+}
+
+function buildThreadsBody(dateJst: string): string {
+  const variants = morningBodyVariants();
+  const key = Number.parseInt(yyyymmdd(dateJst), 10);
+  const index = Number.isFinite(key) ? key % variants.length : 0;
+  return variants[index];
 }
 
 export async function createMorningPublishCandidate(
@@ -53,11 +96,11 @@ export async function createMorningPublishCandidate(
   const idea: ContentIdea = {
     id,
     date: input.dateJst,
-    theme: "昨日のFLATUP GYM記録",
-    angle: "日々の整理から、安心して続けられるジムづくりを伝える",
+    theme: "FLATUP GYMの招待（世界一優しい格闘技ジム）",
+    angle: "初心者・女性・キッズ・保護者が安心できる、温かい入口を伝える",
     audience: "local_narita",
     source: "obsidian_inbox",
-    valueConnection: "朝の営業記録を、個人情報を出さずにSNS投稿候補へ変換する。",
+    valueConnection: "朝の営業記録は内部に留め、個人情報を出さずブランドの芯だけをSNS投稿候補にする。",
     canonReferences: [
       {
         layer: "AGENTS.md",
@@ -74,7 +117,7 @@ export async function createMorningPublishCandidate(
       approvalId: id,
       platform: "threads",
       publicationLevel: "level_2_draft",
-      body: buildThreadsBody(),
+      body: buildThreadsBody(input.dateJst),
       hashtags: ["FLATUPGYM", "成田", "キックボクシング"],
       cta: "",
       safetyNotes: [

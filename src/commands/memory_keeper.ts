@@ -42,7 +42,7 @@ export async function startMemoryInterview(userId: string, opts: MemoryHandlerOp
   const store = getStore(opts);
   const session = await store.start(userId, "/昨日の記録");
   const reply = [
-    "OPENQLOW（記憶係）：昨日の記録を始めます。",
+    "昨日の記録を始めます。",
     "",
     buildYesNoQuestion(),
     "",
@@ -330,7 +330,7 @@ async function recordBulkMorningAnswer(userId: string, text: string, opts: Memor
     return {
       ok: false,
       reply: [
-        "OPENQLOW（記憶係）：日報として読み取れませんでした。",
+        "日報として読み取れませんでした。",
         "体験・入会・口コミ・今日やることなどを、分かる範囲で1通で送ってください。",
         "",
         buildBulkMorningPrompt(),
@@ -373,7 +373,7 @@ async function recordBulkMorningAnswer(userId: string, text: string, opts: Memor
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `OPENQLOW（記憶係）：保存失敗。\n理由: ${message}`,
+      reply: `保存失敗。\n理由: ${message}`,
       meta: { mode: "bulk_morning", error: message },
     };
   }
@@ -420,7 +420,7 @@ async function recordLooseDailyReport(userId: string, text: string, opts: Memory
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `OPENQLOW（記憶係）：保存失敗。\n理由: ${message}`,
+      reply: `保存失敗。\n理由: ${message}`,
       meta: { mode: "simple_daily", error: message },
     };
   }
@@ -463,7 +463,7 @@ async function createSimplePostCandidate(): Promise<MemoryHandlerResult> {
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `OPENQLOW（記憶係）：投稿候補の作成に失敗しました。\n理由: ${message}`,
+      reply: `投稿候補の作成に失敗しました。\n理由: ${message}`,
       meta: { mode: "simple_post", error: message },
     };
   }
@@ -497,8 +497,8 @@ export async function cancelMemorySession(userId: string, opts: MemoryHandlerOpt
   return {
     ok: true,
     reply: existed
-      ? "OPENQLOW（記憶係）：セッションを中止しました。やり直すなら「/日記」と送ってください。"
-      : "OPENQLOW（記憶係）：進行中のセッションはありません。",
+      ? "セッションを中止しました。やり直すなら「/日記」と送ってください。"
+      : "進行中のセッションはありません。",
     meta: { hadSession: existed },
   };
 }
@@ -509,7 +509,7 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
   if (!session) {
     return {
       ok: false,
-      reply: "OPENQLOW（記憶係）：保存対象のセッションが見つかりません（タイムアウトの可能性）。\n「/日記」から再開してください。",
+      reply: "保存対象のセッションが見つかりません（タイムアウトの可能性）。\n「/日記」から再開してください。",
     };
   }
 
@@ -517,7 +517,7 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
     const result = await saveCrmLog(session);
     await store.destroy(userId);
     const lines = [
-      "OPENQLOW（記憶係）：Obsidian に保存しました。",
+      "Obsidian に保存しました。",
       `日付: ${result.dateJst}`,
       `ファイル: ${result.filePath}`,
       result.appended ? "（既存ログに追記しました）" : "（新規ファイルを作成しました）",
@@ -540,7 +540,7 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
     return {
       ok: false,
       reply: [
-        "OPENQLOW（記憶係）：保存に失敗しました。",
+        "保存に失敗しました。",
         `理由: ${message}`,
         "Jin、ログを確認してください。セッションは保持しています。",
       ].join("\n"),
@@ -634,7 +634,7 @@ export async function recordOneShotMemo(userId: string, body: string, opts: Memo
     return {
       ok: true,
       reply: [
-        "OPENQLOW（記憶係）：保存しました📝",
+        "保存しました📝",
         `日付: ${result.dateJst}`,
         result.appended ? "（既存ログに追記）" : "（新規ファイル）",
       ].join("\n"),
@@ -644,7 +644,7 @@ export async function recordOneShotMemo(userId: string, body: string, opts: Memo
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `OPENQLOW（記憶係）：保存失敗。\n理由: ${message}`,
+      reply: `保存失敗。\n理由: ${message}`,
       meta: { mode: "one_shot", error: message },
     };
   }
@@ -672,7 +672,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
     return {
       ok: true,
       reply: [
-        "OPENQLOW（記憶係）：保存しました📝",
+        "保存しました📝",
         `日付: ${result.dateJst}`,
         result.appended ? "（既存ログに追記）" : "（新規ファイル）",
         `件数: ${session.genres.length}`,
@@ -691,7 +691,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `OPENQLOW（記憶係）：保存失敗。セッション保持中。\n理由: ${message}`,
+      reply: `保存失敗。セッション保持中。\n理由: ${message}`,
       meta: { mode: "auto_save", error: message },
     };
   }

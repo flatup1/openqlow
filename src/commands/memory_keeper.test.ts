@@ -75,7 +75,7 @@ assert.equal(isMemoryCommandText("hello"), false);
   const store = await makeStore();
   const r = await startMemoryInterview(userId, { store });
   assert.ok(r.ok);
-  assert.ok(r.reply.includes("記憶係"));
+  assert.ok(r.reply.includes("記録を始めます"));
   assert.ok(r.reply.includes("はい"));
   assert.ok(r.reply.includes("なし"));
   assert.ok(await store.exists(userId));

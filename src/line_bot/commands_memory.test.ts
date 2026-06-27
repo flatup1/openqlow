@@ -25,7 +25,7 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /記憶係/);
+  assert.match(result.message, /記録を始めます/);
 }
 
 // 2b. /日記 + userId → /昨日の記録 と同じくセッション開始
@@ -35,7 +35,7 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /記憶係/);
+  assert.match(result.message, /記録を始めます/);
 }
 
 // 2c. /おはよう（デフォルト）は対話モード（1問ずつ）
