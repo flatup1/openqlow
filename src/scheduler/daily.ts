@@ -21,6 +21,8 @@ import {
 import { pushApprovalNotification } from "../line_bot/notifier.js";
 import { createPublishQueueEntry } from "../publish/queue.js";
 import type { PublishDestination } from "../publish/publisher_types.js";
+import { acquireDailyLock } from "../shared/run_lock.js";
+import { formatDateInTimeZone } from "../utils/date.js";
 
 function approvalIdFor(date: string, index: number): string {
   return `FG-${date.replaceAll("-", "")}-${String(index + 1).padStart(3, "0")}`;
@@ -30,10 +32,24 @@ function allDraftText(drafts: PlatformDraft[]): string {
   return drafts.map(draft => `${draft.body}\n${draft.cta}\n${draft.hashtags.join(" ")}`).join("\n\n");
 }
 
-export async function runDaily(): Promise<DraftRecord[]> {
+export interface RunDailyOptions {
+  /** テスト用に現在時刻を差し替え */
+  now?: Date;
+  /** テスト用に state ディレクトリ（ロック置き場）を差し替え */
+  stateDir?: string;
+}
+
+export async function runDaily(opts: RunDailyOptions = {}): Promise<DraftRecord[]> {
   const config = loadConfig();
   assertNoPublishRuntimeEnabled();
-  const ideas = await generateDailyThree();
+  const now = opts.now ?? new Date();
+  const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
+  const acquired = await acquireDailyLock("daily", dateJst, opts.stateDir);
+  if (!acquired) {
+    console.log(`[daily] already ran today (${dateJst}), skipping duplicate run`);
+    return [];
+  }
+  const ideas = await generateDailyThree(now);
   const records: DraftRecord[] = [];
   const safetyByRecord = new Map<string, SafetyResult>();
 
