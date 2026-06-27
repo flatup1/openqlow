@@ -107,7 +107,7 @@ export function formatMediaCandidatesForLine(candidates: MediaCandidate[], limit
 
 function visualConfirmMessage(record: DraftRecord, fileName: string): string {
   return [
-    "OPENQLOW: メディアを添付しました。まだ投稿しません。",
+    "メディアを添付しました。まだ投稿しません。",
     `ID: ${record.id}`,
     `添付: ${fileName}`,
     "",
@@ -149,7 +149,7 @@ export async function attachMediaSelectionCommand(
   if (candidates.length === 0) {
     return {
       ok: false,
-      message: `OPENQLOW: 挿入できるメディア候補がありません。\n保存先: OPENQLOW_MEDIA_DIR\n対応: jpg/jpeg/png/webp/heic/mp4/mov`,
+      message: `挿入できるメディア候補がありません。\n保存先: OPENQLOW_MEDIA_DIR\n対応: jpg/jpeg/png/webp/heic/mp4/mov`,
     };
   }
 
@@ -157,7 +157,7 @@ export async function attachMediaSelectionCommand(
     return {
       ok: true,
       message: [
-        "OPENQLOW: 挿入するメディア番号を選んでください。",
+        "挿入するメディア番号を選んでください。",
         formatCandidateList(candidates),
         "",
         "例: 挿入 2",
@@ -167,7 +167,7 @@ export async function attachMediaSelectionCommand(
 
   const selected = candidates[command.index - 1];
   if (!selected) {
-    return { ok: false, message: `OPENQLOW: ${command.index} 番のメディア候補はありません。` };
+    return { ok: false, message: `${command.index} 番のメディア候補はありません。` };
   }
 
   return attachMediaToLatestPending(root, selected.path);
@@ -195,7 +195,7 @@ export async function applyImageChoiceCommand(
       ok: true,
       id: updated.id,
       message: [
-        "OPENQLOW: 画像なしで進めます。まだ投稿しません。",
+        "画像なしで進めます。まだ投稿しません。",
         `ID: ${updated.id}`,
         "",
         "本文を再確認してください。",
@@ -207,6 +207,6 @@ export async function applyImageChoiceCommand(
 
   const candidates = (await listMediaCandidates(opts.mediaDir ?? mediaDirectoryForEnv())).slice(0, opts.limit ?? 5);
   const selected = candidates[command.index - 1];
-  if (!selected) return { ok: false, message: `OPENQLOW: ${command.index} 番の画像候補はありません。` };
+  if (!selected) return { ok: false, message: `${command.index} 番の画像候補はありません。` };
   return attachMediaToLatestPending(root, selected.path);
 }

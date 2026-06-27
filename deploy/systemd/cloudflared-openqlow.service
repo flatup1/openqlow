@@ -1,18 +1,22 @@
 [Unit]
-Description=Cloudflare quick tunnel for OPENQLOW
+Description=Cloudflare named tunnel for OPENQLOW
 After=network-online.target nginx.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:80 --no-autoupdate
+User=openqlow
+Group=openqlow
+ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/config.yml run
 Restart=always
 RestartSec=10
-User=root
 MemoryMax=128M
 CPUQuota=20%
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadOnlyPaths=/etc/cloudflared
 StandardOutput=journal
 StandardError=journal
 

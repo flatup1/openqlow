@@ -2,16 +2,22 @@ import assert from "node:assert/strict";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 
 async function testFormatWebhookReply(): Promise<void> {
+  // ハンドラが用意した文面は、余計な前置き（旧 "OPENQLOW: 受信しました。"）を足さずそのまま返す。
   const text = formatWebhookReply([
     {
       ok: false,
-      message: "No approval command found. Expected: OK FG-YYYYMMDD-NNN / OK FG-YYYYMMDD-NNN all / 修正 FG-YYYYMMDD-NNN: comment / NO FG-YYYYMMDD-NNN",
+      message: "修正できる投稿候補が見当たりませんでした。",
     },
   ]);
 
-  assert.match(text, /OPENQLOW/);
-  assert.match(text, /受信しました/);
-  assert.match(text, /OK FG-YYYYMMDD-NNN/);
+  assert.equal(text, "修正できる投稿候補が見当たりませんでした。");
+}
+
+async function testFormatWebhookReplyEmpty(): Promise<void> {
+  // 文面が無いときだけ、優しいデフォルトを返す。
+  const text = formatWebhookReply([]);
+  assert.match(text, /受け取りました/);
+  assert.doesNotMatch(text, /OPENQLOW/);
 }
 
 async function testFormatWebhookReplyUsesCommandMessage(): Promise<void> {
@@ -53,6 +59,7 @@ async function testReplyLineMessageSkipsWithoutToken(): Promise<void> {
 }
 
 await testFormatWebhookReply();
+await testFormatWebhookReplyEmpty();
 await testFormatWebhookReplyUsesCommandMessage();
 await testReplyLineMessageCallsLineApi();
 await testReplyLineMessageSkipsWithoutToken();

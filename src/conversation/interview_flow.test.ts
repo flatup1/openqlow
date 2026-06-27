@@ -6,8 +6,6 @@ import {
   applyGenreDetailAnswer,
   applyMoreGenreAnswer,
   applyYesNoAnswer,
-  buildGenreChoiceQuestion,
-  buildMoreGenreQuestion,
   buildYesNoQuestion,
 } from "./interview_flow.js";
 import type { ConversationSession } from "./session_store.js";

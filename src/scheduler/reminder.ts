@@ -80,7 +80,7 @@ function currentQuestionText(session: ConversationSession): string {
 function buildMessage(session: ConversationSession): string {
   const question = currentQuestionText(session);
   return [
-    "🌙 OPENQLOW（記憶係）：今日の日報、まだ途中でした。",
+    "🌙 今日の日報、まだ途中でした。",
     "",
     "最後の質問はこれでした：",
     question,

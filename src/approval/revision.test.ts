@@ -45,6 +45,19 @@ assert.deepEqual(parseLineRevisionCommand("修正 FG-20260608-002: FLATUP GYMは
   body: "FLATUP GYMは女性も安心です。",
 });
 
+// 複数行の本文（台風休講のお知らせ等）を取りこぼさない（旧 `.` は改行で失敗していた）。
+assert.deepEqual(
+  parseLineRevisionCommand("修正 本日は台風のため休講します。\n\nご理解のほどお願いします🙇"),
+  { body: "本日は台風のため休講します。\n\nご理解のほどお願いします🙇" },
+);
+// 全角スペース区切りも NFKC 正規化で拾う。
+assert.deepEqual(parseLineRevisionCommand("修正　台風で休講します"), { body: "台風で休講します" });
+// 「修正」単独は body 空で返し、呼び出し側で優しく促す（undefined で素通りさせない）。
+assert.deepEqual(parseLineRevisionCommand("修正"), { body: "" });
+assert.deepEqual(parseLineRevisionCommand("修正："), { body: "" });
+// 「修正案」など通常文はコマンド扱いしない。
+assert.equal(parseLineRevisionCommand("修正案を考えています"), undefined);
+
 const root = await mkdtemp(path.join(os.tmpdir(), "openqlow-revision-"));
 await saveRecord(root, record("FG-20260608-001", "古い本文", "2026-06-08T00:00:00.000Z"));
 await saveRecord(root, record("FG-20260608-002", "直近の古い本文", "2026-06-08T01:00:00.000Z"));
@@ -60,6 +73,20 @@ assert.equal(saved.status, "pending_approval");
 assert.equal(saved.drafts[0].body, "FLATUP GYMは、初心者でも安心して一歩を踏み出せるやさしい格闘技ジムです。");
 assert.equal(saved.revisionHistory[0].oldDrafts[0].body, "直近の古い本文");
 assert.match(saved.approvalMessage, /初心者でも安心/);
+
+// 複数行の本文がそのまま下書きへ反映される（以前は定型文に落ちて反映できなかった）。
+const multiline = await applyLineRevisionCommand(
+  root,
+  "修正 本日は台風のため休講します。\n\nご理解のほどお願いします🙇",
+);
+assert.equal(multiline.ok, true);
+const savedMultiline = JSON.parse(await readFile(path.join(root, "state", "FG-20260608-002.json"), "utf8"));
+assert.equal(savedMultiline.drafts[0].body, "本日は台風のため休講します。\n\nご理解のほどお願いします🙇");
+
+// 「修正」だけ送られた時は ok:false で、本文を促す優しい案内を返す（定型文に落とさない）。
+const bare = await applyLineRevisionCommand(root, "修正");
+assert.equal(bare.ok, false);
+assert.match(bare.message, /内容も一緒に/);
 
 const blocked = await applyLineRevisionCommand(root, "修正 絶対に100%痩せます。FLATUP GYM");
 assert.equal(blocked.ok, false);

@@ -89,7 +89,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       handled: true,
       ok: false,
       action: "crm_intake",
-      message: "OPENQLOW: `問い合わせ: 本文` の形で問い合わせ内容を送ってください。",
+      message: "`問い合わせ: 本文` の形で問い合わせ内容を送ってください。",
     };
   }
 
@@ -120,7 +120,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       ok: notificationResult.ok,
       action: "crm_intake",
       message: [
-        `OPENQLOW: 問い合わせをCRMに${result.created ? "登録" : "更新"}しました。`,
+        `問い合わせをCRMに${result.created ? "登録" : "更新"}しました。`,
         `ID: ${result.prospect.id}`,
         "返信下書きはオーナー通知に回しました。お客様への自動返信はしていません。",
       ].join("\n"),
@@ -138,7 +138,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       handled: true,
       ok: false,
       action: "crm_intake",
-      message: `OPENQLOW: 問い合わせのCRM登録に失敗しました。\n理由: ${message}`,
+      message: `問い合わせのCRM登録に失敗しました。\n理由: ${message}`,
       meta: { error: message },
     };
   }

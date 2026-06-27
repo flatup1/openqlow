@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { executeLineCommand } from "./commands.js";
 import { SessionStore } from "../conversation/session_store.js";
-import { approveRecord } from "../scheduler/daily.js";
 
 async function makeStore(): Promise<SessionStore> {
   const baseDir = await mkdtemp(path.join(tmpdir(), "openqlow-cmd-mem-test-"));
@@ -26,7 +25,7 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /記憶係/);
+  assert.match(result.message, /記録を始めます/);
 }
 
 // 2b. /日記 + userId → /昨日の記録 と同じくセッション開始
@@ -36,7 +35,7 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /記憶係/);
+  assert.match(result.message, /記録を始めます/);
 }
 
 // 2c. /おはよう（デフォルト）は対話モード（1問ずつ）

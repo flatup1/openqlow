@@ -8,7 +8,7 @@
 // **自動送信・自動マージはしない**。
 // 実行: npm run loop
 
-import { mkdir, readdir, readFile, writeFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ingestToMarkdown, sourceFileName } from "./ingest.js";
 import { buildScorecard, renderScorecardMarkdown, type Scorecard } from "./score.js";
@@ -66,7 +66,7 @@ function resolveLoopDirs(root: string, opts: LoopRunOptions): string[] {
 }
 
 async function ingestInbox(date: string, inbox: string, sources: string): Promise<number> {
-  let files: string[] = [];
+  let files: string[];
   try {
     files = await readdir(inbox);
   } catch {

@@ -39,7 +39,6 @@ export async function resolveUniquePath(targetDir, fileName) {
   const base = path.basename(fileName, ext);
   let candidate = path.join(targetDir, fileName);
   let n = 1;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       await fs.stat(candidate);

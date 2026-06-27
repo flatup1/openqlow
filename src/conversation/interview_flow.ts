@@ -143,7 +143,7 @@ export function applyYesNoAnswer(session: ConversationSession, answer: string): 
     session.step = "ready_to_save";
     session.skipSave = true; // 空ログを残さない
     return {
-      prompt: "OPENQLOW（記憶係）：記録なしで終了。今日も静かに進めましょう。",
+      prompt: "記録なしで終了。今日も静かに進めましょう。",
       finished: true,
     };
   }
@@ -167,12 +167,12 @@ export function applyGenreChoice(session: ConversationSession, answer: string): 
     if (session.genres.length === 0) {
       session.skipSave = true;
       return {
-        prompt: "OPENQLOW（記憶係）：記録なしで終了。今日も静かに進めましょう。",
+        prompt: "記録なしで終了。今日も静かに進めましょう。",
         finished: true,
       };
     }
     return {
-      prompt: "OPENQLOW（記憶係）：記録の準備ができました。自動で保存します…",
+      prompt: "記録の準備ができました。自動で保存します…",
       finished: true,
     };
   }
