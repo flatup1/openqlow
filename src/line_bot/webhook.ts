@@ -5,6 +5,12 @@ import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
+import {
+  MAX_WEBHOOK_BODY_BYTES,
+  exceedsWebhookBodyLimit,
+  publicWebhookError,
+  safeLineLog,
+} from "./webhook_security.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
@@ -54,7 +60,7 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
       replyToken ??= event.replyToken;
 
       if (event.message?.type === "text" && event.message.text) {
-        console.log(`LINE message received from ${userId || "unknown"}: ${event.message.text}`);
+        console.log(safeLineLog("text_received"));
         events.push({ kind: "text", text: event.message.text, userId });
       }
 
@@ -102,10 +108,24 @@ const server = http.createServer(async (req, res) => {
   }
 
   let body = "";
+  let receivedBytes = 0;
+  let bodyTooLarge = false;
   req.on("data", chunk => {
+    const chunkBytes = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+    if (bodyTooLarge || exceedsWebhookBodyLimit(receivedBytes, chunkBytes)) {
+      bodyTooLarge = true;
+      return;
+    }
+    receivedBytes += chunkBytes;
     body += chunk;
   });
   req.on("end", async () => {
+    if (bodyTooLarge) {
+      res.writeHead(413, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "payload_too_large", maxBytes: MAX_WEBHOOK_BODY_BYTES }));
+      return;
+    }
+
     // 署名検証は content-type に依存させない。application/json 以外（text/plain 等）で
     // 署名を回避し、承認者チェックの無いフォールバック経路へ流し込む攻撃を防ぐ。
     if (!isSignatureValid(body, req.headers["x-line-signature"])) {
@@ -142,11 +162,10 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: results.every(result => result.ok === true), results }));
-    } catch (error) {
-      console.error("[webhook] executeApproval failed:", error);
-      const message = error instanceof Error ? error.message : String(error);
+    } catch {
+      console.error(safeLineLog("processing_failed"));
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, error: message }));
+      res.end(JSON.stringify(publicWebhookError()));
     }
   });
 });

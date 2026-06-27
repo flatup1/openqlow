@@ -1,3 +1,5 @@
+import { safeLineLog } from "./webhook_security.js";
+
 interface LineMessage {
   type: "text";
   text: string;
@@ -41,7 +43,7 @@ export async function replyLineMessage(
 ): Promise<{ ok: boolean; mode: "sent" | "skipped"; error?: string }> {
   const token = opts.token ?? process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
   if (!token || !replyToken) {
-    console.log("[LINE reply skipped: credentials or reply token missing]\n" + text);
+    console.log(safeLineLog("reply_skipped"));
     return { ok: true, mode: "skipped" };
   }
 
@@ -57,9 +59,8 @@ export async function replyLineMessage(
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    const error = `LINE reply ${res.status}: ${body}`;
-    console.error(error);
+    const error = `LINE reply ${res.status}`;
+    console.error(safeLineLog("reply_failed"));
     return { ok: false, mode: "sent", error };
   }
 

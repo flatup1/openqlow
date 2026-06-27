@@ -1,6 +1,7 @@
 import type { DraftRecord } from "../types.js";
 import { loadConfig } from "../config.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
+import { safeLineLog } from "./webhook_security.js";
 
 interface LineMessage {
   type: "text";
@@ -39,18 +40,18 @@ export async function pushLineMessage(text: string, opts: PushOptions = {}): Pro
   const explicitDryRun = opts.dryRun ?? (process.env.OPENQLOW_LINE_DRY_RUN === "true");
 
   if (!token || !userId) {
-    console.log("[LINE skipped: credentials missing]\n" + text);
+    console.log(safeLineLog("push_skipped"));
     return { ok: true, mode: "skipped" };
   }
   if (explicitDryRun) {
-    console.log("[LINE DRY-RUN]\n" + text);
+    console.log(safeLineLog("push_dry_run"));
     return { ok: true, mode: "dry_run" };
   }
 
   const chunks = chunkForLine(text);
   const messages: LineMessage[] = chunks.map(chunk => ({ type: "text", text: chunk }));
 
-  console.log("[LINE] sending notification");
+  console.log(safeLineLog("push_sending"));
   const fetchImpl = opts.fetchImpl ?? fetch;
   const res = await fetchImpl(LINE_PUSH_ENDPOINT, {
     method: "POST",
@@ -62,9 +63,8 @@ export async function pushLineMessage(text: string, opts: PushOptions = {}): Pro
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    const error = `LINE push ${res.status}: ${body}`;
-    console.error(error);
+    const error = `LINE push ${res.status}`;
+    console.error(safeLineLog("push_failed"));
     return { ok: false, mode: "sent", error };
   }
   return { ok: true, mode: "sent" };
