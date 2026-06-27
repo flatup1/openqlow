@@ -109,7 +109,7 @@ Push the reviewed branches, then fast-forward or merge to `main` only because th
 
 - [ ] **Step 3: Deploy clean committed archives**
 
-実値のenv、state、logs、Vaultデータを保持し、コミット済みコードだけをVPSへ同期する。
+実値のenv、state、logs、Vaultデータを保持し、コミット済みコードだけをVPSへ同期する。`mktemp` の0700権限を `/opt/openqlow` へ移さないようrsyncではroot directoryの権限を保持し、同期後に `deploy/scripts/install-openqlow-vps.sh` で `openqlow` 所有権を復元してから再起動する。
 
 - [ ] **Step 4: Verify production**
 

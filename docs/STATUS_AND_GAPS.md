@@ -1,103 +1,73 @@
-# FLATUP AI OS — 現状採点と残作業（AI読み取り用）
+# FLATUP AI OS - 現状採点と残作業（AI読み取り用）
 
-> 更新: 2026-06-26 / このファイルは他AI(Codex等)が読んで続行するための**機械可読ステータス**です。
-> 下の `yaml` ブロックを正とし、散文は人間用の補足です。
+> 更新: 2026-06-27 / 下の `yaml` ブロックを正とし、秘密値・個人情報は記載しない。
 
 ## SDL採点（100点満点）
 | 観点 | 配点 | 現在 | 根拠 |
 | --- | --- | --- | --- |
-| 機能性・正確性 | 25 | 24 | 単一正本・正本一貫性ガード・77テスト緑 |
-| セキュリティ(CIA+脅威) | 30 | 27 | secret_guard(鍵検知)・PII除去(氏名含)・禁止行為ブロック・自動送信なし。残: 公開repo鍵スキャン/本番秘密管理 |
-| 保守性 | 20 | 19 | src/shared 一本化・薄い再エクスポート・テスト網羅 |
-| 効率 | 15 | 14 | 依存ゼロTS・ルールベースは無コスト |
-| 完全性・網羅 | 10 | 8 | AIKA配線/24時間/鍵投入が未(コード外) |
-| **合計** | 100 | **92** | |
+| 機能性・正確性 | 25 | 25 | 正本・受付ゲート・CRM・朝ブリーフ・loopを本番確認 |
+| セキュリティ(CIA+脅威) | 30 | 23 | PIIログ防止、1 MiB制限、依存脆弱性0。残: Vault過去履歴の旧Googleキー候補 |
+| 保守性 | 20 | 20 | shared正本、薄い再エクスポート、回帰テスト、運用設計書 |
+| 効率 | 15 | 15 | 依存ゼロ安全網、systemd timer、差分実装 |
+| 完全性・網羅 | 10 | 8 | 残: branded固定URLとVault履歴浄化 |
+| **合計** | 100 | **91** | 外部・人間承認が必要な2項目を残す |
 
-## 完了済み（main）
-- 単一正本 `src/shared/canon.ts`、優しさゲート `src/shared/response_quality.ts`、障害フォールバック `src/shared/fallback_reply.ts`
-- 受付アダプタ `src/aika/receptionist.ts`（`receptionReply` / `receptionReplyAsync` / `canonContext`）
-- 自己改善ループ `src/loop/*`（取り込み[PII/氏名マスク]→採点→改善提案、Vault出力）
-- セキュリティ/正本ガード `src/shared/secret_guard.*` / `src/shared/canon.test.ts`
-- `npm test` 77グループ緑
+## 完了済み（main / production）
+- `flatup-ai-os` の顧客向け4経路を `receptionReplyAsync` と `canonContext()` へ接続。
+- openQLOWの正本、安全ゲート、障害フォールバック、自己改善loopをVaultへ接続。
+- LINE本文、userId、外部APIエラー本文をログへ出さない。過大webhookはHTTP 413。
+- openqlow / flatup-ai-os は `npm test` 成功、`npm audit --audit-level=low` で0件。
+- openqlow / flatup-ai-os の全Git履歴は秘密候補0件。
+- 本番のwebhook、loop、morning、monitor、cloudflaredはactive/enabled。
+- 朝ブリーフは `OPENQLOW_LINE_DRY_RUN=true` で自動送信せず、Vaultへ保存。
+- 3リポジトリREADMEの地図を追加済み。
 
 ## 残作業（機械可読）
 ```yaml
 project: flatup_ai_os_perpetual_engine
-score: 92
+score: 91
 target: 100
+verified_at: 2026-06-27
 repos:
-  engine: flatup1/openqlow          # 母体・正本・安全網（書込可）
-  reception: flatup1/flatup-ai-os   # 守りAIKA・LLM（公開・別repo）
-  memory: flatup1/flatup            # Obsidian Vault・記憶（非公開想定）
+  engine: flatup1/openqlow
+  reception: flatup1/flatup-ai-os
+  memory: flatup1/flatup
 gaps:
-  - id: G1
-    title: AIKA返信を安全網に配線
-    area: integration
-    priority: critical
-    repo: flatup1/flatup-ai-os
-    owner: codex_or_human
-    status: implemented_local_unpushed   # Codexがローカル実装済・未push
-    detail: >
-      src/ai/router.ts で line_reply/followup/review_request/daily_manager を
-      receptionReplyAsync 経由にし、各プロンプト先頭に canonContext() を注入。
-      安全網4ファイル(canon/response_quality/fallback_reply/receptionist)は
-      openqlow/port/aika の依存ゼロ版をコピー。
-    acceptance:
-      - 全顧客返信が送信前に scoreResponseQuality を通る
-      - reject級は正本返信に差し替え（送らない）
-      - LLM障害(401/timeout)で fallbackReply（沈黙しない）
-      - 料金/住所/予定は FLATUP_CANON のみ（直書き禁止）
-    reference: openqlow/docs/CODEX_REMAINING_WORK.md#T1
-  - id: G2
-    title: 公開repoの鍵漏れスキャン
+  - id: G7
+    title: Vault過去履歴の旧Google APIキー候補を失効・除去
     area: security
-    priority: high
-    repo: flatup1/flatup-ai-os
-    owner: codex_or_human
-    status: not_started
-    detail: flatup-ai-os は公開中。全履歴に APIキー/トークンが無いか確認し、あれば失効&除去。
-    acceptance:
-      - git log -p / secret scanner でヒット0
-      - openqlow/src/shared/secret_guard.ts のパターンを流用
-  - id: G3
-    title: 24時間インフラ
+    priority: critical
+    repo: flatup1/flatup
+    owner: human_then_codex
+    status: blocked_human_approval
+    evidence:
+      current_head_candidates: 0
+      historical_unique_google_api_candidates: 2
+      historical_files_affected: 5
+    required:
+      - Google Cloud側で該当キー2個を失効またはローテーション
+      - オーナー承認後にgit filter-repoで履歴を書き換える
+      - 全cloneを再同期し、再スキャン0件を確認する
+    caution: 秘密値と対象ファイル名をIssueやチャットへ記載しない
+  - id: G8
+    title: branded固定HTTPS URLをopenQLOWへ接続
     area: reliability
     priority: high
-    repo: flatup1/openqlow
-    owner: human_on_vps
-    status: partial   # systemd/timer 雛形あり・本番有効化未
-    detail: cloudflared固定URL、webhook/トンネル/LLMの死活監視+自動再起動、openqlow-loop.timer有効化、AIKAサービスのsystemd化。
-    acceptance:
-      - 落ちても自動復帰・沈黙しない・二重送信なし
-    reference: openqlow/docs/CODEX_REMAINING_WORK.md#T2
-  - id: G4
-    title: APIキー投入（秘密管理）
-    area: security
-    priority: high
-    repo: all
-    owner: human
-    status: not_started
-    detail: OPENROUTER_API_KEY / LINE_CHANNEL_* / Meta / Google を各サーバ .env に。gitに入れない。
-    acceptance:
-      - .env.example に全キー列挙（空値）
-      - 実値はサーバのみ・secret_guard で混入検知
-  - id: G5
-    title: 3リポジトリの地図README（情報共有の整理）
-    area: docs
-    priority: medium
-    repo: all
-    owner: any_ai
-    status: not_started
-    detail: 各repo先頭READMEに「この箱は何か/正本はopenqlow/触る前に読むのは canon.ts」を中学生向け3行。
-    reference: openqlow/docs/UNIFY_3_REPOS.md#T3
-  - id: G6
-    title: Vaultに人間用正本参照
-    area: docs
-    priority: low
-    repo: flatup1/flatup
-    owner: any_ai
-    status: not_started
-    detail: flatup の 00_CANON/正本.md に openqlow/src/shared/canon.ts の内容を人間向けに反映（openqlowを正とする）。
+    repo: infrastructure
+    owner: human_cloudflare
+    status: blocked_external_configuration
+    evidence:
+      expected_host: line.flatupnarita.jp
+      expected_path: /openqlow/health
+      current_http_status: 404
+      current_dns_target: 162.43.90.71
+      openqlow_vps: 162.43.41.182
+      fallback_http_status: 200
+      tunnel_type: accountless_quick_tunnel
+    required:
+      - Cloudflareでnamed tunnelまたはDNS/reverse-proxy経路を作る
+      - HTTPSの固定URLでhealth 200を確認する
+      - LINE Developersのwebhook URL変更は人間確認後
 ```
 
 ## 不可侵ルール（全AI共通）
