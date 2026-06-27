@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, stat, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { runReminder } from "./reminder.js";

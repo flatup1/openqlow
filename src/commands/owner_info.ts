@@ -64,7 +64,7 @@ export const FAMILY_EXPLANATION = [
  * 全角スラッシュ「／」も半角「/」と同等に扱う。
  */
 function normalise(text: string): string {
-  return text.trim().replace(/^[／\/\\]/, "/");
+  return text.trim().replace(/^[／/\\]/, "/");
 }
 
 /**

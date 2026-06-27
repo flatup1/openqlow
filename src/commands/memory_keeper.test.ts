@@ -394,7 +394,7 @@ assert.equal(isMemoryCommandText("hello"), false);
   await routeMemoryText(userId, "/日記", { store });
   await routeMemoryText(userId, "はい", { store });
   await routeMemoryText(userId, "e", { store });          // その他選択
-  const r = await routeMemoryText(userId, "メモ本文", { store }); // 1 行で完了
+  await routeMemoryText(userId, "メモ本文", { store }); // 1 行で完了
   // 「その他」は質問 1 つだけなので、回答後 awaiting_more_genre になる
   // 続けて「終わる」で end → 自動保存
   const r2 = await routeMemoryText(userId, "終わる", { store });

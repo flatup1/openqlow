@@ -178,7 +178,7 @@ function escapeRegExp(s: string): string {
 }
 
 function parseBulkMorningAnswer(text: string): Record<string, string> | undefined {
-  const normalized = normalizeLineText(text).replace(/([^\n])\s+((?:[1-8]|[①-⑧])[\.:：])/g, "$1\n$2");
+  const normalized = normalizeLineText(text).replace(/([^\n])\s+((?:[1-8]|[①-⑧])[.:：])/g, "$1\n$2");
   // 順序固定: 1)体験 2)入会 3)迷い 4)返信 5)口コミ 6)退会 7)気になる 8)タスク
   // 後方互換: 旧6問フォーマット（3)返信 4)気になる 5)退会 6)タスク）も拾える
   const fields: Array<[string, RegExp]> = [

@@ -49,7 +49,7 @@ export function parseMonthlyReportCommand(
     return { yearMonth: formatYearMonth(shiftMonths(now, -1, timeZone), timeZone) };
   }
 
-  const ym = arg.match(/^(\d{4})[-\/](\d{1,2})$/);
+  const ym = arg.match(/^(\d{4})[-/](\d{1,2})$/);
   if (ym) {
     const month = ym[2].padStart(2, "0");
     return { yearMonth: `${ym[1]}-${month}` };

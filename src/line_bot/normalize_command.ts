@@ -60,7 +60,7 @@ export function normalizeLineText(text: string): string {
   const normalized = text
     .normalize("NFKC")
     .replace(/\r\n/g, "\n")
-    .replace(/^[\s　]*[／\/\\]/, "/")
+    .replace(/^[\s　]*[／/\\]/, "/")
     .replace(/^\/\s+/, "/")
     .replace(/[ \t　]+/g, " ")
     .trim();

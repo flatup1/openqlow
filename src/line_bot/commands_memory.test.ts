@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { executeLineCommand } from "./commands.js";
 import { SessionStore } from "../conversation/session_store.js";
-import { approveRecord } from "../scheduler/daily.js";
 
 async function makeStore(): Promise<SessionStore> {
   const baseDir = await mkdtemp(path.join(tmpdir(), "openqlow-cmd-mem-test-"));
