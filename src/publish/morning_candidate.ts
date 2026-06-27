@@ -33,55 +33,108 @@ function allDraftText(drafts: PlatformDraft[]): string {
   return drafts.map(draft => `${draft.body}\n${draft.cta}\n${draft.hashtags.join(" ")}`).join("\n\n");
 }
 
+interface MorningPost {
+  body: string;
+  hashtags: string[];
+}
+
 // 公開投稿は内部記録（会員名・入会状況・個別対応）を一切出さず、ブランドの芯だけを温かく伝える。
 // 「世界一優しい格闘技ジム」の声で、初心者・女性・キッズ・保護者が安心できる招待文にする。
-// 料金などの事実は正本(FLATUP_CANON)から引き、毎日同じ文面にならないよう日付で選ぶ。
-function morningBodyVariants(): string[] {
+// 料金・持ち物・クラス等の事実は正本(FLATUP_CANON)から引き（直書きしない）、毎日同じにならないよう日付で選ぶ。
+function morningPostVariants(): MorningPost[] {
   const trial = FLATUP_CANON.trialFirst; // 例: 初回体験500円
+  const bring = FLATUP_CANON.bring; // 例: 動きやすい服・タオル・水
   return [
-    [
-      "「強くなりたい」も「ただ体を動かしたい」も、どちらも大歓迎です。",
-      "",
-      "FLATUP GYMは、怒鳴らない・威圧しない、初心者も女性もキッズも安心して通える格闘技ジム。",
-      `はじめての方は${trial}から、気軽にどうぞ。`,
-      "",
-      "勝ち負けより、挑戦するあなたを応援します。",
-    ].join("\n"),
-    [
-      "「格闘技ってこわい?」——大丈夫です。",
-      "",
-      "運動が苦手でも、体力に自信がなくても、一人ひとりのペースで始められます。",
-      "スタッフは、あなたの「できた」を一緒に喜ぶ仲間です。",
-      "",
-      `成田で、世界一優しい格闘技ジム。まずは見学・${trial}からどうぞ。`,
-    ].join("\n"),
-    [
-      "お子さんの「やってみたい」、お母さんの「私も動きたい」。",
-      "",
-      "FLATUP GYMは、キッズもレディースも安心して通える場所です。",
-      "できないことを責めない。できたことを、一緒に喜ぶ。",
-      "",
-      "そんな太陽みたいなジムで、はじめの一歩を踏み出しませんか。",
-    ].join("\n"),
-    [
-      "強さは、急に作るものじゃない。",
-      "昨日より少しだけ自分と向き合えた——それで十分かっこいいんです。",
-      "",
-      "FLATUP GYMは、その小さな一歩を静かに応援します。",
-      `初心者大歓迎。${trial}から、お待ちしています。`,
-    ].join("\n"),
-    [
-      "ここには、年齢も体力もバラバラの仲間がいます。",
-      "共通しているのは「自分のペースで前に進みたい」という気持ちだけ。",
-      "",
-      "怒鳴らない・比べない・置いていかない。",
-      "成田の世界一優しい格闘技ジム、FLATUP GYMです。",
-    ].join("\n"),
+    {
+      body: [
+        "「強くなりたい」も「ただ体を動かしたい」も、どちらも大歓迎です。",
+        "",
+        "FLATUP GYMは、怒鳴らない・威圧しない、初心者も女性もキッズも安心して通える格闘技ジム。",
+        `はじめての方は${trial}から、気軽にどうぞ。`,
+        "",
+        "勝ち負けより、挑戦するあなたを応援します。",
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "格闘技", "初心者歓迎"],
+    },
+    {
+      body: [
+        "「格闘技ってこわい?」——大丈夫です。",
+        "",
+        "運動が苦手でも、体力に自信がなくても、一人ひとりのペースで始められます。",
+        "スタッフは、あなたの「できた」を一緒に喜ぶ仲間です。",
+        "",
+        `成田で、世界一優しい格闘技ジム。まずは見学・${trial}からどうぞ。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "キックボクシング", "体験"],
+    },
+    {
+      body: [
+        "お子さんの「やってみたい」、お母さんの「私も動きたい」。",
+        "",
+        "FLATUP GYMは、キッズもレディースも安心して通える場所です。",
+        "できないことを責めない。できたことを、一緒に喜ぶ。",
+        "",
+        "そんな太陽みたいなジムで、はじめの一歩を踏み出しませんか。",
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "キッズ", "習い事"],
+    },
+    {
+      body: [
+        "強さは、急に作るものじゃない。",
+        "昨日より少しだけ自分と向き合えた——それで十分かっこいいんです。",
+        "",
+        "FLATUP GYMは、その小さな一歩を静かに応援します。",
+        `初心者大歓迎。${trial}から、お待ちしています。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "ボクシング", "ダイエット"],
+    },
+    {
+      body: [
+        "ここには、年齢も体力もバラバラの仲間がいます。",
+        "共通しているのは「自分のペースで前に進みたい」という気持ちだけ。",
+        "",
+        "怒鳴らない・比べない・置いていかない。",
+        "成田の世界一優しい格闘技ジム、FLATUP GYMです。",
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "ムエタイ", "社会人"],
+    },
+    {
+      body: [
+        "ボクシング、キックボクシング、ムエタイ、寝技、柔術、MMA……。",
+        "",
+        "「どれが合うかな?」は、やってみてから決めて大丈夫。",
+        "気になったものから、ひとつずつ体験できます。",
+        "",
+        `成田のFLATUP GYMで、まずは${trial}から。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "総合格闘技", "ブラジリアン柔術"],
+    },
+    {
+      body: [
+        "体験は、手ぶらでOK。",
+        "グローブもレガースも貸し出します。",
+        `持ち物は「${bring}」だけで大丈夫です。`,
+        "",
+        `気負わず、${trial}でのぞいてみてください。スタッフが最後まで隣で見ています。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "体験", "キックボクシング"],
+    },
+    {
+      body: [
+        "親子で同じジムに通える——それって、けっこう特別なことかもしれません。",
+        "",
+        "FLATUP GYMは、お子さんのキッズクラスも、お母さん・お父さんのクラスもあります。",
+        "送り迎えのついでに、ご自身も少しだけ体を動かしてみませんか。",
+        "",
+        "成田の、世界一優しい格闘技ジムです。",
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "親子", "キッズ"],
+    },
   ];
 }
 
-function buildThreadsBody(dateJst: string): string {
-  const variants = morningBodyVariants();
+function buildMorningPost(dateJst: string): MorningPost {
+  const variants = morningPostVariants();
   const key = Number.parseInt(yyyymmdd(dateJst), 10);
   const index = Number.isFinite(key) ? key % variants.length : 0;
   return variants[index];
@@ -110,6 +163,7 @@ export async function createMorningPublishCandidate(
     ],
   };
 
+  const post = buildMorningPost(input.dateJst);
   const drafts: PlatformDraft[] = [
     {
       id: `${id}_threads`,
@@ -117,8 +171,8 @@ export async function createMorningPublishCandidate(
       approvalId: id,
       platform: "threads",
       publicationLevel: "level_2_draft",
-      body: buildThreadsBody(input.dateJst),
-      hashtags: ["FLATUPGYM", "成田", "キックボクシング"],
+      body: post.body,
+      hashtags: post.hashtags,
       cta: "",
       safetyNotes: [
         "朝の内部記録から個人名や個別対応の詳細は出さない。",

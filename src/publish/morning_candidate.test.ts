@@ -27,8 +27,24 @@ for (const d of ["2026-06-27", "2026-06-28", "2026-06-29", "2026-06-30", "2026-0
 }
 assert.ok(bodies.some(b => b.includes(FLATUP_CANON.trialFirst)), "どこかの日に体験価格を正本から提示");
 
-// 4. 毎日同じ文面にならない（ローテーションで2種類以上）。
+// 4. 毎日同じ文面にならない（ローテーションで複数種類）。
 assert.ok(new Set(bodies).size >= 2, "日替わりで本文が変化する");
+
+// 4b. 全variantを網羅して、どれも安全・PII無し・ハッシュタグ付きであることを確認。
+const seen = new Set<string>();
+const seenTags = new Set<string>();
+for (let day = 1; day <= 16; day++) {
+  const d = `2026-08-${String(day).padStart(2, "0")}`;
+  const rec = await createMorningPublishCandidate({ dateJst: d });
+  const b = rec.drafts[0].body;
+  seen.add(b);
+  seenTags.add(rec.drafts[0].hashtags.join(","));
+  assert.ok(rec.drafts[0].hashtags.length >= 2, "各投稿にハッシュタグが2つ以上");
+  assert.doesNotMatch(b, /気になる会員|入会予定|返信が必要|個別対応|退会/, "内部記録の語を出さない");
+  assert.doesNotMatch(rec.approvalMessage, /安全チェック.*(NG|ストップ|止め)/, "安全チェックで止められない");
+}
+assert.ok(seen.size >= 6, `バリエーションが豊富（${seen.size}種）`);
+assert.ok(seenTags.size >= 4, "ハッシュタグも日替わりで変化する");
 
 // 5. 同じ日付なら決定的（再現性）。
 const again = await createMorningPublishCandidate({ dateJst: "2026-06-27" });
