@@ -307,15 +307,15 @@ async function morningPublishCandidateMessage(session: ConversationSession, date
     await rememberApprovalCandidate(loadConfig().root, record.id);
     return [
       "",
-      "SNS投稿候補も作りました。",
+      "あわせて、SNS投稿候補も作っておきました😊",
       record.approvalMessage,
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return [
       "",
-      "SNS投稿候補の作成だけ失敗しました。",
-      `理由: ${message}`,
+      "日報は保存できましたが、投稿候補だけ作れませんでした🙏 あとで「投稿」と送れば作り直せます。",
+      `（参考: ${message}）`,
     ];
   }
 }
@@ -330,7 +330,7 @@ async function recordBulkMorningAnswer(userId: string, text: string, opts: Memor
     return {
       ok: false,
       reply: [
-        "日報として読み取れませんでした。",
+        "うまく読み取れませんでした🙏 焦らず大丈夫です。",
         "体験・入会・口コミ・今日やることなどを、分かる範囲で1通で送ってください。",
         "",
         buildBulkMorningPrompt(),
@@ -373,7 +373,7 @@ async function recordBulkMorningAnswer(userId: string, text: string, opts: Memor
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `保存失敗。\n理由: ${message}`,
+      reply: `保存できませんでした🙏 もう一度お試しください。\n（参考: ${message}）`,
       meta: { mode: "bulk_morning", error: message },
     };
   }
@@ -420,7 +420,7 @@ async function recordLooseDailyReport(userId: string, text: string, opts: Memory
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `保存失敗。\n理由: ${message}`,
+      reply: `保存できませんでした🙏 もう一度お試しください。\n（参考: ${message}）`,
       meta: { mode: "simple_daily", error: message },
     };
   }
@@ -463,7 +463,7 @@ async function createSimplePostCandidate(): Promise<MemoryHandlerResult> {
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `投稿候補の作成に失敗しました。\n理由: ${message}`,
+      reply: `投稿候補だけ作れませんでした🙏 もう一度「投稿」と送ってみてください。\n（参考: ${message}）`,
       meta: { mode: "simple_post", error: message },
     };
   }
@@ -497,8 +497,8 @@ export async function cancelMemorySession(userId: string, opts: MemoryHandlerOpt
   return {
     ok: true,
     reply: existed
-      ? "セッションを中止しました。やり直すなら「/日記」と送ってください。"
-      : "進行中のセッションはありません。",
+      ? "記録を中止しました😊 やり直すときは「/日記」と送ってくださいね。"
+      : "今、進行中の記録はありません。いつでも「/日記」から始められます😊",
     meta: { hadSession: existed },
   };
 }
@@ -509,7 +509,7 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
   if (!session) {
     return {
       ok: false,
-      reply: "保存対象のセッションが見つかりません（タイムアウトの可能性）。\n「/日記」から再開してください。",
+      reply: "記録の途中経過が見つかりませんでした🙏（少し時間が経ちすぎたのかもしれません）\n「/日記」からもう一度始められます。",
     };
   }
 
@@ -517,13 +517,11 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
     const result = await saveCrmLog(session);
     await store.destroy(userId);
     const lines = [
-      "Obsidian に保存しました。",
+      "保存しました📝 今日もお疲れさまです😊",
       `日付: ${result.dateJst}`,
-      `ファイル: ${result.filePath}`,
-      result.appended ? "（既存ログに追記しました）" : "（新規ファイルを作成しました）",
-      `サイズ: ${result.bytes} bytes`,
+      result.appended ? "（今日のログに追記しました）" : "（新しく記録を作りました）",
       "",
-      "金曜の振り返りで読み返してください。",
+      "金曜の振り返りのときに読み返せます。",
     ];
     return {
       ok: true,
@@ -540,9 +538,8 @@ export async function saveMemorySession(userId: string, opts: MemoryHandlerOptio
     return {
       ok: false,
       reply: [
-        "保存に失敗しました。",
-        `理由: ${message}`,
-        "Jin、ログを確認してください。セッションは保持しています。",
+        "保存できませんでした🙏 もう一度お試しください（入力内容はそのまま残しています）。",
+        `（参考: ${message}）`,
       ].join("\n"),
       meta: { error: message },
     };
@@ -644,7 +641,7 @@ export async function recordOneShotMemo(userId: string, body: string, opts: Memo
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `保存失敗。\n理由: ${message}`,
+      reply: `保存できませんでした🙏 もう一度お試しください。\n（参考: ${message}）`,
       meta: { mode: "one_shot", error: message },
     };
   }
@@ -691,7 +688,7 @@ async function autoSaveIfFinished(userId: string, session: ConversationSession, 
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      reply: `保存失敗。セッション保持中。\n理由: ${message}`,
+      reply: `保存できませんでした🙏 入力内容はそのまま残しています。もう一度お試しください。\n（参考: ${message}）`,
       meta: { mode: "auto_save", error: message },
     };
   }
