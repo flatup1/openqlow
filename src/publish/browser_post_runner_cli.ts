@@ -44,7 +44,7 @@ export async function runBrowserPostRunnerCli(
   });
   const ok = result.failed.length === 0;
   const message = [
-    ok ? "OPENQLOW: Macブラウザ投稿ランナー完了。" : "OPENQLOW: Macブラウザ投稿ランナーで未完了があります。",
+    ok ? "Macブラウザ投稿ランナー完了。" : "Macブラウザ投稿ランナーで未完了があります。",
     `ID: ${result.recordId}`,
     result.published.length ? `投稿済み: ${result.published.map(item => `${item.destination}: ${item.externalId}`).join(" / ")}` : "",
     result.failed.length ? `未完了: ${result.failed.map(item => `${item.destination}: ${item.reason}`).join(" / ")}` : "",

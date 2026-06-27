@@ -207,7 +207,7 @@ async function executeMediaPostCommand(text: string, opts: ExecuteLineCommandOpt
     ok: true,
     action: "media_post_candidate",
     message: [
-      "OPENQLOW: 画像/動画つき投稿候補を作りました。",
+      "画像/動画つき投稿候補を作りました。",
       `ID: ${record.id}`,
       `投稿先: ${parsed.targets.join(", ")}`,
       `ファイル: ${parsed.mediaFiles.join(", ")}`,
@@ -282,7 +282,7 @@ async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOption
       handled: true,
       ok: false,
       action: "monthly_report",
-      message: `OPENQLOW: 月報の生成に失敗しました。\n理由: ${message}`,
+      message: `月報の生成に失敗しました。\n理由: ${message}`,
       meta: { yearMonth: req.yearMonth, error: message },
     };
   }

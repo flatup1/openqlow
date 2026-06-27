@@ -20,20 +20,20 @@ function trimForLine(text: string): string {
 
 export function formatWebhookReply(results: Array<Record<string, unknown>>): string {
   const first = results[0];
-  if (!first) return "OPENQLOW: 受信しました。";
+  if (!first) return "メッセージありがとうございます😊 受け取りました。";
 
-  if (typeof first.message === "string" && first.ok === true) {
+  // ハンドラが用意した文面があれば、そのまま返す（余計な前置きを足さない）。
+  if (typeof first.message === "string") {
     return first.message;
   }
 
   if (first.ok === true) {
     const action = typeof first.action === "string" ? first.action : "processed";
     const id = typeof first.id === "string" ? first.id : "";
-    return ["OPENQLOW: RUNしました。", id ? `ID: ${id}` : "", `action: ${action}`].filter(Boolean).join("\n");
+    return ["受け取りました。", id ? `ID: ${id}` : "", `action: ${action}`].filter(Boolean).join("\n");
   }
 
-  const message = typeof first.message === "string" ? first.message : "承認コマンドではありませんでした。";
-  return ["OPENQLOW: 受信しました。", message].join("\n");
+  return "メッセージありがとうございます😊 受け取りました。";
 }
 
 export async function replyLineMessage(

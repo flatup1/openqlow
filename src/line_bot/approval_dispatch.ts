@@ -7,10 +7,13 @@ import { executeLineCommand } from "./commands.js";
 
 function fallbackMessage(): string {
   return [
-    "受け取りました。",
-    "日報として残すなら、体験・入会・口コミ・今日やることを1通で送ってください。",
-    "例: 体験ひかりちゃん1名 入会予定 今日やること広告",
-    "投稿候補を作るなら「投稿」と送ってください。",
+    "メッセージありがとうございます😊 受け取りました。",
+    "",
+    "・日報を残す → 体験 / 入会 / 口コミ / 今日やること を1通でどうぞ",
+    "　例: 体験ひかりちゃん1名 入会予定 今日やること広告",
+    "・投稿候補を作る → 「投稿」",
+    "・直したい → 「修正 新しい本文」",
+    "・使い方を見る → 「ヘルプ」",
   ].join("\n");
 }
 
@@ -25,7 +28,7 @@ async function handleParsedApproval(
     const hasPublishDestinations = parsed.targets.some(target => target !== "drafts_only");
     const panel = hasPublishDestinations ? await createBrowserPanel(config.root, parsed.id) : undefined;
     const message = [
-      hasPublishDestinations ? "OPENQLOW: 投稿準備キューを作りました。外部投稿はまだしていません。" : "OPENQLOW: 下書きを保存しました。",
+      hasPublishDestinations ? "投稿準備キューを作りました。外部投稿はまだしていません。" : "下書きを保存しました。",
       `ID: ${parsed.id}`,
       panel ? `ブラウザ投稿パネル: ${panel}` : "",
       panel ? "Threads / Googleビジネス / LINE VOOM は、このパネルから本文コピーして確認できます。" : "",

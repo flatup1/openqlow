@@ -69,7 +69,7 @@ export async function saveLineMessageMediaAndAttach(
   if (!input.token) {
     return {
       ok: false,
-      message: "OPENQLOW: LINEメディア取得用トークンが未設定のため、添付できません。",
+      message: "LINEメディア取得用トークンが未設定のため、添付できません。",
     };
   }
 
@@ -84,7 +84,7 @@ export async function saveLineMessageMediaAndAttach(
   if (!response.ok) {
     return {
       ok: false,
-      message: "OPENQLOW: LINEからメディアを取得できませんでした。もう一度送ってください。",
+      message: "LINEからメディアを取得できませんでした。もう一度送ってください。",
     };
   }
 
@@ -93,7 +93,7 @@ export async function saveLineMessageMediaAndAttach(
   if (contentLength !== undefined && contentLength > maxBytes) {
     return {
       ok: false,
-      message: `OPENQLOW: メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
+      message: `メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
     };
   }
 
@@ -101,7 +101,7 @@ export async function saveLineMessageMediaAndAttach(
   if (!ext) {
     return {
       ok: false,
-      message: "OPENQLOW: 未対応のメディア形式です。対応: jpg/jpeg/png/webp/heic/mp4/mov",
+      message: "未対応のメディア形式です。対応: jpg/jpeg/png/webp/heic/mp4/mov",
     };
   }
 
@@ -109,7 +109,7 @@ export async function saveLineMessageMediaAndAttach(
   if (bytes.byteLength > maxBytes) {
     return {
       ok: false,
-      message: `OPENQLOW: メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
+      message: `メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
     };
   }
 

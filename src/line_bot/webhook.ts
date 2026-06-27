@@ -82,7 +82,7 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
 
 async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, unknown>> {
   if (event.kind !== "media" || !event.messageId || !event.messageType) {
-    return { ok: false, message: "OPENQLOW: メディアイベントを処理できませんでした。" };
+    return { ok: false, message: "メディアイベントを処理できませんでした。" };
   }
   const config = loadConfig();
   const result = await saveLineMessageMediaAndAttach({
