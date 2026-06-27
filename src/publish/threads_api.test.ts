@@ -53,4 +53,28 @@ assert.match(imageCalls[0].body, /text=FLATUP\+GYM\+image\+post/);
 assert.equal(imageCalls[1].url, "https://graph.threads.net/v1.0/27079444471741122/threads_publish");
 assert.match(imageCalls[1].body, /creation_id=image-creation-123/);
 
+// エラー時は、生のJSON全体（fbtrace_id等）ではなく人間に読める一文だけを投げる。
+const errorFetch = (async () =>
+  new Response(
+    JSON.stringify({
+      error: {
+        message: "Invalid OAuth access token.",
+        error_user_msg: "画像は必須です。",
+        code: 324,
+        fbtrace_id: "ABC123secret",
+      },
+    }),
+    { status: 400 },
+  )) as typeof fetch;
+
+let thrown: Error | undefined;
+try {
+  await publishThreadsText({ userId: "1", accessToken: "t", text: "x", fetchImpl: errorFetch });
+} catch (e) {
+  thrown = e as Error;
+}
+assert.ok(thrown, "エラー時は例外を投げる");
+assert.match(thrown!.message, /画像は必須です/, "人間に読めるメッセージを含む");
+assert.doesNotMatch(thrown!.message, /fbtrace_id|ABC123secret|code/, "生のJSON/内部IDは漏らさない");
+
 console.log("threads api tests passed");

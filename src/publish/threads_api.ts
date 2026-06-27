@@ -14,6 +14,15 @@ export interface PublishThreadsTextResult {
   postId: string;
 }
 
+// Meta系API(Threads/FB/IG)のエラーから、人間に読める一文だけを取り出す。
+// 生のJSON全体（fbtrace_idやsubcode等）はユーザーに見せず、ログ向けの簡潔な要約にする。
+function summarizeApiError(json: Record<string, unknown>): string {
+  const error = (json.error ?? {}) as Record<string, unknown>;
+  const userMsg = typeof error.error_user_msg === "string" ? error.error_user_msg : "";
+  const msg = typeof error.message === "string" ? error.message : "";
+  return userMsg || msg || "詳細不明のエラー";
+}
+
 async function readJson(res: Response): Promise<Record<string, unknown>> {
   const body = await res.text();
   let json: Record<string, unknown>;
@@ -23,7 +32,7 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
     throw new Error(`Threads API returned non-JSON response: ${body.slice(0, 200)}`);
   }
   if (!res.ok) {
-    throw new Error(`Threads API ${res.status}: ${JSON.stringify(json)}`);
+    throw new Error(`Threads API ${res.status}: ${summarizeApiError(json)}`);
   }
   return json;
 }
