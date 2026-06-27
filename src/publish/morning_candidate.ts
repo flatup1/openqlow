@@ -133,8 +133,78 @@ function morningPostVariants(): MorningPost[] {
   ];
 }
 
+// 夏（6〜9月）向けの最適化コピー。暑さ・夏休み・水分補給など季節の入口で誘う。
+// 医療・減量の断定（痩せる/絶対/必ず 等）は使わず、「動いて気持ちいい」を軸にする。
+function summerPostVariants(): MorningPost[] {
+  const trial = FLATUP_CANON.trialFirst; // 例: 初回体験500円
+  const bring = FLATUP_CANON.bring; // 例: 動きやすい服・タオル・水
+  return [
+    {
+      body: [
+        "この夏、お子さんの「やってみたい!」を応援しませんか。",
+        "",
+        "FLATUP GYMのキッズクラスは、礼儀も体力も、楽しみながら身につきます。",
+        `夏休みの習い事に、まずは${trial}から。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "夏休み", "キッズ"],
+    },
+    {
+      body: [
+        "外は暑い。でも、ジムの中はあなたに集中できる時間。",
+        "",
+        "冷房の効いた室内で、水分をとりながら、自分のペースで体を動かしませんか。",
+        `初心者も女性も安心。成田のFLATUP GYM、${trial}からどうぞ。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "キックボクシング", "運動不足解消"],
+    },
+    {
+      body: [
+        "夏バテ気味の体に、ほどよい運動を。",
+        "",
+        "激しすぎず、楽しく汗をかけるのがFLATUP GYM。",
+        "怒鳴らない・比べない、世界一優しい格闘技ジムです。",
+        `${trial}から、気軽に。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "ムエタイ", "夏"],
+    },
+    {
+      body: [
+        "暑い夏こそ、新しいことを始める季節。",
+        "",
+        "ボクシング、キック、ムエタイ、寝技、柔術……気になったものから体験できます。",
+        "成田のFLATUP GYMで、自分だけの一歩を。",
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "総合格闘技", "習い事"],
+    },
+    {
+      body: [
+        "夏休みは、親子で同じジムに通えるチャンス。",
+        "",
+        "FLATUP GYMなら、お子さんのキッズクラスも、お母さん・お父さんのクラスもあります。",
+        "送り迎えのついでに、ご自身も少しだけ汗を流しませんか。",
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "親子", "夏休み"],
+    },
+    {
+      body: [
+        "「夏のあいだに、何か体を動かしたいな」",
+        "",
+        `その気持ちだけで、もう十分。手ぶらでOK、持ち物は「${bring}」だけ。`,
+        "グローブもレガースも貸し出します。",
+        `スタッフが最後まで隣で見ています。FLATUP GYMの${trial}からどうぞ。`,
+      ].join("\n"),
+      hashtags: ["FLATUPGYM", "成田", "体験", "夏"],
+    },
+  ];
+}
+
+function isSummer(dateJst: string): boolean {
+  const month = Number.parseInt(dateJst.slice(5, 7), 10);
+  return month >= 6 && month <= 9; // 6〜9月は夏コピーを使う
+}
+
 function buildMorningPost(dateJst: string): MorningPost {
-  const variants = morningPostVariants();
+  const variants = isSummer(dateJst) ? summerPostVariants() : morningPostVariants();
   const key = Number.parseInt(yyyymmdd(dateJst), 10);
   const index = Number.isFinite(key) ? key % variants.length : 0;
   return variants[index];
