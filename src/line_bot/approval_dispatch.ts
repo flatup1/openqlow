@@ -1,5 +1,9 @@
 import { parseApprovalCommand } from "../approval/command.js";
-import { expandApprovalShortcut, expandRejectionShortcut } from "../approval/shortcut.js";
+import {
+  describeHandledApprovalCandidate,
+  expandApprovalShortcut,
+  expandRejectionShortcut,
+} from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { runFinalPublish, type FinalPublishResult } from "../publish/final_publish.js";
@@ -105,6 +109,12 @@ export async function executeApprovalText(text: string, userId?: string): Promis
   if (lineCommand.handled) return { ...lineCommand };
 
   if (parsed) return handleParsedApproval(parsed, okShortcutUsed);
+
+  // bare「ok/やめる」だが直近候補はもう承認/却下済み → 無言で汎用fallbackに落とさず明示する。
+  const handledNote = await describeHandledApprovalCandidate(text, config.root);
+  if (handledNote) {
+    return { ok: true, action: "already_handled", message: handledNote };
+  }
 
   return {
     ok: false,

@@ -118,4 +118,20 @@ await withTempEnv(async (root) => {
   }
 });
 
+// 承認済み候補に対して bare「ok」を再送しても、無言の汎用fallbackではなく
+// 「もう承認済み」と明示する（二重投稿はしない）。
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-404";
+  await saveRecord(root, pendingRecord(id));
+  await rememberApprovalCandidate(root, id);
+
+  const first = await executeApprovalText("ok", "test-approval-dispatch-user");
+  assert.equal(first.action, "approved", "1回目のokは承認される");
+
+  const second = await executeApprovalText("ok", "test-approval-dispatch-user");
+  assert.equal(second.action, "already_handled", "2回目のokは「もう承認済み」案内");
+  assert.match(String(second.message), /承認済み/);
+  assert.doesNotMatch(String(second.message), /受け取りました/, "汎用fallbackには落とさない");
+});
+
 console.log("approval dispatch tests passed");
