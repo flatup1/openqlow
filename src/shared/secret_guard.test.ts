@@ -35,7 +35,11 @@ function walk(dir: string, exts: string[], out: string[]): void {
 const files: string[] = [];
 walk(path.join(repoRoot, "src"), [".ts"], files);
 walk(path.join(repoRoot, "port"), [".ts"], files);
-for (const f of ["package.json", ".env.example"]) {
+// 設定・スクリプト・ドキュメントも走査（鍵が紛れやすい死角を塞ぐ）。
+walk(path.join(repoRoot, "deploy"), [".sh", ".conf", ".service", ".timer", ".yml", ".yaml", ".env", ".example"], files);
+walk(path.join(repoRoot, "scripts"), [".sh", ".mjs", ".js"], files);
+walk(path.join(repoRoot, "docs"), [".md"], files);
+for (const f of ["package.json", ".env.example", "README.md", "AGENTS.md", "COORDINATION.md"]) {
   try { statSync(path.join(repoRoot, f)); files.push(path.join(repoRoot, f)); } catch { /* skip */ }
 }
 
