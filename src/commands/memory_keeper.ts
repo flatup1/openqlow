@@ -320,12 +320,30 @@ async function morningPublishCandidateMessage(session: ConversationSession, date
   }
 }
 
+// 日報セッション中に、定型キーに当たらない自由文（例:「台風のためやすみ」）が来ても
+// 取りこぼさず、その文をそのまま「今日のこと」として保存する用のフォールバック。
+function buildFreeDailyNote(text: string): Record<string, string> | undefined {
+  const note = sanitiseBulkAnswer(cleanLooseValue(normalizeLineText(stripOkPrefixForDaily(text)).trim()));
+  if (!note || note === "なし") return undefined;
+  return {
+    trial_yesterday: "なし",
+    enrollment_yesterday: "なし",
+    enrollment_considering: "なし",
+    followup_needed: "なし",
+    review_request_candidate: "なし",
+    retention_risk: "なし",
+    concerning_member: "なし",
+    today_top_task: note,
+  };
+}
+
 async function recordBulkMorningAnswer(userId: string, text: string, opts: MemoryHandlerOptions = {}): Promise<MemoryHandlerResult | undefined> {
   const store = getStore(opts);
   const session = await store.load(userId);
   if (!session || session.step !== "awaiting_bulk_morning") return undefined;
 
-  const parsed = parseLooseDailyReport(text);
+  // 定型パースを試し、当たらなければ自由文ノートとして拾う（セッション中なので拒否しない）。
+  const parsed = parseLooseDailyReport(text) ?? buildFreeDailyNote(text);
   if (!parsed) {
     return {
       ok: false,

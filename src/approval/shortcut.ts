@@ -74,8 +74,12 @@ export async function expandApprovalShortcut(text: string, root: string): Promis
     if (lastRecord?.status === "pending_approval") {
       return `OK ${lastRecord.id} all`;
     }
+    // 直近に提示した候補は既に承認/却下済み。ここで古い別の保留下書きを
+    // 勝手に承認しない（「ok」二度押しで意図しない過去の下書きが通るのを防ぐ）。
+    return undefined;
   }
 
+  // marker が一度も無い時だけ、最新の保留下書きにフォールバックする。
   const latest = (await loadStateRecords(root))
     .filter((record) => record.status === "pending_approval")
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];

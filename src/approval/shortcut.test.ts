@@ -56,4 +56,19 @@ function record(id: string, status: DraftRecord["status"], createdAt: string): D
   assert.equal(await expandApprovalShortcut("はい", root), undefined);
 }
 
+// 「ok」二度押し防止: 直近候補(902)を承認済みにした後、もう一度「ok」を送っても
+// 古い別の保留下書き(901)を勝手に承認しない。
+{
+  const root = await makeRoot();
+  await saveRecord(root, record("FG-20260603-901", "pending_approval", "2026-06-02T05:00:00.000Z"));
+  await saveRecord(root, record("FG-20260603-902", "saved", "2026-06-02T21:00:00.000Z")); // 直近候補は承認済み
+  await rememberApprovalCandidate(root, "FG-20260603-902"); // marker は直近の902を指す
+
+  assert.equal(
+    await expandApprovalShortcut("ok", root),
+    undefined,
+    "marker消費済みなら古い901を勝手に承認しない",
+  );
+}
+
 console.log("approval shortcut tests passed");
