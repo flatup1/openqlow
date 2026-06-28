@@ -25,6 +25,10 @@ function envValue(env: Record<string, string | undefined>, key: string): string 
   return env[key] ?? "";
 }
 
+function errorReason(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function draftText(draft: PlatformDraft): string {
   return [
     draft.title ?? "",
@@ -78,6 +82,9 @@ export async function runFinalPublish(
   const browserDestinations: PublishDestination[] = [];
 
   for (const destination of queue.destinations) {
+    // 1つの投稿先のAPI例外で投稿処理全体（とwebhook）を巻き込んで落とさない。
+    // 失敗した投稿先は skipped に理由付きで記録し、他の投稿先は続行する。
+    try {
     if (destination === "threads") {
       const mediaFile = queue.mediaFiles?.[0];
       if (queue.mediaFiles && queue.mediaFiles.length > 1) {
@@ -159,10 +166,19 @@ export async function runFinalPublish(
     }
 
     browserDestinations.push(destination);
+    } catch (err) {
+      result.skipped.push({ destination, reason: errorReason(err) });
+    }
   }
 
   if (browserDestinations.length) {
-    result.browserQueued = await enqueueBrowserPostJobs(root, id, browserDestinations);
+    try {
+      result.browserQueued = await enqueueBrowserPostJobs(root, id, browserDestinations);
+    } catch (err) {
+      for (const destination of browserDestinations) {
+        result.skipped.push({ destination, reason: `ブラウザ投稿キューに積めませんでした: ${errorReason(err)}` });
+      }
+    }
   }
 
   await saveResult(root, result);
