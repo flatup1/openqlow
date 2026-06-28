@@ -6,6 +6,7 @@ import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.
 import type { PublishDestination, PublishQueueEntry } from "./publisher_types.js";
 import { resolvePublicMediaUrl } from "./public_media.js";
 import { publishThreadsImage, publishThreadsText } from "./threads_api.js";
+import { publishInstagramImage } from "./instagram_api.js";
 
 export interface FinalPublishResult {
   recordId: string;
@@ -115,6 +116,40 @@ export async function runFinalPublish(
           fetchImpl: opts.fetchImpl,
         });
       result.published.push({ destination, externalId: published.postId });
+      continue;
+    }
+
+    if (destination === "instagram") {
+      // Instagram は画像必須・公開HTTPS URL必須。条件を満たさなければブラウザ補助へ回す。
+      const mediaFile = queue.mediaFiles?.[0];
+      if (!mediaFile) {
+        result.skipped.push({ destination, reason: "Instagramは画像が必須です（LINEで画像を添付してください）" });
+        continue;
+      }
+      const mediaUrl = await resolvePublicMediaUrl(mediaFile, env);
+      if (!isThreadsImageUrl(mediaUrl ?? "")) {
+        result.skipped.push({ destination, reason: "Metaが取得できる公開画像URLがありません（OPENQLOW_PUBLIC_MEDIA_BASE_URL を確認）" });
+        continue;
+      }
+      const igUserId = envValue(env, "INSTAGRAM_USER_ID");
+      const accessToken = envValue(env, "INSTAGRAM_ACCESS_TOKEN");
+      if (!igUserId || !accessToken) {
+        result.skipped.push({ destination, reason: "INSTAGRAM_USER_ID or INSTAGRAM_ACCESS_TOKEN is missing" });
+        continue;
+      }
+      const draft = record.drafts.find(d => d.platform === "instagram") ?? threadsDraft(record.drafts);
+      if (!draft) {
+        result.skipped.push({ destination, reason: "Instagram draft is missing" });
+        continue;
+      }
+      const published = await publishInstagramImage({
+        igUserId,
+        accessToken,
+        caption: draftText(draft),
+        imageUrl: mediaUrl as string,
+        fetchImpl: opts.fetchImpl,
+      });
+      result.published.push({ destination, externalId: published.mediaId });
       continue;
     }
 

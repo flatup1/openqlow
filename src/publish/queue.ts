@@ -28,6 +28,12 @@ const INSTRUCTIONS: Record<PublishDestination, DestinationInstruction> = {
     humanFinalClickRequired: true,
     note: "LINE VOOMは公式の安定投稿API前提にしない。ブラウザで開き、オーナーが最終投稿する。",
   },
+  instagram: {
+    mode: "api_or_browser_assist",
+    requiredEnvKeys: ["INSTAGRAM_USER_ID", "INSTAGRAM_ACCESS_TOKEN"],
+    humanFinalClickRequired: true,
+    note: "Instagram Graph API設定後はAPI投稿（画像必須・公開画像URL要）。未設定時はブラウザ補助。",
+  },
 };
 
 export async function createPublishQueueEntry(

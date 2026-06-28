@@ -9,12 +9,14 @@ const LABELS: Record<PublishDestination, string> = {
   threads: "Threads",
   google_business: "Google Business Profile",
   line_voom: "LINE VOOM",
+  instagram: "Instagram",
 };
 
 const URLS: Record<PublishDestination, string> = {
   threads: "https://www.threads.net/",
   google_business: "https://business.google.com/",
   line_voom: "https://manager.line.biz/",
+  instagram: "https://www.instagram.com/",
 };
 
 function escapeHtml(value: string): string {

@@ -1,4 +1,4 @@
-export type PublishTarget = "drafts_only" | "google_business" | "threads" | "line_voom";
+export type PublishTarget = "drafts_only" | "google_business" | "threads" | "line_voom" | "instagram";
 
 export type ApprovalCommand =
   | {
@@ -20,7 +20,7 @@ export type ApprovalCommand =
     };
 
 const APPROVAL_ID_REGEX = "FG-\\d{8}-\\d{3}";
-const ALL_PUBLISH_TARGETS: PublishTarget[] = ["google_business", "threads", "line_voom"];
+const ALL_PUBLISH_TARGETS: PublishTarget[] = ["google_business", "threads", "line_voom", "instagram"];
 
 function normalizeSpaces(text: string): string {
   return text.replace(/\u3000/g, " ").replace(/\s+/g, " ").trim();
@@ -34,6 +34,7 @@ function targetFor(rawTarget: string | undefined): PublishTarget[] | undefined {
   if (target === "google" || target === "gbp" || target === "google_business") return ["google_business"];
   if (target === "threads" || target === "thread") return ["threads"];
   if (target === "voom" || target === "line_voom" || target === "line") return ["line_voom"];
+  if (target === "instagram" || target === "insta" || target === "ig") return ["instagram"];
 
   return undefined;
 }
