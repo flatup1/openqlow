@@ -16,6 +16,13 @@ assert.equal(a.status, "pending_approval");
 assert.ok(bodyA.length > 0, "本文が空でない");
 assert.match(bodyA, /FLATUP GYM|FLATUP|格闘技/, "ブランド名/領域に触れる");
 
+// 多言語併記: EN/中文/한국어/ไทย の招待が付く（成田・空港圏向け）。
+assert.match(bodyA, /EN:.*welcome/i, "英語の招待を併記");
+assert.match(bodyA, /欢迎/, "中国語の招待を併記");
+assert.match(bodyA, /환영/, "韓国語の招待を併記");
+assert.match(bodyA, /ยินดีต้อนรับ/, "タイ語の招待を併記");
+assert.match(bodyA, new RegExp(`¥?${FLATUP_CANON.trialFirst.match(/\\d+/)?.[0] ?? "500"}`), "体験価格を正本から各言語に反映");
+
 // 2. 公開投稿に内部情報（会員名・入会状況・個別対応）を出さない。
 assert.doesNotMatch(bodyA, /気になる会員|入会予定|返信が必要|個別対応|退会/, "内部記録の語を公開投稿に出さない");
 

@@ -203,11 +203,25 @@ function isSummer(dateJst: string): boolean {
   return month >= 6 && month <= 9; // 6〜9月は夏コピーを使う
 }
 
+// 成田・空港圏の外国人居住者/旅行者向けに、日本語本文へ短い多言語の招待を併記する。
+// 価格は正本(FLATUP_CANON.trialFirst)から数字だけ抜き出して各言語に反映（直書きしない）。
+function multilingualFooter(): string {
+  const price = FLATUP_CANON.trialFirst.match(/\d[\d,]*/)?.[0] ?? "500"; // 例: 500
+  return [
+    "───────",
+    `🌏 EN: Beginners, women & kids welcome. First trial ¥${price}. Narita's kindest martial arts gym.`,
+    `🇨🇳 欢迎初学者、女性和儿童。首次体验${price}日元。成田最友善的格斗馆。`,
+    `🇰🇷 초보자·여성·어린이 환영. 첫 체험 ${price}엔. 나리타에서 가장 친절한 격투기 체육관.`,
+    `🇹🇭 ยินดีต้อนรับผู้เริ่มต้น ผู้หญิง และเด็ก ทดลองครั้งแรก ${price} เยน`,
+  ].join("\n");
+}
+
 function buildMorningPost(dateJst: string): MorningPost {
   const variants = isSummer(dateJst) ? summerPostVariants() : morningPostVariants();
   const key = Number.parseInt(yyyymmdd(dateJst), 10);
   const index = Number.isFinite(key) ? key % variants.length : 0;
-  return variants[index];
+  const base = variants[index];
+  return { body: `${base.body}\n\n${multilingualFooter()}`, hashtags: base.hashtags };
 }
 
 export async function createMorningPublishCandidate(
