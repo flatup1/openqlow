@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { attachMediaToLatestPending, latestPendingRecord, mediaDirectoryForEnv } from "./media_library.js";
+import { rememberUploadedMedia } from "./pending_media.js";
 
 export type LineMediaMessageType = "image" | "video";
 
@@ -117,5 +118,8 @@ export async function saveLineMessageMediaAndAttach(
   await mkdir(mediaDir, { recursive: true });
   const file = await writeUniqueFile(mediaDir, `${record.id}-${timestampForFile(input.now ?? new Date())}`, ext, bytes);
 
-  return attachMediaToLatestPending(input.root, file);
+  const attached = await attachMediaToLatestPending(input.root, file);
+  // 直後に「投稿」で新しい候補を作っても画像を引き継げるよう、直近アップ写真として記録する。
+  await rememberUploadedMedia(input.root, file, input.now ?? new Date());
+  return attached;
 }

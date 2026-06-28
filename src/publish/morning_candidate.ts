@@ -6,6 +6,7 @@ import { formatApprovalMessage } from "../approval/message.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { saveRecord } from "../state/file_store.js";
 import { FLATUP_CANON } from "../shared/canon.js";
+import { consumeRecentUploadedMedia } from "./pending_media.js";
 
 export interface MorningCandidateInput {
   dateJst: string;
@@ -267,7 +268,13 @@ export async function createMorningPublishCandidate(
   ];
 
   const safety = checkDraftSafety(allDraftText(drafts));
-  const approvalMessage = formatApprovalMessage(idea, drafts, safety);
+
+  // 「写真→投稿」「投稿→写真」どちらの順でも画像が付くよう、直近に送られた写真を引き継ぐ。
+  const adoptedMedia = await consumeRecentUploadedMedia(config.root);
+  const approvalMessage = adoptedMedia
+    ? `📷 さきほど送ってもらった写真を、この投稿に添付しました（Instagram投稿に使えます）。\n\n${formatApprovalMessage(idea, drafts, safety)}`
+    : formatApprovalMessage(idea, drafts, safety);
+
   const record: DraftRecord = {
     id,
     idea,
@@ -276,6 +283,7 @@ export async function createMorningPublishCandidate(
     approvalMessage,
     createdAt: now,
     updatedAt: now,
+    ...(adoptedMedia ? { mediaFiles: [adoptedMedia] } : {}),
   };
 
   await saveRecord(config.root, record);

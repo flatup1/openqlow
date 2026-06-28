@@ -62,4 +62,27 @@ assert.doesNotMatch(a.approvalMessage, /安全チェック.*(NG|ストップ|止
 
 await rm(root, { recursive: true, force: true });
 
+// 7. 「写真→投稿」: 直前に送られた写真を投稿候補が自動で引き継ぐ（IG投稿に使える）。
+{
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const mediaRoot = await mkdtemp(path.join(os.tmpdir(), "openqlow-morning-media-"));
+  process.env.OPENQLOW_ROOT = mediaRoot;
+  const { rememberUploadedMedia } = await import("./pending_media.js");
+  const mediaDir = path.join(mediaRoot, "state", "media");
+  await mkdir(mediaDir, { recursive: true });
+  const photo = path.join(mediaDir, "FG-photo.jpg");
+  await writeFile(photo, "image");
+  await rememberUploadedMedia(mediaRoot, photo);
+
+  const withMedia = await createMorningPublishCandidate({ dateJst: "2026-07-15" });
+  assert.deepEqual(withMedia.mediaFiles, [photo], "直近の写真を投稿候補に引き継ぐ");
+  assert.match(withMedia.approvalMessage, /写真.*添付しました/, "写真を添付した旨を伝える");
+
+  // 消費済みなので、次の投稿候補には引き継がれない（二重添付しない）。
+  const next = await createMorningPublishCandidate({ dateJst: "2026-07-16" });
+  assert.equal(next.mediaFiles, undefined, "一度引き継いだら次には付かない");
+
+  await rm(mediaRoot, { recursive: true, force: true });
+}
+
 console.log("morning candidate tests passed");
