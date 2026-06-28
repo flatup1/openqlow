@@ -32,17 +32,21 @@ const drafts: PlatformDraft[] = [{
 const safety = checkDraftSafety(drafts.map(draft => draft.body).join("\n"));
 const message = formatApprovalMessage(idea, drafts, safety);
 
-assert(message.includes("投稿ID: FG-20260518-001"), "message includes approval id");
-assert(message.includes("下書き保存だけ: OK FG-20260518-001"), "message keeps drafts-only approval");
-assert(message.includes("投稿準備まで: OK FG-20260518-001 all"), "message includes all publish queue approval");
-assert(message.includes("Threadsのみ: OK FG-20260518-001 threads"), "message includes threads publish queue approval");
-assert(message.includes("Googleビジネスプロフィールのみ: OK FG-20260518-001 google"), "message includes google publish queue approval");
-assert(message.includes("LINE VOOMのみ: OK FG-20260518-001 voom"), "message includes voom publish queue approval");
-assert(message.includes("修正する場合: 修正 FG-20260518-001:"), "message requires id for revision");
-assert(message.includes("やめる場合: NO FG-20260518-001"), "message includes NO rejection");
+// シンプル化後: 内部用語(目的/正本参照/公開レベル/優しさスコア)は出さず、
+// OK一発で投稿できる導線と、各媒体指定コマンドが見つけられることを担保する。
+assert(message.includes("ID: FG-20260518-001"), "message includes approval id");
+assert(message.includes("そのまま投稿準備するなら → OK"), "message leads with one-tap OK");
+assert(message.includes("OK FG-20260518-001 all"), "message keeps all publish queue approval");
+assert(message.includes("threads"), "message mentions threads target");
+assert(message.includes("google"), "message mentions google target");
+assert(message.includes("voom"), "message mentions voom target");
+assert(message.includes("下書きだけ: OK FG-20260518-001"), "message keeps drafts-only approval");
+assert(message.includes("修正 新しい本文"), "message offers revision");
+assert(message.includes("やめるなら → NO"), "message includes NO rejection");
 assert(!message.includes("Y / 修正"), "message no longer uses Y approval");
-assert(message.includes("優しさスコア:"), "message includes kindness score");
-assert(message.includes("安全チェック: OK"), "message includes safety OK");
+assert(!message.includes("優しさスコア"), "message no longer dumps internal kindness score");
+assert(!message.includes("正本参照"), "message no longer dumps internal canon refs");
+assert(message.includes("安心して投稿できます"), "message reassures when safe");
 assert(message.includes("FLATUP GYM"), "message includes draft body");
 
 console.log("approval message tests passed");

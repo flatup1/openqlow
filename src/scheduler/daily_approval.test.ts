@@ -49,7 +49,7 @@ const queuePath = path.join(tmp, "state", "publish_queue", "FG-20260530-001.json
 const queue = JSON.parse(await readFile(queuePath, "utf8"));
 
 assert(saved.includes(queuePath), "returns publish queue path with saved files");
-assert.deepEqual(queue.destinations, ["google_business", "threads", "line_voom"]);
+assert.deepEqual(queue.destinations, ["google_business", "threads", "line_voom", "instagram"]);
 assert.equal(queue.status, "queued_for_owner");
 
 await rm(tmp, { recursive: true, force: true });

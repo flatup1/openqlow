@@ -1,4 +1,4 @@
-export type PublishDestination = "google_business" | "threads" | "line_voom";
+export type PublishDestination = "google_business" | "threads" | "line_voom" | "instagram";
 
 export type PublishQueueStatus = "queued_for_owner";
 

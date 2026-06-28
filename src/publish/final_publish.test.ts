@@ -168,4 +168,40 @@ assert.deepEqual(publicLocalImageResult.browserQueued, []);
 assert.match(publicLocalCalls[0].body, /media_type=IMAGE/);
 assert.match(publicLocalCalls[0].body, /image_url=https%3A%2F%2Fmedia.example.com%2Fopenqlow%2Fpost.jpg/);
 
+// 1つの投稿先(Threads API)が例外を投げても、全体を巻き込んで落とさず、
+// その投稿先は skipped に理由付きで記録し、他の投稿先(ブラウザ)は続行し、結果も保存する。
+const resilientRecord: DraftRecord = {
+  ...record,
+  id: "FG-20260603-007",
+  drafts: [{
+    ...baseThreadsDraft,
+    id: "FG-20260603-007_threads",
+    ideaId: "FG-20260603-007",
+    approvalId: "FG-20260603-007",
+  }],
+};
+await saveRecord(root, resilientRecord);
+await createPublishQueueEntry(root, resilientRecord, ["threads", "line_voom"]);
+
+const resilientResult = await runFinalPublish(root, "FG-20260603-007", {
+  env: {
+    THREADS_USER_ID: "27079444471741122",
+    THREADS_ACCESS_TOKEN: "expired",
+  },
+  fetchImpl: (async () =>
+    new Response(JSON.stringify({ error: { message: "Invalid OAuth access token." } }), { status: 401 })) as typeof fetch,
+});
+
+assert.deepEqual(resilientResult.published, [], "失敗した投稿先は published に入らない");
+assert.equal(resilientResult.skipped.length, 1, "Threadsの失敗は skipped に1件記録される");
+assert.equal(resilientResult.skipped[0].destination, "threads");
+assert.match(resilientResult.skipped[0].reason, /Invalid OAuth access token|Threads API 401/);
+assert.deepEqual(resilientResult.browserQueued.map(item => item.destination), ["line_voom"], "他の投稿先は続行する");
+
+// 例外が起きても結果ファイルは必ず保存される（webhookが落ちて沈黙しない）。
+const resilientLog = JSON.parse(
+  await readFile(path.join(root, "state", "publish_results", "FG-20260603-007.json"), "utf8"),
+);
+assert.equal(resilientLog.skipped[0].destination, "threads");
+
 console.log("final publish tests passed");

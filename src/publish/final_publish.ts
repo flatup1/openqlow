@@ -6,6 +6,7 @@ import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.
 import type { PublishDestination, PublishQueueEntry } from "./publisher_types.js";
 import { resolvePublicMediaUrl } from "./public_media.js";
 import { publishThreadsImage, publishThreadsText } from "./threads_api.js";
+import { publishInstagramImage } from "./instagram_api.js";
 
 export interface FinalPublishResult {
   recordId: string;
@@ -22,6 +23,10 @@ interface FinalPublishOptions {
 
 function envValue(env: Record<string, string | undefined>, key: string): string {
   return env[key] ?? "";
+}
+
+function errorReason(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function draftText(draft: PlatformDraft): string {
@@ -77,6 +82,9 @@ export async function runFinalPublish(
   const browserDestinations: PublishDestination[] = [];
 
   for (const destination of queue.destinations) {
+    // 1つの投稿先のAPI例外で投稿処理全体（とwebhook）を巻き込んで落とさない。
+    // 失敗した投稿先は skipped に理由付きで記録し、他の投稿先は続行する。
+    try {
     if (destination === "threads") {
       const mediaFile = queue.mediaFiles?.[0];
       if (queue.mediaFiles && queue.mediaFiles.length > 1) {
@@ -118,16 +126,59 @@ export async function runFinalPublish(
       continue;
     }
 
+    if (destination === "instagram") {
+      // Instagram は画像必須・公開HTTPS URL必須。条件を満たさなければブラウザ補助へ回す。
+      const mediaFile = queue.mediaFiles?.[0];
+      if (!mediaFile) {
+        result.skipped.push({ destination, reason: "Instagramは画像が必須です（LINEで画像を添付してください）" });
+        continue;
+      }
+      const mediaUrl = await resolvePublicMediaUrl(mediaFile, env);
+      if (!isThreadsImageUrl(mediaUrl ?? "")) {
+        result.skipped.push({ destination, reason: "Metaが取得できる公開画像URLがありません（OPENQLOW_PUBLIC_MEDIA_BASE_URL を確認）" });
+        continue;
+      }
+      const igUserId = envValue(env, "INSTAGRAM_USER_ID");
+      const accessToken = envValue(env, "INSTAGRAM_ACCESS_TOKEN");
+      if (!igUserId || !accessToken) {
+        result.skipped.push({ destination, reason: "INSTAGRAM_USER_ID or INSTAGRAM_ACCESS_TOKEN is missing" });
+        continue;
+      }
+      const draft = record.drafts.find(d => d.platform === "instagram") ?? threadsDraft(record.drafts);
+      if (!draft) {
+        result.skipped.push({ destination, reason: "Instagram draft is missing" });
+        continue;
+      }
+      const published = await publishInstagramImage({
+        igUserId,
+        accessToken,
+        caption: draftText(draft),
+        imageUrl: mediaUrl as string,
+        fetchImpl: opts.fetchImpl,
+      });
+      result.published.push({ destination, externalId: published.mediaId });
+      continue;
+    }
+
     if (destination === "google_business") {
       browserDestinations.push(destination);
       continue;
     }
 
     browserDestinations.push(destination);
+    } catch (err) {
+      result.skipped.push({ destination, reason: errorReason(err) });
+    }
   }
 
   if (browserDestinations.length) {
-    result.browserQueued = await enqueueBrowserPostJobs(root, id, browserDestinations);
+    try {
+      result.browserQueued = await enqueueBrowserPostJobs(root, id, browserDestinations);
+    } catch (err) {
+      for (const destination of browserDestinations) {
+        result.skipped.push({ destination, reason: `ブラウザ投稿キューに積めませんでした: ${errorReason(err)}` });
+      }
+    }
   }
 
   await saveResult(root, result);

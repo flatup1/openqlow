@@ -1,6 +1,7 @@
 import type { DraftRecord } from "../types.js";
 import { loadConfig } from "../config.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
+import { assertNotForbidden } from "../safety/forbidden_actions.js";
 import { safeLineLog } from "./webhook_security.js";
 
 interface LineMessage {
@@ -34,9 +35,22 @@ function envOrEmpty(name: string): string {
   return process.env[name] ?? "";
 }
 
+// OPENQLOW が LINE で話して良いのは Jin（と代理承認者）だけ。
+// 顧客への直接送信(send_to_customer_directly)はAIKA/Jinの領域なので、
+// 承認済み宛先以外への送信要求は物理的に止める（forbidden_actions.ts が正本）。
+function assertApprovedRecipient(userId: string): void {
+  const approved = new Set(
+    [envOrEmpty("JIN_LINE_USER_ID"), envOrEmpty("BACKUP_APPROVER_LINE_USER_ID")].filter(Boolean),
+  );
+  if (approved.size > 0 && !approved.has(userId)) {
+    assertNotForbidden("send_to_customer_directly");
+  }
+}
+
 export async function pushLineMessage(text: string, opts: PushOptions = {}): Promise<{ ok: boolean; mode: "dry_run" | "sent" | "skipped"; error?: string }> {
   const token = opts.token ?? envOrEmpty("LINE_CHANNEL_ACCESS_TOKEN");
   const userId = opts.userId ?? envOrEmpty("JIN_LINE_USER_ID");
+  assertApprovedRecipient(userId);
   const explicitDryRun = opts.dryRun ?? (process.env.OPENQLOW_LINE_DRY_RUN === "true");
 
   if (!token || !userId) {

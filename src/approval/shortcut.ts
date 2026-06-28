@@ -74,14 +74,52 @@ export async function expandApprovalShortcut(text: string, root: string): Promis
     if (lastRecord?.status === "pending_approval") {
       return `OK ${lastRecord.id} all`;
     }
+    // 直近に提示した候補は既に承認/却下済み。ここで古い別の保留下書きを
+    // 勝手に承認しない（「ok」二度押しで意図しない過去の下書きが通るのを防ぐ）。
+    return undefined;
   }
 
+  // marker が一度も無い時だけ、最新の保留下書きにフォールバックする。
   const latest = (await loadStateRecords(root))
     .filter((record) => record.status === "pending_approval")
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
 
   if (!latest) return undefined;
   return `OK ${latest.id} all`;
+}
+
+function handledStatusLabel(status: DraftRecord["status"]): string {
+  switch (status) {
+    case "saved":
+      return "承認済み（投稿準備OK）";
+    case "rejected":
+      return "却下済み";
+    case "needs_revision":
+      return "修正待ち";
+    default:
+      return "処理済み";
+  }
+}
+
+// bare「ok / やめる」を送ったのに、直近に提示した候補がもう処理済み（承認/却下/修正待ち）
+// だった場合に「もう処理済みだよ」と優しく明示する説明文を返す。該当しなければ undefined。
+// 「ok を送ったのに無反応（汎用fallback）に見える」混乱を防ぐ。二重投稿はしない。
+export async function describeHandledApprovalCandidate(
+  text: string,
+  root: string,
+): Promise<string | undefined> {
+  if (!isOkOnly(text) && !isRejectOnly(text)) return undefined;
+  const last = await loadLastApprovalCandidate(root);
+  if (!last) return undefined;
+  const record = await loadRecord(root, last.id);
+  if (!record || record.status === "pending_approval") return undefined;
+  return [
+    `「${last.id}」はもう${handledStatusLabel(record.status)}です。`,
+    "もう一度「ok」を送っても、同じものを二重に投稿することはありません🙆",
+    "",
+    "・新しい投稿候補を作る → 「投稿」",
+    "・本文を直す → 「修正 新しい本文」",
+  ].join("\n");
 }
 
 export async function expandRejectionShortcut(text: string, root: string): Promise<string | undefined> {

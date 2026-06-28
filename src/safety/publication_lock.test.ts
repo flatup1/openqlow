@@ -27,9 +27,10 @@ assert.throws(
   /physical publish lock blocked/
 );
 
+// 投稿ランタイム(runFinalPublish)が実装されたため、フラグが立っていても停止しない。
 const previous = process.env.OPENQLOW_ENABLE_PUBLIC_POSTING;
 process.env.OPENQLOW_ENABLE_PUBLIC_POSTING = "true";
-assert.throws(() => assertNoPublishRuntimeEnabled(), /public posting runtime is not implemented/);
+assert.doesNotThrow(() => assertNoPublishRuntimeEnabled());
 
 if (previous === undefined) {
   delete process.env.OPENQLOW_ENABLE_PUBLIC_POSTING;

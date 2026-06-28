@@ -12,7 +12,7 @@ assert.deepEqual(parseApprovalCommand("ok　FG-20260530-001　all"), {
   response: "OK",
   id: "FG-20260530-001",
   raw: "ok　FG-20260530-001　all",
-  targets: ["google_business", "threads", "line_voom"],
+  targets: ["google_business", "threads", "line_voom", "instagram"],
 });
 
 assert.deepEqual(parseApprovalCommand("OK FG-20260530-001 google"), {
@@ -29,6 +29,13 @@ assert.deepEqual(parseApprovalCommand("OK FG-20260530-001 voom"), {
   targets: ["line_voom"],
 });
 
+assert.deepEqual(parseApprovalCommand("OK FG-20260530-001 instagram"), {
+  response: "OK",
+  id: "FG-20260530-001",
+  raw: "OK FG-20260530-001 instagram",
+  targets: ["instagram"],
+});
+
 assert.deepEqual(parseApprovalCommand("NO FG-20260530-001"), {
   response: "reject",
   id: "FG-20260530-001",
@@ -41,7 +48,5 @@ assert.deepEqual(parseApprovalCommand("修正 FG-20260530-001 もっと初心者
   raw: "修正 FG-20260530-001 もっと初心者向けに",
   note: "もっと初心者向けに",
 });
-
-assert.equal(parseApprovalCommand("OK FG-20260530-001 instagram"), undefined);
 
 console.log("approval command tests passed");

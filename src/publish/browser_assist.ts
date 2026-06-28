@@ -8,12 +8,14 @@ const DESTINATION_LABELS: Record<PublishDestination, string> = {
   threads: "Threads",
   google_business: "Google Business Profile",
   line_voom: "LINE VOOM",
+  instagram: "Instagram",
 };
 
 const DESTINATION_URLS: Record<PublishDestination, string> = {
   threads: "https://www.threads.net/",
   google_business: "https://business.google.com/",
   line_voom: "https://manager.line.biz/",
+  instagram: "https://www.instagram.com/",
 };
 
 function draftText(draft: PlatformDraft): string {

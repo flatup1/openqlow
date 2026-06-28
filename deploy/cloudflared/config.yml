@@ -1,0 +1,14 @@
+# Named Cloudflare Tunnel config for OPENQLOW.
+# Copy this file to /etc/cloudflared/config.yml on the VPS after creating
+# the tunnel (see docs/vps_same_server_deploy.md "固定トンネル移行手順").
+#
+# tunnel/credentials-file values are filled in by `cloudflared tunnel create`
+# — do not hand-edit the UUID below, replace it with your own tunnel's UUID.
+
+tunnel: openqlow
+credentials-file: /etc/cloudflared/openqlow.json
+
+ingress:
+  - hostname: line.flatupnarita.jp
+    service: http://localhost:80
+  - service: http_status:404

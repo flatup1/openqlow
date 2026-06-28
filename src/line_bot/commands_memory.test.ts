@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { executeLineCommand } from "./commands.js";
 import { SessionStore } from "../conversation/session_store.js";
-import { approveRecord } from "../scheduler/daily.js";
 
 async function makeStore(): Promise<SessionStore> {
   const baseDir = await mkdtemp(path.join(tmpdir(), "openqlow-cmd-mem-test-"));
@@ -26,7 +25,7 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /記憶係/);
+  assert.match(result.message, /記録を始めます/);
 }
 
 // 2b. /日記 + userId → /昨日の記録 と同じくセッション開始
@@ -36,7 +35,7 @@ const userId = "test-line-user-001";
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "memory_keeper");
-  assert.match(result.message, /記憶係/);
+  assert.match(result.message, /記録を始めます/);
 }
 
 // 2c. /おはよう（デフォルト）は対話モード（1問ずつ）
@@ -158,6 +157,23 @@ const userId = "test-line-user-001";
   assert.equal(result.action, "memory_keeper");
   assert.match(result.message, /保存しました/);
   assert.doesNotMatch(result.message, /No approval command found/);
+}
+
+// 2g-bis. 日報セッション中の自由文（定型キー無し）も取りこぼさず保存する（「台風のためやすみ」）
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "openqlow-freenote-vault-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmp;
+  const root = await mkdtemp(path.join(tmpdir(), "openqlow-freenote-root-"));
+  process.env.OPENQLOW_ROOT = root;
+  const store = await makeStore();
+  await executeLineCommand("日報", { userId, memorySessionStore: store });
+
+  const result = await executeLineCommand("台風のためやすみ", { userId, memorySessionStore: store });
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true, "自由文でも保存成功（拒否しない）");
+  assert.match(result.message, /保存しました/);
+  assert.doesNotMatch(result.message, /読み取れません/);
+  assert.match(result.message, /台風のためやすみ/, "送った文がそのまま記録に残る");
 }
 
 // 2h. 「投稿」だけで直近日報ベースの投稿候補を1件作り、次操作は ok だけにする

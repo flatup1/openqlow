@@ -17,11 +17,12 @@ import path from "node:path";
 import { startMorningDialog } from "../commands/memory_keeper.js";
 import { loadConfig } from "../config.js";
 import { pushLineMessage } from "../line_bot/notifier.js";
+import { acquireDailyLock } from "../shared/run_lock.js";
 import { formatDateInTimeZone } from "../utils/date.js";
 
 export interface MorningBriefingResult {
   ok: boolean;
-  mode: "sent" | "dry_run" | "skipped" | "disabled" | "no_user";
+  mode: "sent" | "dry_run" | "skipped" | "disabled" | "no_user" | "duplicate_today";
   reason?: string;
   message?: string;
   dateJst?: string;
@@ -38,6 +39,8 @@ export interface MorningBriefingOptions {
   writeDailyBrief?: boolean;
   /** テスト用に Vault root を差し替え */
   obsidianVaultRoot?: string;
+  /** テスト用に state ディレクトリ（ロック置き場）を差し替え */
+  stateDir?: string;
 }
 
 function renderDailyBrief(dateJst: string, morningMessage: string, mode: MorningBriefingResult["mode"]): string {
@@ -89,12 +92,17 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
     return { ok: true, mode: "no_user", reason: "JIN_LINE_USER_ID not configured" };
   }
 
+  const now = opts.now ?? new Date();
+  const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
+  const acquired = await acquireDailyLock("morning_briefing", dateJst, opts.stateDir);
+  if (!acquired) {
+    return { ok: true, mode: "duplicate_today", reason: `already ran on ${dateJst}`, dateJst };
+  }
+
   // 1. 対話モードのセッションを事前作成。Jin の次の返信が即 Q1 の答えになる
   const dialog = await startMorningDialog(userId);
 
   // 2. メッセージ組み立て
-  const now = opts.now ?? new Date();
-  const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
   const message = [
     `☀ おはようございます (${dateJst})`,
     "",

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { attachMediaToLatestPending, latestPendingRecord, mediaDirectoryForEnv } from "./media_library.js";
+import { rememberUploadedMedia } from "./pending_media.js";
 
 export type LineMediaMessageType = "image" | "video";
 
@@ -69,7 +70,7 @@ export async function saveLineMessageMediaAndAttach(
   if (!input.token) {
     return {
       ok: false,
-      message: "OPENQLOW: LINEメディア取得用トークンが未設定のため、添付できません。",
+      message: "LINEメディア取得用トークンが未設定のため、添付できません。",
     };
   }
 
@@ -84,7 +85,7 @@ export async function saveLineMessageMediaAndAttach(
   if (!response.ok) {
     return {
       ok: false,
-      message: "OPENQLOW: LINEからメディアを取得できませんでした。もう一度送ってください。",
+      message: "LINEからメディアを取得できませんでした。もう一度送ってください。",
     };
   }
 
@@ -93,7 +94,7 @@ export async function saveLineMessageMediaAndAttach(
   if (contentLength !== undefined && contentLength > maxBytes) {
     return {
       ok: false,
-      message: `OPENQLOW: メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
+      message: `メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
     };
   }
 
@@ -101,7 +102,7 @@ export async function saveLineMessageMediaAndAttach(
   if (!ext) {
     return {
       ok: false,
-      message: "OPENQLOW: 未対応のメディア形式です。対応: jpg/jpeg/png/webp/heic/mp4/mov",
+      message: "未対応のメディア形式です。対応: jpg/jpeg/png/webp/heic/mp4/mov",
     };
   }
 
@@ -109,7 +110,7 @@ export async function saveLineMessageMediaAndAttach(
   if (bytes.byteLength > maxBytes) {
     return {
       ok: false,
-      message: `OPENQLOW: メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
+      message: `メディアがサイズ上限を超えています。上限は ${Math.floor(maxBytes / 1024 / 1024)}MB です。`,
     };
   }
 
@@ -117,5 +118,8 @@ export async function saveLineMessageMediaAndAttach(
   await mkdir(mediaDir, { recursive: true });
   const file = await writeUniqueFile(mediaDir, `${record.id}-${timestampForFile(input.now ?? new Date())}`, ext, bytes);
 
-  return attachMediaToLatestPending(input.root, file);
+  const attached = await attachMediaToLatestPending(input.root, file);
+  // 直後に「投稿」で新しい候補を作っても画像を引き継げるよう、直近アップ写真として記録する。
+  await rememberUploadedMedia(input.root, file, input.now ?? new Date());
+  return attached;
 }

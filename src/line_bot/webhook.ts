@@ -4,6 +4,7 @@ import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
+import { tryServePublicMedia } from "./media_server.js";
 import { verifyLineSignature } from "./webhook_auth.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
@@ -82,7 +83,7 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
 
 async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, unknown>> {
   if (event.kind !== "media" || !event.messageId || !event.messageType) {
-    return { ok: false, message: "OPENQLOW: メディアイベントを処理できませんでした。" };
+    return { ok: false, message: "メディアイベントを処理できませんでした。" };
   }
   const config = loadConfig();
   const result = await saveLineMessageMediaAndAttach({
@@ -101,6 +102,11 @@ async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, u
 
 const server = http.createServer(async (req, res) => {
   const requestPath = new URL(req.url || "/", "http://localhost").pathname;
+
+  // 公開メディア配信: /openqlow/media/<file> への GET を画像/動画として返す。
+  // Instagram/Threads などの外部APIが image_url を取得できるようにするため。
+  if (await tryServePublicMedia(req.method || "GET", requestPath, res)) return;
+
   if (req.method !== "POST" || !webhookPaths.has(requestPath)) {
     res.writeHead(404);
     res.end("not found");

@@ -8,6 +8,7 @@ const BROWSER_DESTINATION_URLS: Record<PublishDestination, string> = {
   threads: "https://www.threads.net/",
   google_business: "https://business.google.com/",
   line_voom: "https://manager.line.biz/",
+  instagram: "https://www.instagram.com/",
 };
 
 export interface BrowserPostJob {

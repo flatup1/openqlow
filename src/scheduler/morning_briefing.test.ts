@@ -120,4 +120,24 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
   await rm(vault, { recursive: true, force: true });
 }
 
+// 7. 同じ日に2回目の呼び出しは duplicate_today で即returnし、pushFn は呼ばれない
+{
+  await setRootTmp();
+  const pushCalls: Array<{ text: string; opts: unknown }> = [];
+  const pushFn = async (text: string, opts: unknown): Promise<{ ok: boolean; mode: "sent" }> => {
+    pushCalls.push({ text, opts });
+    return { ok: true, mode: "sent" };
+  };
+
+  const first = await runMorningBriefing({ now: FIXED_NOW, userId: "U_DUP", pushFn });
+  assert.equal(first.mode, "sent");
+
+  const second = await runMorningBriefing({ now: FIXED_NOW, userId: "U_DUP", pushFn });
+  assert.equal(second.ok, true);
+  assert.equal(second.mode, "duplicate_today");
+  assert.equal(pushCalls.length, 1, "2回目は push されない");
+
+  await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });
+}
+
 console.log("morning briefing tests passed");
