@@ -82,4 +82,40 @@ await withTempEnv(async (root) => {
   assert.equal(saved.status, "rejected");
 });
 
+// 公開投稿ON(OPENQLOW_ENABLE_PUBLIC_POSTING=true)の時、OKで実際にThreadsへAPI投稿する。
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-403";
+  await saveRecord(root, pendingRecord(id));
+  await rememberApprovalCandidate(root, id);
+
+  const prev = {
+    enable: process.env.OPENQLOW_ENABLE_PUBLIC_POSTING,
+    user: process.env.THREADS_USER_ID,
+    token: process.env.THREADS_ACCESS_TOKEN,
+    fetch: globalThis.fetch,
+  };
+  process.env.OPENQLOW_ENABLE_PUBLIC_POSTING = "true";
+  process.env.THREADS_USER_ID = "17841400000000000";
+  process.env.THREADS_ACCESS_TOKEN = "test-token";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ id: `threads-${calls}` }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const published = await executeApprovalText(`OK ${id} threads`, "test-approval-dispatch-user");
+    assert.equal(published.ok, true);
+    assert.equal(published.action, "published", "公開投稿ONなら action=published");
+    assert.match(String(published.message), /自動投稿しました/);
+    assert.match(String(published.message), /投稿完了/);
+    assert.ok(calls >= 2, "Threads APIへ作成+公開の2回呼ぶ");
+  } finally {
+    globalThis.fetch = prev.fetch;
+    if (prev.enable === undefined) delete process.env.OPENQLOW_ENABLE_PUBLIC_POSTING; else process.env.OPENQLOW_ENABLE_PUBLIC_POSTING = prev.enable;
+    if (prev.user === undefined) delete process.env.THREADS_USER_ID; else process.env.THREADS_USER_ID = prev.user;
+    if (prev.token === undefined) delete process.env.THREADS_ACCESS_TOKEN; else process.env.THREADS_ACCESS_TOKEN = prev.token;
+  }
+});
+
 console.log("approval dispatch tests passed");
