@@ -21,6 +21,8 @@
 - 本番のwebhook、loop、morning、monitor、cloudflaredはactive/enabled。
 - 朝ブリーフは `OPENQLOW_LINE_DRY_RUN=true` で自動送信せず、Vaultへ保存。
 - 3リポジトリREADMEの地図を追加済み。
+- ソースへのPII直書きを検知する `pii_guard` を追加（`secret_guard` と対）。`src/` 全走査で0件を回帰テスト化。
+- G7/G8の実行手順書を追加（秘密値・ファイル名を含まない）。人間/Codexがそのまま実行可能。
 
 ## 残作業（機械可読）
 ```yaml
@@ -48,6 +50,7 @@ gaps:
       - Google Cloud側で該当キー2個を失効またはローテーション
       - オーナー承認後にgit filter-repoで履歴を書き換える
       - 全cloneを再同期し、再スキャン0件を確認する
+    runbook: openqlow/docs/RUNBOOK_G7_vault_key_rotation.md
     caution: 秘密値と対象ファイル名をIssueやチャットへ記載しない
   - id: G8
     title: branded固定HTTPS URLをopenQLOWへ接続
@@ -68,6 +71,7 @@ gaps:
       - Cloudflareでnamed tunnelまたはDNS/reverse-proxy経路を作る
       - HTTPSの固定URLでhealth 200を確認する
       - LINE Developersのwebhook URL変更は人間確認後
+    runbook: openqlow/docs/RUNBOOK_G8_branded_https_url.md
 ```
 
 ## 不可侵ルール（全AI共通）
@@ -78,3 +82,5 @@ gaps:
 - 3repo統合: `openqlow/docs/UNIFY_3_REPOS.md`
 - 全体要件: `openqlow/docs/PERPETUAL_ENGINE_REQUIREMENTS.md`
 - 合体の接点: `openqlow/src/aika/receptionist.ts`
+- G7手順書: `openqlow/docs/RUNBOOK_G7_vault_key_rotation.md`
+- G8手順書: `openqlow/docs/RUNBOOK_G8_branded_https_url.md`
