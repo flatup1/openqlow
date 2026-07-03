@@ -168,8 +168,8 @@ assert.deepEqual(publicLocalImageResult.browserQueued, []);
 assert.match(publicLocalCalls[0].body, /media_type=IMAGE/);
 assert.match(publicLocalCalls[0].body, /image_url=https%3A%2F%2Fmedia.example.com%2Fopenqlow%2Fpost.jpg/);
 
-// 1つの投稿先(Threads API)が例外を投げても、全体を巻き込んで落とさず、
-// その投稿先は skipped に理由付きで記録し、他の投稿先(ブラウザ)は続行し、結果も保存する。
+// Threads API が失敗（トークン無効/期限切れ）しても投稿内容を失わず、
+// Macブラウザ投稿ランナー(threads.net)へフォールバックする。他の投稿先も続行し結果も保存する。
 const resilientRecord: DraftRecord = {
   ...record,
   id: "FG-20260603-007",
@@ -193,15 +193,20 @@ const resilientResult = await runFinalPublish(root, "FG-20260603-007", {
 });
 
 assert.deepEqual(resilientResult.published, [], "失敗した投稿先は published に入らない");
-assert.equal(resilientResult.skipped.length, 1, "Threadsの失敗は skipped に1件記録される");
-assert.equal(resilientResult.skipped[0].destination, "threads");
-assert.match(resilientResult.skipped[0].reason, /Invalid OAuth access token|Threads API 401/);
-assert.deepEqual(resilientResult.browserQueued.map(item => item.destination), ["line_voom"], "他の投稿先は続行する");
+assert.deepEqual(resilientResult.skipped, [], "Threads失敗はskipではなくブラウザ投稿へフォールバックする");
+assert.deepEqual(
+  resilientResult.browserQueued.map(item => item.destination),
+  ["threads", "line_voom"],
+  "Threadsはブラウザ投稿キューへフォールバックし、他の投稿先も続行する",
+);
 
-// 例外が起きても結果ファイルは必ず保存される（webhookが落ちて沈黙しない）。
-const resilientLog = JSON.parse(
+// 結果ファイルは必ず保存される（webhookが落ちて沈黙しない）。
+const resilientLog2 = JSON.parse(
   await readFile(path.join(root, "state", "publish_results", "FG-20260603-007.json"), "utf8"),
 );
-assert.equal(resilientLog.skipped[0].destination, "threads");
+assert.deepEqual(
+  resilientLog2.browserQueued.map((item: { destination: string }) => item.destination),
+  ["threads", "line_voom"],
+);
 
 console.log("final publish tests passed");

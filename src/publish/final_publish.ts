@@ -108,21 +108,28 @@ export async function runFinalPublish(
         continue;
       }
       const text = draftText(draft);
-      const published = mediaUrl
-        ? await publishThreadsImage({
-          userId,
-          accessToken,
-          text,
-          imageUrl: mediaUrl,
-          fetchImpl: opts.fetchImpl,
-        })
-        : await publishThreadsText({
-          userId,
-          accessToken,
-          text,
-          fetchImpl: opts.fetchImpl,
-        });
-      result.published.push({ destination, externalId: published.postId });
+      try {
+        const published = mediaUrl
+          ? await publishThreadsImage({
+            userId,
+            accessToken,
+            text,
+            imageUrl: mediaUrl,
+            fetchImpl: opts.fetchImpl,
+          })
+          : await publishThreadsText({
+            userId,
+            accessToken,
+            text,
+            fetchImpl: opts.fetchImpl,
+          });
+        result.published.push({ destination, externalId: published.postId });
+      } catch (err) {
+        // Threads APIが失敗（トークン無効/期限切れ等）しても内容を失わないよう、
+        // Macブラウザ投稿ランナー(threads.net)へ回して人手で投稿できるようにする。
+        console.error(`Threads API publish failed, falling back to browser: ${errorReason(err)}`);
+        browserDestinations.push(destination);
+      }
       continue;
     }
 
