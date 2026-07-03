@@ -1,16 +1,16 @@
 # FLATUP AI OS - 現状採点と残作業（AI読み取り用）
 
-> 更新: 2026-06-27 / 下の `yaml` ブロックを正とし、秘密値・個人情報は記載しない。
+> 更新: 2026-07-01 / 下の `yaml` ブロックを正とし、秘密値・個人情報は記載しない。
 
 ## SDL採点（100点満点）
 | 観点 | 配点 | 現在 | 根拠 |
 | --- | --- | --- | --- |
 | 機能性・正確性 | 25 | 25 | 正本・受付ゲート・CRM・朝ブリーフ・loopを本番確認 |
-| セキュリティ(CIA+脅威) | 30 | 23 | PIIログ防止、1 MiB制限、依存脆弱性0。残: Vault過去履歴の旧Googleキー候補 |
+| セキュリティ(CIA+脅威) | 30 | 28 | PIIログ防止、1 MiB制限、依存脆弱性0、pii_guard追加。旧Googleキー2個は失効済（人間報告）→実害停止。残: flatup履歴の値除去（値は無効）|
 | 保守性 | 20 | 20 | shared正本、薄い再エクスポート、回帰テスト、運用設計書 |
 | 効率 | 15 | 15 | 依存ゼロ安全網、systemd timer、差分実装 |
-| 完全性・網羅 | 10 | 8 | 残: branded固定URLとVault履歴浄化 |
-| **合計** | 100 | **91** | 外部・人間承認が必要な2項目を残す |
+| 完全性・網羅 | 10 | 8 | 残: branded固定URL(G8)とflatup履歴浄化(G7b) |
+| **合計** | 100 | **96** | 残: G7b履歴書き換え(値は無効化済)とG8固定URL |
 
 ## 完了済み（main / production）
 - `flatup-ai-os` の顧客向け4経路を `receptionReplyAsync` と `canonContext()` へ接続。
@@ -23,31 +23,45 @@
 - 3リポジトリREADMEの地図を追加済み。
 - ソースへのPII直書きを検知する `pii_guard` を追加（`secret_guard` と対）。`src/` 全走査で0件を回帰テスト化。
 - G7/G8の実行手順書を追加（秘密値・ファイル名を含まない）。人間/Codexがそのまま実行可能。
+- **G7ステップ1完了**: 旧Google APIキー2個を人間がGoogle Cloudで失効/ローテーション（2026-07-01, human-attested）。履歴に残る値は無効化済＝悪用不可。残るは履歴からの物理除去(G7b)のみ。
 
 ## 残作業（機械可読）
 ```yaml
 project: flatup_ai_os_perpetual_engine
-score: 91
+score: 96
 target: 100
-verified_at: 2026-06-27
+verified_at: 2026-07-01
 repos:
   engine: flatup1/openqlow
   reception: flatup1/flatup-ai-os
   memory: flatup1/flatup
 gaps:
-  - id: G7
-    title: Vault過去履歴の旧Google APIキー候補を失効・除去
+  - id: G7a
+    title: 旧Google APIキー2個を失効・ローテーション
     area: security
     priority: critical
+    repo: google_cloud
+    owner: human
+    status: done
+    verification: human_attested_2026-07-01
+    note: 値は無効化済のため、たとえ履歴に残っても悪用不可。実害リスクは停止。
+    evidence:
+      keys_revoked: 2
+      revoked_at: 2026-07-01
+  - id: G7b
+    title: flatup過去履歴から無効化済みの旧キー文字列を物理除去
+    area: security_hygiene
+    priority: medium
     repo: flatup1/flatup
-    owner: human_then_codex
-    status: blocked_human_approval
+    owner: codex
+    status: pending
+    blocker: このセッションはopenqlowのみスコープ。flatupリポジトリで実施が必要。
     evidence:
       current_head_candidates: 0
       historical_unique_google_api_candidates: 2
       historical_files_affected: 5
+      values_are_live: false
     required:
-      - Google Cloud側で該当キー2個を失効またはローテーション
       - オーナー承認後にgit filter-repoで履歴を書き換える
       - 全cloneを再同期し、再スキャン0件を確認する
     runbook: openqlow/docs/RUNBOOK_G7_vault_key_rotation.md
