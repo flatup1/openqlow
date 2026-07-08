@@ -27,15 +27,30 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   echo "Created ${ENV_FILE}. Fill LINE tokens before enabling production push."
 fi
 
+# 依存導入とビルド。systemd ユニットは tsx ではなくコンパイル済み dist/ を
+# `node dist/...` で直接実行するため、起動前に dist を生成しておく必要がある。
+echo "Installing dependencies and building dist/ ..."
+( cd "${OPENQLOW_ROOT}" && npm ci && npm run build )
+chown -R openqlow:openqlow "${OPENQLOW_ROOT}/dist"
+
 cp "${OPENQLOW_ROOT}/deploy/systemd/"openqlow-*.service /etc/systemd/system/
 cp "${OPENQLOW_ROOT}/deploy/systemd/"openqlow-*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable openqlow-webhook.service openqlow-daily.timer openqlow-monitor.timer openqlow-morning.timer openqlow-loop.timer
+systemctl enable \
+  openqlow-webhook.service \
+  openqlow-daily.timer \
+  openqlow-daily-check.timer \
+  openqlow-monitor.timer \
+  openqlow-morning.timer \
+  openqlow-reminder.timer \
+  openqlow-crm-daily-report.timer \
+  openqlow-loop.timer
 
-echo "Installed OPENQLOW systemd units."
+echo "Installed OPENQLOW systemd units (scheduler/webhook/monitor/crm run compiled dist/; loop runs via tsx)."
 echo "Next:"
 echo "  1. Edit ${ENV_FILE}"
-echo "  2. Run: cd ${OPENQLOW_ROOT} && npm ci && npm run test"
-echo "  3. Start: systemctl start openqlow-webhook.service openqlow-daily.timer openqlow-monitor.timer openqlow-morning.timer openqlow-loop.timer"
+echo "  2. (任意) Run tests: cd ${OPENQLOW_ROOT} && npm run test"
+echo "  3. Start: systemctl start openqlow-webhook.service openqlow-daily.timer openqlow-daily-check.timer openqlow-monitor.timer openqlow-morning.timer openqlow-reminder.timer openqlow-crm-daily-report.timer openqlow-loop.timer"
 echo "  4. Add nginx route from deploy/nginx/openqlow-same-vps.conf"
+echo "  Note: コード更新時は再デプロイ後に 'cd ${OPENQLOW_ROOT} && npm ci && npm run build' を再実行してから対象サービスを restart すること。"
 echo "  Note: openqlow-morning.timer fires at 07:00 JST daily — set OPENQLOW_MORNING_PUSH_DISABLED=true to disable."

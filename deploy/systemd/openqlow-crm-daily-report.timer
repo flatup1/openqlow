@@ -4,6 +4,8 @@ Description=Run OPENQLOW CRM daily report at 08:05 JST
 [Timer]
 OnCalendar=*-*-* 08:05:00 Asia/Tokyo
 Persistent=true
+# 日報生成。daily-check(08:00) とは5分ずらして同時起動の負荷集中を避けている。
+AccuracySec=1s
 Unit=openqlow-crm-daily-report.service
 
 [Install]

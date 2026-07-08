@@ -4,6 +4,9 @@ Description=Run OPENQLOW daily at 05:15 JST
 [Timer]
 OnCalendar=*-*-* 05:15:00 Asia/Tokyo
 Persistent=true
+# 内部のアイデア生成。早朝の人がいない時間帯なので厳密さより負荷分散を優先。
+AccuracySec=1min
+RandomizedDelaySec=2min
 Unit=openqlow-daily.service
 
 [Install]

@@ -15,6 +15,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)/"
 RSYNC_EXCLUDES=(
   --exclude node_modules
   --exclude .git
+  --exclude 'dist/'
   --exclude 'state/'
   --exclude 'drafts/'
   --exclude 'logs/'

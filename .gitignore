@@ -1,6 +1,9 @@
 # 依存
 node_modules/
 
+# ビルド成果物（npm run build で生成、本番は dist を node で実行）
+dist/
+
 # ランタイム生成物（VPS と Mac で別物、コミットしない）
 /state/
 drafts/

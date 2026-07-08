@@ -4,6 +4,8 @@ Description=Run OPENQLOW morning briefing at 07:00 JST
 [Timer]
 OnCalendar=*-*-* 07:00:00 Asia/Tokyo
 Persistent=true
+# オーナーへのLINE配信。既定の1分許容だと最大1分遅れるため厳密に発火させる。
+AccuracySec=1s
 Unit=openqlow-morning.service
 
 [Install]

@@ -4,6 +4,8 @@ Description=Run OPENQLOW daily owner check-in at 08:00 JST
 [Timer]
 OnCalendar=*-*-* 08:00:00 Asia/Tokyo
 Persistent=true
+# オーナーへの朝の確認。厳密に発火させる。
+AccuracySec=1s
 Unit=openqlow-daily-check.service
 
 [Install]
