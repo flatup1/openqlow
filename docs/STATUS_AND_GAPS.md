@@ -1,6 +1,6 @@
 # FLATUP AI OS - 現状採点と残作業（AI読み取り用）
 
-> 更新: 2026-07-01 / 下の `yaml` ブロックを正とし、秘密値・個人情報は記載しない。
+> 更新: 2026-07-03 / 下の `yaml` ブロックを正とし、秘密値・個人情報は記載しない。
 
 ## SDL採点（100点満点）
 | 観点 | 配点 | 現在 | 根拠 |
@@ -9,8 +9,8 @@
 | セキュリティ(CIA+脅威) | 30 | 28 | PIIログ防止、1 MiB制限、依存脆弱性0、pii_guard追加。旧Googleキー2個は失効済（人間報告）→実害停止。残: flatup履歴の値除去（値は無効）|
 | 保守性 | 20 | 20 | shared正本、薄い再エクスポート、回帰テスト、運用設計書 |
 | 効率 | 15 | 15 | 依存ゼロ安全網、systemd timer、差分実装 |
-| 完全性・網羅 | 10 | 8 | 残: branded固定URL(G8)とflatup履歴浄化(G7b) |
-| **合計** | 100 | **96** | 残: G7b履歴書き換え(値は無効化済)とG8固定URL |
+| 完全性・網羅 | 10 | 10 | branded固定URL(G8)を接続済（人間報告）。3repo統合・正本・手順書まで網羅 |
+| **合計** | 100 | **98** | 残: G7b履歴書き換え(値は無効化済のセキュリティ衛生)のみ |
 
 ## 完了済み（main / production）
 - `flatup-ai-os` の顧客向け4経路を `receptionReplyAsync` と `canonContext()` へ接続。
@@ -24,13 +24,14 @@
 - ソースへのPII直書きを検知する `pii_guard` を追加（`secret_guard` と対）。`src/` 全走査で0件を回帰テスト化。
 - G7/G8の実行手順書を追加（秘密値・ファイル名を含まない）。人間/Codexがそのまま実行可能。
 - **G7ステップ1完了**: 旧Google APIキー2個を人間がGoogle Cloudで失効/ローテーション（2026-07-01, human-attested）。履歴に残る値は無効化済＝悪用不可。残るは履歴からの物理除去(G7b)のみ。
+- **G8完了**: branded固定HTTPS URL `line.flatupnarita.jp/openqlow/health` を接続（2026-07-03, human-attested）。openQLOW実行環境のegressポリシーが当該ホストを遮断するため、機械検証はオーナー実測に委譲（`curl -i` で200確認）。
 
 ## 残作業（機械可読）
 ```yaml
 project: flatup_ai_os_perpetual_engine
-score: 96
+score: 98
 target: 100
-verified_at: 2026-07-01
+verified_at: 2026-07-03
 repos:
   engine: flatup1/openqlow
   reception: flatup1/flatup-ai-os
@@ -72,19 +73,17 @@ gaps:
     priority: high
     repo: infrastructure
     owner: human_cloudflare
-    status: blocked_external_configuration
+    status: done
+    verification: human_attested_2026-07-03
+    note: >-
+      openQLOW実行環境のegressポリシーが line.flatupnarita.jp を遮断するため
+      機械検証は不可。オーナーが `curl -i` でhealth 200を確認済み。
     evidence:
       expected_host: line.flatupnarita.jp
       expected_path: /openqlow/health
-      current_http_status: 404
-      current_dns_target: 162.43.90.71
       openqlow_vps: 162.43.41.182
-      fallback_http_status: 200
-      tunnel_type: accountless_quick_tunnel
-    required:
-      - Cloudflareでnamed tunnelまたはDNS/reverse-proxy経路を作る
-      - HTTPSの固定URLでhealth 200を確認する
-      - LINE Developersのwebhook URL変更は人間確認後
+    followups:
+      - LINE DevelopersのWebhook URLを新固定URLへ更新済みか人間が最終確認
     runbook: openqlow/docs/RUNBOOK_G8_branded_https_url.md
 ```
 
