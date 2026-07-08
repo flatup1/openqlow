@@ -1,5 +1,9 @@
 # OPENQLOW
 
+地図: この箱はFLATUP AIの頭脳・安全網・正本です。
+地図: 事実の正本は `openqlow/src/shared/canon.ts` です。
+地図: 触る前に `src/shared/canon.ts` と `src/aika/receptionist.ts` を読みます。
+
 OPENQLOW is FLATUP GYM's attack AI for YouTube/SNS growth.
 
 Phase 1 does not publish or schedule posts. It generates three daily ideas, expands them into platform drafts, runs safety checks, sends or previews LINE approval messages, and saves approved drafts.

@@ -75,14 +75,15 @@ function printHelp(): void {
 
 ■ よく使う
   intake --message "<問い合わせ文>"   問い合わせを取り込み、返信下書きまで一気に出す
-  followups                            今フォローすべき人の一覧（横に返信下書きの出し方も表示）
+  followups [--drafts]                 今フォローすべき人の一覧（--drafts で全員の返信下書きも一括表示）
   draft <番号>                         その人向けの返信下書きを出す（自動送信はしません）
   daily-report                         今日の集計レポートを作って保存
 
 ■ 名簿の操作
-  list                                 登録ぜんぶを一覧表示
+  list [--status 入会]                 一覧表示（--status で状態を絞り込み。日本語OK）
   find <名前の一部>                    名前で探す
-  status <番号> <状態>                 状態を更新（例: new/replied/trial/joined/lost）
+  show <番号>                          その人の詳しい情報をすべて表示
+  status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
   add [--name 田中 --gender female ...] 手動で1件登録
 
 ■ その他
@@ -128,11 +129,23 @@ async function main(argv: string[]): Promise<number> {
     }
     case "list": {
       const all = await store.getAll();
-      if (!all.length) {
-        console.log("見込み客はまだ登録されていません。");
+      let rows = all;
+      let label = "全";
+      if (flags.status) {
+        const want = resolveStatus(flags.status);
+        if (!want) {
+          console.error(`不明な状態: ${flags.status}（例: 返信した / 体験予約 / 体験済み / 入会 / 見送り）`);
+          return 1;
+        }
+        rows = all.filter(p => p.status === want);
+        label = want;
+      }
+      if (!rows.length) {
+        console.log(flags.status ? `状態「${label}」の見込み客はいません。` : "見込み客はまだ登録されていません。");
         return 0;
       }
-      for (const p of all) {
+      console.log(`■ 一覧（${label}：${rows.length}件）`);
+      for (const p of rows) {
         console.log(`#${p.id} ${p.name || "(無名)"} | ${p.category} | ${p.status} | 温度:${p.temperature || "-"} | 最終連絡:${p.lastContactAt?.slice(0, 16) || "-"}`);
       }
       return 0;
@@ -141,16 +154,20 @@ async function main(argv: string[]): Promise<number> {
       const id = Number(positional[0] ?? flags.id);
       const status = resolveStatus(positional[1] ?? flags.to ?? "");
       if (!id || !status) {
-        console.error("Usage: crm status <番号> <状態>");
+        console.error("Usage: crm status <番号> <状態> [--memo \"ひとことメモ\"]");
         console.error("  状態（日本語OK）: 返信した / 体験予約 / 体験済み / 入会 / 見送り など（英語コードも可）");
         return 1;
       }
-      const updated = await store.update(id, { status, lastContactAt: new Date().toISOString() });
+      const updated = await store.update(id, {
+        status,
+        lastContactAt: new Date().toISOString(),
+        ...(flags.memo ? { memo: flags.memo } : {}),
+      });
       if (!updated) {
         console.error(`#${id} が見つかりません。`);
         return 1;
       }
-      console.log(`#${id} を ${status} に更新しました。`);
+      console.log(`#${id} を ${status} に更新しました。${flags.memo ? `（メモ: ${flags.memo}）` : ""}`);
       return 0;
     }
     case "find": {
@@ -169,6 +186,35 @@ async function main(argv: string[]): Promise<number> {
       }
       return 0;
     }
+    case "show": {
+      const id = Number(positional[0] ?? flags.id);
+      const p = id ? await store.get(id) : undefined;
+      if (!p) {
+        console.error("Usage: crm show <番号>（その人の詳しい情報をすべて表示します）");
+        return 1;
+      }
+      const row = (label: string, value: unknown) =>
+        console.log(`  ${label}: ${value === "" || value === undefined || value === null ? "（未記録）" : value}`);
+      console.log(`■ #${p.id} ${p.name || "(無名)"}`);
+      row("状態", p.status);
+      row("属性", p.category);
+      row("温度感", p.temperature);
+      row("性別", p.gender);
+      row("年代", p.ageGroup);
+      row("目的", p.purpose);
+      row("流入元", p.contactSource);
+      row("問い合わせ", p.inquiryText);
+      row("メモ", p.memo);
+      row("体験日", p.trialDate);
+      row("体験の状況", p.trialStatus);
+      row("見送り理由", p.lostReason);
+      row("次アクション", p.nextAction);
+      row("最終連絡", p.lastContactAt?.slice(0, 16));
+      row("登録日", p.createdAt?.slice(0, 16));
+      row("更新日", p.updatedAt?.slice(0, 16));
+      console.log("\nヒント: 返信下書きは `npm run crm -- draft " + p.id + "` で出せます。");
+      return 0;
+    }
     case "draft": {
       const id = Number(positional[0] ?? flags.id);
       const p = id ? await store.get(id) : undefined;
@@ -183,18 +229,29 @@ async function main(argv: string[]): Promise<number> {
     case "followups": {
       const all = await store.getAll();
       const now = new Date();
-      const print = (title: string, list: { id: number; name: string }[]) => {
+      const withDrafts = "drafts" in flags;
+      const print = (title: string, list: Prospect[]) => {
         console.log(`\n■ ${title}（${list.length}件）`);
         if (!list.length) {
           console.log("  なし");
           return;
         }
-        for (const p of list) console.log(`  #${p.id} ${p.name || "(無名)"}　→ 返信案: crm draft ${p.id}`);
+        for (const p of list) {
+          console.log(`  #${p.id} ${p.name || "(無名)"}　→ 返信案: crm draft ${p.id}`);
+          if (withDrafts) {
+            const draft = draftFor(p).split("\n").map(line => `      ${line}`).join("\n");
+            console.log(`    --- 返信下書き（確認して送信・自動送信なし） ---\n${draft}\n`);
+          }
+        }
       };
       print("追客漏れ候補", getFollowupNeeded(all, now, followupHours));
       print("体験後フォロー候補", getTrialFollowupNeeded(all));
       print("口コミ依頼候補", getReviewRequestCandidates(all));
-      console.log("\nヒント: 返信下書きは `npm run crm -- draft <番号>` で出せます（自動送信なし）。");
+      console.log(
+        withDrafts
+          ? "\nヒント: 上の下書きはそのまま確認して送れます（自動送信はしません）。"
+          : "\nヒント: 各候補の下書きを一括で出すなら `npm run crm -- followups --drafts`（自動送信なし）。",
+      );
       return 0;
     }
     case "daily-report": {

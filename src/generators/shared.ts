@@ -18,23 +18,10 @@ export type Temperature = "high" | "mid" | "low";
 
 /**
  * FLATUP GYM 基本情報（正本値）。
- * AIはこの値を勝手に変更してはいけない。料金改定時はここだけを更新する。
+ * 単一正本は `src/shared/canon.ts` の `FLATUP_CANON`。ここはその再エクスポート（二重管理しない）。
+ * AIはこの値を勝手に変更してはいけない。料金改定時は `src/shared/canon.ts` だけを更新する。
  */
-export const FLATUP_INFO = {
-  trialFirst: "初回体験500円",
-  visitorSecond: "2回目以降ビジター3,000円",
-  priceKids: "キッズ7,700円",
-  priceWomen: "女性8,800円",
-  priceMen: "男性9,900円",
-  joinFee: "入会金10,000円",
-  bring: "動きやすい服・タオル・水",
-  parking: "専用駐車場あり",
-  scheduleKids: "火曜・木曜18:00、土曜13:00",
-  scheduleLadies: "土曜14:00",
-  bookingMen: "火曜・木曜・土曜（男性インストラクター在籍）、または平日19:00以降",
-  bookingWomen: "月曜・水曜・土曜",
-  noBooking: "日曜・祝日は原則体験不可",
-} as const;
+export { FLATUP_CANON as FLATUP_INFO } from "../shared/canon.js";
 
 /** AIKA 返信の署名 */
 export const AIKA_SIGN = "AIKA";

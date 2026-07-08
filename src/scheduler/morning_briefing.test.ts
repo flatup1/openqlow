@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { runMorningBriefing } from "./morning_briefing.js";
+import { isMorningBriefingCliEntry, runMorningBriefing } from "./morning_briefing.js";
 
 // 環境変数を共通テストルートに差し替え
 async function setRootTmp(): Promise<string> {
@@ -12,6 +12,12 @@ async function setRootTmp(): Promise<string> {
 }
 
 const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
+
+// 0. tsx 実行時の CLI エントリポイント判定
+{
+  assert.equal(isMorningBriefingCliEntry("file:///repo/src/scheduler/morning_briefing.ts", "/repo/src/scheduler/morning_briefing.ts"), true);
+  assert.equal(isMorningBriefingCliEntry("file:///repo/src/scheduler/other.ts", "/repo/src/scheduler/morning_briefing.ts"), false);
+}
 
 // 1. JIN_LINE_USER_ID 未設定 → no_user
 {
@@ -87,6 +93,31 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
   assert.equal(result.ok, true);
   assert.equal(result.mode, "dry_run");
   await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });
+}
+
+// 6. Vault連携: 明示指定時だけ DAILY-BRIEF.md を更新する
+{
+  await setRootTmp();
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-morning-vault-"));
+  const result = await runMorningBriefing({
+    now: FIXED_NOW,
+    userId: "U_VAULT",
+    writeDailyBrief: true,
+    obsidianVaultRoot: vault,
+    pushFn: async () => ({ ok: true, mode: "dry_run" }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "dry_run");
+
+  const brief = await readFile(path.join(vault, "DAILY-BRIEF.md"), "utf8");
+  assert.match(brief, /# DAILY-BRIEF — 2026-06-06/);
+  assert.match(brief, /FOLLOW-UP QUEUE/);
+  assert.match(brief, /HUMAN CHECK REQUIRED/);
+  assert.match(brief, /OPENQLOW_LINE_DRY_RUN/);
+
+  await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });
+  await rm(vault, { recursive: true, force: true });
 }
 
 console.log("morning briefing tests passed");
