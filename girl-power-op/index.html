@@ -1,0 +1,494 @@
+<meta charset="utf-8">
+<!--
+  ============================================================
+  GIRL POWER! OP メーカー — アニメーションを描くページ
+  ============================================================
+  このファイルは「時刻 t 秒のときの絵」を 1 枚描くプログラムです。
+  パラパラまんがと同じで、これを 1 秒あたり 30 回くりかえして
+  写真に撮ると、動画になります(撮影係は render.js)。
+
+  ▼ このファイルの構成(上から順に)
+   1. rnd/clamp/lerp/ease… : 計算のべんりな道具
+   2. パレット(PINK, YEL…): 使う色のリスト
+   3. sunburst/skyBg など   : 背景を描く関数
+   4. cardDraw/coverDraw    : キャラ画像を描く関数
+   5. heart/star/burst など : ハート・星・紙吹雪のエフェクト
+   6. draw(t)               : ★心臓部★ 時刻 t の画面を組み立てる
+   7. renderAudio()         : BGM をブラウザの中で作曲して WAV にする
+
+  ▼ カスタマイズポイント(検索して書きかえてみよう)
+   ・キャラ画像   → 同じフォルダの chara.png を差しかえるだけ
+   ・動画の長さ   → 「DUR = 30」の数字(秒)
+   ・カットの切替 → 「C1 = 0, C2 = 4.5, …」(各カットの開始秒)
+   ・画面の文字   → 「popText(」で検索(GIRL POWER! など)
+   ・色           → 「palette」のコメントの下(#ff5fa2 など)
+   ・曲のテンポ   → 「60 / 160」の 160(BPM。大きいほど速い)
+  ============================================================
+-->
+<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}canvas{display:block}</style>
+<canvas id="cv" width="1280" height="720"></canvas>
+<script>
+const W = 1280, H = 720, DUR = 30;
+const cv = document.getElementById('cv');
+const cx2d = cv.getContext('2d');
+let IMG = new Image(), IW = 0, IH = 0;
+
+// ---------- deterministic pseudo-random ----------
+function rnd(a, b) { // hash two numbers -> [0,1)
+  let x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+const easeInOut = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+
+// ---------- palette ----------
+const PINK = '#ff5fa2', PINK2 = '#ffb7d5', YEL = '#ffd23f', YEL2 = '#fff3b0',
+      SKY = '#7ec8ff', INK = '#221133', WHT = '#ffffff';
+
+// ---------- backgrounds ----------
+function sunburst(t, c1, c2, speed) {
+  cx2d.fillStyle = c1;
+  cx2d.fillRect(0, 0, W, H);
+  cx2d.save();
+  cx2d.translate(W/2, H/2);
+  cx2d.rotate(t * speed);
+  cx2d.fillStyle = c2;
+  const N = 18;
+  for (let i = 0; i < N; i++) {
+    const a0 = (i / N) * Math.PI * 2, a1 = a0 + Math.PI / N;
+    cx2d.beginPath();
+    cx2d.moveTo(0, 0);
+    cx2d.arc(0, 0, 1400, a0, a1);
+    cx2d.closePath();
+    cx2d.fill();
+  }
+  cx2d.restore();
+}
+function halftone(alpha) {
+  cx2d.save();
+  cx2d.globalAlpha = alpha;
+  cx2d.fillStyle = WHT;
+  for (let y = 20; y < H; y += 46)
+    for (let x = 20 + (y % 92 ? 23 : 0); x < W; x += 46) {
+      cx2d.beginPath(); cx2d.arc(x, y, 4, 0, 7); cx2d.fill();
+    }
+  cx2d.restore();
+}
+function skyBg(t) {
+  const g = cx2d.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#8fd0ff'); g.addColorStop(1, '#e8f7ff');
+  cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+  // drifting clouds
+  cx2d.fillStyle = 'rgba(255,255,255,.9)';
+  for (let i = 0; i < 6; i++) {
+    const cxp = ((rnd(i, 7) * 1600 + t * (20 + i * 8)) % 1600) - 160;
+    const cyp = 60 + rnd(i, 13) * 300;
+    const s = 40 + rnd(i, 3) * 40;
+    for (let k = 0; k < 4; k++) {
+      cx2d.beginPath();
+      cx2d.arc(cxp + k * s * .8, cyp + (k % 2) * s * .25, s * (0.7 + 0.3 * rnd(i, k)), 0, 7);
+      cx2d.fill();
+    }
+  }
+}
+
+// ---------- image drawing ----------
+// full-bleed cover: zoom>=1, (fx,fy) focus point in image fraction coords
+function coverDraw(zoom, fx, fy) {
+  const base = Math.max(W / IW, H / IH) * zoom;
+  const dw = IW * base, dh = IH * base;
+  let dx = W/2 - fx * dw, dy = H/2 - fy * dh;
+  dx = clamp(dx, W - dw, 0); dy = clamp(dy, H - dh, 0);
+  cx2d.drawImage(IMG, dx, dy, dw, dh);
+}
+// sticker card: character panel with thick white border; (x, yTop) = top center
+function cardDraw(x, yTop, scale, rot, sqx, sqy) {
+  const h = H * 0.86 * scale, w = h * IW / IH;
+  cx2d.save();
+  cx2d.translate(x, yTop + h);          // pivot at bottom center for squash/stretch
+  cx2d.rotate(rot);
+  cx2d.scale(sqx, sqy);
+  const r = 26;
+  cx2d.shadowColor = 'rgba(30,10,40,.35)';
+  cx2d.shadowBlur = 24; cx2d.shadowOffsetY = 10;
+  cx2d.fillStyle = WHT;
+  cx2d.beginPath();
+  cx2d.roundRect(-w/2 - 10, -h - 10, w + 20, h + 20, r + 8);
+  cx2d.fill();
+  cx2d.shadowColor = 'transparent';
+  cx2d.beginPath();
+  cx2d.roundRect(-w/2, -h, w, h, r);
+  cx2d.clip();
+  cx2d.drawImage(IMG, -w/2, -h, w, h);
+  cx2d.restore();
+}
+
+// ---------- effects ----------
+function heart(x, y, s, color) {
+  cx2d.save(); cx2d.translate(x, y); cx2d.scale(s, s);
+  cx2d.fillStyle = color;
+  cx2d.beginPath();
+  cx2d.moveTo(0, .35);
+  cx2d.bezierCurveTo(-.9, -.45, -.35, -1.1, 0, -.45);
+  cx2d.bezierCurveTo(.35, -1.1, .9, -.45, 0, .35);
+  cx2d.fill();
+  cx2d.restore();
+}
+function star(x, y, s, rot, color, stroke) {
+  cx2d.save(); cx2d.translate(x, y); cx2d.rotate(rot);
+  cx2d.fillStyle = color;
+  cx2d.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = i * Math.PI / 5 - Math.PI/2, r = i % 2 ? s * .45 : s;
+    cx2d[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r);
+  }
+  cx2d.closePath(); cx2d.fill();
+  if (stroke) { cx2d.lineWidth = s * .12; cx2d.strokeStyle = INK; cx2d.stroke(); }
+  cx2d.restore();
+}
+// burst of hearts/stars spawned at ts near (bx,by); life 0.9s
+function burst(t, ts, bx, by, kind, seed) {
+  const life = (t - ts) / 0.9;
+  if (life < 0 || life > 1) return;
+  const N = 8;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 + rnd(seed, i) * .8;
+    const d = easeOut(life) * (90 + rnd(i, seed) * 120);
+    const x = bx + Math.cos(a) * d, y = by + Math.sin(a) * d - life * 30;
+    const s = (1 - life) * (16 + rnd(seed + 1, i) * 14);
+    const col = i % 2 ? PINK : YEL;
+    if (kind === 'heart') heart(x, y, s, col);
+    else star(x, y, s, a + life * 4, col, false);
+  }
+  // impact ring
+  if (life < .4) {
+    cx2d.save();
+    cx2d.globalAlpha = 1 - life / .4;
+    cx2d.lineWidth = 10 * (1 - life / .4);
+    cx2d.strokeStyle = WHT;
+    cx2d.beginPath(); cx2d.arc(bx, by, 30 + easeOut(life / .4) * 120, 0, 7); cx2d.stroke();
+    cx2d.restore();
+  }
+}
+function speedLines(t, alpha) {
+  cx2d.save();
+  cx2d.globalAlpha = alpha;
+  cx2d.strokeStyle = WHT;
+  cx2d.translate(W/2, H/2);
+  const N = 44;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 + rnd(i, 5) * .2;
+    const flick = rnd(i, Math.floor(t * 20)) ;
+    if (flick < .35) continue;
+    const r0 = 240 + rnd(i, 9) * 140, r1 = 900;
+    cx2d.lineWidth = 3 + rnd(i, 2) * 9;
+    cx2d.beginPath();
+    cx2d.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+    cx2d.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+    cx2d.stroke();
+  }
+  cx2d.restore();
+}
+function confetti(t, t0) {
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    const delay = rnd(i, 42) * 1.6;
+    const life = t - t0 - delay;
+    if (life < 0) continue;
+    const x = rnd(i, 7) * W + Math.sin(life * (2 + rnd(i, 3) * 3) + i) * 40;
+    const y = -20 + life * (140 + rnd(i, 11) * 160);
+    if (y > H + 20) continue;
+    const cols = [PINK, YEL, SKY, '#9dff70', WHT];
+    cx2d.save();
+    cx2d.translate(x, y);
+    cx2d.rotate(life * (3 + rnd(i, 1) * 5));
+    cx2d.fillStyle = cols[i % cols.length];
+    cx2d.fillRect(-7, -4, 14, 8);
+    cx2d.restore();
+  }
+}
+function starIris(p) { // p: 0 closed(black) -> 1 open
+  if (p >= 1) return;
+  cx2d.save();
+  cx2d.beginPath();
+  cx2d.rect(0, 0, W, H);
+  const s = Math.max(0.001, easeInOut(p)) * 1050;
+  const cx = W/2, cy = H/2;
+  // star hole (even-odd)
+  for (let i = 0; i < 10; i++) {
+    const a = i * Math.PI / 5 - Math.PI/2, r = i % 2 ? s * .5 : s;
+    cx2d[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  cx2d.closePath();
+  cx2d.fillStyle = INK;
+  cx2d.fill('evenodd');
+  cx2d.restore();
+}
+function flash(alpha, color) {
+  if (alpha <= 0) return;
+  cx2d.save(); cx2d.globalAlpha = clamp(alpha, 0, 1);
+  cx2d.fillStyle = color || WHT; cx2d.fillRect(0, 0, W, H);
+  cx2d.restore();
+}
+function vignette() {
+  const g = cx2d.createRadialGradient(W/2, H/2, H * .45, W/2, H/2, H * .95);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(40,0,40,.28)');
+  cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+}
+function popText(txt, x, y, size, fill, t0, t, rot) {
+  const life = t - t0;
+  if (life < 0) return;
+  const s = life < .35 ? easeOut(life / .35) * 1.25 - .25 * (life / .35) : 1 + Math.sin(t * 6) * .02;
+  cx2d.save();
+  cx2d.translate(x, y);
+  cx2d.rotate(rot || 0);
+  cx2d.scale(Math.max(0.001, s), Math.max(0.001, s));
+  cx2d.font = `900 ${size}px 'Arial Black', sans-serif`;
+  cx2d.textAlign = 'center'; cx2d.textBaseline = 'middle';
+  cx2d.lineJoin = 'round';
+  cx2d.lineWidth = size * .28; cx2d.strokeStyle = INK;
+  cx2d.strokeText(txt, 0, 0);
+  cx2d.lineWidth = size * .14; cx2d.strokeStyle = WHT;
+  cx2d.strokeText(txt, 0, 0);
+  cx2d.fillStyle = fill;
+  cx2d.fillText(txt, 0, 0);
+  cx2d.restore();
+}
+
+// ---------- cut boundaries ----------
+const C1 = 0, C2 = 4.5, C3 = 9, C4 = 13.5, C5 = 18, C6 = 22.5;
+const BEAT = 60 / 160; // 160 bpm
+
+// hits in cut2: every 2 beats
+const HITS = [];
+for (let h = C2 + BEAT; h < C3 - .3; h += BEAT * 2) HITS.push(h);
+// hops in cut4
+const HOPS = [C4 + .4, C4 + 1.7, C4 + 3.0];
+
+function draw(t) {
+  cx2d.clearRect(0, 0, W, H);
+
+  if (t < C2) {
+    // ---- CUT 1: star iris reveal, zoom-in entrance ----
+    const p = (t - C1) / (C2 - C1);
+    sunburst(t, PINK, PINK2, .35);
+    halftone(.35);
+    const z = lerp(.55, 1, easeOut(clamp(p * 1.6, 0, 1)));
+    const drop = (1 - easeOut(clamp(p * 1.6, 0, 1))) * -260;
+    cardDraw(W/2, H * .07 + drop, z, Math.sin(t * 2) * .015, 1, 1);
+    if (p > .45) popText('HERE SHE', W * .19, H * .30, 52, YEL, C1 + (C2-C1) * .45, t, -.06);
+    if (p > .45) popText('COMES!', W * .21, H * .42, 52, YEL, C1 + (C2-C1) * .5, t, -.06);
+    starIris(t / 1.1);
+
+  } else if (t < C3) {
+    // ---- CUT 2: punch combo with heart impacts ----
+    sunburst(t, YEL, YEL2, -.5);
+    halftone(.3);
+    let shx = 0, shy = 0, sq = 0;
+    let lastHit = -1, lastIdx = 0;
+    for (let i = 0; i < HITS.length; i++) if (HITS[i] <= t) { lastHit = HITS[i]; lastIdx = i; }
+    if (lastHit > 0) {
+      const k = clamp((t - lastHit) / .22, 0, 1);
+      const dir = lastIdx % 2 ? 1 : -1;
+      shx = dir * (1 - k) * 34;
+      shy = (1 - k) * -14;
+      sq = (1 - k) * .06;
+    }
+    cardDraw(W/2 + shx, H * .07 + shy, 1, shx * .0012, 1 + sq, 1 - sq);
+    for (let i = 0; i < HITS.length; i++) {
+      const dir = i % 2 ? 1 : -1;
+      burst(t, HITS[i], W/2 + dir * 300, H * .34 + rnd(i, 6) * 60, 'heart', i);
+      if (i % 2 === 0) {
+        const life = t - HITS[i];
+        if (life > 0 && life < .5) popText('POW!', W/2 + dir * 380, H * .2, 64, PINK, HITS[i], t, dir * .12);
+      }
+    }
+    flash(lastHit > 0 ? .5 - (t - lastHit) * 3 : 0, WHT);
+
+  } else if (t < C4) {
+    // ---- CUT 3: dramatic close-up, speed lines ----
+    const p = (t - C3) / (C4 - C3);
+    coverDraw(lerp(1.0, 1.22, easeInOut(p)), .5, lerp(.42, .36, p));
+    speedLines(t, .8);
+    cx2d.save();
+    cx2d.globalCompositeOperation = 'overlay';
+    cx2d.fillStyle = 'rgba(255,210,63,.18)';
+    cx2d.fillRect(0, 0, W, H);
+    cx2d.restore();
+    popText('FIGHT!', W * .5, H * .84, 92, YEL, C3 + .5, t, -.05);
+    vignette();
+
+  } else if (t < C5) {
+    // ---- CUT 4: hops with squash & stretch ----
+    sunburst(t, '#a06bff', '#c9a6ff', .9);
+    halftone(.28);
+    let jy = 0, sqx = 1, sqy = 1;
+    for (const h0 of HOPS) {
+      const k = (t - h0) / .75;
+      if (k >= 0 && k <= 1) {
+        jy = -Math.sin(k * Math.PI) * 140;
+        if (k < .12) { sqx = 1.12; sqy = .86; }            // crouch
+        else if (k < .5) { sqx = .92; sqy = 1.10; }         // stretch up
+        else if (k > .88) { sqx = 1.14; sqy = .84; }        // land squash
+      }
+    }
+    cardDraw(W/2, H * .12 + jy, .84, Math.sin(t * 3) * .02, sqx, sqy);
+    for (let i = 0; i < HOPS.length; i++)
+      burst(t, HOPS[i] + .72, W/2, H * .9, 'star', i + 20);
+    popText('JUMP!', W * .82, H * .25, 66, SKY, C4 + .5, t, .1);
+
+  } else if (t < C6) {
+    // ---- CUT 5: floating in the sky ----
+    const p = (t - C5) / (C6 - C5);
+    skyBg(t);
+    const rise = lerp(H * .16, H * .02, easeInOut(p));
+    cardDraw(W/2, rise + Math.sin(t * 1.8) * 12, .92, Math.sin(t * 1.2) * .04, 1, 1);
+    // floating hearts & stars
+    for (let i = 0; i < 16; i++) {
+      const life = ((t - C5) * (.25 + rnd(i, 8) * .3) + rnd(i, 4)) % 1;
+      const x = rnd(i, 2) * W;
+      const y = H - life * (H + 80);
+      const s = 10 + rnd(i, 5) * 18;
+      cx2d.save(); cx2d.globalAlpha = clamp(Math.sin(life * Math.PI) * 1.4, 0, 1);
+      if (i % 2) heart(x, y, s, PINK); else star(x, y, s, life * 3, YEL, false);
+      cx2d.restore();
+    }
+    popText('SO STRONG!', W * .21, H * .40, 54, WHT, C5 + .6, t, -.06);
+
+  } else {
+    // ---- CUT 6: finale — logo + confetti ----
+    sunburst(t, PINK, YEL, .25);
+    halftone(.3);
+    const p = (t - C6) / (DUR - C6);
+    cardDraw(W * .28, H * .08, .92 + Math.min(p * .1, .05), 0, 1, 1);
+    // big decorative stars
+    star(W * .08, H * .85, 55 + Math.sin(t * 4) * 6, t, YEL, true);
+    star(W * .56, H * .78, 46 + Math.cos(t * 4) * 6, -t, PINK2, true);
+    confetti(t, C6);
+    popText('GIRL POWER!', W * .70, H * .32, 88, PINK, C6 + .35, t, -.03);
+    popText('KICKBOXING GIRL', W * .70, H * .48, 40, YEL, C6 + .8, t, 0);
+    // end fade
+    if (t > DUR - .8) flash((t - (DUR - .8)) / .8, INK);
+  }
+
+  // white flash transitions at cut boundaries
+  for (const b of [C2, C3, C4, C5, C6]) {
+    const d = Math.abs(t - b);
+    if (d < .14) flash(1 - d / .14, WHT);
+  }
+}
+
+window.seek = t => { draw(t); return true; };
+
+// ---------- BGM: original 160bpm chiptune, rendered offline ----------
+async function renderAudio() {
+  const sr = 44100;
+  const ctx = new OfflineAudioContext(2, sr * DUR, sr);
+  const master = ctx.createGain(); master.gain.value = .82; master.connect(ctx.destination);
+  const comp = ctx.createDynamicsCompressor(); comp.connect(master);
+
+  const N = (f) => { // noise buffer
+    const b = ctx.createBuffer(1, sr * .3, sr), d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sr * f));
+    return b;
+  };
+  const snareBuf = N(.02), hatBuf = N(.005), crashBuf = N(.12);
+
+  function kick(t0) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(150, t0);
+    o.frequency.exponentialRampToValueAtTime(42, t0 + .12);
+    g.gain.setValueAtTime(.9, t0);
+    g.gain.exponentialRampToValueAtTime(.001, t0 + .18);
+    o.connect(g); g.connect(comp); o.start(t0); o.stop(t0 + .2);
+  }
+  function noiseHit(buf, t0, vol, hp) {
+    const s = ctx.createBufferSource(); s.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    const g = ctx.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(comp); s.start(t0);
+  }
+  function tone(type, freq, t0, dur, vol, pan) {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + .015);
+    g.gain.setValueAtTime(vol, t0 + dur * .6);
+    g.gain.exponentialRampToValueAtTime(.001, t0 + dur);
+    const p = ctx.createStereoPanner(); p.pan.value = pan || 0;
+    o.connect(g); g.connect(p); p.connect(comp);
+    o.start(t0); o.stop(t0 + dur + .02);
+  }
+  const NOTE = n => 440 * Math.pow(2, (n - 69) / 12); // midi -> Hz
+
+  // chord roots per bar (4 beats each): C  G  A  F  (I V vi IV)
+  const roots = [48, 55, 57, 53]; // C3 G3 A3 F3
+  const bars = Math.floor(DUR / (BEAT * 4));
+  // original lead riff: scale degrees over the bar (pentatonic-ish), per 2-bar phrase
+  const riffA = [12, 16, 19, 16, 21, 19, 16, 14];
+  const riffB = [12, 14, 16, 19, 16, 14, 12, 9];
+
+  for (let bar = 0; bar < bars; bar++) {
+    const bt = bar * BEAT * 4;
+    const root = roots[bar % 4];
+    for (let b = 0; b < 4; b++) {
+      const t0 = bt + b * BEAT;
+      kick(t0);
+      if (b % 2 === 1) noiseHit(snareBuf, t0, .5, 1800);
+      noiseHit(hatBuf, t0, .18, 6000);
+      noiseHit(hatBuf, t0 + BEAT / 2, .12, 7000);
+      // bass: root 8ths with octave pop
+      tone('square', NOTE(root - 12), t0, BEAT * .45, .16, 0);
+      tone('square', NOTE(b === 3 ? root : root - 12), t0 + BEAT / 2, BEAT * .4, .13, 0);
+    }
+    // lead melody (skip intro bar 0 and let finale ring)
+    if (bar >= 1 && bt < DUR - 2) {
+      const riff = (bar % 2) ? riffB : riffA;
+      for (let s = 0; s < 8; s++) {
+        const t0 = bt + s * BEAT / 2;
+        const semis = riff[s];
+        tone('square', NOTE(root + 12 + semis), t0, BEAT * .42, .10, -.25);
+        tone('triangle', NOTE(root + 24 + semis), t0, BEAT * .38, .07, .25);
+      }
+    }
+    // sparkle arpeggio on cut 5
+    if (bt >= C5 - .1 && bt < C6) {
+      for (let s = 0; s < 8; s++)
+        tone('sine', NOTE(root + 36 + [0, 4, 7, 12][s % 4]), bt + s * BEAT / 2, BEAT * .3, .05, (s % 2) ? .5 : -.5);
+    }
+  }
+  // crashes at cut boundaries + finale chord
+  for (const b of [C2, C3, C4, C5, C6]) noiseHit(crashBuf, b, .5, 900);
+  for (const semis of [0, 4, 7, 12]) tone('sawtooth', NOTE(60 + semis), C6 + .35, 2.2, .07, 0);
+  kick(DUR - .4);
+
+  const buf = await ctx.startRendering();
+  // encode 16-bit stereo WAV
+  const len = buf.length, ch0 = buf.getChannelData(0), ch1 = buf.getChannelData(1);
+  const bytes = 44 + len * 4;
+  const ab = new ArrayBuffer(bytes), v = new DataView(ab);
+  const wstr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, 'RIFF'); v.setUint32(4, bytes - 8, true); wstr(8, 'WAVE');
+  wstr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true);
+  wstr(36, 'data'); v.setUint32(40, len * 4, true);
+  let o = 44;
+  for (let i = 0; i < len; i++) {
+    v.setInt16(o, clamp(ch0[i], -1, 1) * 32767, true); o += 2;
+    v.setInt16(o, clamp(ch1[i], -1, 1) * 32767, true); o += 2;
+  }
+  // base64
+  const u8 = new Uint8Array(ab);
+  let s = '';
+  for (let i = 0; i < u8.length; i += 32768)
+    s += String.fromCharCode.apply(null, u8.subarray(i, i + 32768));
+  return btoa(s);
+}
+window.renderAudio = renderAudio;
+
+IMG.onload = () => { IW = IMG.naturalWidth; IH = IMG.naturalHeight; window.ready = true; draw(0); };
+IMG.src = 'chara.png';
+</script>
