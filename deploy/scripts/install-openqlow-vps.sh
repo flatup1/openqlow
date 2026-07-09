@@ -46,7 +46,7 @@ systemctl enable \
   openqlow-crm-daily-report.timer \
   openqlow-loop.timer
 
-echo "Installed OPENQLOW systemd units (scheduler/webhook/monitor/crm run compiled dist/; loop runs via tsx)."
+echo "Installed OPENQLOW systemd units (tsx-free, all units run compiled dist/)."
 echo "Next:"
 echo "  1. Edit ${ENV_FILE}"
 echo "  2. (任意) Run tests: cd ${OPENQLOW_ROOT} && npm run test"
