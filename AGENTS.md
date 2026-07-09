@@ -20,13 +20,8 @@
 作業前に、必要な範囲で以下を確認する。
 
 1. この `AGENTS.md`
-2. `docs/AIKA_RULES.md`
-3. `docs/OPENQLOW_RULES.md`
-4. `docs/LINE_COMMAND_POLICY.md`
-5. `docs/GITHUB_WORKSPACE_POLICY.md`
-6. `docs/SAFETY_ESCALATION.md`
-7. `docs/DAILY_PROMPTS.md`
-8. 関連する Vault、ログ、CRM、既存コード、GitHub 状況
+2. `COORDINATION.md`（作業領域の担当・ロック状況）
+3. 関連する Vault、ログ、CRM、既存コード、GitHub 状況、`docs/` 配下のHANDOFF書
 
 存在しないファイルは存在しないものとして扱い、推測で補わない。参照できない情報は「未確認」と明記する。
 
