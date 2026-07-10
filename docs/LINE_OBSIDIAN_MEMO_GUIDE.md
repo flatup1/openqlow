@@ -194,6 +194,28 @@ Macで正本を編集したときは、今まで通り自分で commit / push（
 
 ---
 
+# リッチメニュー（ワンタップ操作）
+
+トーク画面の下に常設ボタンを出せる。文字を打たずに `push` / `ヘルプ` / `日報` が送れる。
+
+登録・更新はVPS上で1回実行するだけ（何度実行してもよい）:
+
+```bash
+cd /opt/openqlow
+set -a; . /etc/openqlow/openqlow.env; set +a
+npm run richmenu
+```
+
+- ボタン: 「GitHubへ送る」= `push` / 「使い方」= `ヘルプ` / 「日報」= `日報`
+- 画像: `deploy/richmenu/richmenu-memo-2500x843.png`
+- ボタンを変えたいとき: `scripts/setup-rich-menu.mjs` の `buildRichMenuPayload()` を編集して再実行
+
+## 文字入力を減らすコツ
+
+- `/` は不要: 「追記 内容」「push」「ぷっしゅ」で動く
+- 音声入力: キーボードの🎤で「ついき ○○○」としゃべって送信
+- ユーザー辞書（iPhone設定 → 一般 → キーボード → ユーザ辞書）: よみ「めも」→ 変換「追記 」
+
 # 困ったとき
 
 | LINEの返事 | 意味 | どうする |
