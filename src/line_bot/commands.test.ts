@@ -84,6 +84,7 @@ async function testPushCommandSkipsWhenNoChanges(): Promise<void> {
   assert.match(result.message, /変更はありません/);
   assert.deepEqual(calls, [
     ["-C", "/tmp/vault", "status", "--porcelain"],
+    ["-C", "/tmp/vault", "pull", "--rebase"],
     ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
   ]);
 }
@@ -106,6 +107,7 @@ async function testPushCommandPushesCleanAheadCommit(): Promise<void> {
   assert.match(result.message, /未pushのコミット1件/);
   assert.deepEqual(calls, [
     ["-C", "/tmp/vault", "status", "--porcelain"],
+    ["-C", "/tmp/vault", "pull", "--rebase"],
     ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
     ["-C", "/tmp/vault", "push"],
   ]);
@@ -118,6 +120,7 @@ async function testPushCommandCommitsAndPushesChanges(): Promise<void> {
       calls.push(args);
       if (args.includes("status")) return " M DAILY-BRIEF.md\n";
       if (args.includes("commit")) return "[main abc123] chore: update vault from LINE\n";
+      if (args.includes("rev-list")) return "0\t1\n";
       if (args.includes("push")) return "pushed\n";
       return "";
     },
@@ -132,7 +135,32 @@ async function testPushCommandCommitsAndPushesChanges(): Promise<void> {
     ["-C", "/tmp/vault", "status", "--porcelain"],
     ["-C", "/tmp/vault", "add", "-A"],
     ["-C", "/tmp/vault", "commit", "-m", "chore: update vault from LINE"],
+    ["-C", "/tmp/vault", "pull", "--rebase"],
+    ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
     ["-C", "/tmp/vault", "push"],
+  ]);
+}
+
+async function testPushCommandReportsConflictWhenPullFails(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("pull")) throw new Error("CONFLICT (content): Merge conflict in daily_logs/2026-07-10.md");
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.action, "git_push");
+  assert.match(result.message, /同期が衝突しました。手動確認が必要です。/);
+  assert.match(result.message, /CONFLICT/);
+  assert.deepEqual(calls, [
+    ["-C", "/tmp/vault", "status", "--porcelain"],
+    ["-C", "/tmp/vault", "pull", "--rebase"],
+    ["-C", "/tmp/vault", "rebase", "--abort"],
   ]);
 }
 
@@ -258,6 +286,7 @@ await testAppendCommandRequiresBody();
 await testPushCommandSkipsWhenNoChanges();
 await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
+await testPushCommandReportsConflictWhenPullFails();
 await testNonCommandIsNotHandled();
 await testHelpCommandShowsJuniorHighModeReply();
 await testRevisionCommandUpdatesPendingDraft();

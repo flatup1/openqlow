@@ -123,22 +123,33 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
   const vaultRoot = opts.vaultRoot ?? defaultVaultRoot();
   const runGit = opts.runGit ?? defaultRunGit;
   const status = await runGit(["-C", vaultRoot, "status", "--porcelain"]);
+  const hasLocalChanges = status.trim() !== "";
 
-  if (status.trim() === "") {
-    const ahead = parseAheadCount(
-      await runGit(["-C", vaultRoot, "rev-list", "--left-right", "--count", "@{u}...HEAD"]),
-    );
+  if (hasLocalChanges) {
+    await runGit(["-C", vaultRoot, "add", "-A"]);
+    await runGit(["-C", vaultRoot, "commit", "-m", "chore: update vault from LINE"]);
+  }
 
-    if (ahead > 0) {
-      await runGit(["-C", vaultRoot, "push"]);
-      return {
-        handled: true,
-        ok: true,
-        action: "git_push",
-        message: `未pushのコミット${ahead}件をGitHubへpushしました。`,
-      };
-    }
+  // iPhone / Mac が先にpushしていても衝突しないよう、pushの前に必ずリモートを取り込む。
+  // 衝突したら自動で直そうとせず、rebaseを取り消して人間に知らせる。
+  try {
+    await runGit(["-C", vaultRoot, "pull", "--rebase"]);
+  } catch (error) {
+    await runGit(["-C", vaultRoot, "rebase", "--abort"]).catch(() => "");
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "git_push",
+      message: `同期が衝突しました。手動確認が必要です。\n${message}`,
+    };
+  }
 
+  const ahead = parseAheadCount(
+    await runGit(["-C", vaultRoot, "rev-list", "--left-right", "--count", "@{u}...HEAD"]),
+  );
+
+  if (ahead === 0) {
     return {
       handled: true,
       ok: true,
@@ -147,15 +158,14 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
     };
   }
 
-  await runGit(["-C", vaultRoot, "add", "-A"]);
-  await runGit(["-C", vaultRoot, "commit", "-m", "chore: update vault from LINE"]);
   await runGit(["-C", vaultRoot, "push"]);
-
   return {
     handled: true,
     ok: true,
     action: "git_push",
-    message: "GitHubへpushしました。",
+    message: hasLocalChanges
+      ? "GitHubへpushしました。"
+      : `未pushのコミット${ahead}件をGitHubへpushしました。`,
   };
 }
 
