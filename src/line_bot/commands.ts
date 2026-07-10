@@ -119,43 +119,106 @@ function parseAheadCount(output: string): number {
   return Number.parseInt(ahead, 10) || 0;
 }
 
+/** /push がコミットしてよいVault内パス。正本（00_COREなど）は絶対に含めない。 */
+const PUSH_ALLOWLIST = [
+  "01_DAILY_OPERATIONS/daily_logs",
+  "6_システム/openqlow_logs",
+];
+
+function isAllowlistedPath(p: string): boolean {
+  return PUSH_ALLOWLIST.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
+}
+
+interface VaultChanges {
+  allowed: string[];
+  others: string[];
+}
+
+function partitionVaultStatus(statusOutput: string): VaultChanges {
+  const allowed: string[] = [];
+  const others: string[] = [];
+  for (const line of statusOutput.split("\n")) {
+    if (!line.trim()) continue;
+    // porcelain形式: `XY <path>`（リネームは `XY <old> -> <new>`）
+    const rawPath = line.slice(3).trim();
+    const paths = rawPath.split(" -> ").map(p => p.replace(/^"|"$/g, ""));
+    const displayPath = paths[paths.length - 1]!;
+    if (paths.every(isAllowlistedPath)) {
+      allowed.push(displayPath);
+    } else {
+      others.push(displayPath);
+    }
+  }
+  return { allowed, others };
+}
+
 async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandResult> {
   const vaultRoot = opts.vaultRoot ?? defaultVaultRoot();
   const runGit = opts.runGit ?? defaultRunGit;
-  const status = await runGit(["-C", vaultRoot, "status", "--porcelain"]);
+  const now = opts.now ?? new Date();
 
-  if (status.trim() === "") {
-    const ahead = parseAheadCount(
-      await runGit(["-C", vaultRoot, "rev-list", "--left-right", "--count", "@{u}...HEAD"]),
-    );
+  const status = await runGit([
+    "-C", vaultRoot, "-c", "core.quotepath=false", "status", "--porcelain",
+  ]);
+  const { allowed, others } = partitionVaultStatus(status);
+  const warning = others.length > 0
+    ? `⚠️ メモ以外の変更が${others.length}件あります。これらはpushしていません。`
+    : "";
 
-    if (ahead > 0) {
-      await runGit(["-C", vaultRoot, "push"]);
-      return {
-        handled: true,
-        ok: true,
-        action: "git_push",
-        message: `未pushのコミット${ahead}件をGitHubへpushしました。`,
-      };
-    }
+  if (allowed.length > 0) {
+    await runGit(["-C", vaultRoot, "add", "-A", "--", ...PUSH_ALLOWLIST]);
+    await runGit([
+      "-C", vaultRoot, "commit", "-m",
+      `memo: LINE追記 ${formatDateInTimeZone(now)} (${allowed.length}件)`,
+    ]);
+  }
 
+  const ahead = parseAheadCount(
+    await runGit(["-C", vaultRoot, "rev-list", "--left-right", "--count", "@{u}...HEAD"]),
+  );
+
+  if (ahead === 0 && allowed.length === 0) {
     return {
       handled: true,
       ok: true,
       action: "git_push",
-      message: "GitHubへpushする変更はありません。",
+      message: ["GitHubへpushする変更はありません。", warning].filter(Boolean).join("\n"),
     };
   }
 
-  await runGit(["-C", vaultRoot, "add", "-A"]);
-  await runGit(["-C", vaultRoot, "commit", "-m", "chore: update vault from LINE"]);
-  await runGit(["-C", vaultRoot, "push"]);
+  try {
+    // メモ以外の未コミット変更は --autostash で退避し、コミットせずに元へ戻す
+    await runGit(["-C", vaultRoot, "pull", "--rebase", "--autostash", "origin", "main"]);
+  } catch (error) {
+    try {
+      await runGit(["-C", vaultRoot, "rebase", "--abort"]);
+    } catch {
+      // rebaseが始まっていなければabortは失敗するが、その場合は何もしなくてよい
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "git_push",
+      message: `⚠️ 同期が衝突しました。Macで解決してください。\n${message}`,
+    };
+  }
+
+  await runGit(["-C", vaultRoot, "push", "origin", "HEAD"]);
+
+  const lines = allowed.length > 0
+    ? [
+        `GitHubへpushしました。（メモ${allowed.length}件）`,
+        ...allowed.map(f => `- ${f}`),
+        warning,
+      ]
+    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, warning];
 
   return {
     handled: true,
     ok: true,
     action: "git_push",
-    message: "GitHubへpushしました。",
+    message: lines.filter(Boolean).join("\n"),
   };
 }
 
