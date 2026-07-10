@@ -1,0 +1,6 @@
+{
+  "projectId": "4a51ce1e-d533-453b-91d9-690c66569a81",
+  "shape": "handcrafted-brand-kit",
+  "localDir": "ds-bundle",
+  "note": "openqlow はUIコンポーネントを持たないため、FLATUP GYM のブランドキット（トークン・ガイドライン・プレビュー）を手組みで ds-bundle/ に作成して同期している。コンバータは使っていない。"
+}

@@ -1,0 +1,24 @@
+/* FLATUP GYM — タイポグラフィトークン
+   丸ゴシック（Zen Maru Gothic, 同梱）で「優しい・温かい」を体現。
+   角ゴシックや明朝は使わない。 */
+:root {
+  --fu-font: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "BIZ UDGothic",
+             "Yu Gothic", "Noto Sans JP", sans-serif;
+
+  /* サイズスケール */
+  --fu-text-display: 2.25rem;   /* LPヒーロー見出し */
+  --fu-text-h1: 1.75rem;
+  --fu-text-h2: 1.375rem;
+  --fu-text-h3: 1.125rem;
+  --fu-text-body: 1rem;
+  --fu-text-small: 0.875rem;
+  --fu-text-caption: 0.75rem;
+
+  /* 行間 — 日本語はゆったりめ */
+  --fu-leading-heading: 1.4;
+  --fu-leading-body: 1.8;
+
+  /* ウェイト（同梱フォントは 400 / 700 の2種のみ） */
+  --fu-weight-regular: 400;
+  --fu-weight-bold: 700;
+}

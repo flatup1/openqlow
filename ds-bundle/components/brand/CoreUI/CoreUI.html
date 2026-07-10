@@ -1,0 +1,64 @@
+<!-- @dsCard group="Brand" name="基本UI" subtitle="ボタン / カード / バッジ / 入力欄 / お知らせ" -->
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>FLATUP GYM — 基本UI</title>
+<link rel="stylesheet" href="../../../styles.css">
+<style>
+  .wrap { padding: var(--fu-space-6); max-width: var(--fu-content-width); margin: 0 auto; display: grid; gap: var(--fu-space-5); }
+  .cluster { display: flex; flex-wrap: wrap; gap: var(--fu-space-3); align-items: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>基本UI</h1>
+
+  <div class="fu-card">
+    <h3>ボタン — 必ずピル型</h3>
+    <div class="cluster">
+      <a class="fu-btn fu-btn--primary" href="#">500円で体験してみる</a>
+      <a class="fu-btn fu-btn--ghost" href="#">スケジュールを見る</a>
+      <a class="fu-btn fu-btn--support" href="#">LINEで相談する</a>
+      <a class="fu-btn fu-btn--primary fu-btn--small" href="#">小さいボタン</a>
+    </div>
+  </div>
+
+  <div class="fu-card">
+    <h3>バッジ — クラス種別の色分け</h3>
+    <div class="cluster">
+      <span class="fu-badge fu-badge--kids">キッズ</span>
+      <span class="fu-badge fu-badge--ladies">レディース</span>
+      <span class="fu-badge fu-badge--general">一般・MMA</span>
+      <span class="fu-badge">おしらせ</span>
+    </div>
+  </div>
+
+  <div class="fu-card" style="max-width: var(--fu-content-narrow)">
+    <span class="fu-badge fu-badge--ladies">レディースクラス</span>
+    <h2 style="margin-top: var(--fu-space-3)">はじめてでも、大丈夫。</h2>
+    <p style="color: var(--fu-ink-soft); margin-top: 0">
+      痛くない・怖くないから始めるキックボクシング。まずは気軽に体験から。
+    </p>
+    <div class="cluster">
+      <a class="fu-btn fu-btn--primary" href="#">500円で体験してみる</a>
+      <a class="fu-btn fu-btn--ghost fu-btn--small" href="#">くわしく見る</a>
+    </div>
+  </div>
+
+  <div class="fu-card fu-card--warm" style="max-width: var(--fu-content-narrow)">
+    <h3>体験のご予約</h3>
+    <label class="fu-label" for="name">お名前</label>
+    <input class="fu-input" id="name" placeholder="山田 花子" style="margin-bottom: var(--fu-space-4)">
+    <label class="fu-label" for="day">ご希望の曜日</label>
+    <input class="fu-input" id="day" placeholder="例: 土曜の14:00" style="margin-bottom: var(--fu-space-4)">
+    <button class="fu-btn fu-btn--primary" type="button">この内容で相談する</button>
+  </div>
+
+  <div class="fu-note" style="max-width: var(--fu-content-narrow)">
+    <span>🌸</span>
+    <span>日曜・祝日はお休みです。土曜のレディースクラス（14:00）でしたらご案内できます。ご希望の曜日だけ教えてくださいね。</span>
+  </div>
+</div>
+</body>
+</html>
