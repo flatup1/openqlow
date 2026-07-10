@@ -230,6 +230,8 @@ async function testHelpCommandShowsJuniorHighModeReply(): Promise<void> {
   assert.match(result.message, /修正 文/);
   assert.match(result.message, /画像 1/);
   assert.match(result.message, /やめる/);
+  assert.match(result.message, /\/追記 内容/);
+  assert.match(result.message, /\/push/);
   assert.doesNotMatch(result.message, /FG-\d{8}-\d{3}/);
 }
 
