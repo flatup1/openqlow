@@ -67,6 +67,16 @@ async function testAppendCommandRequiresBody(): Promise<void> {
   assert.match(result.message, /追記する本文/);
 }
 
+const STATUS_CALL = ["-C", "/tmp/vault", "-c", "core.quotepath=false", "status", "--porcelain"];
+const REV_LIST_CALL = ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"];
+const PULL_CALL = ["-C", "/tmp/vault", "pull", "--rebase", "--autostash", "origin", "main"];
+const PUSH_CALL = ["-C", "/tmp/vault", "push", "origin", "HEAD"];
+const ADD_ALLOWLIST_CALL = [
+  "-C", "/tmp/vault", "add", "-A", "--",
+  "01_DAILY_OPERATIONS/daily_logs",
+  "6_システム/openqlow_logs",
+];
+
 async function testPushCommandSkipsWhenNoChanges(): Promise<void> {
   const calls: string[][] = [];
   const result = await executeLineCommand("/push", {
@@ -82,10 +92,7 @@ async function testPushCommandSkipsWhenNoChanges(): Promise<void> {
   assert.equal(result.ok, true);
   assert.equal(result.action, "git_push");
   assert.match(result.message, /変更はありません/);
-  assert.deepEqual(calls, [
-    ["-C", "/tmp/vault", "status", "--porcelain"],
-    ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
-  ]);
+  assert.deepEqual(calls, [STATUS_CALL, REV_LIST_CALL]);
 }
 
 async function testPushCommandPushesCleanAheadCommit(): Promise<void> {
@@ -104,11 +111,7 @@ async function testPushCommandPushesCleanAheadCommit(): Promise<void> {
   assert.equal(result.ok, true);
   assert.equal(result.action, "git_push");
   assert.match(result.message, /未pushのコミット1件/);
-  assert.deepEqual(calls, [
-    ["-C", "/tmp/vault", "status", "--porcelain"],
-    ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
-    ["-C", "/tmp/vault", "push"],
-  ]);
+  assert.deepEqual(calls, [STATUS_CALL, REV_LIST_CALL, PULL_CALL, PUSH_CALL]);
 }
 
 async function testPushCommandCommitsAndPushesChanges(): Promise<void> {
@@ -116,24 +119,98 @@ async function testPushCommandCommitsAndPushesChanges(): Promise<void> {
   const result = await executeLineCommand("/push", {
     runGit: async (args) => {
       calls.push(args);
-      if (args.includes("status")) return " M DAILY-BRIEF.md\n";
-      if (args.includes("commit")) return "[main abc123] chore: update vault from LINE\n";
+      if (args.includes("status")) return " M 01_DAILY_OPERATIONS/daily_logs/2026-07-10.md\n";
+      if (args.includes("rev-list")) return "0\t1\n";
+      if (args.includes("commit")) return "[main abc123] memo\n";
       if (args.includes("push")) return "pushed\n";
       return "";
     },
     vaultRoot: "/tmp/vault",
+    now: new Date("2026-07-10T00:00:00.000Z"),
   });
 
   assert.equal(result.handled, true);
   assert.equal(result.ok, true);
   assert.equal(result.action, "git_push");
   assert.match(result.message, /GitHubへpushしました/);
+  assert.match(result.message, /01_DAILY_OPERATIONS\/daily_logs\/2026-07-10\.md/);
+  assert.doesNotMatch(result.message, /メモ以外の変更/);
   assert.deepEqual(calls, [
-    ["-C", "/tmp/vault", "status", "--porcelain"],
-    ["-C", "/tmp/vault", "add", "-A"],
-    ["-C", "/tmp/vault", "commit", "-m", "chore: update vault from LINE"],
-    ["-C", "/tmp/vault", "push"],
+    STATUS_CALL,
+    ADD_ALLOWLIST_CALL,
+    ["-C", "/tmp/vault", "commit", "-m", "memo: LINE追記 2026-07-10 (1件)"],
+    REV_LIST_CALL,
+    PULL_CALL,
+    PUSH_CALL,
   ]);
+}
+
+async function testPushCommandExcludesNonAllowlistedChanges(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) {
+        return [
+          " M 01_DAILY_OPERATIONS/daily_logs/2026-07-10.md",
+          " M 00_CORE/FLATUPGYM_AI_HOME.md",
+          "?? DAILY-BRIEF.md",
+          "",
+        ].join("\n");
+      }
+      if (args.includes("rev-list")) return "0\t1\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+    now: new Date("2026-07-10T00:00:00.000Z"),
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.message, /GitHubへpushしました/);
+  assert.match(result.message, /⚠️ メモ以外の変更が2件あります。これらはpushしていません。/);
+  // add はallowlistのパス限定でだけ呼ばれる（-A 単独は絶対に呼ばれない）
+  const addCalls = calls.filter(args => args.includes("add"));
+  assert.deepEqual(addCalls, [ADD_ALLOWLIST_CALL]);
+}
+
+async function testPushCommandOnlyNonAllowlistedChangesDoesNotPush(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) return " M 00_CORE/FLATUPGYM_AI_HOME.md\n";
+      if (args.includes("rev-list")) return "0\t0\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.message, /変更はありません/);
+  assert.match(result.message, /⚠️ メモ以外の変更が1件あります/);
+  assert.deepEqual(calls, [STATUS_CALL, REV_LIST_CALL]);
+}
+
+async function testPushCommandAbortsOnRebaseConflict(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) return " M 01_DAILY_OPERATIONS/daily_logs/2026-07-10.md\n";
+      if (args.includes("rev-list")) return "0\t1\n";
+      if (args.includes("pull")) throw new Error("CONFLICT (content): Merge conflict");
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+    now: new Date("2026-07-10T00:00:00.000Z"),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.action, "git_push");
+  assert.match(result.message, /⚠️ 同期が衝突しました。Macで解決してください。/);
+  assert.ok(calls.some(args => args.includes("rebase") && args.includes("--abort")));
+  assert.ok(!calls.some(args => args[2] === "push"));
 }
 
 async function testNonCommandIsNotHandled(): Promise<void> {
@@ -258,6 +335,9 @@ await testAppendCommandRequiresBody();
 await testPushCommandSkipsWhenNoChanges();
 await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
+await testPushCommandExcludesNonAllowlistedChanges();
+await testPushCommandOnlyNonAllowlistedChangesDoesNotPush();
+await testPushCommandAbortsOnRebaseConflict();
 await testNonCommandIsNotHandled();
 await testHelpCommandShowsJuniorHighModeReply();
 await testRevisionCommandUpdatesPendingDraft();
