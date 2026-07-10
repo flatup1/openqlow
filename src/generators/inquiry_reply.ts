@@ -71,6 +71,8 @@ export interface InquiryReplies {
   followUp3d: string;
   /** 難条件の相談（途中参加など）への返信。該当する問い合わせの時だけ生成 */
   obstacleConsult?: string;
+  /** 退会・休会・違約金の相談への返信。該当する問い合わせの時だけ生成 */
+  membershipConsult?: string;
 }
 
 export interface InquiryReplyResult {
@@ -108,8 +110,22 @@ function detectAttribute(input: InquiryInput): Attribute {
   return "beginner";
 }
 
+// 退会・休会・違約金は「既存会員のご相談」で、体験へ誘導する見込み客ではない。
+// 「入会して半年ですが違約金は？」のような文（「入会」を含む）を体験誘導へ化けさせないための判定。
+function cancellationConcern(text: string): boolean {
+  return matchesAny(text, [/退会|解約|辞めたい|やめたい|違約金|ペナルティ/]);
+}
+function suspensionConcern(text: string): boolean {
+  return matchesAny(text, [/休会|休部|一時停止/]);
+}
+function membershipConcern(text: string): boolean {
+  return cancellationConcern(text) || suspensionConcern(text);
+}
+
 function detectTemperature(input: InquiryInput): Temperature {
   const text = input.message;
+  // 退会・休会・違約金の相談は体験誘導の「高温度」にしない（既存会員のご相談）。
+  if (membershipConcern(text)) return "mid";
   const hot = matchesAny(text, [
     /体験(した|を|希望|予約|に行|できま)/,
     /予約/,
@@ -126,6 +142,8 @@ function detectTemperature(input: InquiryInput): Temperature {
 function detectPurpose(input: InquiryInput): string {
   if (input.purpose && input.purpose.trim()) return input.purpose.trim();
   const text = input.message;
+  if (cancellationConcern(text)) return "退会・違約金のご相談";
+  if (suspensionConcern(text)) return "休会のご相談";
   if (matchesAny(text, [/ダイエット|痩せ|やせ|減量|体型/])) return "ダイエット";
   if (matchesAny(text, [/運動不足|体力|健康|なまっ/])) return "運動不足";
   if (matchesAny(text, [/護身|身を守|防犯|危ない目/])) return "護身";
@@ -298,11 +316,63 @@ function buildBookingReply(): string {
   ].join("\n");
 }
 
+// canon の案内文には社内向けの「正本は …」注記が付く。顧客返信では取り除く。
+function customerGuide(canonText: string): string {
+  return canonText.replace(/。?\s*正本は[^。]*$/u, "").trim();
+}
+
+// 退会・休会・違約金の相談への返信。事実は canon（cancellation / suspension）を参照し、
+// 該当判定は断定せず担当スタッフへつなぐ。体験（trial）誘導はしない。
+function buildMembershipReplies(kind: "cancellation" | "suspension"): InquiryReplies {
+  const guide = customerGuide(
+    kind === "suspension" ? FLATUP_INFO.suspension : FLATUP_INFO.cancellation,
+  );
+  const topic = kind === "suspension" ? "休会" : "退会・違約金";
+  const opener = `${topic}についてお問い合わせいただきありがとうございます😊`;
+  const reassure =
+    kind === "suspension"
+      ? "ご事情に合わせてご案内できますので、どうぞご安心ください。"
+      : "無理に引き止めることはいたしませんので、どうぞご安心ください。";
+  const handoff =
+    kind === "suspension"
+      ? "手続きの詳しいご案内は担当スタッフより改めていたしますね。"
+      : "該当するかどうかはお一人おひとりのご契約内容によりますので、最終的なご案内は担当スタッフが確認いたします。";
+
+  const guidanceReply = composeSigned([opener, reassure, `${guide}。`, handoff]);
+  const short = composeSigned([opener, `${guide}。`, "詳しくは担当スタッフより丁寧にご案内しますね。"]);
+  const followUp24h = composeSigned([
+    "先日はお問い合わせありがとうございました😊",
+    "その後、ご不明な点はございませんか？",
+    "ご不安なことがあれば、いつでもお気軽にお知らせくださいね。",
+  ]);
+  const followUp3d = composeSigned([
+    "その後、いかがでしょうか😊",
+    "ご心配なことがあれば担当スタッフが丁寧にご案内しますので、遠慮なくお声がけくださいね。",
+  ]);
+
+  return {
+    polite: guidanceReply,
+    short,
+    bookingFocused: guidanceReply, // 退会・休会・違約金の相談に体験誘導はしない
+    followUp24h,
+    followUp3d,
+    membershipConsult: guidanceReply,
+  };
+}
+
 function buildReplies(
   input: InquiryInput,
   classification: InquiryClassification,
   guidance: string,
 ): InquiryReplies {
+  // 退会・休会・違約金の相談は、体験誘導ではなく canon ベースの案内＋人間確認へ。
+  const membershipKind = cancellationConcern(input.message)
+    ? "cancellation"
+    : suspensionConcern(input.message)
+      ? "suspension"
+      : null;
+  if (membershipKind) return buildMembershipReplies(membershipKind);
+
   const { attribute } = classification;
   const empathy = empathyLine(attribute);
   const strength = strengthLine(attribute);
@@ -389,6 +459,11 @@ export function generateInquiryReply(input: InquiryInput): InquiryReplyResult {
     `日程は ${FLATUP_INFO.noBooking} の点にご注意ください。`,
     "料金・スケジュールは正本（FLATUP_INFO）の値です。変更があれば正本を更新してください。",
   ];
+  if (membershipConcern(input.message)) {
+    notes.push(
+      "⚠ 退会・休会・違約金は断定せず、担当スタッフが契約内容を確認してからご案内してください。",
+    );
+  }
 
   return { classification, replies, bookingGuidance, notes };
 }
