@@ -8,11 +8,29 @@
 
 import { FLATUP_CANON as C } from "./canon.js";
 
-export type Intent = "price" | "access" | "classes" | "hours" | "trial" | "greeting" | "unknown";
+export type Intent =
+  | "price"
+  | "access"
+  | "classes"
+  | "hours"
+  | "trial"
+  | "greeting"
+  | "cancellation"
+  | "suspension"
+  | "unknown";
+
+// canon の案内文には社内向けの「正本は …」注記が付く。顧客返信では取り除く。
+function customerGuide(canonText: string): string {
+  return canonText.replace(/。?\s*正本は[^。]*$/u, "").trim();
+}
 
 /** 問い合わせ文からおおまかな意図を判定する（優先度順）。 */
 export function detectIntent(message: string): Intent {
   const t = message.normalize("NFKC");
+  // 退会・休会・違約金は最優先で拾う。「入会して半年ですが違約金は？」のように
+  // 「入会」を含む文が trial（体験）へ化けるのを防ぐため、trial 判定より前に置く。
+  if (/退会|解約|辞めたい|やめたい|違約金|ペナルティ/.test(t)) return "cancellation";
+  if (/休会|休部|一時停止/.test(t)) return "suspension";
   if (/料金|値段|月会費|会費|費用|いくら|金額|価格/.test(t)) return "price";
   if (/場所|住所|どこ|アクセス|駅|行き方|道順|駐車/.test(t)) return "access";
   if (/クラス|種目|メニュー|ボクシング|キック|柔術|ムエタイ|レスリング|何ができ/.test(t)) return "classes";
@@ -54,6 +72,18 @@ export function fallbackReply(message: string): string {
         "体験のお問い合わせありがとうございます😊 初心者の方も安心の、世界一優しい格闘技ジムです。" +
         `${C.trialFirst}でお試しいただけますよ。` +
         "ご希望の曜日だけ教えていただけますか？"
+      );
+    case "cancellation":
+      return (
+        "ご連絡ありがとうございます😊 退会・違約金についてのご質問ですね。無理に引き止めることはいたしませんので、どうぞご安心ください。" +
+        `${customerGuide(C.cancellation)}。` +
+        "該当するかどうかはお一人おひとりのご契約内容によりますので、正確なところは担当スタッフが確認してご案内いたしますね。"
+      );
+    case "suspension":
+      return (
+        "ご連絡ありがとうございます😊 休会についてのご質問ですね。" +
+        `${customerGuide(C.suspension)}。` +
+        "ご事情に合わせてご案内できますので、詳しくは担当スタッフにおつなぎしますね。安心してくださいね😊"
       );
     case "greeting":
       return (

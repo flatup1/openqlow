@@ -15,8 +15,26 @@ assert(detectIntent("体験したいです") === "trial", "trial intent");
 assert(detectIntent("こんにちは") === "greeting", "greeting intent");
 assert(detectIntent("あの、ちょっと聞きたくて") === "unknown", "unknown intent");
 
+// 退会・休会・違約金：正しい意図で拾い、体験(trial)へ化けさせない（#5と同じバグの回帰防止）
+assert(detectIntent("退会したいです") === "cancellation", "退会 -> cancellation");
+assert(detectIntent("入会して半年ですが違約金ありますか？") === "cancellation", "違約金 -> cancellation (not trial)");
+assert(detectIntent("解約したい") === "cancellation", "解約 -> cancellation");
+assert(detectIntent("休会はできますか？") === "suspension", "休会 -> suspension");
+
+// 退会返信：退会届・翌月末退会を案内し、体験のお誘いにしない／断定せず人間確認へ
+const cancelReply = fallbackReply("退会したいです");
+assert(cancelReply.includes("退会届"), "cancellation reply mentions 退会届 (from canon)");
+assert(cancelReply.includes("翌月末"), "cancellation reply mentions 翌月末退会");
+assert(!cancelReply.includes("初回体験500円"), "cancellation reply is NOT a trial invite");
+assert(cancelReply.includes("担当スタッフ"), "cancellation reply hands off to staff (no 断定)");
+// 「入会」を含む違約金の質問も体験に化けない
+assert(!fallbackReply("入会して半年ですが違約金ありますか？").includes("初回体験500円"), "違約金 question is not a trial invite");
+// 休会返信
+assert(fallbackReply("休会はできますか？").includes("休会"), "suspension reply mentions 休会");
+assert(fallbackReply("休会はできますか？").includes("担当スタッフ"), "suspension reply hands off to staff");
+
 // すべての意図でフォールバック返信が「優しさゲート」を通る（沈黙しない＝good/perfect）
-const samples = ["料金は？", "場所はどこ？", "クラス教えて", "今日やってる？", "体験したい", "こんにちは", "ええと"];
+const samples = ["料金は？", "場所はどこ？", "クラス教えて", "今日やってる？", "体験したい", "こんにちは", "ええと", "退会したい", "違約金はいくら？", "休会できますか"];
 for (const m of samples) {
   const q = scoreResponseQuality(fallbackReply(m));
   assert(q.decision === "good" || q.decision === "perfect", `fallback for "${m}" must pass gate, got ${q.decision} (${q.total})`);
