@@ -142,19 +142,8 @@ extra fingers, extra arms, deformed gloves, asymmetrical eyes, cropped body
 
 ### 拡張（PR #51 マージ後の次コードタスク）
 
-1. **素材庫**（LoRA学習・参照用。ランタイムとは分離）を `assets/character/flappy/` に置く:
-
-```text
-assets/character/flappy/
-├── reference/   … character_sheet / expression_sheet / color_palette
-└── poses/
-    ├── idle/      idle_01, idle_02, blink
-    ├── nervous/   nervous_01, nervous_02, look_away
-    ├── walk/      walk_01〜04
-    ├── punch/     anticipation, punch_contact, followthrough, recovery
-    ├── fall/      miss, falling, floor, standup
-    └── emotional/ sad, relieved, smile, determined, help_newcomer
-```
+1. **素材庫**（LoRA学習・参照用。ランタイムとは分離）を `assets/characters/flappy/` に置く。
+   ディレクトリ構成・ポーズ命名の正本は **`FLATUP_ANIMATION_BIBLE.md` §27–28**（bible / reference / poses / approved の4層。`approved/` 外の画像は本番使用禁止）
 
 2. **1動作=最低4段階**への改修（punch1/2 の交互だけでは短編に足りない）:
    - パンチ: 構える → 腕を引く → 当たる → 振り抜く → 戻る
