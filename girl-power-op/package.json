@@ -4,7 +4,8 @@
   "private": true,
   "description": "キャラ画像1枚から30秒のアニメOP風動画(BGM付き)を自動生成するツール",
   "scripts": {
-    "video": "node render.js"
+    "video": "node render.js",
+    "video:vertical": "node render.js --vertical"
   },
   "dependencies": {
     "playwright": "1.56.1"
