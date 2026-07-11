@@ -16,21 +16,22 @@
    6. draw(t)               : ★心臓部★ 時刻 t の画面を組み立てる
    7. renderAudio()         : BGM をブラウザの中で作曲して WAV にする
 
-  ▼ カスタマイズポイント(検索して書きかえてみよう)
-   ・キャラ画像   → 同じフォルダの chara.png を差しかえるだけ
-   ・動画の長さ   → 「DUR = 30」の数字(秒)
-   ・カットの切替 → 「C1 = 0, C2 = 4.5, …」(各カットの開始秒)
-   ・画面の文字   → 「popText(」で検索(GIRL POWER! など)
+  ▼ カスタマイズポイント
+   ・物語の流れ   → story.js を編集(シーンの順番・長さ・文字)★まずはここ
+   ・キャラ画像   → chara.png を差しかえる / poses/ にポーズ画像を追加
    ・色           → 「palette」のコメントの下(#ff5fa2 など)
    ・曲のテンポ   → 「60 / 160」の 160(BPM。大きいほど速い)
+   ・サイト埋め込み → index.html?loop=1 をブラウザで開くとループ再生
   ============================================================
 -->
-<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}canvas{display:block}</style>
+<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}canvas{display:block;max-width:100%;height:auto;margin:0 auto}</style>
 <canvas id="cv" width="1280" height="720"></canvas>
+<script src="story.js"></script>
 <script>
 // 画面サイズは URL で変えられる(例: index.html?w=1080&h=1920 で縦型スマホ動画)
+// ?loop=1 を付けてブラウザで開くと、サイト埋め込み用のループ再生になる
 const qs = new URLSearchParams(location.search);
-const W = +qs.get('w') || 1280, H = +qs.get('h') || 720, DUR = 30;
+const W = +qs.get('w') || 1280, H = +qs.get('h') || 720;
 const VERT = H > W; // 縦長レイアウトのときは文字などの置き場所を変える
 const cv = document.getElementById('cv');
 cv.width = W; cv.height = H;
@@ -259,7 +260,7 @@ function vignette() {
   g.addColorStop(1, 'rgba(40,0,40,.28)');
   cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
 }
-function popText(txt, x, y, size, fill, t0, t, rot) {
+function popText(txt, x, y, size, fill, t0, t, rot, maxW) {
   const life = t - t0;
   if (life < 0) return;
   const s = life < .35 ? easeOut(life / .35) * 1.25 - .25 * (life / .35) : 1 + Math.sin(t * 6) * .02;
@@ -268,6 +269,11 @@ function popText(txt, x, y, size, fill, t0, t, rot) {
   cx2d.rotate(rot || 0);
   cx2d.scale(Math.max(0.001, s), Math.max(0.001, s));
   cx2d.font = `900 ${size}px 'Arial Black', sans-serif`;
+  // 長い文字は画面からはみ出さないように自動で縮める
+  if (maxW) {
+    const tw = cx2d.measureText(txt).width;
+    if (tw > maxW) { const f = maxW / tw; cx2d.scale(f, f); }
+  }
   cx2d.textAlign = 'center'; cx2d.textBaseline = 'middle';
   cx2d.lineJoin = 'round';
   cx2d.lineWidth = size * .28; cx2d.strokeStyle = INK;
@@ -279,62 +285,78 @@ function popText(txt, x, y, size, fill, t0, t, rot) {
   cx2d.restore();
 }
 
-// ---------- cut boundaries ----------
-const C1 = 0, C2 = 4.5, C3 = 9, C4 = 13.5, C5 = 18, C6 = 22.5;
+// ---------- 物語(シナリオ) ----------
+// story.js の window.STORY がシーンの並びを決める。無ければ下の既定の物語。
 const BEAT = 60 / 160; // 160 bpm
+const DEFAULT_STORY = [
+  { type: 'entrance', sec: 4.5, text: 'HERE SHE COMES!' },
+  { type: 'punch',    sec: 4.5, text: 'POW!' },
+  { type: 'closeup',  sec: 4.5, text: 'FIGHT!' },
+  { type: 'jump',     sec: 4.5, text: 'JUMP!' },
+  { type: 'sky',      sec: 4.5, text: 'SO STRONG!' },
+  { type: 'finale',   sec: 7.5, title: 'GIRL POWER!', subtitle: 'KICKBOXING GIRL' },
+];
+const STORY = (window.STORY && window.STORY.length) ? window.STORY : DEFAULT_STORY;
+{ let acc = 0; for (const s of STORY) { s.start = acc; acc += s.sec; } }
+const DUR = STORY[STORY.length - 1].start + STORY[STORY.length - 1].sec;
+window.DUR = DUR;
+function sceneAt(time) {
+  let sc = STORY[STORY.length - 1];
+  for (const s of STORY) if (time < s.start + s.sec) { sc = s; break; }
+  return sc;
+}
 
-// hits in cut2: every 2 beats
-const HITS = [];
-for (let h = C2 + BEAT; h < C3 - .3; h += BEAT * 2) HITS.push(h);
-// hops in cut4
-const HOPS = [C4 + .4, C4 + 1.7, C4 + 3.0];
+// ---------- シーンの種類(テンプレート) ----------
+// それぞれ「そのシーンの絵の作り方」。引数は
+//   t  = 動画全体の時刻(秒) / lt = シーン内の時刻 / p = シーンの進み具合 0〜1 / sc = story.js の1行
+const SCENES = {
 
-function draw(t) {
-  cx2d.clearRect(0, 0, W, H);
-
-  if (t < C2) {
-    // ---- CUT 1: star iris reveal, zoom-in entrance ----
-    const p = (t - C1) / (C2 - C1);
-    sunburst(t, PINK, PINK2, .35);
+  // 登場: ズームインしながらキャラが現れる
+  entrance(t, lt, p, sc) {
+    sunburst(t, sc.c1 || PINK, sc.c2 || PINK2, .35);
     halftone(.35);
-    const z = lerp(.55, 1, easeOut(clamp(p * 1.6, 0, 1)));
-    const drop = (1 - easeOut(clamp(p * 1.6, 0, 1))) * -260;
-    cardDraw(W/2, H * (VERT ? .14 : .07) + drop, z, Math.sin(t * 2) * .015, 1, 1, pose('idle'));
-    if (p > .45) popText('HERE SHE', VERT ? W/2 : W * .19, VERT ? H * .05 : H * .30, 52, YEL, C1 + (C2-C1) * .45, t, -.06);
-    if (p > .45) popText('COMES!', VERT ? W/2 : W * .21, VERT ? H * .105 : H * .42, 52, YEL, C1 + (C2-C1) * .5, t, -.06);
-    starIris(t / 1.1);
+    const e = easeOut(clamp(p * 1.6, 0, 1));
+    cardDraw(W/2, H * (VERT ? .14 : .07) + (1 - e) * -260, lerp(.55, 1, e), Math.sin(t * 2) * .015, 1, 1, pose('idle'));
+    const txt = sc.text !== undefined ? sc.text : 'HERE SHE COMES!';
+    if (txt && p > .45) {
+      const i = txt.lastIndexOf(' ');
+      const l1 = i > 0 ? txt.slice(0, i) : txt, l2 = i > 0 ? txt.slice(i + 1) : '';
+      popText(l1, VERT ? W/2 : W * .19, VERT ? H * .05 : H * .30, 52, YEL, sc.start + sc.sec * .45, t, -.06, VERT ? W * .9 : W * .34);
+      if (l2) popText(l2, VERT ? W/2 : W * .21, VERT ? H * .105 : H * .42, 52, YEL, sc.start + sc.sec * .5, t, -.06, VERT ? W * .9 : W * .34);
+    }
+  },
 
-  } else if (t < C3) {
-    // ---- CUT 2: punch combo with heart impacts ----
-    sunburst(t, YEL, YEL2, -.5);
+  // パンチ連打: ビートに合わせてポーズが切りかわり、ハートが飛び散る
+  punch(t, lt, p, sc) {
+    sunburst(t, sc.c1 || YEL, sc.c2 || YEL2, -.5);
     halftone(.3);
-    let shx = 0, shy = 0, sq = 0;
-    let lastHit = -1, lastIdx = 0;
-    for (let i = 0; i < HITS.length; i++) if (HITS[i] <= t) { lastHit = HITS[i]; lastIdx = i; }
-    if (lastHit > 0) {
+    const hits = [];
+    for (let h = BEAT; h < sc.sec - .3; h += BEAT * 2) hits.push(sc.start + h);
+    let shx = 0, shy = 0, sq = 0, lastHit = -1, lastIdx = 0;
+    for (let i = 0; i < hits.length; i++) if (hits[i] <= t) { lastHit = hits[i]; lastIdx = i; }
+    if (lastHit >= 0) {
       const k = clamp((t - lastHit) / .22, 0, 1);
       const dir = lastIdx % 2 ? 1 : -1;
-      shx = dir * (1 - k) * 34;
-      shy = (1 - k) * -14;
-      sq = (1 - k) * .06;
+      shx = dir * (1 - k) * 34; shy = (1 - k) * -14; sq = (1 - k) * .06;
     }
     // ヒットから0.35秒間はパンチのポーズ画像に切りかわる(左右交互)
-    const punching = lastHit > 0 && t - lastHit < .35;
+    const punching = lastHit >= 0 && t - lastHit < .35;
     const img2 = punching ? pose(lastIdx % 2 ? 'punch2' : 'punch1', 'punch1') : pose('idle');
     cardDraw(W/2 + shx, H * (VERT ? .14 : .07) + shy, 1, shx * .0012, 1 + sq, 1 - sq, img2);
-    for (let i = 0; i < HITS.length; i++) {
+    const cry = sc.text !== undefined ? sc.text : 'POW!';
+    for (let i = 0; i < hits.length; i++) {
       const dir = i % 2 ? 1 : -1;
-      burst(t, HITS[i], W/2 + dir * (VERT ? 330 : 300), H * .34 + rnd(i, 6) * 60, 'heart', i);
-      if (i % 2 === 0) {
-        const life = t - HITS[i];
-        if (life > 0 && life < .5) popText('POW!', W/2 + dir * (VERT ? 250 : 380), H * (VERT ? .08 : .2), 64, PINK, HITS[i], t, dir * .12);
+      burst(t, hits[i], W/2 + dir * (VERT ? 330 : 300), H * .34 + rnd(i, 6) * 60, 'heart', i);
+      if (cry && i % 2 === 0) {
+        const life = t - hits[i];
+        if (life > 0 && life < .5) popText(cry, W/2 + dir * (VERT ? 250 : 380), H * (VERT ? .08 : .2), 64, PINK, hits[i], t, dir * .12, W * .3);
       }
     }
-    flash(lastHit > 0 ? .5 - (t - lastHit) * 3 : 0, WHT);
+    flash(lastHit >= 0 ? .5 - (t - lastHit) * 3 : 0, WHT);
+  },
 
-  } else if (t < C4) {
-    // ---- CUT 3: dramatic close-up, speed lines ----
-    const p = (t - C3) / (C4 - C3);
+  // クローズアップ: 顔にゆっくり寄る+集中線
+  closeup(t, lt, p, sc) {
     coverDraw(lerp(1.0, 1.22, easeInOut(p)), .5, lerp(.42, .36, p), pose('idle'));
     speedLines(t, .8);
     cx2d.save();
@@ -342,39 +364,43 @@ function draw(t) {
     cx2d.fillStyle = 'rgba(255,210,63,.18)';
     cx2d.fillRect(0, 0, W, H);
     cx2d.restore();
-    popText('FIGHT!', W * .5, H * .84, 92, YEL, C3 + .5, t, -.05);
+    const txt = sc.text !== undefined ? sc.text : 'FIGHT!';
+    if (txt) popText(txt, W * .5, H * .84, 92, YEL, sc.start + .5, t, -.05, W * .9);
     vignette();
+  },
 
-  } else if (t < C5) {
-    // ---- CUT 4: hops with squash & stretch ----
-    sunburst(t, '#a06bff', '#c9a6ff', .9);
+  // ジャンプ: ぴょんぴょん跳ねる(つぶれ・のび付き)
+  jump(t, lt, p, sc) {
+    sunburst(t, sc.c1 || '#a06bff', sc.c2 || '#c9a6ff', .9);
     halftone(.28);
+    const hops = [];
+    for (let h = .4; h < sc.sec - .8; h += 1.3) hops.push(sc.start + h);
     let jy = 0, sqx = 1, sqy = 1;
-    for (const h0 of HOPS) {
+    for (const h0 of hops) {
       const k = (t - h0) / .75;
       if (k >= 0 && k <= 1) {
         jy = -Math.sin(k * Math.PI) * 140;
-        if (k < .12) { sqx = 1.12; sqy = .86; }            // crouch
-        else if (k < .5) { sqx = .92; sqy = 1.10; }         // stretch up
-        else if (k > .88) { sqx = 1.14; sqy = .84; }        // land squash
+        if (k < .12) { sqx = 1.12; sqy = .86; }            // しゃがみ
+        else if (k < .5) { sqx = .92; sqy = 1.10; }         // のび
+        else if (k > .88) { sqx = 1.14; sqy = .84; }        // 着地でつぶれ
       }
     }
     // 空中にいる間はジャンプのポーズ画像に切りかわる
     cardDraw(W/2, H * (VERT ? .18 : .12) + jy, .84, Math.sin(t * 3) * .02, sqx, sqy,
              jy < -8 ? pose('jump', 'idle') : pose('idle'));
-    for (let i = 0; i < HOPS.length; i++)
-      burst(t, HOPS[i] + .72, W/2, H * .9, 'star', i + 20);
-    popText('JUMP!', W * .82, H * .25, 66, SKY, C4 + .5, t, .1);
+    for (let i = 0; i < hops.length; i++)
+      burst(t, hops[i] + .72, W/2, H * .9, 'star', i + 20);
+    const txt = sc.text !== undefined ? sc.text : 'JUMP!';
+    if (txt) popText(txt, W * .82, H * .25, 66, SKY, sc.start + .5, t, .1, W * .3);
+  },
 
-  } else if (t < C6) {
-    // ---- CUT 5: floating in the sky ----
-    const p = (t - C5) / (C6 - C5);
+  // 空: 青空をふわふわ飛ぶ
+  sky(t, lt, p, sc) {
     skyBg(t);
     const rise = lerp(H * .16, H * .02, easeInOut(p));
     cardDraw(W/2, rise + Math.sin(t * 1.8) * 12, .92, Math.sin(t * 1.2) * .04, 1, 1, pose('jump', 'idle'));
-    // floating hearts & stars
     for (let i = 0; i < 16; i++) {
-      const life = ((t - C5) * (.25 + rnd(i, 8) * .3) + rnd(i, 4)) % 1;
+      const life = (lt * (.25 + rnd(i, 8) * .3) + rnd(i, 4)) % 1;
       const x = rnd(i, 2) * W;
       const y = H - life * (H + 80);
       const s = 10 + rnd(i, 5) * 18;
@@ -382,29 +408,41 @@ function draw(t) {
       if (i % 2) heart(x, y, s, PINK); else star(x, y, s, life * 3, YEL, false);
       cx2d.restore();
     }
-    popText('SO STRONG!', VERT ? W/2 : W * .21, VERT ? H * .88 : H * .40, 54, WHT, C5 + .6, t, -.06);
+    const txt = sc.text !== undefined ? sc.text : 'SO STRONG!';
+    if (txt) popText(txt, VERT ? W/2 : W * .21, VERT ? H * .88 : H * .40, 54, WHT, sc.start + .6, t, -.06, VERT ? W * .9 : W * .34);
+  },
 
-  } else {
-    // ---- CUT 6: finale — logo + confetti ----
-    sunburst(t, PINK, YEL, .25);
+  // フィナーレ: 紙吹雪+ロゴ
+  finale(t, lt, p, sc) {
+    sunburst(t, sc.c1 || PINK, sc.c2 || YEL, .25);
     halftone(.3);
-    const p = (t - C6) / (DUR - C6);
     cardDraw(W * (VERT ? .5 : .28), H * (VERT ? .05 : .08), (VERT ? .82 : .92) + Math.min(p * .1, .05), 0, 1, 1, pose('win', 'idle'));
-    // big decorative stars
     star(W * (VERT ? .12 : .08), H * .85, 55 + Math.sin(t * 4) * 6, t, YEL, true);
     star(W * (VERT ? .88 : .56), H * (VERT ? .82 : .78), 46 + Math.cos(t * 4) * 6, -t, PINK2, true);
-    confetti(t, C6);
-    popText('GIRL POWER!', W * (VERT ? .5 : .70), H * (VERT ? .68 : .32), 88, PINK, C6 + .35, t, -.03);
-    popText('KICKBOXING GIRL', W * (VERT ? .5 : .70), H * (VERT ? .77 : .48), 40, YEL, C6 + .8, t, 0);
-    // end fade
-    if (t > DUR - .8) flash((t - (DUR - .8)) / .8, INK);
-  }
+    confetti(t, sc.start);
+    const title = sc.title !== undefined ? sc.title : 'GIRL POWER!';
+    const sub = sc.subtitle !== undefined ? sc.subtitle : 'KICKBOXING GIRL';
+    if (title) popText(title, W * (VERT ? .5 : .70), H * (VERT ? .68 : .32), 88, PINK, sc.start + .35, t, -.03, VERT ? W * .92 : W * .54);
+    if (sub) popText(sub, W * (VERT ? .5 : .70), H * (VERT ? .77 : .48), 40, YEL, sc.start + .8, t, 0, VERT ? W * .92 : W * .54);
+  },
+};
 
-  // white flash transitions at cut boundaries
-  for (const b of [C2, C3, C4, C5, C6]) {
-    const d = Math.abs(t - b);
+function draw(t) {
+  cx2d.clearRect(0, 0, W, H);
+  const sc = sceneAt(t);
+  const lt = Math.max(0, t - sc.start);
+  const p = clamp(lt / sc.sec, 0, 1);
+  (SCENES[sc.type] || SCENES.entrance)(t, lt, p, sc);
+  // シーン切りかえの白フラッシュ
+  for (const s of STORY) {
+    if (!s.start) continue;
+    const d = Math.abs(t - s.start);
     if (d < .14) flash(1 - d / .14, WHT);
   }
+  // 動画の最初は星形の穴が開いて始まる
+  starIris(t / 1.1);
+  // 最後はゆっくり暗転
+  if (t > DUR - .8) flash((t - (DUR - .8)) / .8, INK);
 }
 
 window.seek = t => { draw(t); return true; };
@@ -480,15 +518,16 @@ async function renderAudio() {
         tone('triangle', NOTE(root + 24 + semis), t0, BEAT * .38, .07, .25);
       }
     }
-    // sparkle arpeggio on cut 5
-    if (bt >= C5 - .1 && bt < C6) {
+    // sky(空)のシーンではキラキラのアルペジオを重ねる
+    if (sceneAt(bt).type === 'sky') {
       for (let s = 0; s < 8; s++)
         tone('sine', NOTE(root + 36 + [0, 4, 7, 12][s % 4]), bt + s * BEAT / 2, BEAT * .3, .05, (s % 2) ? .5 : -.5);
     }
   }
-  // crashes at cut boundaries + finale chord
-  for (const b of [C2, C3, C4, C5, C6]) noiseHit(crashBuf, b, .5, 900);
-  for (const semis of [0, 4, 7, 12]) tone('sawtooth', NOTE(60 + semis), C6 + .35, 2.2, .07, 0);
+  // シーンの切りかわりでシンバル、finale でジャーンと和音
+  for (const s of STORY) if (s.start > 0) noiseHit(crashBuf, s.start, .5, 900);
+  const fin = STORY.filter(s => s.type === 'finale').pop();
+  if (fin) for (const semis of [0, 4, 7, 12]) tone('sawtooth', NOTE(60 + semis), fin.start + .35, 2.2, .07, 0);
   kick(DUR - .4);
 
   const buf = await ctx.startRendering();
@@ -530,6 +569,25 @@ const loadImg = src => new Promise((ok, ng) => {
     POSES[name] = await loadImg('poses/' + f);
   }
   window.ready = true;
-  draw(0);
+  if (qs.get('loop')) {
+    // ★サイト埋め込みモード: リアルタイムでずっとループ再生
+    const t0 = performance.now();
+    (function anim() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(anim); })();
+    // クリックされたら音楽も鳴らす(ブラウザの自動再生ルールがあるため、最初は無音)
+    let actx = null;
+    cv.addEventListener('click', async () => {
+      if (actx) return;
+      actx = new AudioContext();
+      const b64 = await renderAudio();
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const abuf = await actx.decodeAudioData(bytes.buffer);
+      const srcN = actx.createBufferSource();
+      srcN.buffer = abuf; srcN.loop = true;
+      srcN.connect(actx.destination);
+      srcN.start(0, ((performance.now() - t0) / 1000) % DUR);  // 映像の位置に合わせて再生
+    });
+  } else {
+    draw(0);
+  }
 })();
 </script>

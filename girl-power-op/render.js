@@ -15,7 +15,7 @@ const path = require('path');
 
 const DIR = __dirname;
 const FPS = 30;            // 1秒あたりのコマ数
-const DUR = 30;            // 動画の長さ(秒)。index.html の DUR と合わせる
+// 動画の長さは story.js のシーン合計からページが自動計算する(下で読み取る)
 
 // 「node render.js --vertical」で縦型(スマホ/Shorts向け 1080x1920)になる
 const VERTICAL = process.argv.includes('--vertical');
@@ -44,6 +44,8 @@ const OUT = VERTICAL ? 'girl_power_op_vertical.mp4' : 'girl_power_op.mp4';
   page.on('pageerror', e => console.log('ページ内エラー:', e.message));
   await page.goto('file://' + path.join(DIR, 'index.html') + `?w=${W}&h=${H}` + posesParam);
   await page.waitForFunction('window.ready === true', null, { timeout: 15000 });
+  const DUR = await page.evaluate('DUR');
+  console.log(`動画の長さ: ${DUR}秒(story.js のシーン合計)`);
 
   console.log('2/4 BGM を作曲中...');
   const wavB64 = await page.evaluate('renderAudio()');
