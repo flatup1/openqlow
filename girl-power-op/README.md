@@ -58,6 +58,15 @@ npm run video
 
 終わると同じフォルダに **`girl_power_op.mp4`** ができています。ダブルクリックで再生してみよう。
 
+### 縦型(スマホ/Shorts・TikTok向け)にしたいとき
+
+```bash
+npm run video:vertical
+```
+
+これだけで縦長(1080x1920)の **`girl_power_op_vertical.mp4`** ができます。
+文字の置き場所などは縦用に自動で切りかわります(`index.html` の `VERT` という変数がスイッチです)。
+
 ---
 
 ## 自分のキャラに変える

@@ -16,16 +16,21 @@ const path = require('path');
 const DIR = __dirname;
 const FPS = 30;            // 1秒あたりのコマ数
 const DUR = 30;            // 動画の長さ(秒)。index.html の DUR と合わせる
-const OUT = 'girl_power_op.mp4';
+
+// 「node render.js --vertical」で縦型(スマホ/Shorts向け 1080x1920)になる
+const VERTICAL = process.argv.includes('--vertical');
+const W = VERTICAL ? 1080 : 1280;
+const H = VERTICAL ? 1920 : 720;
+const OUT = VERTICAL ? 'girl_power_op_vertical.mp4' : 'girl_power_op.mp4';
 
 (async () => {
   fs.mkdirSync(path.join(DIR, 'frames'), { recursive: true });
 
   console.log('1/4 ブラウザを起動します...');
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const page = await browser.newPage({ viewport: { width: W, height: H } });
   page.on('pageerror', e => console.log('ページ内エラー:', e.message));
-  await page.goto('file://' + path.join(DIR, 'index.html'));
+  await page.goto('file://' + path.join(DIR, 'index.html') + `?w=${W}&h=${H}`);
   await page.waitForFunction('window.ready === true', null, { timeout: 15000 });
 
   console.log('2/4 BGM を作曲中...');
@@ -39,7 +44,7 @@ const OUT = 'girl_power_op.mp4';
     await page.evaluate(`seek(${f / FPS})`);
     await page.screenshot({
       path: path.join(DIR, 'frames', `f${String(f).padStart(4, '0')}.png`),
-      clip: { x: 0, y: 0, width: 1280, height: 720 },
+      clip: { x: 0, y: 0, width: W, height: H },
     });
     if (f % 90 === 0) console.log(`  ${f}/${total} 枚 (${((Date.now() - t0) / 1000).toFixed(0)}秒経過)`);
   }
