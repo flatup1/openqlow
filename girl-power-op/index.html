@@ -37,6 +37,20 @@ cv.width = W; cv.height = H;
 const cx2d = cv.getContext('2d');
 let IMG = new Image(), IW = 0, IH = 0;
 
+// ---------- ポーズ画像(複数枚アニメ) ----------
+// poses/ フォルダに置いた画像は、名前でシーンに割り当てられる:
+//   idle    … ふだんの構え(カット1・3ほか)
+//   punch1  … パンチその1(カット2で punch2 と交互に出る)
+//   punch2  … パンチその2
+//   jump    … ジャンプ中(カット4・5)
+//   win     … 決めポーズ(カット6)
+// 見つからない名前は chara.png で代用されるので、1枚だけでも動く。
+const POSES = {};
+const poseFiles = (qs.get('poses') || '').split(',').filter(Boolean);
+function pose(name, fallback) {
+  return POSES[name] || (fallback && POSES[fallback]) || IMG;
+}
+
 // ---------- deterministic pseudo-random ----------
 function rnd(a, b) { // hash two numbers -> [0,1)
   let x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
@@ -100,16 +114,19 @@ function skyBg(t) {
 
 // ---------- image drawing ----------
 // full-bleed cover: zoom>=1, (fx,fy) focus point in image fraction coords
-function coverDraw(zoom, fx, fy) {
-  const base = Math.max(W / IW, H / IH) * zoom;
-  const dw = IW * base, dh = IH * base;
+function coverDraw(zoom, fx, fy, img) {
+  img = img || IMG;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const base = Math.max(W / iw, H / ih) * zoom;
+  const dw = iw * base, dh = ih * base;
   let dx = W/2 - fx * dw, dy = H/2 - fy * dh;
   dx = clamp(dx, W - dw, 0); dy = clamp(dy, H - dh, 0);
-  cx2d.drawImage(IMG, dx, dy, dw, dh);
+  cx2d.drawImage(img, dx, dy, dw, dh);
 }
 // sticker card: character panel with thick white border; (x, yTop) = top center
-function cardDraw(x, yTop, scale, rot, sqx, sqy) {
-  const h = H * (VERT ? 0.62 : 0.86) * scale, w = h * IW / IH;
+function cardDraw(x, yTop, scale, rot, sqx, sqy, img) {
+  img = img || IMG;
+  const h = H * (VERT ? 0.62 : 0.86) * scale, w = h * img.naturalWidth / img.naturalHeight;
   cx2d.save();
   cx2d.translate(x, yTop + h);          // pivot at bottom center for squash/stretch
   cx2d.rotate(rot);
@@ -125,7 +142,7 @@ function cardDraw(x, yTop, scale, rot, sqx, sqy) {
   cx2d.beginPath();
   cx2d.roundRect(-w/2, -h, w, h, r);
   cx2d.clip();
-  cx2d.drawImage(IMG, -w/2, -h, w, h);
+  cx2d.drawImage(img, -w/2, -h, w, h);
   cx2d.restore();
 }
 
@@ -282,7 +299,7 @@ function draw(t) {
     halftone(.35);
     const z = lerp(.55, 1, easeOut(clamp(p * 1.6, 0, 1)));
     const drop = (1 - easeOut(clamp(p * 1.6, 0, 1))) * -260;
-    cardDraw(W/2, H * (VERT ? .14 : .07) + drop, z, Math.sin(t * 2) * .015, 1, 1);
+    cardDraw(W/2, H * (VERT ? .14 : .07) + drop, z, Math.sin(t * 2) * .015, 1, 1, pose('idle'));
     if (p > .45) popText('HERE SHE', VERT ? W/2 : W * .19, VERT ? H * .05 : H * .30, 52, YEL, C1 + (C2-C1) * .45, t, -.06);
     if (p > .45) popText('COMES!', VERT ? W/2 : W * .21, VERT ? H * .105 : H * .42, 52, YEL, C1 + (C2-C1) * .5, t, -.06);
     starIris(t / 1.1);
@@ -301,7 +318,10 @@ function draw(t) {
       shy = (1 - k) * -14;
       sq = (1 - k) * .06;
     }
-    cardDraw(W/2 + shx, H * (VERT ? .14 : .07) + shy, 1, shx * .0012, 1 + sq, 1 - sq);
+    // ヒットから0.35秒間はパンチのポーズ画像に切りかわる(左右交互)
+    const punching = lastHit > 0 && t - lastHit < .35;
+    const img2 = punching ? pose(lastIdx % 2 ? 'punch2' : 'punch1', 'punch1') : pose('idle');
+    cardDraw(W/2 + shx, H * (VERT ? .14 : .07) + shy, 1, shx * .0012, 1 + sq, 1 - sq, img2);
     for (let i = 0; i < HITS.length; i++) {
       const dir = i % 2 ? 1 : -1;
       burst(t, HITS[i], W/2 + dir * (VERT ? 330 : 300), H * .34 + rnd(i, 6) * 60, 'heart', i);
@@ -315,7 +335,7 @@ function draw(t) {
   } else if (t < C4) {
     // ---- CUT 3: dramatic close-up, speed lines ----
     const p = (t - C3) / (C4 - C3);
-    coverDraw(lerp(1.0, 1.22, easeInOut(p)), .5, lerp(.42, .36, p));
+    coverDraw(lerp(1.0, 1.22, easeInOut(p)), .5, lerp(.42, .36, p), pose('idle'));
     speedLines(t, .8);
     cx2d.save();
     cx2d.globalCompositeOperation = 'overlay';
@@ -339,7 +359,9 @@ function draw(t) {
         else if (k > .88) { sqx = 1.14; sqy = .84; }        // land squash
       }
     }
-    cardDraw(W/2, H * (VERT ? .18 : .12) + jy, .84, Math.sin(t * 3) * .02, sqx, sqy);
+    // 空中にいる間はジャンプのポーズ画像に切りかわる
+    cardDraw(W/2, H * (VERT ? .18 : .12) + jy, .84, Math.sin(t * 3) * .02, sqx, sqy,
+             jy < -8 ? pose('jump', 'idle') : pose('idle'));
     for (let i = 0; i < HOPS.length; i++)
       burst(t, HOPS[i] + .72, W/2, H * .9, 'star', i + 20);
     popText('JUMP!', W * .82, H * .25, 66, SKY, C4 + .5, t, .1);
@@ -349,7 +371,7 @@ function draw(t) {
     const p = (t - C5) / (C6 - C5);
     skyBg(t);
     const rise = lerp(H * .16, H * .02, easeInOut(p));
-    cardDraw(W/2, rise + Math.sin(t * 1.8) * 12, .92, Math.sin(t * 1.2) * .04, 1, 1);
+    cardDraw(W/2, rise + Math.sin(t * 1.8) * 12, .92, Math.sin(t * 1.2) * .04, 1, 1, pose('jump', 'idle'));
     // floating hearts & stars
     for (let i = 0; i < 16; i++) {
       const life = ((t - C5) * (.25 + rnd(i, 8) * .3) + rnd(i, 4)) % 1;
@@ -367,7 +389,7 @@ function draw(t) {
     sunburst(t, PINK, YEL, .25);
     halftone(.3);
     const p = (t - C6) / (DUR - C6);
-    cardDraw(W * (VERT ? .5 : .28), H * (VERT ? .05 : .08), (VERT ? .82 : .92) + Math.min(p * .1, .05), 0, 1, 1);
+    cardDraw(W * (VERT ? .5 : .28), H * (VERT ? .05 : .08), (VERT ? .82 : .92) + Math.min(p * .1, .05), 0, 1, 1, pose('win', 'idle'));
     // big decorative stars
     star(W * (VERT ? .12 : .08), H * .85, 55 + Math.sin(t * 4) * 6, t, YEL, true);
     star(W * (VERT ? .88 : .56), H * (VERT ? .82 : .78), 46 + Math.cos(t * 4) * 6, -t, PINK2, true);
@@ -493,6 +515,21 @@ async function renderAudio() {
 }
 window.renderAudio = renderAudio;
 
-IMG.onload = () => { IW = IMG.naturalWidth; IH = IMG.naturalHeight; window.ready = true; draw(0); };
-IMG.src = 'chara.png';
+// chara.png と poses/ の画像をぜんぶ読み込めたらスタート
+const loadImg = src => new Promise((ok, ng) => {
+  const im = new Image();
+  im.onload = () => ok(im);
+  im.onerror = () => ng(new Error('画像が読み込めません: ' + src));
+  im.src = src;
+});
+(async () => {
+  IMG = await loadImg('chara.png');
+  IW = IMG.naturalWidth; IH = IMG.naturalHeight;
+  for (const f of poseFiles) {
+    const name = f.replace(/\.[^.]+$/, '');     // 拡張子を取った名前がポーズ名
+    POSES[name] = await loadImg('poses/' + f);
+  }
+  window.ready = true;
+  draw(0);
+})();
 </script>
