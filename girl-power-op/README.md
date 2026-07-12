@@ -103,10 +103,16 @@ window.STORY = [
 
 ## ポーズ画像をAIで作る(Google Colab)
 
-`colab_generate_poses.ipynb` を [Google Colab](https://colab.research.google.com) で開くと、
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/flatup1/openqlow/blob/main/girl-power-op/colab_generate_poses.ipynb)
+
+↑ このバッジをクリックすると `colab_generate_poses.ipynb` が Google Colab で開きます
+(このリポジトリが非公開の場合は、Colabの「GitHub」タブで
+「プライベート リポジトリも含める」にチェックを入れてGitHub連携を許可してください)。
+
 無料のGPUで `chara.png` を参照しながらポーズ画像(idle / punch1 / punch2 / jump / win)を
-生成できます。生成結果はその場でブラウザに表示され、ZIPでダウンロードして
-`poses/` に入れるだけです。手順はノートブックの中に書いてあります。
+生成できます。GPUランタイムはノートブック側の設定で自動選択されます。
+生成結果はその場でブラウザに表示され、ZIPでダウンロードして `poses/` に入れるだけです。
+くわしい手順はノートブックの中に書いてあります。
 
 ## サイトに埋め込む(ループ再生モード)
 
