@@ -305,6 +305,8 @@ function sceneAt(time) {
   for (const s of STORY) if (time < s.start + s.sec) { sc = s; break; }
   return sc;
 }
+// 静かなシーン(BGMがドラム無しのやさしい曲に切りかわる)
+const QUIET = new Set(['night', 'fall', 'smallpunch', 'sunrise', 'cta']);
 
 // ---------- シーンの種類(テンプレート) ----------
 // それぞれ「そのシーンの絵の作り方」。引数は
@@ -425,6 +427,138 @@ const SCENES = {
     if (title) popText(title, W * (VERT ? .5 : .70), H * (VERT ? .68 : .32), 88, PINK, sc.start + .35, t, -.03, VERT ? W * .92 : W * .54);
     if (sub) popText(sub, W * (VERT ? .5 : .70), H * (VERT ? .77 : .48), 40, YEL, sc.start + .8, t, 0, VERT ? W * .92 : W * .54);
   },
+
+  // 夜: 月明かりの静かなジム(物語の始まりに)
+  night(t, lt, p, sc) {
+    const g = cx2d.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#12172e'); g.addColorStop(1, '#2a3154');
+    cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+    // 星(またたき)
+    for (let i = 0; i < 40; i++) {
+      cx2d.save();
+      cx2d.globalAlpha = clamp(.3 + Math.sin(t * 2 + i * 1.7) * .4, 0, 1) * .8;
+      cx2d.fillStyle = WHT;
+      cx2d.beginPath();
+      cx2d.arc(rnd(i, 3) * W, rnd(i, 9) * H * .55, 1.5 + rnd(i, 5) * 2, 0, 7);
+      cx2d.fill();
+      cx2d.restore();
+    }
+    // 月
+    cx2d.save();
+    cx2d.shadowColor = '#fff7d6'; cx2d.shadowBlur = 60;
+    cx2d.fillStyle = '#fff7d6';
+    cx2d.beginPath(); cx2d.arc(W * .82, H * .18, Math.min(W, H) * .07, 0, 7); cx2d.fill();
+    cx2d.restore();
+    // キャラは小さめ・ゆっくり揺れる(眠りから覚める感じ)
+    const wake = easeOut(clamp(p * 1.4, 0, 1));
+    cardDraw(W/2, H * (VERT ? .22 : .16), .62 + wake * .08, Math.sin(t * .8) * .03, 1, 1 + Math.sin(t * 2) * .012, pose(sc.pose || 'idle'));
+    // 夜のとばり(全体を少し暗く)
+    flash(.18, '#101530');
+    const txt = sc.text !== undefined ? sc.text : '';
+    if (txt) popText(txt, W/2, H * (VERT ? .88 : .87), 44, WHT, sc.start + .6, t, 0, W * .9);
+  },
+
+  // 転ぶ: 空振りしてぽてっと転ぶ(やさしい笑い)
+  fall(t, lt, p, sc) {
+    sunburst(t, sc.c1 || '#ffe3ef', sc.c2 || '#fff6fa', .15);
+    halftone(.18);
+    const ch = H * (VERT ? .62 : .86) * .9;
+    const yTop = H * (VERT ? .16 : .09);
+    const rot = 1.25 * easeOut(clamp(lt / .8, 0, 1)) + Math.sin(t * 3) * .015 * (1 - p);
+    cardDraw(W/2, yTop, .9, rot, 1, 1, pose(sc.pose || 'fall', 'idle'));
+    // 転んだあと、頭のまわりに星がくるくる回る
+    if (lt > .8) {
+      const d = ch * .85;
+      const hx = W/2 + Math.sin(rot) * d, hy = yTop + ch - Math.cos(rot) * d;
+      for (let i = 0; i < 3; i++) {
+        const ang = t * 3 + i * 2.1;
+        star(hx + Math.cos(ang) * 70, hy + Math.sin(ang) * 26 - 24, 13, ang, YEL, false);
+      }
+    }
+    const txt = sc.text !== undefined ? sc.text : 'おっとっと!';
+    if (txt) popText(txt, W * (VERT ? .5 : .8), H * (VERT ? .07 : .2), 56, PINK, sc.start + .85, t, .08, W * .38);
+  },
+
+  // 小さな一発: 派手じゃない、はじめてのパンチ
+  smallpunch(t, lt, p, sc) {
+    const g = cx2d.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#fff2df'); g.addColorStop(1, '#ffe0ea');
+    cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+    halftone(.14);
+    const hitAt = sc.start + sc.sec * .55;          // シーンの半分すぎに1発だけ
+    const after = t - hitAt;
+    const punching = after > 0 && after < .45;
+    const k = punching ? 1 - clamp(after / .3, 0, 1) : 0;
+    // 打つ前は深呼吸(ゆっくり上下)
+    cardDraw(W/2 + k * 18, H * (VERT ? .14 : .07) + k * -8, .96, k * .01, 1 + k * .03,
+             1 - k * .03 + Math.sin(t * 1.6) * .012, punching ? pose('punch1', 'idle') : pose(sc.pose || 'idle'));
+    if (after > 0) burst(t, hitAt, W/2 + (VERT ? 300 : 280), H * .36, 'heart', 7);
+    flash(after > 0 ? .25 - after * 1.2 : 0, WHT);
+    const txt = sc.text !== undefined ? sc.text : 'できた!';
+    if (txt && after > .2) popText(txt, W * (VERT ? .5 : .8), H * (VERT ? .07 : .2), 56, PINK, hitAt + .2, t, -.06, W * .38);
+  },
+
+  // 朝日: 夜が明けて、あたたかい朝が来る
+  sunrise(t, lt, p, sc) {
+    // 夜明けの紫 → あたたかいオレンジへ、だんだん変わる
+    const g1 = cx2d.createLinearGradient(0, 0, 0, H);
+    g1.addColorStop(0, '#3b3266'); g1.addColorStop(1, '#8a5a7a');
+    cx2d.fillStyle = g1; cx2d.fillRect(0, 0, W, H);
+    cx2d.save();
+    cx2d.globalAlpha = easeInOut(p);
+    const g2 = cx2d.createLinearGradient(0, 0, 0, H);
+    g2.addColorStop(0, '#ffd9a0'); g2.addColorStop(1, '#ffb3c8');
+    cx2d.fillStyle = g2; cx2d.fillRect(0, 0, W, H);
+    cx2d.restore();
+    // のぼる太陽
+    const sy = H * (1.02 - easeInOut(p) * .38);
+    cx2d.save();
+    cx2d.shadowColor = '#fff1b8'; cx2d.shadowBlur = 80;
+    cx2d.fillStyle = '#fff1b8';
+    cx2d.beginPath(); cx2d.arc(W/2, sy, Math.min(W, H) * .12, 0, 7); cx2d.fill();
+    cx2d.restore();
+    cardDraw(W/2, H * (VERT ? .16 : .09) + Math.sin(t * 1.4) * 8, .9, Math.sin(t * 1.1) * .02, 1, 1, pose(sc.pose || 'win', 'idle'));
+    const txt = sc.text !== undefined ? sc.text : '';
+    if (txt) popText(txt, W/2, H * (VERT ? .9 : .88), 46, WHT, sc.start + .5, t, 0, W * .9);
+  },
+
+  // CTA: 最後のメッセージ+ボタン(サイト用の締め)
+  cta(t, lt, p, sc) {
+    sunburst(t, sc.c1 || PINK, sc.c2 || YEL, .12);
+    halftone(.2);
+    cardDraw(W * (VERT ? .5 : .24), H * (VERT ? .04 : .12), VERT ? .5 : .8, Math.sin(t * 1.2) * .015, 1, 1, pose(sc.pose || 'win', 'idle'));
+    const tx = W * (VERT ? .5 : .66);
+    const title = sc.title !== undefined ? sc.title : '怖くても、大丈夫。';
+    const sub = sc.subtitle !== undefined ? sc.subtitle : '';
+    if (title) popText(title, tx, H * (VERT ? .42 : .3), 72, WHT, sc.start + .3, t, 0, VERT ? W * .92 : W * .6);
+    if (sub) popText(sub, tx, H * (VERT ? .52 : .45), 36, YEL, sc.start + .7, t, 0, VERT ? W * .92 : W * .6);
+    // ボタン(ぽよんと登場して、やさしく脈打つ)
+    const btn = sc.button !== undefined ? sc.button : '500円体験を予約する';
+    if (btn) {
+      const bl = t - (sc.start + 1.1);
+      if (bl > 0) {
+        const scale = (bl < .35 ? easeOut(bl / .35) * 1.15 - .15 * (bl / .35) : 1 + Math.sin(t * 3) * .03);
+        cx2d.save();
+        cx2d.translate(tx, H * (VERT ? .66 : .62));
+        cx2d.scale(scale, scale);
+        cx2d.font = `900 34px 'Arial Black', sans-serif`;
+        const bw = Math.min(cx2d.measureText(btn).width + 90, W * .8);
+        cx2d.shadowColor = 'rgba(30,10,40,.3)'; cx2d.shadowBlur = 18; cx2d.shadowOffsetY = 6;
+        cx2d.fillStyle = PINK;
+        cx2d.beginPath(); cx2d.roundRect(-bw/2, -38, bw, 76, 38); cx2d.fill();
+        cx2d.shadowColor = 'transparent';
+        cx2d.lineWidth = 5; cx2d.strokeStyle = WHT; cx2d.stroke();
+        cx2d.fillStyle = WHT;
+        cx2d.textAlign = 'center'; cx2d.textBaseline = 'middle';
+        if (cx2d.measureText(btn).width > bw - 60) {
+          const f = (bw - 60) / cx2d.measureText(btn).width;
+          cx2d.scale(f, f);
+        }
+        cx2d.fillText(btn, 0, 2);
+        cx2d.restore();
+      }
+    }
+  },
 };
 
 function draw(t) {
@@ -498,6 +632,14 @@ async function renderAudio() {
   for (let bar = 0; bar < bars; bar++) {
     const bt = bar * BEAT * 4;
     const root = roots[bar % 4];
+    // 静かなシーンではドラムを止めて、オルゴール風のやさしい伴奏に
+    if (QUIET.has(sceneAt(bt).type)) {
+      tone('sine', NOTE(root - 12), bt, BEAT * 3.6, .09, 0);
+      const chord = [0, 4, 7, 12];
+      for (let b = 0; b < 4; b++)
+        tone('triangle', NOTE(root + 12 + chord[b]), bt + b * BEAT, BEAT * 1.5, .06, (b % 2) ? .3 : -.3);
+      continue;
+    }
     for (let b = 0; b < 4; b++) {
       const t0 = bt + b * BEAT;
       kick(t0);
@@ -524,8 +666,11 @@ async function renderAudio() {
         tone('sine', NOTE(root + 36 + [0, 4, 7, 12][s % 4]), bt + s * BEAT / 2, BEAT * .3, .05, (s % 2) ? .5 : -.5);
     }
   }
-  // シーンの切りかわりでシンバル、finale でジャーンと和音
-  for (const s of STORY) if (s.start > 0) noiseHit(crashBuf, s.start, .5, 900);
+  // シーンの切りかわりでシンバル(静かなシーンへはチリンという鈴に)
+  for (const s of STORY) if (s.start > 0) {
+    if (QUIET.has(s.type)) tone('sine', NOTE(96), s.start, .8, .08, 0);
+    else noiseHit(crashBuf, s.start, .5, 900);
+  }
   const fin = STORY.filter(s => s.type === 'finale').pop();
   if (fin) for (const semis of [0, 4, 7, 12]) tone('sawtooth', NOTE(60 + semis), fin.start + .35, 2.2, .07, 0);
   kick(DUR - .4);

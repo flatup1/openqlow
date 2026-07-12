@@ -93,10 +93,20 @@ window.STORY = [
 ```
 
 ↑ たとえばこれだけで「15秒のサイト用ヒーロー動画」になります。
-使えるシーンの種類(entrance / punch / closeup / jump / sky / finale)と
-オプションの説明は `story.js` の先頭コメントにあります。
+シーンは**にぎやか系**(entrance / punch / closeup / jump / sky / finale)と
+**しずか系**(night / fall / smallpunch / sunrise / cta)の11種類。
+しずか系のシーンではBGMが自動でドラム無しのやさしい曲に切りかわります。
+くわしくは `story.js` の先頭コメントと、物語のサンプル `story.flatup.js`
+(夜のジム→転ぶ→小さな一発→朝→体験予約ボタン、の15秒版)を見てください。
 動画の長さは自動計算されるので、秒数を気にせず足したり減らしたりできます。
 長い文字は自動で縮んで画面に収まります(日本語OK)。
+
+## ポーズ画像をAIで作る(Google Colab)
+
+`colab_generate_poses.ipynb` を [Google Colab](https://colab.research.google.com) で開くと、
+無料のGPUで `chara.png` を参照しながらポーズ画像(idle / punch1 / punch2 / jump / win)を
+生成できます。生成結果はその場でブラウザに表示され、ZIPでダウンロードして
+`poses/` に入れるだけです。手順はノートブックの中に書いてあります。
 
 ## サイトに埋め込む(ループ再生モード)
 
