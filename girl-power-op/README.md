@@ -78,6 +78,70 @@ npm run video:vertical
 
 ---
 
+## 物語を自由に組みかえる(story.js)
+
+シーンの順番・長さ・画面の文字は、プログラムではなく **`story.js`** に書いてあります。
+メモ帳で開いて並べかえるだけで、まったく別の動画になります。
+
+```js
+window.STORY = [
+  { type: 'entrance', sec: 3.75, text: 'ようこそ!' },
+  { type: 'punch',    sec: 3.75, text: 'えい!' },
+  { type: 'jump',     sec: 3.0,  text: 'ジャンプ!' },
+  { type: 'finale',   sec: 4.5,  title: 'はじめの一歩を、笑わない。', subtitle: 'FLATUP GYM' },
+];
+```
+
+↑ たとえばこれだけで「15秒のサイト用ヒーロー動画」になります。
+シーンは**にぎやか系**(entrance / punch / closeup / jump / sky / finale)と
+**しずか系**(night / fall / smallpunch / sunrise / cta)の11種類。
+しずか系のシーンではBGMが自動でドラム無しのやさしい曲に切りかわります。
+くわしくは `story.js` の先頭コメントと、物語のサンプル `story.flatup.js`
+(夜のジム→転ぶ→小さな一発→朝→体験予約ボタン、の15秒版)を見てください。
+動画の長さは自動計算されるので、秒数を気にせず足したり減らしたりできます。
+長い文字は自動で縮んで画面に収まります(日本語OK)。
+
+## ポーズ画像をAIで作る(Google Colab)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/flatup1/openqlow/blob/main/girl-power-op/colab_generate_poses.ipynb)
+
+↑ このバッジをクリックすると `colab_generate_poses.ipynb` が Google Colab で開きます
+(このリポジトリが非公開の場合は、Colabの「GitHub」タブで
+「プライベート リポジトリも含める」にチェックを入れてGitHub連携を許可してください)。
+
+無料のGPUで `chara.png` を参照しながらポーズ画像(idle / punch1 / punch2 / jump / win)を
+生成できます。GPUランタイムはノートブック側の設定で自動選択されます。
+生成結果はその場でブラウザに表示され、ZIPでダウンロードして `poses/` に入れるだけです。
+くわしい手順はノートブックの中に書いてあります。
+
+## サイトに埋め込む(ループ再生モード)
+
+MP4にしなくても、このアニメは**そのままホームページに埋め込めます**。
+`index.html?loop=1` をブラウザで開くと、ずっとループ再生するモードになります。
+
+ホームページに入れるときの例:
+
+```html
+<iframe src="girl-power-op/index.html?loop=1"
+        width="640" height="360" style="border:none"></iframe>
+```
+
+- 音は最初は鳴りません(ブラウザのルール)。アニメをクリックすると音楽が始まります
+- 縦型で埋め込みたいときは `index.html?loop=1&w=1080&h=1920`
+- 動画ファイルより軽くて、どんな画面でもくっきり表示されます
+
+## 本物のアニメにする(複数枚モード)
+
+`poses/` フォルダに「ポーズちがい」の画像を置くと、シーンに合わせて絵が
+切りかわる本物のアニメ(パラパラまんが方式)になります。
+
+- `punch1.png` / `punch2.png` … パンチの瞬間に交互に表示
+- `jump.png` … ジャンプ中に表示
+- `win.png` … 最後の決めポーズ
+- `idle.png` … ふだんの構え
+
+置くだけで自動で使われます。くわしくは `poses/README.md` を見てください。
+
 ## 改造してみよう
 
 `index.html` をメモ帳やVS Codeで開いて、キーワードで検索して数字や文字を変える → もう一度 `npm run video` で反映されます。
