@@ -135,12 +135,15 @@ extra fingers, extra arms, deformed gloves, asymmetrical eyes, cropped body
 
 ## girl-power-op への実装マッピング
 
-### 現状（PR #51 の API）
+### 現状（PR #51・#54 マージ済み・2026-07-13 時点の main）
 
-- ランタイムのポーズは `girl-power-op/poses/` 直下の固定名: `idle.png` / `punch1.png` / `punch2.png` / `jump.png` / `win.png`（無ければ `chara.png` にフォールバック）
-- シナリオは `story.js` の `window.STORY`、シーン型は entrance / punch / closeup / jump / sky / finale の6種
+- ランタイムのポーズは `girl-power-op/poses/` 直下の固定名: `idle.png` / `punch1.png` / `punch2.png` / `jump.png` / `win.png`（無ければ `chara.png` にフォールバック）。PR #54 で Colab ポーズ生成ノートブック + 9ポーズ標準搭載
+- シナリオは `story.js` の `window.STORY`。シーン型は **11種**に拡張済み:
+  - にぎやか系（ドラム入りBGM）: entrance / punch / closeup / jump / sky / finale
+  - しずか系（オルゴール風BGM）: **night / fall / smallpunch / sunrise / cta**（cta は button 付き）
+- **FLATUP 15秒版サンプルが `story.flatup.js` として同梱済み**（night → fall → smallpunch → sunrise → cta。コピーで story.js に反映）。Bible §22 の感情アークをそのまま実装
 
-### 拡張（PR #51 マージ後の次コードタスク）
+### 残っているコードタスク（#51・#54 後）
 
 1. **素材庫**（LoRA学習・参照用。ランタイムとは分離）を `assets/characters/flappy/` に置く。
    ディレクトリ構成・ポーズ命名の正本は **`FLATUP_ANIMATION_BIBLE.md` §27–28**（bible / reference / poses / approved の4層。`approved/` 外の画像は本番使用禁止）
@@ -150,42 +153,34 @@ extra fingers, extra arms, deformed gloves, asymmetrical eyes, cropped body
    - 転ぶ: 空振り → バランスを崩す → 落下 → 床に座る → 恥ずかしそうに周囲を見る
    - 手を差し出す: 新人を見る → 少し迷う → 近づく → 手を伸ばす → 笑う
    - 枚数より**感情が変わる瞬間**を優先する
-3. **新シーン型の追加**: `fall`（空振り→転倒）と `help`（手を差し出す）。現行6種では下の15秒版の6〜9秒と12〜15秒が表現できない
+3. **残るシーン型は `help`（手を差し出す）のみ**。night / fall / smallpunch / sunrise / cta は #54 で追加済み。`help`（仲間が笑わず隣に来て手を差し出す）は Bible §11・§15「優しさの継承」の核なので、感情演技システムと合わせて追加する
 
-### サイト用15秒版（目標シナリオ）
+### サイト用15秒版（現行 story.flatup.js・実機生成確認済み 2026-07-13）
 
-| 秒 | 内容 | 必要シーン型 |
-|---|---|---|
-| 0〜3 | 夜のジム。主人公が箱から顔を出す | entrance（流用可） |
-| 3〜6 | パンチを打つが空振りして転ぶ | **fall（新規）** |
-| 6〜9 | 仲間が笑わずに手を差し出す | **help（新規）** |
-| 9〜12 | もう一度立ち、小さなパンチを成功 | punch（流用可） |
-| 12〜15 | 新しく来た小さな仲間へ手を差し出す + 文字 | **help（新規）** + finale |
+| 秒 | 内容 | シーン型 | 状態 |
+|---|---|---|---|
+| 0〜3 | 夜のFLATUP GYM | night | ✅ 実装済み |
+| 3〜6 | 空振りしてぽてっと転ぶ | fall | ✅ 実装済み |
+| 6〜9.75 | はじめての小さな一発が成功 | smallpunch | ✅ 実装済み |
+| 9.75〜12 | 朝日がのぼる | sunrise | ✅ 実装済み |
+| 12〜15 | メッセージ + 予約ボタン | cta | ✅ 実装済み |
 
-表示文字:
-> 怖いままでも、大丈夫。
-> はじめの一歩を、笑わない。
+表示文字（cta・現行サンプル）:
+> 怖くても、大丈夫。
+> はじめの一歩を、笑わない。FLATUP GYM
 
-ボタン: **500円体験を予約する**（→ https://lin.ee/cTSDajPz ）
-埋め込みは PR #51 の `index.html?loop=1` iframe モードを使う（HP_design のトップページ案のヒーロー枠が置き場所候補）。
+ボタン: **500円体験を予約する**（実サイトでは href に https://lin.ee/cTSDajPz を接続）
+埋め込みは `index.html?loop=1` iframe モードを使う（HP_design のトップページ案のヒーロー枠が置き場所候補）。
 
-### 現行シーン型だけで今すぐ試せる仮15秒版（story.js に貼るだけ）
-
-```js
-window.STORY = [
-  { type: 'entrance', sec: 3.75, text: 'ようこそ!' },
-  { type: 'punch',    sec: 3.75, text: 'えい!' },
-  { type: 'closeup',  sec: 3.0,  text: 'もういっかい!' },
-  { type: 'finale',   sec: 4.5,  title: 'はじめの一歩を、笑わない。', subtitle: 'FLATUP GYM' },
-];
-```
+> Bible §22 の目標アーク「仲間が手を差し出す（6〜9秒）」は、現状 smallpunch で自力の小さな成功に置き換わっている。`help` シーン型を追加すれば、Bible どおり「優しさ」を挟んだ完全版になる（上記コードタスク参照）。
 
 ---
 
 ## 次のアクション
 
+- [x] PR #51・#54 マージ済み（複数ポーズ / story.js 11シーン型 / FLATUP 15秒サンプル / Colabポーズ生成）
 - [ ] JIN: Civitai モデルページでライセンス・トリガーワードを確認してから DL（Stage 1）
-- [ ] PR #51 をレビュー・マージ（この計画の土台）
 - [ ] Stage 1 検証（内部のみ）→ 結果をこのファイルに追記
-- [ ] Stage 2 のキャラ設定シート確定 → `assets/character/flappy/reference/` へ
-- [ ] コード: `fall` / `help` シーン型 + ポーズ4段階対応（PR #51 マージ後に着手）
+- [ ] Stage 2 のキャラ設定シート確定 → `assets/characters/flappy/reference/`（Bible §27）へ
+- [ ] コード: `help` シーン型 + 感情演技システム（緊張→視線→呼吸→まばたき→拳→一歩→パンチ→笑顔）+ ポーズ4段階対応
+- [ ] サイト連携: `index.html?loop=1` を HP_design ヒーロー枠に iframe 埋め込み（cta ボタン href に lin.ee/cTSDajPz）
