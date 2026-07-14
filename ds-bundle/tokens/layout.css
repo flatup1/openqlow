@@ -1,0 +1,28 @@
+/* FLATUPGYM — 余白・角丸・影トークン
+   角丸は大きめ、影は柔らかく — 「丸み＝優しさ」がこのブランドの形の言語 */
+:root {
+  /* 余白スケール (4px基準) */
+  --fu-space-1: 4px;
+  --fu-space-2: 8px;
+  --fu-space-3: 12px;
+  --fu-space-4: 16px;
+  --fu-space-5: 24px;
+  --fu-space-6: 32px;
+  --fu-space-7: 48px;
+  --fu-space-8: 64px;
+
+  /* 角丸 — 直角は使わない */
+  --fu-radius-sm: 10px;   /* 入力欄・バッジ */
+  --fu-radius-md: 16px;   /* カード */
+  --fu-radius-lg: 24px;   /* モーダル・大きな面 */
+  --fu-radius-full: 999px; /* ボタン・ピル */
+
+  /* 影 — 黒ではなく墨色ベースの柔らかい影 */
+  --fu-shadow-sm: 0 1px 3px rgba(58, 46, 57, 0.08);
+  --fu-shadow-md: 0 4px 16px rgba(58, 46, 57, 0.10);
+  --fu-shadow-lg: 0 8px 32px rgba(58, 46, 57, 0.14);
+
+  /* コンテンツ幅 */
+  --fu-content-width: 960px;
+  --fu-content-narrow: 640px;
+}

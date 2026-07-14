@@ -1,0 +1,131 @@
+/* FLATUPGYM ブランドキット — エントリスタイルシート
+   デザインはこのファイルの @import 閉包だけを受け取る。
+   トークン・フォントはすべてここから届く。 */
+@import "fonts/zen-maru-gothic.css";
+@import "tokens/colors.css";
+@import "tokens/typography.css";
+@import "tokens/layout.css";
+
+/* ---- ベース ---- */
+body {
+  font-family: var(--fu-font);
+  font-size: var(--fu-text-body);
+  line-height: var(--fu-leading-body);
+  color: var(--fu-ink);
+  background: var(--fu-bg);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  line-height: var(--fu-leading-heading);
+  font-weight: var(--fu-weight-bold);
+  color: var(--fu-ink);
+  margin: 0 0 var(--fu-space-4);
+}
+h1 { font-size: var(--fu-text-h1); }
+h2 { font-size: var(--fu-text-h2); }
+h3 { font-size: var(--fu-text-h3); }
+
+a { color: var(--fu-primary-strong); }
+
+/* ---- ボタン ----
+   ピル型（--fu-radius-full）がこのブランドの標準。角ばったボタンは使わない */
+.fu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fu-space-2);
+  font-family: var(--fu-font);
+  font-size: var(--fu-text-body);
+  font-weight: var(--fu-weight-bold);
+  line-height: 1;
+  padding: 14px 28px;
+  border-radius: var(--fu-radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.fu-btn:active { transform: scale(0.98); }
+
+.fu-btn--primary {
+  background: var(--fu-primary);
+  color: var(--fu-ink-inverse);
+}
+.fu-btn--primary:hover { background: var(--fu-primary-strong); }
+
+.fu-btn--ghost {
+  background: transparent;
+  color: var(--fu-primary-strong);
+  border-color: var(--fu-primary);
+}
+.fu-btn--ghost:hover { background: var(--fu-primary-soft); }
+
+.fu-btn--support {
+  background: var(--fu-support);
+  color: var(--fu-ink-inverse);
+}
+.fu-btn--support:hover { background: var(--fu-support-strong); }
+
+.fu-btn--small { font-size: var(--fu-text-small); padding: 10px 20px; }
+
+/* ---- カード ---- */
+.fu-card {
+  background: var(--fu-surface);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius-md);
+  box-shadow: var(--fu-shadow-sm);
+  padding: var(--fu-space-5);
+}
+.fu-card--warm { background: var(--fu-surface-warm); border-color: transparent; }
+
+/* ---- バッジ（クラス種別など） ---- */
+.fu-badge {
+  display: inline-block;
+  font-size: var(--fu-text-caption);
+  font-weight: var(--fu-weight-bold);
+  line-height: 1;
+  padding: 6px 12px;
+  border-radius: var(--fu-radius-full);
+  background: var(--fu-primary-soft);
+  color: var(--fu-primary-strong);
+}
+.fu-badge--kids { background: #FCEFD8; color: var(--fu-accent-text); }
+.fu-badge--ladies { background: var(--fu-primary-soft); color: var(--fu-primary-strong); }
+.fu-badge--general { background: #E2F1EE; color: var(--fu-support-strong); }
+
+/* ---- 入力欄 ---- */
+.fu-input {
+  font-family: var(--fu-font);
+  font-size: var(--fu-text-body);
+  color: var(--fu-ink);
+  background: var(--fu-surface);
+  border: 2px solid var(--fu-line);
+  border-radius: var(--fu-radius-sm);
+  padding: 12px 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fu-input:focus {
+  outline: none;
+  border-color: var(--fu-primary);
+}
+.fu-label {
+  display: block;
+  font-size: var(--fu-text-small);
+  font-weight: var(--fu-weight-bold);
+  color: var(--fu-ink-soft);
+  margin-bottom: var(--fu-space-2);
+}
+
+/* ---- お知らせ・注意（威圧しないトーン） ---- */
+.fu-note {
+  display: flex;
+  gap: var(--fu-space-3);
+  background: var(--fu-primary-soft);
+  border-radius: var(--fu-radius-md);
+  padding: var(--fu-space-4);
+  font-size: var(--fu-text-small);
+  color: var(--fu-ink);
+}

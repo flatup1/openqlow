@@ -1,0 +1,50 @@
+<!-- @dsCard group="Brand" name="カラーパレット" subtitle="主色ピンク / 墨色 / 琥珀 / ティール / 状態色" -->
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>FLATUPGYM — カラーパレット</title>
+<link rel="stylesheet" href="../../../styles.css">
+<style>
+  .wrap { padding: var(--fu-space-6); max-width: var(--fu-content-width); margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--fu-space-4); }
+  .sw { border-radius: var(--fu-radius-md); overflow: hidden; border: 1px solid var(--fu-line); background: var(--fu-surface); }
+  .sw .chip { height: 72px; }
+  .sw .meta { padding: var(--fu-space-3); }
+  .sw .name { font-weight: var(--fu-weight-bold); font-size: var(--fu-text-small); }
+  .sw .val { color: var(--fu-ink-soft); font-size: var(--fu-text-caption); }
+  h2 { margin-top: var(--fu-space-6); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>カラーパレット</h1>
+  <p style="color: var(--fu-ink-soft)">温かさ（コーラルピンク）× 芯の強さ（墨色）。真っ黒は使わない。</p>
+
+  <h2>ブランド主色</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:var(--fu-primary)"></div><div class="meta"><div class="name">primary</div><div class="val">#E75A7C — 塗り・CTA</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-primary-strong)"></div><div class="meta"><div class="name">primary-strong</div><div class="val">#C43D60 — リンク・小さい文字</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-primary-soft)"></div><div class="meta"><div class="name">primary-soft</div><div class="val">#FCE8ED — 淡い面</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-ink)"></div><div class="meta"><div class="name">ink</div><div class="val">#3A2E39 — 本文</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-ink-soft)"></div><div class="meta"><div class="name">ink-soft</div><div class="val">#6E5E6B — 補足</div></div></div>
+  </div>
+
+  <h2>アクセント・面</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:var(--fu-accent)"></div><div class="meta"><div class="name">accent</div><div class="val">#F4A93C — 琥珀・装飾</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-support)"></div><div class="meta"><div class="name">support</div><div class="val">#4E9E92 — ティール・安心</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-bg)"></div><div class="meta"><div class="name">bg</div><div class="val">#FFF8F5 — ページ背景</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-surface-warm)"></div><div class="meta"><div class="name">surface-warm</div><div class="val">#FDF1EC — 温かい面</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-line)"></div><div class="meta"><div class="name">line</div><div class="val">#F0DFE0 — 罫線</div></div></div>
+  </div>
+
+  <h2>状態色</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:var(--fu-success)"></div><div class="meta"><div class="name">success</div><div class="val">#58A873</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-warning)"></div><div class="meta"><div class="name">warning</div><div class="val">#E39A2E</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--fu-danger)"></div><div class="meta"><div class="name">danger</div><div class="val">#D2566B — エラーも優しく</div></div></div>
+  </div>
+</div>
+</body>
+</html>
