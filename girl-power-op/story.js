@@ -19,6 +19,7 @@
 //   smallpunch … はじめての小さな一発                文字: text
 //   sunrise    … 朝日がのぼる                        文字: text
 //   help       … 優しさの継承(新入りに手を差し伸べる) 文字: text
+//   rest       … サンドバッグにもたれて眠る(締め)    文字: text
 //   cta        … メッセージ+ボタン(サイトの締め)  文字: title, subtitle, button
 //   ※ 物語のサンプル: story.flatup.js を見てね(15秒版)
 //

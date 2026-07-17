@@ -306,7 +306,7 @@ function sceneAt(time) {
   return sc;
 }
 // 静かなシーン(BGMがドラム無しのやさしい曲に切りかわる)
-const QUIET = new Set(['night', 'fall', 'smallpunch', 'sunrise', 'cta', 'help']);
+const QUIET = new Set(['night', 'fall', 'smallpunch', 'sunrise', 'cta', 'help', 'rest']);
 
 // ---------- シーンの種類(テンプレート) ----------
 // それぞれ「そのシーンの絵の作り方」。引数は
@@ -341,9 +341,10 @@ const SCENES = {
       const dir = lastIdx % 2 ? 1 : -1;
       shx = dir * (1 - k) * 34; shy = (1 - k) * -14; sq = (1 - k) * .06;
     }
-    // ヒットから0.35秒間はパンチのポーズ画像に切りかわる(左右交互)
+    // ヒットから0.35秒間はパンチのポーズに切りかわる。ジャブ→ストレート→フックの3連コンビ。
     const punching = lastHit >= 0 && t - lastHit < .35;
-    const img2 = punching ? pose(lastIdx % 2 ? 'punch2' : 'punch1', 'punch1') : pose('idle');
+    const combo = ['punch1', 'punch2', 'hook1'];  // 無いものは自動で idle/punch1 へフォールバック
+    const img2 = punching ? pose(combo[lastIdx % combo.length], 'punch1') : pose('idle');
     cardDraw(W/2 + shx, H * (VERT ? .14 : .07) + shy, 1, shx * .0012, 1 + sq, 1 - sq, img2);
     const cry = sc.text !== undefined ? sc.text : 'POW!';
     for (let i = 0; i < hits.length; i++) {
@@ -598,6 +599,35 @@ const SCENES = {
     // セリフは短く(§17 の「使う言葉」)。既定は「ぼくも、最初は怖かったよ。」
     const txt = sc.text !== undefined ? sc.text : 'ぼくも、最初は怖かったよ。';
     if (txt) popText(txt, W / 2, H * (VERT ? .9 : .86), 44, INK, sc.start + .6, t, 0, W * .9);
+  },
+
+  // 休憩/おやすみ: サンドバッグにもたれて眠る。サイトの締め・フッター・ループ末尾に。
+  // 「朝には元に戻る」やさしい余韻。呼吸で上下、ときどき ZZZ。
+  rest(t, lt, p, sc) {
+    const g = cx2d.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#2a2440'); g.addColorStop(1, '#4a3a55');
+    cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+    // 窓からのやわらかい月/街あかり
+    cx2d.save();
+    cx2d.globalAlpha = .5; cx2d.fillStyle = '#ffe9b0';
+    cx2d.beginPath(); cx2d.arc(W * .82, H * .2, Math.min(W, H) * .06, 0, 7); cx2d.fill();
+    cx2d.restore();
+    halftone(.08);
+    // ゆっくりした寝息(上下)
+    const breathe = Math.sin(t * 1.2) * 6;
+    cardDraw(W / 2, H * (VERT ? .28 : .16) + breathe, VERT ? .62 : .74, 0, 1, 1, pose('rest', 'idle'));
+    // ZZZ(ふわっと昇る)
+    for (let i = 0; i < 3; i++) {
+      const life = ((t - sc.start) * .4 + i * .33) % 1;
+      cx2d.save();
+      cx2d.globalAlpha = clamp(Math.sin(life * Math.PI), 0, 1) * .8;
+      cx2d.fillStyle = WHT;
+      cx2d.font = `900 ${20 + i * 8}px 'Arial Black', sans-serif`;
+      cx2d.fillText('Z', W * (VERT ? .62 : .58) + i * 24, H * (VERT ? .2 : .18) - life * 60);
+      cx2d.restore();
+    }
+    const txt = sc.text !== undefined ? sc.text : 'おやすみ。';
+    if (txt) popText(txt, W / 2, H * (VERT ? .9 : .86), 42, WHT, sc.start + .6, t, 0, W * .9);
   },
 };
 
