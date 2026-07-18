@@ -38,3 +38,20 @@ obsidian-bridge/
 knowledge/sources/loop/scorecard-*.md
 knowledge/sources/loop/improvement-*.md
 knowledge/_inbox/
+
+# --- FLATUP GYM AI OS ---
+# 既存ファイル変更前の退避バックアップ
+.ai-os-backup/
+# AI OS のプライベート資料・ローカルログ
+docs/ai-os/private/
+docs/ai-os/logs/*.local.*
+# 顧客個人情報・名簿・健康情報（Git管理しない）
+*会員名簿*
+*顧客*.csv
+members*.csv
+customers*.csv
+health*.csv
+# 認証・秘密情報
+*.token
+*_secret*
+credentials*.json

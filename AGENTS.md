@@ -136,3 +136,17 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 4. `docs/CAMPAIGN_RULES.md` `docs/OPENQLOW_RULES.md` `docs/AIKA_RULES.md` （個別ルール）
 5. `docs/OPENQLOW_NEW_SYSTEM_DESIGN_*.md` （Codex設計書）
 6. プロジェクト内の関連設計書
+
+## FLATUP GYM AI OS（Codex / Claude Code 共通基盤）
+
+短い指示で同じ品質を出すための共通基盤を `docs/ai-os/` に置く。上記の憲法・承認ゲート・協業ルールを土台とし、事業情報の正本をここに一元化する。事業情報を `AGENTS.md` に重複記載しない。
+
+- 正本（唯一の参照元）：`docs/ai-os/canon/`
+  - `gym_profile.md` / `pricing_and_schedule.md` / `membership_rules.md` / `safety_rules.md` / `brand_voice.md` / `approval_matrix.md`
+- 業務の流れ：`docs/ai-os/workflows/`　雛形：`docs/ai-os/templates/`
+- 外部連携・自動化の候補：`docs/ai-os/integrations/`
+- Skills 正本：`docs/ai-os/skills-source/`　配布：`.agents/skills/`（Codex）/ `.claude/skills/`（Claude）　同期：`scripts/sync-agent-skills.sh`
+- 承認区分の詳細：`docs/ai-os/canon/approval_matrix.md`（本ファイルの承認ゲートと整合）
+- 検証：`bash scripts/validate-ai-os.sh`
+
+Codex 側の安全ルールは `.codex/rules/`、Claude Code 側は `.claude/settings.json` と `scripts/hooks/flatup-guard.sh`。詳細は `docs/ai-os/README.md` と `docs/ai-os/IMPLEMENTATION_REPORT.md`。
