@@ -1,0 +1,33 @@
+{
+  "$comment": "FLATUP GYM AI OS — Claude Code 安全設定。危険操作を拒否し、push/commit/デプロイ/外部送信は承認要求する。既存設定がある場合は上書きせず統合すること。",
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Read(.env)",
+      "Read(.env.*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run deploy:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/flatup-guard.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
