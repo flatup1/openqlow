@@ -38,7 +38,7 @@ export const FLATUP_CANON = {
   classes:
     "ボクシング／キックボクシング／ムエタイ／寝技／レスリング／総合格闘技(MMA)／ブラジリアン柔術／キッズ／レディース",
   scheduleKids: "火曜・木曜18:00〜19:00、土曜13:00〜",
-  scheduleLadies: "土曜14:00〜15:00",
+  scheduleLadies: "土曜14:30",
   bookingMen: "火曜・木曜・土曜（男性インストラクター在籍）、または平日19:00以降",
   bookingWomen: "月曜・水曜・土曜",
   noBooking: "日曜・祝日は原則体験不可",

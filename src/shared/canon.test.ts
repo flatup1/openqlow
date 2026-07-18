@@ -26,7 +26,7 @@ assert(FLATUP_CANON.nearestStation === "成田駅", "nearest station must be 成
 assert(FLATUP_CANON.classes.includes("ムエタイ"), "classes must include ムエタイ");
 assert(FLATUP_CANON.visitorPass6 === "6回券15,000円（1年有効）", "6-visit pass must match current pricing");
 assert(FLATUP_CANON.visitorPass12 === "12回券30,000円（1年有効）", "12-visit pass must match current pricing");
-assert(FLATUP_CANON.scheduleLadies === "土曜14:00〜15:00", "ladies class must start at 14:00");
+assert(FLATUP_CANON.scheduleLadies === "土曜14:30", "ladies class must start at 14:30");
 assert(FLATUP_CANON.businessHours.includes("18:00〜21:00"), "weekday evening staff hours must end at 21:00");
 
 // 単一正本との一貫性: 顧客返信の料金が canon と一致（直書きドリフト検出 = R2ガード）
