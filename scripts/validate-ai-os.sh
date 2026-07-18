@@ -40,7 +40,7 @@ for s in "${SKILLS[@]}"; do
   if [[ -f "$src" && -f "$cl" && -f "$ag" ]]; then
     # YAML frontmatter（name/description）の存在
     if head -6 "$src" | grep -q '^name:' && head -6 "$src" | grep -q '^description:'; then
-      ok "$s（正本/claude/agents + frontmatter）"
+      ok "${s}（正本/claude/agents + frontmatter）"
     else
       ng "$s の frontmatter（name/description）が不足"
     fi
