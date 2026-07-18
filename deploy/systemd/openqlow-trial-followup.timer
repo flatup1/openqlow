@@ -1,0 +1,13 @@
+[Unit]
+Description=Run OPENQLOW trial-day follow-up at 19:00 JST
+
+[Timer]
+# 体験は平日18:00-21:00・土10:00-15:00。当日夕方（体験後）に発火する。
+# 当日体験者へ「お礼＋感想依頼」、前日体験者へ「入会案内」を送る。
+OnCalendar=*-*-* 19:00:00 Asia/Tokyo
+Persistent=true
+AccuracySec=1m
+Unit=openqlow-trial-followup.service
+
+[Install]
+WantedBy=timers.target

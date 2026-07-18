@@ -42,6 +42,10 @@ export interface TrialFollowupInput {
   enrollmentStatus?: string;
   /** 入会温度感（任意。未指定なら enrollmentStatus から推定） */
   temperature?: Temperature;
+  /** Google口コミの直リンク（任意。GBPの「クチコミを書く」URL）。渡すと口コミ依頼文に案内を添える。 */
+  reviewUrl?: string;
+  /** FlatポイントPRO の案内URL（任意）。渡すと口コミ依頼文に一言添える。 */
+  pointProUrl?: string;
 }
 
 export interface TrialFollowupMessages {
@@ -128,7 +132,7 @@ function reassuranceLine(concern?: string): string {
     return "ご家族とご相談のうえで大丈夫ですので、どうぞごゆっくりご検討ください。";
   }
   if (/不安|怖|緊張|続け|きつ|ついて/.test(c)) {
-    return "FLATUP GYMはガチスパー禁止で安全第一なので、初めての方も安心して続けていただけます。";
+    return "FLATUPGYMはガチスパー禁止で安全第一なので、初めての方も安心して続けていただけます。";
   }
   return "気になる点は遠慮なくお聞きください。安心して通っていただけるようサポートします。";
 }
@@ -146,7 +150,7 @@ function buildSameDayThanks(input: TrialFollowupInput, temperature: Temperature)
   return composeSigned([
     "本日は体験にお越しいただきありがとうございました😊",
     reactionLine(input),
-    "最初は不安もあると思いますが、FLATUP GYMは初心者の方が無理なく続けられるようサポートしています。",
+    "最初は不安もあると思いますが、FLATUPGYMは初心者の方が無理なく続けられるようサポートしています。",
     "また気になる点があれば、いつでもご連絡ください。",
   ]);
 }
@@ -171,7 +175,7 @@ function buildEnrollmentInfo(input: TrialFollowupInput, attribute: Attribute, te
     ]);
   }
   return composeSigned([
-    "FLATUP GYMにご興味をお持ちいただきありがとうございます😊",
+    "FLATUPGYMにご興味をお持ちいただきありがとうございます😊",
     `ご入会いただく場合は、月会費${priceTier(attribute)}と、別途${FLATUP_INFO.joinFee}でご案内しております。`,
     "次回ご来館時にそのままお手続きできます。",
     `お持ちいただくのは${FLATUP_INFO.bring}だけで大丈夫です。`,
@@ -179,12 +183,23 @@ function buildEnrollmentInfo(input: TrialFollowupInput, attribute: Attribute, te
   ]);
 }
 
-function buildReviewRequest(): string {
-  return composeSigned([
+function buildReviewRequest(input: TrialFollowupInput): string {
+  // ⚠ Google規約・恒常ルール6: 星の数の指定や「良い口コミを」等の依頼はしない。
+  //    お願いするのは「感想（一言）」まで。
+  const lines = [
     "本日はありがとうございました😊",
-    "もしよろしければ、今後FLATUP GYMを検討される方の参考になるよう、Google口コミにご協力いただけますと嬉しいです。",
-    "一言だけでも大丈夫です。",
-  ]);
+    "もしよろしければ、今後FLATUPGYMを検討される方の参考になるよう、Google口コミに感想を一言いただけますと嬉しいです。",
+  ];
+  const reviewUrl = (input.reviewUrl ?? "").trim();
+  if (reviewUrl) {
+    lines.push(`こちらから書けます → ${reviewUrl}`);
+  }
+  lines.push("一言だけでも、書ける範囲で大丈夫です。");
+  const pointProUrl = (input.pointProUrl ?? "").trim();
+  if (pointProUrl) {
+    lines.push(`また、通うほどおトクな FlatポイントPRO もぜひご利用ください → ${pointProUrl}`);
+  }
+  return composeSigned(lines);
 }
 
 /**
@@ -199,7 +214,7 @@ export function generateTrialFollowup(input: TrialFollowupInput = {}): TrialFoll
     sameDayThanks: buildSameDayThanks(input, temperature),
     nextDayFollow: buildNextDayFollow(input),
     enrollmentInfo: buildEnrollmentInfo(input, attribute, temperature),
-    reviewRequest: buildReviewRequest(),
+    reviewRequest: buildReviewRequest(input),
   };
 
   const notes = [
