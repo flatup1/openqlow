@@ -38,6 +38,22 @@ cv.width = W; cv.height = H;
 const cx2d = cv.getContext('2d');
 let IMG = new Image(), IW = 0, IH = 0;
 
+// 古いブラウザ(iOS Safari 16未満など)には roundRect が無いので補う。
+// 対応ブラウザでは何もしない(既存の描画はそのまま)。
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    let rr = typeof r === 'number' ? r : (Array.isArray(r) ? r[0] : 0);
+    rr = Math.min(rr, Math.abs(w) / 2, Math.abs(h) / 2);
+    this.moveTo(x + rr, y);
+    this.arcTo(x + w, y, x + w, y + h, rr);
+    this.arcTo(x + w, y + h, x, y + h, rr);
+    this.arcTo(x, y + h, x, y, rr);
+    this.arcTo(x, y, x + w, y, rr);
+    this.closePath();
+    return this;
+  };
+}
+
 // ---------- ポーズ画像(複数枚アニメ) ----------
 // poses/ フォルダに置いた画像は、名前でシーンに割り当てられる:
 //   idle    … ふだんの構え(カット1・3ほか)
@@ -777,11 +793,16 @@ const loadImg = src => new Promise((ok, ng) => {
   im.src = src;
 });
 (async () => {
-  IMG = await loadImg('chara.png');
+  IMG = await loadImg('chara.png');             // 本体は必須(失敗したら致命)
   IW = IMG.naturalWidth; IH = IMG.naturalHeight;
   for (const f of poseFiles) {
     const name = f.replace(/\.[^.]+$/, '');     // 拡張子を取った名前がポーズ名
-    POSES[name] = await loadImg('poses/' + f);
+    try {
+      POSES[name] = await loadImg('poses/' + f);
+    } catch (e) {
+      // 1枚失敗しても全体は止めない。そのポーズは pose() が chara.png へ自動フォールバック。
+      console.warn('pose skipped:', f, String(e));
+    }
   }
   window.ready = true;
   if (qs.get('loop')) {
