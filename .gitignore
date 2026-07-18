@@ -21,6 +21,18 @@ reports/
 
 # 一時バックアップ
 .phase2-backup/
+.ai-os-backup/
+
+# AI OS private/local data
+docs/ai-os/private/
+docs/ai-os/logs/*.local.*
+*member-roster*.csv
+*customer-list*.csv
+*会員名簿*.csv
+*健康情報*.csv
+*.pem
+*.key
+*token*.json
 
 # OS
 .DS_Store
