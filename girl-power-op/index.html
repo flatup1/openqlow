@@ -445,6 +445,28 @@ const SCENES = {
     if (sub) popText(sub, W * (VERT ? .5 : .70), H * (VERT ? .77 : .48), 40, YEL, sc.start + .8, t, 0, VERT ? W * .92 : W * .54);
   },
 
+  // ようこそ(おいでおいで): 両手を広げて招く。オープニングや締めの招待に。
+  welcome(t, lt, p, sc) {
+    sunburst(t, sc.c1 || '#8fe0ff', sc.c2 || '#e7f8ff', .3);
+    halftone(.28);
+    // ぴょこぴょこ弾む(招くリズム)
+    const bounce = -Math.abs(Math.sin(t * 3.2)) * 16;
+    cardDraw(W / 2, H * (VERT ? .16 : .09) + bounce, VERT ? .9 : 1, Math.sin(t * 2) * .02, 1, 1, pose('welcome', 'idle'));
+    // ハートと星がふわふわ昇る
+    for (let i = 0; i < 14; i++) {
+      const life = (lt * (.3 + rnd(i, 8) * .3) + rnd(i, 4)) % 1;
+      const x = rnd(i, 2) * W;
+      const y = H - life * (H + 60);
+      const s = 10 + rnd(i, 5) * 16;
+      cx2d.save();
+      cx2d.globalAlpha = clamp(Math.sin(life * Math.PI) * 1.3, 0, 1);
+      if (i % 2) heart(x, y, s, PINK); else star(x, y, s, life * 3, YEL, false);
+      cx2d.restore();
+    }
+    const txt = sc.text !== undefined ? sc.text : 'ようこそ!';
+    if (txt) popText(txt, W / 2, H * (VERT ? .9 : .85), 60, PINK, sc.start + .4, t, -.03, W * .9);
+  },
+
   // 夜: 月明かりの静かなジム(物語の始まりに)
   night(t, lt, p, sc) {
     const g = cx2d.createLinearGradient(0, 0, 0, H);

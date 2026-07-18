@@ -12,6 +12,7 @@
 //   closeup  … 顔のクローズアップ + 集中線          文字: text
 //   jump     … ぴょんぴょんジャンプ                  文字: text
 //   sky      … 空をふわふわ飛ぶ                      文字: text
+//   welcome  … 両手を広げて招く(ようこそ)          文字: text
 //   finale   … 紙吹雪 + ロゴ                          文字: title, subtitle
 //   〜しずか系(やさしいオルゴール風の曲になる)〜
 //   night      … 月明かりの夜のジム                  文字: text
