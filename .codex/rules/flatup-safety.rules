@@ -1,0 +1,114 @@
+# FLATUP GYM project execution policy.
+# The strictest matching decision wins: forbidden > prompt > allow.
+
+prefix_rule(
+    pattern = ["rm", ["-rf", "-fr"]],
+    decision = "forbidden",
+    justification = "Recursive force deletion is prohibited. List exact candidates and obtain owner approval for a recoverable alternative.",
+    match = ["rm -rf build", "rm -fr tmp"],
+)
+
+prefix_rule(
+    pattern = ["sudo", "rm", ["-rf", "-fr"]],
+    decision = "forbidden",
+    justification = "Privileged recursive force deletion is prohibited.",
+    match = ["sudo rm -rf /opt/example"],
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "This can discard user work. Inspect the diff and use an additive or recoverable approach.",
+    match = ["git reset --hard HEAD"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean", ["-fd", "-df", "-xfd", "-xdf"]],
+    decision = "forbidden",
+    justification = "This can irreversibly remove untracked work. Audit candidates without deleting them.",
+    match = ["git clean -fd", "git clean -xfd"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", ["--force", "-f", "--force-with-lease"]],
+    decision = "forbidden",
+    justification = "Force push is prohibited for this workspace.",
+    match = ["git push --force origin main", "git push -f origin feature"],
+)
+
+prefix_rule(
+    pattern = ["gh", "repo", "delete"],
+    decision = "forbidden",
+    justification = "Repository deletion is prohibited.",
+    match = ["gh repo delete owner/repo"],
+)
+
+prefix_rule(
+    pattern = ["dropdb"],
+    decision = "forbidden",
+    justification = "Database deletion is prohibited.",
+    match = ["dropdb production"],
+)
+
+prefix_rule(
+    pattern = ["rm"],
+    decision = "prompt",
+    justification = "File deletion requires owner approval and an exact target review.",
+    match = ["rm old-draft.md"],
+)
+
+prefix_rule(
+    pattern = ["mv"],
+    decision = "prompt",
+    justification = "Moving or renaming files requires owner approval in cleanup work.",
+    match = ["mv old.md archive/old.md"],
+)
+
+prefix_rule(
+    pattern = ["git", ["commit", "push"]],
+    decision = "prompt",
+    justification = "Commit and push require explicit owner approval.",
+    match = ["git commit -m codex:change", "git push origin feature"],
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "create"],
+    decision = "prompt",
+    justification = "Pull request creation requires explicit owner approval.",
+    match = ["gh pr create --draft"],
+)
+
+prefix_rule(
+    pattern = ["gh", ["issue", "project"]],
+    decision = "prompt",
+    justification = "GitHub issue and project changes require owner approval.",
+    match = ["gh issue create --title test", "gh project edit --id PVT_example"],
+)
+
+prefix_rule(
+    pattern = [["curl", "wget", "scp", "rsync"]],
+    decision = "prompt",
+    justification = "Network transfer or external API access may write data or expose information; confirm scope first.",
+    match = ["curl https://example.com", "scp build.zip host:/tmp", "rsync -av dist/ host:/srv"],
+)
+
+prefix_rule(
+    pattern = [["vercel", "netlify", "firebase"]],
+    decision = "prompt",
+    justification = "Deployment or hosting changes require explicit owner approval.",
+    match = ["vercel --prod", "netlify deploy --prod", "firebase deploy"],
+)
+
+prefix_rule(
+    pattern = ["terraform", "apply"],
+    decision = "prompt",
+    justification = "Infrastructure changes require explicit owner approval.",
+    match = ["terraform apply plan.out"],
+)
+
+prefix_rule(
+    pattern = ["npm", "publish"],
+    decision = "prompt",
+    justification = "Package publication is an external release and requires owner approval.",
+    match = ["npm publish"],
+)

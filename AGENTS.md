@@ -136,3 +136,13 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 4. `docs/CAMPAIGN_RULES.md` `docs/OPENQLOW_RULES.md` `docs/AIKA_RULES.md` （個別ルール）
 5. `docs/OPENQLOW_NEW_SYSTEM_DESIGN_*.md` （Codex設計書）
 6. プロジェクト内の関連設計書
+
+## FLATUP AI OS 共通基盤
+
+- AI OSの入口は `docs/ai-os/README.md`。事業情報はこのファイルへ重複記載しない。
+- 事実の唯一の正本は `src/shared/canon.ts`。説明用の同期ビューは `docs/ai-os/canon/`。
+- 料金・日時・予約・退会・休会・安全に関する回答は、正本確認後も送信前に人間確認を入れる。
+- Skillsの正本は `docs/ai-os/skills-source/`。CodexとClaude Codeの配置は同期スクリプトで検証する。
+- 削除、外部送信、公開、課金、本番変更、commit、push、PR作成は `docs/ai-os/canon/approval_matrix.md` に従う。
+- 変更後は `./scripts/validate-ai-os.sh` と関連する既存テストを実行する。
+- 完了報告は「作成・変更・保持・検証・未実装・人間確認・Git状態」の順にする。

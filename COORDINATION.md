@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-06-08
+最終更新: 2026-07-18
 
 ---
 
@@ -44,6 +44,12 @@
 | `openqlow/deploy/` | Codex | open | 2026-06-06 |
 | `openqlow/scripts/` | Codex | open | 2026-06-06 |
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
+| `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
+| `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
+| `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
+| `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
+| `openqlow/.codex/` | Codex | open | 2026-07-18 |
+| `openqlow/scripts/*ai-os*` | Codex | open | 2026-07-18 |
 | `openqlow/docs/` | 共有 | open | - |
 | `openqlow/docs/superpowers/specs/` | 共有 | open | 2026-06-12 |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
