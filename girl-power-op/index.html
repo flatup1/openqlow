@@ -24,9 +24,33 @@
    ・サイト埋め込み → index.html?loop=1 をブラウザで開くとループ再生
   ============================================================
 -->
-<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}canvas{display:block;max-width:100%;height:auto;margin:0 auto}</style>
+<style>
+  html,body{margin:0;padding:0;background:#000;overflow:hidden}
+  canvas{display:block;max-width:100%;height:auto;margin:0 auto}
+  /* 予約CTA: Canvasのボタン絵に重ねる「本物のリンク」。既定は非表示で、
+     ループ再生(サイト埋め込み)のCTAシーン中だけ表示される。 */
+  #booking-cta{
+    position:fixed; left:0; top:0; transform:translate(-50%,-50%);
+    display:none; z-index:10;
+    padding:16px 32px; border-radius:40px;
+    background:#ff5fa2; color:#fff; border:4px solid #fff;
+    font:900 20px/1 'Arial Black','Hiragino Kaku Gothic ProN',sans-serif;
+    text-decoration:none; white-space:nowrap;
+    box-shadow:0 6px 18px rgba(30,10,40,.3);
+  }
+  #booking-cta:focus-visible{outline:4px solid #ffd23f; outline-offset:3px}
+</style>
 <canvas id="cv" width="1280" height="720"></canvas>
-<script src="story.js"></script>
+<!-- 予約への「本物のリンク」。href は正本の公式LINE予約URL。story の cta.href で上書き可。 -->
+<a id="booking-cta" href="https://lin.ee/cTSDajPz" target="_blank" rel="noopener noreferrer">500円体験を予約する</a>
+<script>
+// どの物語を読むか: 既定は FLATUP版(story.flatup.js)。?story=op で旧 GIRL POWER 版(story.js)。
+(function () {
+  var s = new URLSearchParams(location.search).get('story');
+  var file = (s === 'op' || s === 'girlpower') ? 'story.js' : 'story.flatup.js';
+  document.write('<scr' + 'ipt src="' + file + '"><\/scr' + 'ipt>');
+})();
+</script>
 <script>
 // 画面サイズは URL で変えられる(例: index.html?w=1080&h=1920 で縦型スマホ動画)
 // ?loop=1 を付けてブラウザで開くと、サイト埋め込み用のループ再生になる
@@ -63,7 +87,17 @@ if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D
 //   win     … 決めポーズ(カット6)
 // 見つからない名前は chara.png で代用されるので、1枚だけでも動く。
 const POSES = {};
-const poseFiles = (qs.get('poses') || '').split(',').filter(Boolean);
+// サイト埋め込み(?poses= 省略)でも複数ポーズが出るよう、既定の一覧を持つ。
+// render.js は poses/ を走査して ?poses= を自動付与するが、ブラウザ直開き
+// (index.html?loop=1)には無いため、ここで既定を補う。存在しない画像は
+// 下の読み込みループの try/catch で安全にスキップされる。
+const DEFAULT_POSES = [
+  'idle.png', 'punch1.png', 'punch2.png', 'hook1.png', 'kick.png',
+  'jump.png', 'win.png', 'welcome.png', 'rest.png',
+];
+const poseFiles = (
+  qs.get('poses') ? qs.get('poses').split(',') : DEFAULT_POSES
+).filter(Boolean);
 function pose(name, fallback) {
   return POSES[name] || (fallback && POSES[fallback]) || IMG;
 }
@@ -689,6 +723,25 @@ function draw(t) {
 
 window.seek = t => { draw(t); return true; };
 
+// ---------- 予約CTA(本物のHTMLリンク)を Canvas のボタン位置に重ねる ----------
+// ループ再生(サイト埋め込み)の cta シーン中だけ表示し、押すと公式LINE予約が開く。
+// 動画書き出し(render.js)では loop なし=常に非表示なので、MP4 には写らない。
+const bookingLink = document.getElementById('booking-cta');
+function updateBookingCTA(time) {
+  if (!bookingLink) return;
+  const sc = sceneAt(time);
+  const visible = sc.type === 'cta' && sc.button && time >= sc.start + 1.1;
+  if (!visible) { bookingLink.style.display = 'none'; return; }
+  if (sc.button) bookingLink.textContent = sc.button;   // 文字は物語(cta.button)に合わせる
+  if (sc.href) bookingLink.href = sc.href;              // URLは物語(cta.href)で上書き可
+  // Canvas内のボタン中心 → 画面座標(Canvasは幅に合わせて縮小されるので換算する)
+  const rect = cv.getBoundingClientRect();
+  const bx = W * (VERT ? .5 : .66), by = H * (VERT ? .66 : .62);
+  bookingLink.style.left = (rect.left + bx * rect.width / W) + 'px';
+  bookingLink.style.top  = (rect.top + by * rect.height / H) + 'px';
+  bookingLink.style.display = 'inline-block';
+}
+
 // ---------- BGM: original 160bpm chiptune, rendered offline ----------
 async function renderAudio() {
   const sr = 44100;
@@ -830,7 +883,12 @@ const loadImg = src => new Promise((ok, ng) => {
   if (qs.get('loop')) {
     // ★サイト埋め込みモード: リアルタイムでずっとループ再生
     const t0 = performance.now();
-    (function anim() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(anim); })();
+    (function anim() {
+      const time = ((performance.now() - t0) / 1000) % DUR;
+      draw(time);
+      updateBookingCTA(time);   // CTAシーン中だけ本物の予約リンクを重ねる
+      requestAnimationFrame(anim);
+    })();
     // クリックされたら音楽も鳴らす(ブラウザの自動再生ルールがあるため、最初は無音)
     let actx = null;
     cv.addEventListener('click', async () => {

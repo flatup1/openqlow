@@ -18,5 +18,6 @@ window.STORY = [
   { type: 'cta',        sec: 3.0,
     title: '怖くても、大丈夫。',
     subtitle: 'はじめの一歩を、笑わない。FLATUP GYM',
-    button: '500円体験を予約する' },
+    button: '500円体験を予約する',
+    href: 'https://lin.ee/cTSDajPz' },  // 公式LINE予約(ループ再生時に本物のリンクを重ねる)
 ];
