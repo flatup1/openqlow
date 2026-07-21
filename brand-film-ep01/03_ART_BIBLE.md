@@ -18,12 +18,12 @@
 固定する空間要素(全シーンで配置を変えない):
 
 - 白いフローリング調の床、明るい白壁
-- 壁の一面に木目パネルのアクセント
+- 壁は白+植物モチーフの装飾(実店舗準拠。実写確認 2026-07-21)。木目はベンチ等の小物のみ(壁一面の木目パネルは実店舗に無いため必須から外す)
 - 観葉植物(モンステラ系の鉢植え)が2〜3箇所
 - 大きな窓(昼: 自然光 / 夜: 街の静かな夜景)
 - 木製ベンチ(保護者観覧用。S5/S6/S8で母が座る位置)
 - 壁付きの木製棚(ミットとグローブの定位置)
-- 天井から下がるサンドバッグ2本: **蛍光ピンク1本(キャラクター「バッグさん」)**、白〜グレー1本
+- 天井から下がるサンドバッグ2本: **蛍光ピンク1本(キャラクター「バッグさん」)**、蛍光イエロー1本(実店舗はピンク+イエローが複数吊り。実写確認 2026-07-21。映像では2本に整理する)
 - 壁の丸時計(夜のシーンで針の音の根拠になる)
 - 威圧的な要素(リング、金網、トロフィー、闘争的ポスター)は置かない
 
@@ -100,9 +100,10 @@ Original heartwarming family-friendly cinematic 3D animation (original style,
 not imitating any existing studio or film). Physically-based rendering, soft
 shadows, warm cinematic lighting, shallow cinematic depth of field, 35-50mm
 lens feel. A bright, clean, welcoming small boxing-fitness gym: white floor,
-white walls, one wood-panel accent wall, potted monstera plants, large window,
-wooden bench, wall shelf, a round wall clock, two hanging heavy bags (one soft
-neon-pink, one white). Calm, gentle, safe atmosphere with zero intimidation.
+white walls decorated with gentle green plant motifs, potted monstera plants,
+large window, wooden bench, wall shelf, a round wall clock, two hanging heavy
+bags (one soft neon-pink, one soft neon-yellow). Calm, gentle, safe atmosphere
+with zero intimidation.
 Consistent set layout, consistent color grading, consistent lens across all
 scenes. Emotions are shown through tiny gestures only. No exaggerated cartoon
 faces, no added facial features on objects, no text, no logos.
@@ -165,8 +166,8 @@ full body, consistent proportions, consistent colors and materials.
 ```text
 [STYLE ブロックを貼る] + [NIGHT または DAY]
 Wide establishing shot of the empty gym interior showing the full set layout:
-white floor, wood-panel accent wall, potted plants, large window, wooden bench
-on the left, wall shelf with the red mitts and small white gloves, round wall
-clock, neon-pink heavy bag and white heavy bag hanging center-right. Empty, no
-people. Camera at chest height, 35mm lens feel.
+white floor, white walls with green plant-motif decorations, potted plants,
+large window, wooden bench on the left, wall shelf with the red mitts and small
+white gloves, round wall clock, neon-pink heavy bag and neon-yellow heavy bag
+hanging center-right. Empty, no people. Camera at chest height, 35mm lens feel.
 ```

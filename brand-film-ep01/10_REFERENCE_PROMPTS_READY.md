@@ -19,24 +19,24 @@
 ```text
 Original heartwarming family-friendly cinematic 3D animation style (original style, not imitating any existing studio or film). Physically-based rendering, soft shadows, warm cinematic lighting, shallow cinematic depth of field, 35mm lens feel. Vertical 9:16 composition.
 
-Wide establishing shot of an empty small boxing-fitness gym at night, after closing time. White floor, white walls, one wood-panel accent wall, potted monstera plants, a large window with a quiet night view and soft moonlight, a wooden bench on the left, a wall shelf holding a pair of red-and-white curved punch mitts and a pair of small white kids' boxing gloves, a round wall clock, and two hanging heavy bags center-right: one soft neon-pink, one white. Only one warm ceiling light remains on; the rest of the room rests in gentle blue-grey darkness. Calm, clean, safe, peaceful — never scary. No people. No text, no logos.
+Wide establishing shot of an empty small boxing-fitness gym at night, after closing time. White floor, white walls decorated with gentle green plant motifs, potted monstera plants, a large window with a quiet night view and soft moonlight, a wooden bench on the left, a wall shelf holding a pair of red-and-white curved punch mitts and a pair of small white kids' boxing gloves, a round wall clock, and two hanging heavy bags center-right: one soft neon-pink, one soft neon-yellow. Only one warm ceiling light remains on; the rest of the room rests in gentle blue-grey darkness. Calm, clean, safe, peaceful — never scary. No people. No text, no logos.
 
 NEGATIVE: no text, no watermark, no logos, no people, no faces on objects, no horror mood, no creepy lighting, no boxing ring, no cage, no clutter, no oversaturated colors, no photorealism (keep stylized 3D animation look)
 ```
 
-✅承認チェック: ベンチ左/棚に道具/時計/バッグ2本(ピンク+白)の配置が揃っているか。怖く見えないか。
+✅承認チェック: ベンチ左/棚に道具/時計/バッグ2本(蛍光ピンク+蛍光イエロー。実店舗準拠)の配置が揃っているか。怖く見えないか。
 
 ## ② ジム内装・昼(全昼シーンの基準)
 
 ```text
 Original heartwarming family-friendly cinematic 3D animation style (original style, not imitating any existing studio or film). Physically-based rendering, soft shadows, warm cinematic lighting, shallow cinematic depth of field, 35mm lens feel. Vertical 9:16 composition.
 
-Wide establishing shot of the same small boxing-fitness gym in bright daytime, empty. White floor, white walls, one wood-panel accent wall, potted monstera plants, soft natural sunlight streaming through the large window, airy and clean, gentle warm daylight bouncing off the white walls. Wooden bench on the left, wall shelf with red-and-white curved punch mitts and small white kids' boxing gloves, round wall clock, one soft neon-pink heavy bag and one white heavy bag hanging center-right. Welcoming, safe, zero intimidation. No people. No text, no logos.
+Wide establishing shot of the same small boxing-fitness gym in bright daytime, empty. White floor, white walls decorated with gentle green plant motifs, potted monstera plants, soft natural sunlight streaming through the large window, airy and clean, gentle warm daylight bouncing off the white walls. Wooden bench on the left, wall shelf with red-and-white curved punch mitts and small white kids' boxing gloves, round wall clock, one soft neon-pink heavy bag and one soft neon-yellow heavy bag hanging center-right. Welcoming, safe, zero intimidation. No people. No text, no logos.
 
 NEGATIVE: no text, no watermark, no logos, no people, no boxing ring, no cage, no aggressive equipment, no clutter, no oversaturated colors, no photorealism (keep stylized 3D animation look)
 ```
 
-✅承認チェック: ①と同じ部屋に見えるか(配置・木目・植物が一致)。明るく安心感があるか。
+✅承認チェック: ①と同じ部屋に見えるか(配置・植物装飾・バッグの色が一致)。明るく安心感があるか。
 
 ## ③ ミット(道具キャラ・進行役)
 
