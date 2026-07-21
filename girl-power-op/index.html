@@ -27,16 +27,17 @@
 <style>
   html,body{margin:0;padding:0;background:#000;overflow:hidden}
   canvas{display:block;max-width:100%;height:auto;margin:0 auto}
-  /* 予約CTA: Canvasのボタン絵に重ねる「本物のリンク」。既定は非表示で、
-     ループ再生(サイト埋め込み)のCTAシーン中だけ表示される。 */
+  /* 予約CTA: canvasはボタンの絵を描いているだけ(押せない)なので、
+     見た目は透明のまま、同じ位置・同じ大きさに本物の<a>を重ねて押せるようにする。
+     ループ再生(サイト埋め込み)のCTAシーン中だけ表示される。
+     ここで色や背景を付けると、canvasが描く絵のボタンと二重に見えてズレるので、
+     わざと透明(見た目はcanvas側の絵だけに任せる)にしてある。 */
   #booking-cta{
     position:fixed; left:0; top:0; transform:translate(-50%,-50%);
-    display:none; z-index:10;
-    padding:16px 32px; border-radius:40px;
-    background:#ff5fa2; color:#fff; border:4px solid #fff;
+    display:none; z-index:10; box-sizing:border-box;
+    border-radius:40px; background:transparent; border:0; color:transparent;
     font:900 20px/1 'Arial Black','Hiragino Kaku Gothic ProN',sans-serif;
-    text-decoration:none; white-space:nowrap;
-    box-shadow:0 6px 18px rgba(30,10,40,.3);
+    text-decoration:none; white-space:nowrap; -webkit-tap-highlight-color:transparent;
   }
   #booking-cta:focus-visible{outline:4px solid #ffd23f; outline-offset:3px}
 </style>
@@ -727,6 +728,10 @@ window.seek = t => { draw(t); return true; };
 // ループ再生(サイト埋め込み)の cta シーン中だけ表示し、押すと公式LINE予約が開く。
 // 動画書き出し(render.js)では loop なし=常に非表示なので、MP4 には写らない。
 const bookingLink = document.getElementById('booking-cta');
+// canvasの実描画状態(cx2d)には触れず、ボタンの文字幅だけを測るための道具。
+// SCENES.cta が描く絵のボタンとまったく同じ計算式(font/幅/高さ)を使い、
+// 見えない<a>の当たり判定を絵とぴったり重ねる(ズレると二重に見えてしまうため)。
+const ctaMeasureCx = document.createElement('canvas').getContext('2d');
 function updateBookingCTA(time) {
   if (!bookingLink) return;
   const sc = sceneAt(time);
@@ -734,11 +739,18 @@ function updateBookingCTA(time) {
   if (!visible) { bookingLink.style.display = 'none'; return; }
   if (sc.button) bookingLink.textContent = sc.button;   // 文字は物語(cta.button)に合わせる
   if (sc.href) bookingLink.href = sc.href;              // URLは物語(cta.href)で上書き可
-  // Canvas内のボタン中心 → 画面座標(Canvasは幅に合わせて縮小されるので換算する)
+  // Canvas内のボタン中心・大きさ → 画面座標(Canvasは幅に合わせて縮小されるので換算する)
+  // SCENES.cta の計算式(font: 900 34px Arial Black / +90 / 上限 W*.8 / 高さ76)と同じにする。
   const rect = cv.getBoundingClientRect();
+  const zoom = rect.width / W; // canvasが画面上で縮小/拡大されている倍率
   const bx = W * (VERT ? .5 : .66), by = H * (VERT ? .66 : .62);
-  bookingLink.style.left = (rect.left + bx * rect.width / W) + 'px';
-  bookingLink.style.top  = (rect.top + by * rect.height / H) + 'px';
+  ctaMeasureCx.font = `900 34px 'Arial Black', sans-serif`;
+  const bw = Math.min(ctaMeasureCx.measureText(sc.button).width + 90, W * .8);
+  const bh = 76;
+  bookingLink.style.left = (rect.left + bx * zoom) + 'px';
+  bookingLink.style.top  = (rect.top + by * zoom) + 'px';
+  bookingLink.style.width  = (bw * zoom) + 'px';
+  bookingLink.style.height = (bh * zoom) + 'px';
   bookingLink.style.display = 'inline-block';
 }
 
