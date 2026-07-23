@@ -24,9 +24,34 @@
    ・サイト埋め込み → index.html?loop=1 をブラウザで開くとループ再生
   ============================================================
 -->
-<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}canvas{display:block;max-width:100%;height:auto;margin:0 auto}</style>
+<style>
+  html,body{margin:0;padding:0;background:#000;overflow:hidden}
+  canvas{display:block;max-width:100%;height:auto;margin:0 auto}
+  /* 予約CTA: canvasはボタンの絵を描いているだけ(押せない)なので、
+     見た目は透明のまま、同じ位置・同じ大きさに本物の<a>を重ねて押せるようにする。
+     ループ再生(サイト埋め込み)のCTAシーン中だけ表示される。
+     ここで色や背景を付けると、canvasが描く絵のボタンと二重に見えてズレるので、
+     わざと透明(見た目はcanvas側の絵だけに任せる)にしてある。 */
+  #booking-cta{
+    position:fixed; left:0; top:0; transform:translate(-50%,-50%);
+    display:none; z-index:10; box-sizing:border-box;
+    border-radius:40px; background:transparent; border:0; color:transparent;
+    font:900 20px/1 'Arial Black','Hiragino Kaku Gothic ProN',sans-serif;
+    text-decoration:none; white-space:nowrap; -webkit-tap-highlight-color:transparent;
+  }
+  #booking-cta:focus-visible{outline:4px solid #ffd23f; outline-offset:3px}
+</style>
 <canvas id="cv" width="1280" height="720"></canvas>
-<script src="story.js"></script>
+<!-- 予約への「本物のリンク」。href は正本の公式LINE予約URL。story の cta.href で上書き可。 -->
+<a id="booking-cta" href="https://lin.ee/cTSDajPz" target="_blank" rel="noopener noreferrer">500円体験を予約する</a>
+<script>
+// どの物語を読むか: 既定は FLATUP版(story.flatup.js)。?story=op で旧 GIRL POWER 版(story.js)。
+(function () {
+  var s = new URLSearchParams(location.search).get('story');
+  var file = (s === 'op' || s === 'girlpower') ? 'story.js' : 'story.flatup.js';
+  document.write('<scr' + 'ipt src="' + file + '"><\/scr' + 'ipt>');
+})();
+</script>
 <script>
 // 画面サイズは URL で変えられる(例: index.html?w=1080&h=1920 で縦型スマホ動画)
 // ?loop=1 を付けてブラウザで開くと、サイト埋め込み用のループ再生になる
@@ -38,6 +63,22 @@ cv.width = W; cv.height = H;
 const cx2d = cv.getContext('2d');
 let IMG = new Image(), IW = 0, IH = 0;
 
+// 古いブラウザ(iOS Safari 16未満など)には roundRect が無いので補う。
+// 対応ブラウザでは何もしない(既存の描画はそのまま)。
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    let rr = typeof r === 'number' ? r : (Array.isArray(r) ? r[0] : 0);
+    rr = Math.min(rr, Math.abs(w) / 2, Math.abs(h) / 2);
+    this.moveTo(x + rr, y);
+    this.arcTo(x + w, y, x + w, y + h, rr);
+    this.arcTo(x + w, y + h, x, y + h, rr);
+    this.arcTo(x, y + h, x, y, rr);
+    this.arcTo(x, y, x + w, y, rr);
+    this.closePath();
+    return this;
+  };
+}
+
 // ---------- ポーズ画像(複数枚アニメ) ----------
 // poses/ フォルダに置いた画像は、名前でシーンに割り当てられる:
 //   idle    … ふだんの構え(カット1・3ほか)
@@ -47,7 +88,17 @@ let IMG = new Image(), IW = 0, IH = 0;
 //   win     … 決めポーズ(カット6)
 // 見つからない名前は chara.png で代用されるので、1枚だけでも動く。
 const POSES = {};
-const poseFiles = (qs.get('poses') || '').split(',').filter(Boolean);
+// サイト埋め込み(?poses= 省略)でも複数ポーズが出るよう、既定の一覧を持つ。
+// render.js は poses/ を走査して ?poses= を自動付与するが、ブラウザ直開き
+// (index.html?loop=1)には無いため、ここで既定を補う。存在しない画像は
+// 下の読み込みループの try/catch で安全にスキップされる。
+const DEFAULT_POSES = [
+  'idle.png', 'punch1.png', 'punch2.png', 'hook1.png', 'kick.png',
+  'jump.png', 'win.png', 'welcome.png', 'rest.png',
+];
+const poseFiles = (
+  qs.get('poses') ? qs.get('poses').split(',') : DEFAULT_POSES
+).filter(Boolean);
 function pose(name, fallback) {
   return POSES[name] || (fallback && POSES[fallback]) || IMG;
 }
@@ -306,7 +357,7 @@ function sceneAt(time) {
   return sc;
 }
 // 静かなシーン(BGMがドラム無しのやさしい曲に切りかわる)
-const QUIET = new Set(['night', 'fall', 'smallpunch', 'sunrise', 'cta']);
+const QUIET = new Set(['night', 'fall', 'smallpunch', 'sunrise', 'cta', 'help', 'rest']);
 
 // ---------- シーンの種類(テンプレート) ----------
 // それぞれ「そのシーンの絵の作り方」。引数は
@@ -341,9 +392,10 @@ const SCENES = {
       const dir = lastIdx % 2 ? 1 : -1;
       shx = dir * (1 - k) * 34; shy = (1 - k) * -14; sq = (1 - k) * .06;
     }
-    // ヒットから0.35秒間はパンチのポーズ画像に切りかわる(左右交互)
+    // ヒットから0.35秒間はパンチのポーズに切りかわる。ジャブ→ストレート→フックの3連コンビ。
     const punching = lastHit >= 0 && t - lastHit < .35;
-    const img2 = punching ? pose(lastIdx % 2 ? 'punch2' : 'punch1', 'punch1') : pose('idle');
+    const combo = ['punch1', 'punch2', 'hook1'];  // 無いものは自動で idle/punch1 へフォールバック
+    const img2 = punching ? pose(combo[lastIdx % combo.length], 'punch1') : pose('idle');
     cardDraw(W/2 + shx, H * (VERT ? .14 : .07) + shy, 1, shx * .0012, 1 + sq, 1 - sq, img2);
     const cry = sc.text !== undefined ? sc.text : 'POW!';
     for (let i = 0; i < hits.length; i++) {
@@ -426,6 +478,28 @@ const SCENES = {
     const sub = sc.subtitle !== undefined ? sc.subtitle : 'KICKBOXING GIRL';
     if (title) popText(title, W * (VERT ? .5 : .70), H * (VERT ? .68 : .32), 88, PINK, sc.start + .35, t, -.03, VERT ? W * .92 : W * .54);
     if (sub) popText(sub, W * (VERT ? .5 : .70), H * (VERT ? .77 : .48), 40, YEL, sc.start + .8, t, 0, VERT ? W * .92 : W * .54);
+  },
+
+  // ようこそ(おいでおいで): 両手を広げて招く。オープニングや締めの招待に。
+  welcome(t, lt, p, sc) {
+    sunburst(t, sc.c1 || '#8fe0ff', sc.c2 || '#e7f8ff', .3);
+    halftone(.28);
+    // ぴょこぴょこ弾む(招くリズム)
+    const bounce = -Math.abs(Math.sin(t * 3.2)) * 16;
+    cardDraw(W / 2, H * (VERT ? .16 : .09) + bounce, VERT ? .9 : 1, Math.sin(t * 2) * .02, 1, 1, pose('welcome', 'idle'));
+    // ハートと星がふわふわ昇る
+    for (let i = 0; i < 14; i++) {
+      const life = (lt * (.3 + rnd(i, 8) * .3) + rnd(i, 4)) % 1;
+      const x = rnd(i, 2) * W;
+      const y = H - life * (H + 60);
+      const s = 10 + rnd(i, 5) * 16;
+      cx2d.save();
+      cx2d.globalAlpha = clamp(Math.sin(life * Math.PI) * 1.3, 0, 1);
+      if (i % 2) heart(x, y, s, PINK); else star(x, y, s, life * 3, YEL, false);
+      cx2d.restore();
+    }
+    const txt = sc.text !== undefined ? sc.text : 'ようこそ!';
+    if (txt) popText(txt, W / 2, H * (VERT ? .9 : .85), 60, PINK, sc.start + .4, t, -.03, W * .9);
   },
 
   // 夜: 月明かりの静かなジム(物語の始まりに)
@@ -559,6 +633,75 @@ const SCENES = {
       }
     }
   },
+
+  // 優しさの継承(Bible §11/§15): 主人公が、入口で緊張する新入りの隣に寄り、手を差し伸べる。
+  // 急かさない・笑わない。二人の間にそっとハートが昇る。BGMはしずか系。
+  help(t, lt, p, sc) {
+    // あたたかい朝の光(やわらかい放射)
+    const g = cx2d.createRadialGradient(W/2, H * .35, 40, W/2, H * .35, Math.hypot(W, H) * .7);
+    g.addColorStop(0, '#fff3df'); g.addColorStop(1, '#ffdca8');
+    cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+    halftone(.12);
+
+    // レイアウト: 横=左に主人公・右に新入り / 縦=下に主人公・上に新入り
+    const heroX = VERT ? W * .34 : W * .30;
+    const newX = VERT ? W * .66 : W * .66;
+    const heroY = H * (VERT ? .30 : .12);
+    const newY = H * (VERT ? .22 : .24);
+
+    // 新入り(小さく・少し透けて・こわごわ揺れる)。同じキャラを nervous 指定、無ければ idle。
+    cx2d.save();
+    cx2d.globalAlpha = 0.9;
+    cardDraw(newX, newY + Math.sin(t * 2.2) * 4, VERT ? .42 : .52, Math.sin(t * 2.2) * .03, 1, 1, pose('nervous', 'idle'));
+    cx2d.restore();
+
+    // 主人公(新入りの方へそっと傾く)。手を差し伸べる=わずかに寄る動き。
+    const lean = easeInOut(clamp(p * 1.3, 0, 1)) * (VERT ? 0 : W * .03);
+    cardDraw(heroX + lean, heroY, VERT ? .5 : .62, (VERT ? 0.04 : 0.06) * easeInOut(clamp(p * 1.3, 0, 1)), 1, 1, pose('win', 'idle'));
+
+    // 二人の間に、そっと昇るハート(急がない優しさ)
+    const midX = (heroX + newX) / 2, midY = (heroY + newY) / 2;
+    for (let i = 0; i < 4; i++) {
+      const life = ((t - sc.start) * .35 + i * .25) % 1;
+      cx2d.save();
+      cx2d.globalAlpha = clamp(Math.sin(life * Math.PI), 0, 1) * .9;
+      heart(midX + Math.sin(life * 6 + i) * 22, midY - life * 90, 12 + i * 2, PINK);
+      cx2d.restore();
+    }
+
+    // セリフは短く(§17 の「使う言葉」)。既定は「ぼくも、最初は怖かったよ。」
+    const txt = sc.text !== undefined ? sc.text : 'ぼくも、最初は怖かったよ。';
+    if (txt) popText(txt, W / 2, H * (VERT ? .9 : .86), 44, INK, sc.start + .6, t, 0, W * .9);
+  },
+
+  // 休憩/おやすみ: サンドバッグにもたれて眠る。サイトの締め・フッター・ループ末尾に。
+  // 「朝には元に戻る」やさしい余韻。呼吸で上下、ときどき ZZZ。
+  rest(t, lt, p, sc) {
+    const g = cx2d.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#2a2440'); g.addColorStop(1, '#4a3a55');
+    cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+    // 窓からのやわらかい月/街あかり
+    cx2d.save();
+    cx2d.globalAlpha = .5; cx2d.fillStyle = '#ffe9b0';
+    cx2d.beginPath(); cx2d.arc(W * .82, H * .2, Math.min(W, H) * .06, 0, 7); cx2d.fill();
+    cx2d.restore();
+    halftone(.08);
+    // ゆっくりした寝息(上下)
+    const breathe = Math.sin(t * 1.2) * 6;
+    cardDraw(W / 2, H * (VERT ? .28 : .16) + breathe, VERT ? .62 : .74, 0, 1, 1, pose('rest', 'idle'));
+    // ZZZ(ふわっと昇る)
+    for (let i = 0; i < 3; i++) {
+      const life = ((t - sc.start) * .4 + i * .33) % 1;
+      cx2d.save();
+      cx2d.globalAlpha = clamp(Math.sin(life * Math.PI), 0, 1) * .8;
+      cx2d.fillStyle = WHT;
+      cx2d.font = `900 ${20 + i * 8}px 'Arial Black', sans-serif`;
+      cx2d.fillText('Z', W * (VERT ? .62 : .58) + i * 24, H * (VERT ? .2 : .18) - life * 60);
+      cx2d.restore();
+    }
+    const txt = sc.text !== undefined ? sc.text : 'おやすみ。';
+    if (txt) popText(txt, W / 2, H * (VERT ? .9 : .86), 42, WHT, sc.start + .6, t, 0, W * .9);
+  },
 };
 
 function draw(t) {
@@ -580,6 +723,36 @@ function draw(t) {
 }
 
 window.seek = t => { draw(t); return true; };
+
+// ---------- 予約CTA(本物のHTMLリンク)を Canvas のボタン位置に重ねる ----------
+// ループ再生(サイト埋め込み)の cta シーン中だけ表示し、押すと公式LINE予約が開く。
+// 動画書き出し(render.js)では loop なし=常に非表示なので、MP4 には写らない。
+const bookingLink = document.getElementById('booking-cta');
+// canvasの実描画状態(cx2d)には触れず、ボタンの文字幅だけを測るための道具。
+// SCENES.cta が描く絵のボタンとまったく同じ計算式(font/幅/高さ)を使い、
+// 見えない<a>の当たり判定を絵とぴったり重ねる(ズレると二重に見えてしまうため)。
+const ctaMeasureCx = document.createElement('canvas').getContext('2d');
+function updateBookingCTA(time) {
+  if (!bookingLink) return;
+  const sc = sceneAt(time);
+  const visible = sc.type === 'cta' && sc.button && time >= sc.start + 1.1;
+  if (!visible) { bookingLink.style.display = 'none'; return; }
+  if (sc.button) bookingLink.textContent = sc.button;   // 文字は物語(cta.button)に合わせる
+  if (sc.href) bookingLink.href = sc.href;              // URLは物語(cta.href)で上書き可
+  // Canvas内のボタン中心・大きさ → 画面座標(Canvasは幅に合わせて縮小されるので換算する)
+  // SCENES.cta の計算式(font: 900 34px Arial Black / +90 / 上限 W*.8 / 高さ76)と同じにする。
+  const rect = cv.getBoundingClientRect();
+  const zoom = rect.width / W; // canvasが画面上で縮小/拡大されている倍率
+  const bx = W * (VERT ? .5 : .66), by = H * (VERT ? .66 : .62);
+  ctaMeasureCx.font = `900 34px 'Arial Black', sans-serif`;
+  const bw = Math.min(ctaMeasureCx.measureText(sc.button).width + 90, W * .8);
+  const bh = 76;
+  bookingLink.style.left = (rect.left + bx * zoom) + 'px';
+  bookingLink.style.top  = (rect.top + by * zoom) + 'px';
+  bookingLink.style.width  = (bw * zoom) + 'px';
+  bookingLink.style.height = (bh * zoom) + 'px';
+  bookingLink.style.display = 'inline-block';
+}
 
 // ---------- BGM: original 160bpm chiptune, rendered offline ----------
 async function renderAudio() {
@@ -707,17 +880,27 @@ const loadImg = src => new Promise((ok, ng) => {
   im.src = src;
 });
 (async () => {
-  IMG = await loadImg('chara.png');
+  IMG = await loadImg('chara.png');             // 本体は必須(失敗したら致命)
   IW = IMG.naturalWidth; IH = IMG.naturalHeight;
   for (const f of poseFiles) {
     const name = f.replace(/\.[^.]+$/, '');     // 拡張子を取った名前がポーズ名
-    POSES[name] = await loadImg('poses/' + f);
+    try {
+      POSES[name] = await loadImg('poses/' + f);
+    } catch (e) {
+      // 1枚失敗しても全体は止めない。そのポーズは pose() が chara.png へ自動フォールバック。
+      console.warn('pose skipped:', f, String(e));
+    }
   }
   window.ready = true;
   if (qs.get('loop')) {
     // ★サイト埋め込みモード: リアルタイムでずっとループ再生
     const t0 = performance.now();
-    (function anim() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(anim); })();
+    (function anim() {
+      const time = ((performance.now() - t0) / 1000) % DUR;
+      draw(time);
+      updateBookingCTA(time);   // CTAシーン中だけ本物の予約リンクを重ねる
+      requestAnimationFrame(anim);
+    })();
     // クリックされたら音楽も鳴らす(ブラウザの自動再生ルールがあるため、最初は無音)
     let actx = null;
     cv.addEventListener('click', async () => {

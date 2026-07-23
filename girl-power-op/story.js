@@ -12,12 +12,15 @@
 //   closeup  … 顔のクローズアップ + 集中線          文字: text
 //   jump     … ぴょんぴょんジャンプ                  文字: text
 //   sky      … 空をふわふわ飛ぶ                      文字: text
+//   welcome  … 両手を広げて招く(ようこそ)          文字: text
 //   finale   … 紙吹雪 + ロゴ                          文字: title, subtitle
 //   〜しずか系(やさしいオルゴール風の曲になる)〜
 //   night      … 月明かりの夜のジム                  文字: text
 //   fall       … 空振りしてぽてっと転ぶ              文字: text
 //   smallpunch … はじめての小さな一発                文字: text
 //   sunrise    … 朝日がのぼる                        文字: text
+//   help       … 優しさの継承(新入りに手を差し伸べる) 文字: text
+//   rest       … サンドバッグにもたれて眠る(締め)    文字: text
 //   cta        … メッセージ+ボタン(サイトの締め)  文字: title, subtitle, button
 //   ※ 物語のサンプル: story.flatup.js を見てね(15秒版)
 //
