@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLAT UP GYM｜世界一、初心者にやさしい格闘技ジム（成田）</title>
+<meta name="description" content="はじめの一歩を、笑わない。成田のキックボクシングジム。初心者・女性・キッズも安心。初回体験500円。">
+<script>document.documentElement.classList.add('js');</script>
+
+<!-- OGP（TODO(JIN): 実画像URL 1200x630 を差し替え） -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="FLAT UP GYM｜世界一、初心者にやさしい格闘技ジム">
+<meta property="og:description" content="はじめの一歩を、笑わない。初心者・女性・キッズも安心のジム。初回体験500円。">
+<meta property="og:image" content="TODO_JIN_OGP_IMAGE_URL">
+<meta property="og:site_name" content="FLAT UP GYM">
+
+<!-- 構造化データ（TODO(JIN): 住所・電話・営業時間を正本で確定） -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SportsActivityLocation",
+  "name": "FLAT UP GYM",
+  "description": "世界一、初心者にやさしい格闘技ジム。キックボクシング/ブラジリアン柔術/キッズ/レディース。",
+  "address": { "@type": "PostalAddress", "addressLocality": "成田市", "addressRegion": "千葉県", "streetAddress": "TODO_JIN_STREET" },
+  "telephone": "TODO_JIN_TEL",
+  "url": "https://flatupnarita.jp",
+  "sameAs": ["https://www.instagram.com/flatup.narita"]
+}
+</script>
+
+<!-- 計測タグ挿入枠（TODO(JIN): GA4 / Clarity / Meta Pixel の各IDを入れる） -->
+<!-- GA4:  <script async src="https://www.googletagmanager.com/gtag/js?id=TODO_JIN_GA4"></script> ... -->
+<!-- Clarity: TODO_JIN_CLARITY -->
+<!-- Meta Pixel: TODO_JIN_META_PIXEL -->
+
+<style>
+  :root{
+    --bg:#fbfbf7; --panel:#ffffff; --ink:#232526; --muted:#5c6560;
+    --green:#6fae7d; --green-d:#4f8a5f; --pink:#ff5fa2; --yellow:#ffd23f;
+    --line:#06c755; --radius:20px; --maxw:1080px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#12140f; --panel:#1b1e18; --ink:#f3f5ee; --muted:#a8b0a4; }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.75;-webkit-font-smoothing:antialiased}
+  img{max-width:100%;display:block}
+  a{color:inherit}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  .btn-line{display:inline-flex;align-items:center;gap:.5em;background:var(--line);color:#fff;
+    font-weight:800;text-decoration:none;padding:14px 22px;border-radius:999px;
+    box-shadow:0 6px 18px rgba(6,199,85,.35);transition:transform .15s, filter .15s}
+  .btn-line:hover{filter:brightness(1.05);transform:translateY(-1px)}
+  .btn-line small{font-weight:600;opacity:.9}
+
+  /* ヘッダー */
+  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(8px);
+    background:color-mix(in srgb, var(--bg) 82%, transparent);border-bottom:1px solid rgba(128,128,128,.15)}
+  .hd{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .logo{font-weight:900;letter-spacing:.02em}
+  .logo b{color:var(--pink)}
+  .hd .btn-line{padding:9px 16px;font-size:.9rem}
+
+  /* ヒーロー */
+  .hero{position:relative;overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 80% -10%, color-mix(in srgb,var(--yellow) 35%,transparent), transparent 60%),
+      radial-gradient(120% 90% at 0% 110%, color-mix(in srgb,var(--pink) 22%,transparent), transparent 55%);}
+  .hero-in{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:center;padding:56px 0}
+  .hero h1{font-size:clamp(1.7rem,4.4vw,3rem);line-height:1.3;margin:.2em 0 .3em;font-weight:900}
+  .hero h1 .mk{color:var(--green-d);}
+  .hero p.lead{font-size:clamp(1rem,2.4vw,1.2rem);color:var(--muted);margin:0 0 1.4em}
+  .hero .cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .hero .cta .note{font-size:.85rem;color:var(--muted)}
+  .hero-art{border-radius:var(--radius);overflow:hidden;box-shadow:0 20px 50px rgba(30,30,20,.18);
+    background:#fff;aspect-ratio:1/1}
+  .hero-art img{width:100%;height:100%;object-fit:cover}
+  .badge{display:inline-block;background:var(--panel);border:1px solid rgba(128,128,128,.2);
+    border-radius:999px;padding:6px 14px;font-size:.82rem;font-weight:700;color:var(--green-d)}
+
+  /* セクション共通 */
+  section{padding:56px 0}
+  .kicker{color:var(--pink);font-weight:800;letter-spacing:.08em;font-size:.85rem;margin:0 0 .4em}
+  h2{font-size:clamp(1.4rem,3.4vw,2rem);font-weight:900;margin:0 0 .6em;line-height:1.35}
+  .sub{color:var(--muted);max-width:46ch}
+  /* JSが動くときだけ隠して演出する（JS無し/失敗時は最初から見える＝本文が消えない） */
+  .js .reveal{opacity:0;transform:translateY(14px);transition:opacity .6s, transform .6s}
+  .js .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1;transform:none;transition:none} }
+
+  /* 共感（不安） */
+  .worry{background:var(--panel)}
+  .worry ul{list-style:none;padding:0;margin:1.2em 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .worry li{background:var(--bg);border:1px solid rgba(128,128,128,.16);border-radius:14px;padding:12px 14px}
+  .worry .catch{margin-top:1.2em;font-size:1.15rem;font-weight:800;color:var(--green-d)}
+
+  /* 安心カード */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:1.4em}
+  .card{background:var(--panel);border:1px solid rgba(128,128,128,.16);border-radius:var(--radius);padding:20px}
+  .card h3{margin:.2em 0 .3em;font-size:1.1rem}
+  .card p{margin:0;color:var(--muted);font-size:.95rem}
+  .price{display:flex;align-items:baseline;gap:.4em;margin-top:1.2em;flex-wrap:wrap}
+  .price .num{font-size:2.2rem;font-weight:900;color:var(--pink)}
+  .price .lbl{color:var(--muted)}
+
+  /* Q&A */
+  .qa{margin-top:1.4em;display:grid;gap:10px}
+  details{background:var(--panel);border:1px solid rgba(128,128,128,.16);border-radius:14px;padding:6px 16px}
+  summary{cursor:pointer;font-weight:700;padding:10px 0;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  details p{color:var(--muted);margin:.2em 0 12px}
+
+  /* 最終CTA */
+  .final{background:linear-gradient(180deg, color-mix(in srgb,var(--green) 16%,transparent), transparent)}
+  .final .box{background:var(--panel);border-radius:26px;padding:36px 24px;text-align:center;
+    border:1px solid rgba(128,128,128,.16)}
+  .final .reason{color:var(--muted);margin:.6em auto 1.4em;max-width:40ch}
+
+  footer{padding:40px 0 96px;color:var(--muted);font-size:.9rem;border-top:1px solid rgba(128,128,128,.15)}
+  footer .row{display:flex;flex-wrap:wrap;gap:18px;justify-content:space-between}
+  footer a{color:var(--green-d);text-decoration:none;font-weight:700}
+
+  /* モバイル固定バー */
+  .mbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);
+    border-top:1px solid rgba(128,128,128,.2)}
+  .mbar .btn-line{width:100%;justify-content:center}
+
+  @media (max-width:820px){
+    .hero-in{grid-template-columns:1fr;padding:36px 0}
+    .hero-art{order:-1}
+    .worry ul{grid-template-columns:1fr}
+    .cards{grid-template-columns:1fr}
+    .mbar{display:block}
+    footer{padding-bottom:110px}
+    .hd .btn-line{display:none} /* モバイルは固定バーに集約 */
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hd">
+    <div class="logo">FLAT UP <b>GYM</b></div>
+    <a class="btn-line" href="https://lin.ee/cTSDajPz" data-cta="header">LINEで相談</a>
+  </div>
+</header>
+
+<!-- ヒーロー：3秒で「怖くない・あたたかい」を伝える -->
+<section class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <span class="badge">世界一、初心者にやさしい格闘技ジム</span>
+      <h1>“強い子”って、<br>パンチが強い子の<br>ことじゃない。</h1>
+      <p class="lead">強さは、だれかに勝つことじゃない。<br>きのうの自分より、少しだけ前へ。<br><strong>はじめの一歩を、笑わないジム。</strong></p>
+      <div class="cta">
+        <a class="btn-line" href="https://lin.ee/cTSDajPz" data-cta="hero">LINEで、まず話を聞いてみる <small>（予約じゃなくてOK）</small></a>
+        <span class="note">成田市｜初回体験 500円</span>
+      </div>
+    </div>
+    <div class="hero-art">
+      <!-- TODO(JIN): ここに girl-power-op のループ動画を埋め込むと動きます:
+           <iframe src="../girl-power-op/index.html?loop=1&w=1280&h=720" style="width:100%;height:100%;border:0"></iframe>
+           まずは静止画で表示 -->
+      <img src="hero.jpg" alt="FLAT UP GYM のキャラクター（キックボクシングの構え）">
+    </div>
+  </div>
+</section>
+
+<!-- 共感：不安を先に言葉にする（エモの心臓） -->
+<section class="worry">
+  <div class="wrap reveal">
+    <p class="kicker">はじめての、あなたへ</p>
+    <h2>はじめて、って、こわい。</h2>
+    <p class="sub">格闘技ジムって、こんな不安がありますよね。</p>
+    <ul>
+      <li>運動が苦手だから、ついていけるか心配</li>
+      <li>格闘技って、こわい・きびしそう</li>
+      <li>まわりと比べられたら、恥ずかしい</li>
+      <li>うちの子が、泣いてしまわないかな</li>
+      <li>女性ひとりでも、大丈夫かな</li>
+      <li>今さら始めても、遅いかな</li>
+    </ul>
+    <p class="catch">——その気持ちのまま、来ていい。</p>
+  </div>
+</section>
+
+<!-- 転換：希望 -->
+<section>
+  <div class="wrap reveal">
+    <p class="kicker">大丈夫の理由</p>
+    <h2>最初はみんな、同じでした。</h2>
+    <p class="sub">上手じゃなくていい。今日は一回だけでいい。
+      できるまでやらせたり、どならせたりしません。あなたのペースを、待ちます。</p>
+  </div>
+</section>
+
+<!-- 安心：証拠（初心者/女性/キッズ）＋料金＋Q&A -->
+<section class="worry">
+  <div class="wrap reveal">
+    <p class="kicker">こんな人が通っています</p>
+    <h2>ひとりじゃない場所。</h2>
+    <div class="cards">
+      <div class="card"><h3>はじめての大人</h3><p>運動から離れていた人も、体力ゼロからで大丈夫。少しずつでOK。</p></div>
+      <div class="card"><h3>女性・レディース</h3><p>こわい雰囲気はありません。明るく清潔な空間で、安心して始められます。</p></div>
+      <div class="card"><h3>キッズ・親子</h3><p>勝ち負けより「挑戦できたこと」を一緒に喜びます。保護者も安心して見守れます。</p></div>
+    </div>
+    <div class="price">
+      <span class="lbl">はじめの一歩は、軽く。</span>
+      <span class="num">初回体験 500円</span>
+    </div>
+    <div class="qa">
+      <details><summary>運動がまったく苦手でも大丈夫ですか？</summary><p>大丈夫です。できないことを責めません。今日できた小さな一歩を一緒に喜びます。</p></details>
+      <details><summary>体験だけでも、しつこく勧誘されませんか？</summary><p>売り込みはしません。まずは雰囲気を知って、合うかどうかをあなたが決めてください。</p></details>
+      <details><summary>子どもが途中で泣いてしまっても平気ですか？</summary><p>平気です。急かしません。「また来てみようね」で大丈夫。ここに居ていい場所です。</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- 変革後の喜び -->
+<section>
+  <div class="wrap reveal">
+    <p class="kicker">通ったあとの、顔</p>
+    <h2>「できた」の顔を、<br>一緒に見ませんか。</h2>
+    <p class="sub">最初は不安だった。でも、なんとかなった。——そんな一日を、少しずつ増やしていく場所です。</p>
+  </div>
+</section>
+
+<!-- 最終CTA：LINE一択 -->
+<section class="final">
+  <div class="wrap reveal">
+    <div class="box">
+      <h2>怖くても、大丈夫。</h2>
+      <p class="reason">迷っているなら、質問だけでも大歓迎。予約じゃなくてOK。まずは雰囲気を知るところから。</p>
+      <a class="btn-line" href="https://lin.ee/cTSDajPz" data-cta="final">LINEで友だち追加する</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <div>
+        <div class="logo" style="margin-bottom:6px">FLAT UP <b>GYM</b></div>
+        千葉県成田市 <!-- TODO(JIN): 番地・ビル名 --><br>
+        TEL: <!-- TODO(JIN): 電話番号 --> ｜ 営業時間: <!-- TODO(JIN) --><br>
+        キックボクシング / ブラジリアン柔術 / キッズ / レディース
+      </div>
+      <div>
+        <a href="https://lin.ee/cTSDajPz">LINEで相談・予約</a>
+        <a href="https://www.instagram.com/flatup.narita">Instagram</a>
+        <!-- TODO(JIN): Googleマップ iframe をここに -->
+      </div>
+    </div>
+    <p style="margin-top:20px">はじめの一歩を、笑わない。／ 世界一、初心者にやさしい格闘技ジム FLAT UP GYM</p>
+  </div>
+</footer>
+
+<!-- モバイル固定バー -->
+<div class="mbar">
+  <a class="btn-line" href="https://lin.ee/cTSDajPz" data-cta="mobilebar">LINEで相談する（初回体験 500円）</a>
+</div>
+
+<script>
+  // スクロールで各セクションをそっと出す（reduced-motion は尊重）
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches){
+      els.forEach(function(e){ e.classList.add('in'); }); return;
+    }
+    var io = new IntersectionObserver(function(en){
+      en.forEach(function(x){ if(x.isIntersecting){ x.target.classList.add('in'); io.unobserve(x.target);} });
+    }, {threshold:.14});
+    els.forEach(function(e){ io.observe(e); });
+    // 保険: 何らかの理由で発火しなくても、必ず表示する（本文が消えない）
+    setTimeout(function(){ els.forEach(function(e){ e.classList.add('in'); }); }, 1500);
+  })();
+
+  // LINEクリックを計測用イベントに流す枠（TODO(JIN): GA4/Meta の Lead 発火をここで）
+  document.querySelectorAll('[data-cta]').forEach(function(a){
+    a.addEventListener('click', function(){
+      // gtag && gtag('event','generate_lead',{cta:this.dataset.cta});
+      // fbq && fbq('track','Lead');
+    });
+  });
+</script>
+</body>
+</html>
