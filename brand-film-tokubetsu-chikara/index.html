@@ -1,0 +1,467 @@
+<meta charset="utf-8">
+<!--
+  ============================================================
+  GYMSTORYs 特別編『そのちから、なにに使う?』
+  ============================================================
+  外部ライブラリ・外部画像を一切使わない自己完結アニメ。
+  キャラも光もすべて Canvas に手続き的に描く(貼り付けてすぐ動く)。
+
+  ▼ URLパラメータ
+    ?w=1280&h=720      画面サイズ(縦横は h>w で自動判定)
+    ?cut=main|60|30|15 尺の切り替え(既定 main)
+    ?loop=1            サイト埋め込み用ループ再生(予約CTAリンクが重なる)
+  ============================================================
+-->
+<style>
+  html,body{margin:0;padding:0;background:#000;overflow:hidden}
+  canvas{display:block;max-width:100%;height:auto;margin:0 auto}
+  #booking-cta{
+    position:fixed; left:0; top:0; transform:translate(-50%,-50%);
+    display:none; z-index:10;
+    padding:16px 32px; border-radius:40px;
+    background:#ff5fa2; color:#fff; border:4px solid #fff;
+    font:900 20px/1 'Arial Black','Hiragino Kaku Gothic ProN',sans-serif;
+    text-decoration:none; white-space:nowrap;
+    box-shadow:0 6px 18px rgba(30,10,40,.3);
+  }
+  #booking-cta:focus-visible{outline:4px solid #ffcf6a; outline-offset:3px}
+</style>
+<canvas id="cv" width="1280" height="720"></canvas>
+<a id="booking-cta" href="https://lin.ee/cTSDajPz" target="_blank" rel="noopener noreferrer">見学・体験を申し込む</a>
+<script>
+const qs = new URLSearchParams(location.search);
+const W = +qs.get('w') || 1280, H = +qs.get('h') || 720;
+const VERT = H > W;
+const CUT = qs.get('cut') || 'main';
+const cv = document.getElementById('cv');
+cv.width = W; cv.height = H;
+const cx2d = cv.getContext('2d');
+
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    let rr = typeof r === 'number' ? r : (Array.isArray(r) ? r[0] : 0);
+    rr = Math.min(rr, Math.abs(w) / 2, Math.abs(h) / 2);
+    this.moveTo(x + rr, y);
+    this.arcTo(x + w, y, x + w, y + h, rr);
+    this.arcTo(x + w, y + h, x, y + h, rr);
+    this.arcTo(x, y + h, x, y, rr);
+    this.arcTo(x, y, x + w, y, rr);
+    this.closePath();
+    return this;
+  };
+}
+
+// ---------- deterministic pseudo-random ----------
+function rnd(a, b) {
+  let x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+const easeInOut = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+function lerpColor(c1, c2, t) { // '#rrggbb' -> '#rrggbb'
+  const p = h => [1,2].map(i => parseInt(h.slice(i*2-1, i*2+1), 16));
+  const a = [parseInt(c1.slice(1,3),16), parseInt(c1.slice(3,5),16), parseInt(c1.slice(5,7),16)];
+  const b = [parseInt(c2.slice(1,3),16), parseInt(c2.slice(3,5),16), parseInt(c2.slice(5,7),16)];
+  const m = a.map((v,i) => Math.round(lerp(v, b[i], t)));
+  return `rgb(${m[0]},${m[1]},${m[2]})`;
+}
+
+// ---------- palette ----------
+const PINK='#ff8fbb', PINK_DEEP='#ff5fa2', CREAM='#fff6ea', GREEN='#8fd9a8', GREEN_MAT='#6fcf97',
+      YEL='#ffe08a', INK='#2a2140', WHT='#ffffff';
+const GOLD='#ffcf6a', COLD='#7b6bd6'; // 手に灯る光: 金=守る / 青紫=傷つける
+
+// ---------- backgrounds ----------
+function room(t, mood) {
+  // mood: 'day'(明るいジム) / 'cool'(寒色に沈む) / 'night'(夜) / 'warm'(あたたかい朝寄り)
+  let top, bot;
+  if (mood === 'cool')      { top = '#cfd6ea'; bot = '#e7e2ef'; }
+  else if (mood === 'night'){ top = '#1c2140'; bot = '#3a3560'; }
+  else if (mood === 'warm') { top = '#ffe6c2'; bot = '#ffd7e6'; }
+  else                       { top = '#eaf6ff'; bot = CREAM; } // day
+  const g = cx2d.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, top); g.addColorStop(1, bot);
+  cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+
+  // 白い床
+  cx2d.fillStyle = mood === 'night' ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.55)';
+  cx2d.fillRect(0, H*0.78, W, H*0.22);
+  // 緑マット(帯)
+  cx2d.fillStyle = mood === 'night' ? 'rgba(111,207,151,.18)' : GREEN_MAT;
+  cx2d.globalAlpha = mood === 'night' ? 1 : .5;
+  cx2d.fillRect(0, H*0.80, W, H*0.05);
+  cx2d.globalAlpha = 1;
+
+  // 観葉植物(左隅、簡易)
+  plant(W*0.06, H*0.80, mood === 'night' ? .5 : 1);
+  plant(W*0.94, H*0.80, mood === 'night' ? .5 : 1);
+
+  // サンドバッグ(ピンク/イエロー、背景に小さく)
+  bagShape(W*0.14, H*0.62, 46, PINK_DEEP, mood === 'night' ? .35 : .5);
+  bagShape(W*0.86, H*0.62, 46, YEL, mood === 'night' ? .35 : .5);
+
+  if (mood === 'night') moonAndStars(t);
+  if (mood === 'warm') sunGlow(t);
+}
+function plant(x, yBase, alpha) {
+  cx2d.save(); cx2d.globalAlpha = alpha; cx2d.fillStyle = '#4caf7d';
+  for (let i=0;i<5;i++){
+    const a = -Math.PI/2 + (i-2)*.28;
+    cx2d.beginPath();
+    cx2d.ellipse(x + Math.cos(a)*26, yBase - 18 + Math.sin(a)*30, 16, 7, a, 0, 7);
+    cx2d.fill();
+  }
+  cx2d.fillStyle = '#b5651d';
+  cx2d.beginPath(); cx2d.roundRect(x-14, yBase-6, 28, 16, 4); cx2d.fill();
+  cx2d.restore();
+}
+function bagShape(x, yBase, h, color, alpha) {
+  cx2d.save(); cx2d.globalAlpha = alpha;
+  cx2d.fillStyle = color;
+  cx2d.beginPath(); cx2d.roundRect(x-18, yBase-h, 36, h, 14); cx2d.fill();
+  cx2d.strokeStyle = 'rgba(0,0,0,.15)'; cx2d.lineWidth = 2;
+  cx2d.beginPath(); cx2d.moveTo(x, yBase-h-10); cx2d.lineTo(x, yBase-h); cx2d.stroke();
+  cx2d.restore();
+}
+function moonAndStars(t) {
+  for (let i=0;i<26;i++) {
+    cx2d.save();
+    cx2d.globalAlpha = clamp(.3 + Math.sin(t*2+i*1.7)*.4, 0, 1)*.8;
+    cx2d.fillStyle = WHT;
+    cx2d.beginPath(); cx2d.arc(rnd(i,3)*W, rnd(i,9)*H*.5, 1.4+rnd(i,5)*1.8, 0, 7); cx2d.fill();
+    cx2d.restore();
+  }
+  cx2d.save(); cx2d.shadowColor = '#fff7d6'; cx2d.shadowBlur = 50; cx2d.fillStyle = '#fff7d6';
+  cx2d.beginPath(); cx2d.arc(W*0.82, H*0.16, Math.min(W,H)*0.06, 0, 7); cx2d.fill(); cx2d.restore();
+}
+function sunGlow(t) {
+  const sy = H * (0.98 - .25*Math.sin(t*0.3+1));
+  cx2d.save(); cx2d.shadowColor = '#fff1b8'; cx2d.shadowBlur = 70; cx2d.fillStyle = '#fff1b8';
+  cx2d.beginPath(); cx2d.arc(W/2, sy, Math.min(W,H)*0.10, 0, 7); cx2d.fill(); cx2d.restore();
+}
+
+// ---------- 手に灯る光 ----------
+function glow(x, y, r, color, alpha) {
+  cx2d.save();
+  cx2d.globalAlpha = clamp(alpha, 0, 1);
+  const g = cx2d.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, color);
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  cx2d.fillStyle = g;
+  cx2d.beginPath(); cx2d.arc(x, y, r, 0, 7); cx2d.fill();
+  cx2d.restore();
+}
+function coolOverlay(alpha) { flash(alpha, '#3a2f55'); }
+function flash(alpha, color) {
+  if (alpha <= 0) return;
+  cx2d.save(); cx2d.globalAlpha = clamp(alpha,0,1); cx2d.fillStyle = color || WHT;
+  cx2d.fillRect(0,0,W,H); cx2d.restore();
+}
+
+// ---------- effects ----------
+function heart(x, y, s, color) {
+  cx2d.save(); cx2d.translate(x, y); cx2d.scale(s, s);
+  cx2d.fillStyle = color;
+  cx2d.beginPath();
+  cx2d.moveTo(0, .35);
+  cx2d.bezierCurveTo(-.9, -.45, -.35, -1.1, 0, -.45);
+  cx2d.bezierCurveTo(.35, -1.1, .9, -.45, 0, .35);
+  cx2d.fill();
+  cx2d.restore();
+}
+function popText(txt, x, y, size, fill, t0, t, rot, maxW) {
+  if (!txt) return;
+  const life = t - t0;
+  if (life < 0) return;
+  const s = life < .35 ? easeOut(life / .35) * 1.2 - .2*(life/.35) : 1 + Math.sin(t*5)*.015;
+  cx2d.save();
+  cx2d.translate(x, y);
+  cx2d.rotate(rot || 0);
+  cx2d.scale(Math.max(0.001,s), Math.max(0.001,s));
+  cx2d.font = `900 ${size}px 'Hiragino Maru Gothic Pro','Rounded Mplus 1c','Arial Black',sans-serif`;
+  if (maxW) {
+    const tw = cx2d.measureText(txt).width;
+    if (tw > maxW) { const f = maxW/tw; cx2d.scale(f,f); }
+  }
+  cx2d.textAlign = 'center'; cx2d.textBaseline = 'middle';
+  cx2d.lineJoin = 'round';
+  cx2d.lineWidth = size*.26; cx2d.strokeStyle = INK; cx2d.strokeText(txt,0,0);
+  cx2d.lineWidth = size*.12; cx2d.strokeStyle = WHT; cx2d.strokeText(txt,0,0);
+  cx2d.fillStyle = fill; cx2d.fillText(txt,0,0);
+  cx2d.restore();
+}
+
+// ---------- キャラ描画(すべて手続きCanvas図形。外部画像不使用) ----------
+// 共通の子ども体型: 頭が大きい2.5頭身ちび。表情は眉と口のみで作る。
+function kidBody(x, yBase, scale, opts) {
+  opts = opts || {};
+  const s = scale;
+  cx2d.save();
+  cx2d.translate(x, yBase);
+  cx2d.scale(s, s);
+  // 影
+  cx2d.save(); cx2d.globalAlpha = .18; cx2d.fillStyle = '#000';
+  cx2d.beginPath(); cx2d.ellipse(0, 4, 46, 10, 0, 0, 7); cx2d.fill(); cx2d.restore();
+  // 脚(素朴)
+  cx2d.fillStyle = opts.skinShorts || '#3a3450';
+  cx2d.beginPath(); cx2d.roundRect(-24,-56,18,58,8); cx2d.fill();
+  cx2d.beginPath(); cx2d.roundRect(6,-56,18,58,8); cx2d.fill();
+  // 胴(シャツ)
+  cx2d.fillStyle = opts.shirt || '#ff8fbb';
+  cx2d.beginPath(); cx2d.roundRect(-36,-140,72,90,20); cx2d.fill();
+  // 腕(奥)
+  cx2d.fillStyle = opts.skin || '#ffd9b3';
+  const armSwing = opts.armSwing || 0;
+  cx2d.save(); cx2d.translate(-34,-118); cx2d.rotate(-0.3+armSwing*0.4);
+  cx2d.beginPath(); cx2d.roundRect(-9,0,18,54,9); cx2d.fill(); cx2d.restore();
+  // 頭(大きい・丸い)
+  cx2d.fillStyle = opts.skin || '#ffd9b3';
+  cx2d.beginPath(); cx2d.arc(0,-176,58,0,7); cx2d.fill();
+  // 髪
+  cx2d.fillStyle = opts.hair || '#3b2a20';
+  cx2d.beginPath();
+  cx2d.arc(0,-192,58,Math.PI*1.02,Math.PI*1.98); cx2d.fill();
+  if (opts.ponytail) {
+    cx2d.beginPath();
+    cx2d.ellipse(48,-208,14,30,0.5,0,7); cx2d.fill();
+  }
+  if (opts.spiky) {
+    for (let i=-2;i<=2;i++){
+      cx2d.beginPath();
+      cx2d.moveTo(i*16,-224);
+      cx2d.lineTo(i*16-6,-244-Math.abs(i)*4);
+      cx2d.lineTo(i*16+6,-224);
+      cx2d.closePath(); cx2d.fill();
+    }
+  }
+  // 顔(表情)
+  const mood = opts.mood || 'happy'; // happy / worried / calm / shocked
+  cx2d.fillStyle = INK;
+  // 眉
+  cx2d.lineWidth = 5; cx2d.strokeStyle = INK; cx2d.lineCap='round';
+  cx2d.beginPath();
+  if (mood === 'worried') { cx2d.moveTo(-30,-208); cx2d.lineTo(-14,-202); cx2d.moveTo(14,-202); cx2d.lineTo(30,-208); }
+  else if (mood === 'calm') { cx2d.moveTo(-30,-202); cx2d.lineTo(-12,-202); cx2d.moveTo(12,-202); cx2d.lineTo(30,-202); }
+  else { cx2d.moveTo(-30,-206); cx2d.lineTo(-12,-198); cx2d.moveTo(12,-198); cx2d.lineTo(30,-206); }
+  cx2d.stroke();
+  // 目(大きい丸)
+  cx2d.fillStyle = WHT;
+  cx2d.beginPath(); cx2d.ellipse(-20,-182,13,15,0,0,7); cx2d.fill();
+  cx2d.beginPath(); cx2d.ellipse(20,-182,13,15,0,0,7); cx2d.fill();
+  cx2d.fillStyle = '#3b2a20';
+  cx2d.beginPath(); cx2d.arc(-18,-180,7,0,7); cx2d.fill();
+  cx2d.beginPath(); cx2d.arc(22,-180,7,0,7); cx2d.fill();
+  cx2d.fillStyle = WHT;
+  cx2d.beginPath(); cx2d.arc(-15,-183,2.4,0,7); cx2d.fill();
+  cx2d.beginPath(); cx2d.arc(25,-183,2.4,0,7); cx2d.fill();
+  // ほほ
+  cx2d.save(); cx2d.globalAlpha=.4; cx2d.fillStyle=PINK;
+  cx2d.beginPath(); cx2d.arc(-36,-166,7,0,7); cx2d.fill();
+  cx2d.beginPath(); cx2d.arc(36,-166,7,0,7); cx2d.fill();
+  cx2d.restore();
+  // 口
+  cx2d.strokeStyle = INK; cx2d.lineWidth = 4;
+  cx2d.beginPath();
+  if (mood === 'shocked') cx2d.ellipse(0,-160,6,8,0,0,7);
+  else if (mood === 'worried') cx2d.moveTo(-10,-158), cx2d.quadraticCurveTo(0,-164,10,-158);
+  else cx2d.moveTo(-12,-160), cx2d.quadraticCurveTo(0,-150,12,-160);
+  cx2d.stroke();
+
+  // 前の腕(グローブつき手。握り or 開き)
+  const handOpen = opts.handOpen ?? 1; // 0=握り 1=開く
+  cx2d.save(); cx2d.translate(30,-118); cx2d.rotate(0.35 - armSwing*0.4);
+  cx2d.fillStyle = opts.skin || '#ffd9b3';
+  cx2d.beginPath(); cx2d.roundRect(-9,0,18,50,9); cx2d.fill();
+  cx2d.restore();
+  const handX = 30 + Math.sin(0.35-armSwing*0.4)*50, handY = -118 + Math.cos(0.35-armSwing*0.4)*50;
+  cx2d.fillStyle = opts.glove || '#e04a6b';
+  if (handOpen < 0.5) {
+    cx2d.beginPath(); cx2d.arc(handX, handY, 20*lerp(1,0.9,handOpen*2), 0, 7); cx2d.fill();
+  } else {
+    cx2d.save(); cx2d.translate(handX,handY); cx2d.rotate(0.2);
+    cx2d.beginPath(); cx2d.roundRect(-18,-10,36,20,10); cx2d.fill();
+    cx2d.restore();
+  }
+  cx2d.restore();
+  return { handX: x + handX*s, handY: yBase + handY*s };
+}
+function haruBoy(x, yBase, scale, opts) {
+  return kidBody(x, yBase, scale, Object.assign({
+    shirt:'#f4efe3', skinShorts:'#4a6741', skin:'#ffd9b3', hair:'#241a14', glove:'#e04a6b', spiky:true,
+  }, opts));
+}
+function apuGirl(x, yBase, scale, opts) {
+  return kidBody(x, yBase, scale, Object.assign({
+    shirt:'#ffb3cf', skinShorts:'#241a2e', skin:'#ffd9b3', hair:'#3b2418', glove:'#e0304f', ponytail:true,
+  }, opts));
+}
+function smallKid(x, yBase, scale, opts) {
+  return kidBody(x, yBase, scale, Object.assign({
+    shirt:'#bfe3ff', skinShorts:'#6a5a4a', skin:'#ffd9b3', hair:'#4a3626',
+  }, opts));
+}
+function parentSilhouette(x, yBottom, s, color) {
+  cx2d.save(); cx2d.fillStyle = color || 'rgba(60,40,70,.55)';
+  cx2d.beginPath(); cx2d.arc(x, yBottom - s*1.6, s*.5, 0, 7); cx2d.fill();
+  cx2d.beginPath();
+  cx2d.moveTo(x - s, yBottom); cx2d.quadraticCurveTo(x - s, yBottom - s*1.1, x, yBottom - s*1.1);
+  cx2d.quadraticCurveTo(x + s, yBottom - s*1.1, x + s, yBottom); cx2d.closePath(); cx2d.fill();
+  cx2d.restore();
+}
+
+// ---------- 物語(シナリオ) ----------
+const CTA = { type:'cta', sec:4.0,
+  title:'強くなった我が子が、優しくなる場所。',
+  subtitle:'見学だけでもOK ／ 初回体験30分・500円',
+  button:'見学・体験を申し込む',
+  href:'https://lin.ee/cTSDajPz' };
+
+const STORIES = {
+  main: [
+    { type:'power',      sec:4.0, text:'つよくなった！' },
+    { type:'shadowturn', sec:4.5, text:'あれ…？', turn:true },
+    { type:'mentor',     sec:5.5 },
+    { type:'openlight',  sec:5.0, text:'それ、やめよう。', turn:true },
+    { type:'watch',      sec:3.5 },
+    { type:'sunrise',    sec:2.0 },
+    CTA,
+  ],
+  '60': [
+    { type:'power',      sec:6.0, text:'つよくなった！' },
+    { type:'shadowturn', sec:7.0, text:'あれ…？', turn:true },
+    { type:'mentor',     sec:15.0 },
+    { type:'openlight',  sec:9.0, text:'それ、やめよう。', turn:true },
+    { type:'watch',      sec:11.0 },
+    { type:'sunrise',    sec:3.0 },
+    { type:'cta', sec:10.0, title:CTA.title, subtitle:CTA.subtitle, button:CTA.button, href:CTA.href },
+  ],
+  '30': [
+    { type:'power',      sec:5.0, text:'そのちから、なにに使う？' },
+    { type:'shadowturn', sec:6.0, text:'つめたい手…', turn:true },
+    { type:'openlight',  sec:8.0, text:'まもるために、つかおう！', turn:true },
+    { type:'cta', sec:6.0, title:'つよさは、やさしさに。', subtitle:'', button:'', href:CTA.href },
+  ],
+  '15': [
+    { type:'shadowturn', sec:5.0, turn:true },
+    { type:'openlight',  sec:6.0, turn:true },
+    { type:'cta', sec:4.0, title:'強さを、光に変える場所。', subtitle:'', button:'', href:CTA.href },
+  ],
+};
+const STORY = STORIES[CUT] || STORIES.main;
+{ let acc=0; for (const s of STORY){ s.start=acc; acc+=s.sec; } }
+const DUR = STORY[STORY.length-1].start + STORY[STORY.length-1].sec;
+window.DUR = DUR;
+window.STORY = STORY;
+function sceneAt(time) {
+  let sc = STORY[STORY.length-1];
+  for (const s of STORY) if (time < s.start + s.sec) { sc = s; break; }
+  return sc;
+}
+const QUIET = new Set(['mentor','watch','sunrise','cta']);
+
+// ---------- シーン型 ----------
+// キャラの立ち位置(足元)は画面の中〜下寄り。手の光は kidBody() の返り値(実際の拳位置)を必ず使う。
+const GROUND = VERT ? .74 : .92;
+const SCENES = {
+  power(t, lt, p, sc) {
+    room(t, 'day');
+    const h = haruBoy(W*0.5, H*GROUND, VERT?2.15:1.9, { mood:'happy', armSwing: clamp(Math.sin(t*4),0,1), handOpen:0 });
+    glow(h.handX, h.handY, 90+Math.sin(t*6)*8, GOLD, .85);
+    popText(sc.text, W/2, H*(VERT?.14:.13), VERT?62:64, GOLD, sc.start+.3, t, 0, W*.88);
+  },
+  shadowturn(t, lt, p, sc) {
+    room(t, 'cool');
+    smallKid(W*(VERT?.74:.67), H*GROUND, VERT?1.3:1.15, { mood:'worried' });
+    const h = haruBoy(W*(VERT?.30:.33), H*GROUND, VERT?1.9:1.75, { mood: p>.5?'calm':'happy', armSwing:.3, handOpen:0 });
+    const c = sc.turn ? lerpColor(GOLD, COLD, easeInOut(p)) : COLD;
+    glow(h.handX, h.handY, 90, c, .85);
+    coolOverlay(.22*easeInOut(p));
+    popText(sc.text, W/2, H*(VERT?.14:.13), VERT?54:56, WHT, sc.start+.3, t, 0, W*.88);
+  },
+  mentor(t, lt, p, sc) {
+    room(t, 'night');
+    const hg = apuGirl(W*(VERT?.70:.63), H*GROUND, VERT?1.7:1.6, { mood:'calm', handOpen:1 });
+    const hb = haruBoy(W*(VERT?.30:.37), H*GROUND, VERT?1.7:1.6, { mood:'worried', handOpen:1 });
+    glow(hb.handX, hb.handY, 55, GOLD, .8);
+    glow(hg.handX, hg.handY, 55, COLD, .8);
+    const lines = ['そのひかり、あったかくも、つめたくもできる。','大きなちからには、大きなやさしさの責任。','つよくなったぶん、やさしく使う番。'];
+    const seg = sc.sec/3;
+    const idx = clamp(Math.floor(lt/seg), 0, 2);
+    popText(lines[idx], W/2, H*(VERT?.13:.13), VERT?32:36, WHT, sc.start+idx*seg+.2, t, 0, W*.92);
+  },
+  openlight(t, lt, p, sc) {
+    room(t, 'warm');
+    smallKid(W*(VERT?.74:.67), H*GROUND, VERT?1.3:1.15, { mood: p>.4?'happy':'worried' });
+    const h = haruBoy(W*(VERT?.30:.33), H*GROUND, VERT?1.9:1.75, { mood:'calm', armSwing:.15, handOpen: p });
+    const c = sc.turn ? lerpColor(COLD, GOLD, easeInOut(p)) : GOLD;
+    glow(h.handX, h.handY, 90+p*60, c, .4+.55*p);
+    popText(sc.text, W/2, H*(VERT?.14:.13), VERT?54:56, GOLD, sc.start+.4, t, 0, W*.88);
+  },
+  watch(t, lt, p, sc) {
+    room(t, 'warm');
+    parentSilhouette(W*(VERT?.26:.22), H*(GROUND+.08), VERT?190:190, 'rgba(60,40,70,.55)');
+    const h = haruBoy(W*(VERT?.62:.6), H*GROUND, VERT?1.3:1.25, { mood:'happy', handOpen:1 });
+    glow(h.handX, h.handY, 60, GOLD, .5);
+    popText('光になるか、影になるか。決めるのは、習う場所かもしれません。', W/2, H*(VERT?.13:.14), VERT?32:34, WHT, sc.start+.4, t, 0, W*.92);
+  },
+  sunrise(t, lt, p, sc) {
+    room(t, 'warm');
+    const h = haruBoy(W*0.5, H*GROUND, VERT?2.0:1.85, { mood:'happy', handOpen:1 });
+    glow(h.handX, h.handY, 110, GOLD, .5+.3*Math.sin(t*2));
+  },
+  cta(t, lt, p, sc) {
+    room(t, 'warm');
+    const h = haruBoy(W*(VERT?.5:.22), H*(VERT?GROUND+.10:GROUND), VERT?1.7:1.7, { mood:'happy', handOpen:1 });
+    glow(h.handX, h.handY, 75, GOLD, .55);
+    const tx = W*(VERT?.5:.62);
+    popText(sc.title, tx, H*(VERT?.20:.24), VERT?44:52, WHT, sc.start+.25, t, 0, VERT?W*.9:W*.62);
+    if (sc.subtitle) popText(sc.subtitle, tx, H*(VERT?.28:.36), VERT?25:26, GOLD, sc.start+.6, t, 0, VERT?W*.9:W*.6);
+  },
+};
+
+function draw(t) {
+  cx2d.clearRect(0,0,W,H);
+  const sc = sceneAt(t);
+  const lt = Math.max(0, t - sc.start);
+  const p = clamp(lt / sc.sec, 0, 1);
+  (SCENES[sc.type] || SCENES.power)(t, lt, p, sc);
+  for (const s of STORY) {
+    if (!s.start) continue;
+    const d = Math.abs(t - s.start);
+    if (d < .12) flash(1 - d/.12, WHT);
+  }
+  if (t > DUR - .8) flash((t-(DUR-.8))/.8, INK);
+}
+window.seek = t => { draw(t); return true; };
+
+// ---------- CTAリンク(本物のHTML)をボタン位置に重ねる ----------
+const bookingLink = document.getElementById('booking-cta');
+function updateBookingCTA(time) {
+  if (!bookingLink) return;
+  const sc = sceneAt(time);
+  const visible = sc.type === 'cta' && sc.button && time >= sc.start + 1.0;
+  if (!visible) { bookingLink.style.display = 'none'; return; }
+  bookingLink.textContent = sc.button;
+  if (sc.href) bookingLink.href = sc.href;
+  const rect = cv.getBoundingClientRect();
+  const bx = W*(VERT?.5:.62), by = H*(VERT?.72:.62);
+  bookingLink.style.left = (rect.left + bx*rect.width/W) + 'px';
+  bookingLink.style.top  = (rect.top + by*rect.height/H) + 'px';
+  bookingLink.style.display = 'inline-block';
+}
+
+window.ready = true;
+if (qs.get('loop')) {
+  const t0 = performance.now();
+  (function anim(){
+    const time = ((performance.now()-t0)/1000) % DUR;
+    draw(time);
+    updateBookingCTA(time);
+    requestAnimationFrame(anim);
+  })();
+} else {
+  draw(0);
+}
+</script>

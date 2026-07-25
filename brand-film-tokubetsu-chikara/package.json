@@ -1,0 +1,14 @@
+{
+  "name": "brand-film-tokubetsu-chikara",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GYMSTORYs特別編『そのちから、なにに使う?』— 自己完結Canvasアニメの書き出し",
+  "scripts": {
+    "render:main": "node render.mjs --cut=main",
+    "render:main:vertical": "node render.mjs --cut=main --vertical",
+    "render:60": "node render.mjs --cut=60 --vertical",
+    "render:30": "node render.mjs --cut=30 --vertical",
+    "render:15": "node render.mjs --cut=15 --vertical",
+    "render:all": "npm run render:main && npm run render:60 && npm run render:30 && npm run render:15"
+  }
+}
