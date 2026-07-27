@@ -45,10 +45,15 @@
 <!-- 予約への「本物のリンク」。href は正本の公式LINE予約URL。story の cta.href で上書き可。 -->
 <a id="booking-cta" href="https://lin.ee/cTSDajPz" target="_blank" rel="noopener noreferrer">500円体験を予約する</a>
 <script>
-// どの物語を読むか: 既定は FLATUP版(story.flatup.js)。?story=op で旧 GIRL POWER 版(story.js)。
+// どの物語を読むか:
+//   既定          … FLATUP版(story.flatup.js)
+//   ?story=ep01   … ブランドフィルム第1話(story.ep01.js)
+//   ?story=op     … 旧 GIRL POWER 版(story.js)
 (function () {
   var s = new URLSearchParams(location.search).get('story');
-  var file = (s === 'op' || s === 'girlpower') ? 'story.js' : 'story.flatup.js';
+  var file = (s === 'op' || s === 'girlpower') ? 'story.js'
+           : (s === 'ep01') ? 'story.ep01.js'
+           : 'story.flatup.js';
   document.write('<scr' + 'ipt src="' + file + '"><\/scr' + 'ipt>');
 })();
 </script>
@@ -99,6 +104,11 @@ const DEFAULT_POSES = [
 const poseFiles = (
   qs.get('poses') ? qs.get('poses').split(',') : DEFAULT_POSES
 ).filter(Boolean);
+
+// ---------- シーン背景画像(道具たちが並ぶ夜のジムなど。主人公のポーズとは別枠) ----------
+// キャラの pose() と同じく「無ければ描画側で代わりの絵を出す」設計。
+// 1枚読み込みに失敗しても他は止まらない(下の読み込みループで try/catch)。
+const SCENE_IMAGES = {};
 function pose(name, fallback) {
   return POSES[name] || (fallback && POSES[fallback]) || IMG;
 }
@@ -357,7 +367,7 @@ function sceneAt(time) {
   return sc;
 }
 // 静かなシーン(BGMがドラム無しのやさしい曲に切りかわる)
-const QUIET = new Set(['night', 'fall', 'smallpunch', 'sunrise', 'cta', 'help', 'rest']);
+const QUIET = new Set(['night', 'toolstalk', 'fall', 'smallpunch', 'sunrise', 'cta', 'help', 'rest']);
 
 // ---------- シーンの種類(テンプレート) ----------
 // それぞれ「そのシーンの絵の作り方」。引数は
@@ -532,6 +542,110 @@ const SCENES = {
     if (txt) popText(txt, W/2, H * (VERT ? .88 : .87), 44, WHT, sc.start + .6, t, 0, W * .9);
   },
 
+  // 夜、道具たちが話し出す(正本 Bible §11「夜のジムの語り」): 誰もいなくなった
+  // ジムで、ミット・グローブ・サンドバッグが、その日見た挑戦をぽつぽつと静かに
+  // 語り合う。答えを押しつけない。技術でなく、挑戦・思いやり・勇気について。
+  // セリフは正本では固定しない原則なので、story 側の sc.lines で自由に差し替え可能。
+  toolstalk(t, lt, p, sc) {
+    // sc.image でシーンの絵を選べる(既定は夜のジムで道具たちが語り合う主役の絵)
+    const img = SCENE_IMAGES[sc.image || 'toolstalk'] || SCENE_IMAGES.toolstalk;
+    if (img) {
+      // ゆっくり寄る/引く(sc.zoom で 'in' | 'out' | 'still')
+      const zk = sc.zoom === 'out' ? -1 : sc.zoom === 'still' ? 0 : 1;
+      const base = 1.02 + easeInOut(p) * .07 * zk + Math.sin(t * .25) * .008;
+      const fy = sc.focusY !== undefined ? sc.focusY : .56;
+      coverDraw(Math.max(1.0, base), sc.focusX !== undefined ? sc.focusX : .5, fy, img);
+      // 読みやすさのための、下側だけの静かな暗がり
+      const g = cx2d.createLinearGradient(0, H * .5, 0, H);
+      g.addColorStop(0, 'rgba(10,10,25,0)'); g.addColorStop(1, 'rgba(10,10,25,.66)');
+      cx2d.fillStyle = g; cx2d.fillRect(0, H * .5, W, H * .5);
+    } else {
+      // 画像が無いときは night と同じ夜空を自前で描いて成立させる
+      const g = cx2d.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#12172e'); g.addColorStop(1, '#2a3154');
+      cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+      for (let i = 0; i < 40; i++) {
+        cx2d.save();
+        cx2d.globalAlpha = clamp(.3 + Math.sin(t * 2 + i * 1.7) * .4, 0, 1) * .8;
+        cx2d.fillStyle = WHT;
+        cx2d.beginPath(); cx2d.arc(rnd(i, 3) * W, rnd(i, 9) * H * .55, 1.5 + rnd(i, 5) * 2, 0, 7); cx2d.fill();
+        cx2d.restore();
+      }
+    }
+    // シーン見出し(絵コンテの「① 夜のジム、道具たちの会議」のような小さな章タイトル)
+    if (sc.title) {
+      const hl = t - (sc.start + .2);
+      if (hl > 0) {
+        const a = clamp(hl / .4, 0, 1) * (p > .85 ? clamp((1 - p) / .15, 0, 1) : 1);
+        cx2d.save();
+        cx2d.globalAlpha = a;
+        const fs = VERT ? 30 : 26;
+        cx2d.font = `900 ${fs}px 'Hiragino Kaku Gothic ProN', sans-serif`;
+        const tw = cx2d.measureText(sc.title).width;
+        const bw = tw + 44, bh = fs + 22, bx = W * .06, by = H * .07;
+        cx2d.fillStyle = 'rgba(255,95,162,.92)';
+        cx2d.beginPath(); cx2d.roundRect(bx, by, bw, bh, bh / 2); cx2d.fill();
+        cx2d.fillStyle = WHT; cx2d.textAlign = 'left'; cx2d.textBaseline = 'middle';
+        cx2d.fillText(sc.title, bx + 22, by + bh / 2 + 1);
+        cx2d.restore();
+      }
+    }
+    // セリフ(ぽつぽつと、1行ずつ)。各行は文字列、または { speaker, text } で
+    // 「誰が話しているか」の小さな名札を添えられる(道具キャラの名前を自由に)。
+    // 既定は、その日ジムであった小さな優しさの記録(正本 Bible §11「夜のジムの語り」)。
+    const lines = sc.lines || [
+      { speaker: 'ミット', text: '今日、一番頑張った子は……誰だったかな。' },
+      { speaker: 'グローブ', text: 'んー……あの子たちかな。' },
+      { speaker: 'ミット', text: 'あの双子、覚えてる?' },
+      { speaker: 'ミット', text: '帰り道、ちゃんと挨拶できるようになったね。' },
+      { speaker: 'サンドバッグ', text: '中学生のあの子はね、小さい子とやるときは膝をついて。' },
+      { speaker: 'サンドバッグ', text: 'いつも、そっと撫でるみたいに。優しいよね。' },
+      { speaker: 'グローブ', text: '高学年のあの子も、下級生に注意しながら、ちゃんと優しく教えてた。' },
+      { speaker: 'ミット', text: '……みんな、頑張ってたね。' },
+    ];
+    const SPEAKER_COLORS = { 'ミット': YEL, 'グローブ': PINK, 'サンドバッグ': '#ff9f5a' };
+    const gap = sc.lineGap || 2.0;
+    for (let i = 0; i < lines.length; i++) {
+      const item = lines[i];
+      const text = typeof item === 'string' ? item : item.text;
+      const speaker = typeof item === 'string' ? null : item.speaker;
+      const t0 = sc.start + .5 + i * gap;
+      const t1 = i < lines.length - 1 ? sc.start + .5 + (i + 1) * gap : Infinity;
+      if (t < t0 || t >= t1) continue;
+      const life = t - t0;
+      const alpha = life < .3 ? easeOut(life / .3) : 1;
+      let fontSize = VERT ? 32 : 28;
+      cx2d.font = `700 ${fontSize}px 'Hiragino Kaku Gothic ProN', sans-serif`;
+      let tw = cx2d.measureText(text).width;
+      const maxTextW = W * .78;
+      if (tw > maxTextW) {
+        fontSize = Math.max(14, Math.floor(fontSize * maxTextW / tw));
+        cx2d.font = `700 ${fontSize}px 'Hiragino Kaku Gothic ProN', sans-serif`;
+        tw = cx2d.measureText(text).width;
+      }
+      const bw = Math.min(tw + 70, W * .9), bx = W / 2, by = H * (VERT ? .86 : .84);
+      cx2d.save();
+      cx2d.globalAlpha = alpha;
+      // 話している子の小さな名札(吹き出しの少し上)
+      if (speaker) {
+        const tagColor = SPEAKER_COLORS[speaker] || PINK;
+        cx2d.font = `900 ${VERT ? 20 : 18}px 'Hiragino Kaku Gothic ProN', sans-serif`;
+        const stw = cx2d.measureText(speaker).width;
+        const tagW = stw + 30, tagH = 28, tagY = by - 30 - tagH / 2 - 8;
+        cx2d.fillStyle = tagColor;
+        cx2d.beginPath(); cx2d.roundRect(bx - tagW / 2, tagY - tagH / 2, tagW, tagH, 14); cx2d.fill();
+        cx2d.fillStyle = INK; cx2d.textAlign = 'center'; cx2d.textBaseline = 'middle';
+        cx2d.fillText(speaker, bx, tagY + 1);
+      }
+      cx2d.font = `700 ${fontSize}px 'Hiragino Kaku Gothic ProN', sans-serif`;
+      cx2d.fillStyle = 'rgba(255,255,255,.94)';
+      cx2d.beginPath(); cx2d.roundRect(bx - bw / 2, by - 30, bw, 60, 30); cx2d.fill();
+      cx2d.fillStyle = INK; cx2d.textAlign = 'center'; cx2d.textBaseline = 'middle';
+      cx2d.fillText(text, bx, by + 2);
+      cx2d.restore();
+    }
+  },
+
   // 転ぶ: 空振りしてぽてっと転ぶ(やさしい笑い)
   fall(t, lt, p, sc) {
     sunburst(t, sc.c1 || '#ffe3ef', sc.c2 || '#fff6fa', .15);
@@ -598,14 +712,31 @@ const SCENES = {
 
   // CTA: 最後のメッセージ+ボタン(サイト用の締め)
   cta(t, lt, p, sc) {
-    sunburst(t, sc.c1 || PINK, sc.c2 || YEL, .12);
-    halftone(.2);
-    cardDraw(W * (VERT ? .5 : .24), H * (VERT ? .04 : .12), VERT ? .5 : .8, Math.sin(t * 1.2) * .015, 1, 1, pose(sc.pose || 'win', 'idle'));
-    const tx = W * (VERT ? .5 : .66);
+    // sc.image を指定すると、その物語の絵を背景にできる(主人公が
+    // マスコットではない物語で、キャラクターの一貫性を保つため)。
+    const bgImg = sc.image ? SCENE_IMAGES[sc.image] : null;
+    if (bgImg) {
+      coverDraw(1.04 + Math.sin(t * .22) * .012, .5, sc.focusY !== undefined ? sc.focusY : .5, bgImg);
+      // 文字を読みやすくする、やわらかい暗がり
+      const g = cx2d.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, 'rgba(20,12,30,.22)'); g.addColorStop(1, 'rgba(20,12,30,.62)');
+      cx2d.fillStyle = g; cx2d.fillRect(0, 0, W, H);
+    } else {
+      sunburst(t, sc.c1 || PINK, sc.c2 || YEL, .12);
+      halftone(.2);
+      cardDraw(W * (VERT ? .5 : .24), H * (VERT ? .04 : .12), VERT ? .5 : .8, Math.sin(t * 1.2) * .015, 1, 1, pose(sc.pose || 'win', 'idle'));
+    }
+    const tx = bgImg ? W / 2 : W * (VERT ? .5 : .66);
+    // 背景に物語の絵を使うときは、主人公の顔を隠さないよう下寄せにする
+    const tyTitle = bgImg ? H * (VERT ? .62 : .56) : H * (VERT ? .42 : .3);
+    const tySub   = bgImg ? H * (VERT ? .70 : .67) : H * (VERT ? .52 : .45);
+    const tyBtn   = bgImg ? H * (VERT ? .80 : .82) : H * (VERT ? .66 : .62);
+    const titleSize = bgImg ? 60 : 72;
+    const maxTextW = bgImg ? W * .9 : (VERT ? W * .92 : W * .6);
     const title = sc.title !== undefined ? sc.title : '怖くても、大丈夫。';
     const sub = sc.subtitle !== undefined ? sc.subtitle : '';
-    if (title) popText(title, tx, H * (VERT ? .42 : .3), 72, WHT, sc.start + .3, t, 0, VERT ? W * .92 : W * .6);
-    if (sub) popText(sub, tx, H * (VERT ? .52 : .45), 36, YEL, sc.start + .7, t, 0, VERT ? W * .92 : W * .6);
+    if (title) popText(title, tx, tyTitle, titleSize, WHT, sc.start + .3, t, 0, maxTextW);
+    if (sub) popText(sub, tx, tySub, 36, YEL, sc.start + .7, t, 0, maxTextW);
     // ボタン(ぽよんと登場して、やさしく脈打つ)
     const btn = sc.button !== undefined ? sc.button : '500円体験を予約する';
     if (btn) {
@@ -613,7 +744,7 @@ const SCENES = {
       if (bl > 0) {
         const scale = (bl < .35 ? easeOut(bl / .35) * 1.15 - .15 * (bl / .35) : 1 + Math.sin(t * 3) * .03);
         cx2d.save();
-        cx2d.translate(tx, H * (VERT ? .66 : .62));
+        cx2d.translate(tx, tyBtn);
         cx2d.scale(scale, scale);
         cx2d.font = `900 34px 'Arial Black', sans-serif`;
         const bw = Math.min(cx2d.measureText(btn).width + 90, W * .8);
@@ -743,7 +874,10 @@ function updateBookingCTA(time) {
   // SCENES.cta の計算式(font: 900 34px Arial Black / +90 / 上限 W*.8 / 高さ76)と同じにする。
   const rect = cv.getBoundingClientRect();
   const zoom = rect.width / W; // canvasが画面上で縮小/拡大されている倍率
-  const bx = W * (VERT ? .5 : .66), by = H * (VERT ? .66 : .62);
+  // 背景に物語の絵を使うとき(sc.image)は、描画側と同じ下寄せ座標にする
+  const hasBg = Boolean(sc.image && SCENE_IMAGES[sc.image]);
+  const bx = hasBg ? W / 2 : W * (VERT ? .5 : .66);
+  const by = hasBg ? H * (VERT ? .80 : .82) : H * (VERT ? .66 : .62);
   ctaMeasureCx.font = `900 34px 'Arial Black', sans-serif`;
   const bw = Math.min(ctaMeasureCx.measureText(sc.button).width + 90, W * .8);
   const bh = 76;
@@ -889,6 +1023,28 @@ const loadImg = src => new Promise((ok, ng) => {
     } catch (e) {
       // 1枚失敗しても全体は止めない。そのポーズは pose() が chara.png へ自動フォールバック。
       console.warn('pose skipped:', f, String(e));
+    }
+  }
+  // シーン背景の絵(道具たちの夜・子どもたちの練習など)。
+  // 1枚も無くても各シーンは自前描画で成立するので、失敗してもここで止めない。
+  const SCENE_FILES = {
+    toolstalk: 'scenes/toolstalk-night2.jpg',   // 夜のジム、道具たちが語り合う(主役の絵)
+    toolstalk2: 'scenes/night-tools-hero.jpg',  // 同・別カット
+    toolstalk3: 'scenes/toolstalk-night.jpg',   // 同・引きの構図
+    kidsCircle: 'scenes/kids-listening.jpg',    // コーチを囲んで座り、話を聞く子どもたち
+    kidsTrain: 'scenes/kids-training.jpg',      // フォーム棒で向き合う練習
+    // 親子の物語(「今しかない時間」のテーマ)
+    entranceShy: 'scenes/entrance-shy.jpg',     // ジムの入口。母の手を握ったまま、ためらう子
+    glovesOn: 'scenes/gloves-on.jpg',           // ベンチで母がグローブをはめてあげる
+    momWatching: 'scenes/mom-watching.jpg',     // はじめてのミット打ち。後ろで母が手を組んで見守る
+    goingHome: 'scenes/going-home.jpg',         // 手をつないで帰る親子
+    gymExterior: 'scenes/gym-exterior.jpg',     // 夜の街に灯る FLAT UP GYM の外観
+  };
+  for (const [key, file] of Object.entries(SCENE_FILES)) {
+    try {
+      SCENE_IMAGES[key] = await loadImg(file);
+    } catch (e) {
+      console.warn('scene image skipped:', file, String(e));
     }
   }
   window.ready = true;

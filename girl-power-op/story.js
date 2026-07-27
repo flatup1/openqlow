@@ -16,6 +16,7 @@
 //   finale   … 紙吹雪 + ロゴ                          文字: title, subtitle
 //   〜しずか系(やさしいオルゴール風の曲になる)〜
 //   night      … 月明かりの夜のジム                  文字: text
+//   toolstalk  … 夜、道具たちが話し出す(ぽつぽつと)  文字: lines(配列。文字列 か {speaker,text}), lineGap(秒)
 //   fall       … 空振りしてぽてっと転ぶ              文字: text
 //   smallpunch … はじめての小さな一発                文字: text
 //   sunrise    … 朝日がのぼる                        文字: text
