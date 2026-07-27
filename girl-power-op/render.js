@@ -21,7 +21,13 @@ const FPS = 30;            // 1秒あたりのコマ数
 const VERTICAL = process.argv.includes('--vertical');
 const W = VERTICAL ? 1080 : 1280;
 const H = VERTICAL ? 1920 : 720;
-const OUT = VERTICAL ? 'girl_power_op_vertical.mp4' : 'girl_power_op.mp4';
+
+// 「node render.js --story=ep01」で物語を選べる(既定は story.flatup.js)。
+// 例: --story=ep01(ブランドフィルム第1話) / --story=op(旧GIRL POWER版)
+const storyArg = (process.argv.find(a => a.startsWith('--story=')) || '').split('=')[1] || '';
+const storyParam = storyArg ? '&story=' + encodeURIComponent(storyArg) : '';
+const baseName = storyArg ? `flatup_${storyArg}` : 'girl_power_op';
+const OUT = VERTICAL ? `${baseName}_vertical.mp4` : `${baseName}.mp4`;
 
 (async () => {
   fs.mkdirSync(path.join(DIR, 'frames'), { recursive: true });
@@ -42,7 +48,7 @@ const OUT = VERTICAL ? 'girl_power_op_vertical.mp4' : 'girl_power_op.mp4';
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: W, height: H } });
   page.on('pageerror', e => console.log('ページ内エラー:', e.message));
-  await page.goto('file://' + path.join(DIR, 'index.html') + `?w=${W}&h=${H}` + posesParam);
+  await page.goto('file://' + path.join(DIR, 'index.html') + `?w=${W}&h=${H}` + posesParam + storyParam);
   await page.waitForFunction('window.ready === true', null, { timeout: 15000 });
   const DUR = await page.evaluate('DUR');
   console.log(`動画の長さ: ${DUR}秒(story.js のシーン合計)`);
