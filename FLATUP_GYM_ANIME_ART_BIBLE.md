@@ -26,7 +26,7 @@
 |---|---|
 | **頭身** | 2.5頭身（ちび体型） |
 | **顔** | 丸顔、大きな目（アニメ風）、厚みのある唇 |
-| **髪** | ツインテール（基本）/ アレンジ可（各キャラ） |
+| **髪** | 全キャラ黒髪で統一。差別化は**長さと毛質**のみで行い、髪色は変えない（Part 3 の各キャラ指定に従う） |
 | **グローブ** | 赤いボクシンググローブ（手首まで、指が出ない） |
 | **ウェア** | FLATUP GYM ロゴ入りTシャツ ＋ ムエタイショーツ |
 | **足** | 裸足（靴なし） |
@@ -76,7 +76,7 @@ long gloves with fingers, CGI, illustration inconsistency)
 - ジムのマスコット・キャラクター
 - 性別: 女性（ただし完全な「人間」ではなく、ジム擬人化的存在）
 - 年代: 見た目は30代後半、でも実は「ジムの精」的な存在
-- 髪: 黒髪ポニーテール（ツインテールではなく）
+- 髪: 黒髪ポニーテール ※EP10のハルナも同じポニーテールだが、フラットちゃんは見た目30代後半の大人体型で明確に区別される（同一フレームに入る場合は身長差を必ずつける）
 - 表情: 温かく優しい笑顔（常に穏やか）
 
 **ビジュアル**
@@ -185,8 +185,8 @@ anime style, warm light
 - **年代**: 小学3年生（8-9歳）
 - **性別**: 男の子
 - **性格**: 素直で明るい、でも無邪気に傷つける言葉を言ってしまう
-- **髪**: 短髪、黒髪（おデコが見える）
-- **髪色・髪型**: 明るい黒、ちょっと立った毛
+- **髪**: 短髪、黒髪（おデコが見える。ちょっと立った毛＝spiky）
+- **髪色・髪型**: 黒。生成語は `short spiky black hair` で固定
 
 **ビジュアル特徴**
 - グローブ: 赤（共通）
@@ -200,9 +200,9 @@ anime style, warm light
 
 **生成プロンプト共通要素**
 ```
-cute chibi boy character, 8 years old, short black hair, bright cheerful 
-smile (or specified emotion), red and white sporty shirt, red boxing gloves, 
-barefoot, FLATUP GYM gym setting with pink star floor
+cute chibi boy character, 8 years old, short spiky black hair, bright cheerful 
+smile (or specified emotion), red and white color-block sporty shirt, 
+red boxing gloves, barefoot, FLATUP GYM gym setting with star-pattern floor
 ```
 
 ---
@@ -213,8 +213,8 @@ barefoot, FLATUP GYM gym setting with pink star floor
 - **年代**: 小学3年生
 - **性別**: 男の子
 - **性格**: 控えめ、傷つきやすい
-- **髪**: 短髪、少し長めのボブ感
-- **髪色**: 黒
+- **髪**: 短髪、整った黒髪（レンより落ち着いた毛質）
+- **髪色**: 黒。生成語は `short neat black hair` で固定
 
 **ビジュアル特徴**
 - グローブ: 赤
@@ -228,9 +228,9 @@ barefoot, FLATUP GYM gym setting with pink star floor
 
 **生成プロンプト共通要素**
 ```
-cute chibi boy character, 8 years old, soft black hair, calm quiet expression, 
-navy and yellow shirt, red boxing gloves, barefoot, FLATUP GYM gym, 
-reserved modest demeanor, anime style
+cute chibi boy character, 8 years old, short neat black hair, calm quiet 
+expression, navy and yellow color-block sporty shirt, red boxing gloves, 
+barefoot, FLATUP GYM gym, reserved modest demeanor, anime style
 ```
 
 ---
@@ -241,12 +241,12 @@ reserved modest demeanor, anime style
 - **年代**: 小学3年生
 - **性別**: 女の子
 - **性格**: 真面目、向上心が高い、でも視野が狭くなりやすい
-- **髪**: ツインテール、黒髪
-- **髪色・髪型**: しっかりした束ねられたツインテール
+- **髪**: ポニーテール、黒髪
+- **髪色・髪型**: 黒。生成語は `black hair in a ponytail` で固定
 
 **ビジュアル特徴**
 - グローブ: 赤
-- ウェア: 黄と黒のカラー（エネルギッシュ）
+- ウェア: ピンクと紫のカラーブロック（エネルギッシュ）
 - 表情: 真剣な顔が基本（集中力）
 
 **各シーンでの表情**
@@ -256,8 +256,8 @@ reserved modest demeanor, anime style
 
 **生成プロンプト共通要素**
 ```
-cute chibi girl character, 8 years old, twin tails black hair, serious 
-focused expression, yellow and black sporty outfit, red boxing gloves, 
+cute chibi girl character, 8 years old, black hair in a ponytail, serious 
+focused expression, pink and purple color-block sporty shirt, red boxing gloves, 
 barefoot, FLATUP GYM gym, concentrated on training, anime style
 ```
 
@@ -274,7 +274,7 @@ barefoot, FLATUP GYM gym, concentrated on training, anime style
 
 **ビジュアル特徴**
 - グローブ: 赤
-- ウェア: 緑と紺のカラー（落ち着いた色合い）
+- ウェア: 薄紫と灰のカラーブロック（落ち着いた色合い）
 - 表情: 穏やかさ（優しい目）
 
 **各シーンでの表情**
@@ -283,9 +283,9 @@ barefoot, FLATUP GYM gym, concentrated on training, anime style
 
 **生成プロンプト共通要素**
 ```
-cute chibi boy character, 8 years old, short black hair, calm gentle 
-expression, green and navy shirt, red boxing gloves, barefoot, 
-FLATUP GYM gym, supportive steady demeanor, anime style
+cute chibi boy character, 8 years old, short soft black hair, calm gentle 
+expression, light purple and gray color-block sporty shirt, red boxing gloves, 
+barefoot, FLATUP GYM gym, supportive steady demeanor, anime style
 ```
 
 ---
@@ -293,15 +293,15 @@ FLATUP GYM gym, supportive steady demeanor, anime style
 ### EP11: ユウ（新入りに声をかける勇気を持つ子）
 
 **基本設定**
-- **年代**: 小学4年生（9-10歳）
+- **年代**: 小学4年生（10歳）※ダイより背をわずかに高くする
 - **性別**: 男の子
 - **性格**: 優しい、ジム経験が長い、でも新しい子に声をかけるのは苦手
 - **髪**: 短髪、黒髪（落ち着いた印象）
-- **髪色**: 濃い黒
+- **髪色**: 濃い黒。生成語は `short black hair` で固定
 
 **ビジュアル特徴**
 - グローブ: 赤
-- ウェア: 灰色と紺のカラー（落ち着き）
+- ウェア: 緑と黄のカラーブロック（希望、優しさ）
 - 表情: 優しい顔（基本）
 
 **各シーンでの表情**
@@ -311,9 +311,9 @@ FLATUP GYM gym, supportive steady demeanor, anime style
 
 **生成プロンプト共通要素**
 ```
-cute chibi boy character, 9 years old, short black hair, kind gentle eyes, 
-gray and navy shirt, red boxing gloves, barefoot, FLATUP GYM gym, 
-experienced but shy demeanor, anime style
+cute chibi boy character, 10 years old, short black hair, kind gentle eyes, 
+green and yellow color-block sporty shirt, red boxing gloves, barefoot, 
+FLATUP GYM gym, experienced but shy demeanor, anime style
 ```
 
 ---
@@ -321,15 +321,15 @@ experienced but shy demeanor, anime style
 ### EP11: ダイ（新しく入った子）
 
 **基本設定**
-- **年代**: 小学低学年（6-7歳）
+- **年代**: 小学3年生（8歳）※ユウより背をわずかに低くする
 - **性別**: 男の子
 - **性格**: 緊張しやすい、初心者
 - **髪**: 短髪、黒髪
-- **髪色**: 黒
+- **髪色**: 黒。生成語は `short black hair` で固定
 
 **ビジュアル特徴**
 - グローブ: 赤（持ってる状態が多い）
-- ウェア: 緑のシンプルシャツ
+- ウェア: 薄い灰色と淡い青のカラーブロック（緊張、新しさ）
 - 表情: 緊張した顔（基本）
 
 **各シーンでの表情**
@@ -338,8 +338,8 @@ experienced but shy demeanor, anime style
 
 **生成プロンプト共通要素**
 ```
-cute chibi boy character, 6 years old, short black hair, nervous 
-anxious expression, green simple shirt, holding red boxing gloves, 
+cute chibi boy character, 8 years old, short black hair, nervous 
+anxious expression, gray and blue color-block sporty shirt, red boxing gloves, 
 barefoot, FLATUP GYM gym, scared but hopeful, beginner, anime style
 ```
 
@@ -356,7 +356,7 @@ barefoot, FLATUP GYM gym, scared but hopeful, beginner, anime style
 
 **ビジュアル特徴**
 - グローブ: 赤
-- ウェア: 紫と白のカラー（慎重さ、落ち着き）
+- ウェア: 紫と青のカラーブロック（慎重さ、落ち着き）
 - 表情: 警戒気味（基本）
 
 **各シーンでの表情**
@@ -367,8 +367,8 @@ barefoot, FLATUP GYM gym, scared but hopeful, beginner, anime style
 **生成プロンプト共通要素**
 ```
 cute chibi boy character, 8 years old, short black hair, cautious careful 
-expression, purple and white shirt, red boxing gloves, barefoot, 
-FLATUP GYM gym, nervous but determined, anime style
+expression, purple and blue color-block sporty shirt, red boxing gloves, 
+barefoot, FLATUP GYM gym, nervous but determined, anime style
 ```
 
 ---
@@ -379,12 +379,12 @@ FLATUP GYM gym, nervous but determined, anime style
 - **年代**: 小学3年生
 - **性別**: 女の子
 - **性格**: 真面目で向上心がある、でも人と比べてしまう癖がある
-- **髪**: ツインテール、黒髪
-- **髪色**: 黒、しっかり束ねた感じ
+- **髪**: 短髪、黒髪
+- **髪色**: 黒。生成語は `short black hair` で固定（ノアとの差別化は髪の長さ）
 
 **ビジュアル特徴**
 - グローブ: 赤
-- ウェア: 紫と黒のカラー（真面目さ）
+- ウェア: 青と紫のカラーブロック（真面目さ）
 - 表情: 真剣な顔（基本）、でも落ち込みやすい
 
 **各シーンでの表情**
@@ -395,9 +395,9 @@ FLATUP GYM gym, nervous but determined, anime style
 
 **生成プロンプト共通要素**
 ```
-cute chibi girl character, 8 years old, twin tails black hair, serious 
-thoughtful expression, purple and black outfit, red boxing gloves, barefoot, 
-FLATUP GYM gym, earnest but introspective, anime style
+cute chibi girl character, 8 years old, short black hair, serious 
+thoughtful expression, blue and purple color-block sporty shirt, red boxing 
+gloves, barefoot, FLATUP GYM gym, earnest but introspective, anime style
 ```
 
 ---
@@ -408,12 +408,12 @@ FLATUP GYM gym, earnest but introspective, anime style
 - **年代**: 小学3年生
 - **性別**: 女の子
 - **性格**: 上達が自然に早い、でも悪意はない
-- **髪**: ツインテール、茶髪
-- **髪色・髪型**: 明るい茶色のツインテール（ミオとの差別化）
+- **髪**: 少し長めの黒髪（ミオより長い。差別化は長さで行い、髪色は変えない）
+- **髪色**: 黒。生成語は `medium-length black hair` で固定
 
 **ビジュアル特徴**
 - グローブ: 赤
-- ウェア: オレンジと黄のカラー（明るさ、華やかさ）
+- ウェア: 黄と白のカラーブロック（明るさ、華やかさ）
 - 表情: 自然な笑顔（基本）
 
 **各シーンでの表情**
@@ -422,9 +422,13 @@ FLATUP GYM gym, earnest but introspective, anime style
 
 **生成プロンプト共通要素**
 ```
-cute chibi girl character, 8 years old, twin tails light brown hair, 
-bright natural smile, orange and yellow sporty outfit, red boxing gloves, 
-barefoot, FLATUP GYM gym, talented and kind, anime style
+cute chibi girl character, 8 years old, medium-length black hair, 
+bright natural smile, yellow and white color-block sporty shirt, red boxing 
+gloves, barefoot, FLATUP GYM gym, talented and kind, anime style
+```
+**ネガティブ必須**: `smug, arrogant, condescending, showing off`
+（「嫌味な天才」に見えた瞬間に EP13 は失敗する）
+```
 ```
 
 ---
@@ -436,8 +440,8 @@ barefoot, FLATUP GYM gym, talented and kind, anime style
 | EP09 | かった、から、こそ | 赤・金 | 温かい夕光 | 誠実・清廉 |
 | EP10 | もって、くれてる | ピンク・紫 | 柔らかい昼光 | 感謝・温暖 |
 | EP11 | となりに、いく | 緑・黄 | 明るい昼光 | 希望・優しさ |
-| EP12 | どきどき、しても | 青・紫 | 落ち着いた昼光 | 勇敢・決意 |
-| EP13 | きのうの、じぶん | 橙・紫 | ぬくもりのある昼光 | 成長・充足 |
+| EP12 | どきどき、しても | 紫・青 | 紫系夕光 | 勇敢・決意 |
+| EP13 | きのうの、じぶん | 青紫・黄金 | 黄金夕光 | 成長・充足 |
 
 ---
 
@@ -454,16 +458,19 @@ barefoot, FLATUP GYM gym, talented and kind, anime style
 
 **例（ミオ・正面・驚き顔）**
 ```
-cute chibi girl character, 8 years old, twin tails black hair, surprised 
-shocked expression with wide eyes, purple and black sporty outfit, 
-red boxing gloves, barefoot, standing in FLATUP GYM gym with pink 
-star floor, warm sunlight, anime style illustration by Studio Ghibli, 
-high quality, no blurry, no 3D, no realistic
+cute chibi girl character, 8 years old, short black hair, surprised 
+shocked expression with wide eyes, blue and purple color-block sporty shirt, 
+red boxing gloves, barefoot, standing in FLATUP GYM gym with star-pattern 
+floor, warm sunlight, anime style illustration, Studio Ghibli-like aesthetic, 
+high quality, flat illustration, no blurry, no 3D, no realistic
 
 (bad quality, blurry, distorted, 3D, realistic, photorealistic, adult, 
-serious expression, sad, angry, wearing shoes, wearing earrings, 
-long gloves with fingers, CGI, illustration inconsistency)
+wearing shoes, wearing socks, wearing earrings, long gloves with fingers, 
+CGI, octane render, illustration inconsistency, low quality, watermark, text, 
+extra fingers, deformed hands, violence, aggressive expression)
 ```
+
+**共通ネガティブの正本は** `brand-film-series/02_QA_CHECKLIST.md` §4。上記はその抜粋。
 
 ### Step 2: シーン別派生生成
 
@@ -479,13 +486,13 @@ long gloves with fingers, CGI, illustration inconsistency)
 **入力**: シーン別派生画像  
 **出力**: 各カット 4-6 秒のアニメーション
 
-**例（EP09 C01: ノアがキックを決める）**
+**例（EP13 C01: ノアがキックを決める）**
 ```
-A cute chibi girl with light brown twin-tails in orange and yellow outfit, 
-in FLATUP GYM gym with pink star floor. She is performing a spinning kick 
-with red boxing gloves. Motion: smooth and powerful spinning kick motion, 
-then landing and posing. Light: warm evening sunlight. Duration: 4 seconds. 
-Anime style.
+A cute chibi girl with medium-length black hair in a yellow and white 
+color-block shirt, in FLATUP GYM gym with star-pattern floor. She is 
+performing a smooth kick combination with red boxing gloves, barefoot. 
+Motion: fluid confident kick, then a natural relaxed pose. 
+Light: warm golden evening sunlight. Duration: 3 seconds. Anime style.
 ```
 
 ---
