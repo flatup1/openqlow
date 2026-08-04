@@ -14,7 +14,7 @@ const requiredKeys = [
   "trialFirst", "visitorSecond", "visitorPass6", "visitorPass12", "priceKids", "priceWomen", "priceMen", "joinFee",
   "bring", "parking", "gloveSet", "address", "nearestStation", "access",
   "scheduleKids", "scheduleLadies", "bookingMen", "bookingWomen", "noBooking",
-  "businessHours", "classes", "parentDiscount", "referralBenefit",
+  "businessHours", "classes", "parentDiscount", "referralBenefit", "cardKeyReturn",
 ] as const;
 for (const k of requiredKeys) {
   assert(typeof (FLATUP_CANON as Record<string, unknown>)[k] === "string", `canon missing key: ${k}`);
@@ -28,6 +28,7 @@ assert(FLATUP_CANON.visitorPass6 === "6回券15,000円（1年有効）", "6-visi
 assert(FLATUP_CANON.visitorPass12 === "12回券30,000円（1年有効）", "12-visit pass must match current pricing");
 assert(FLATUP_CANON.scheduleLadies === "土曜14:30", "ladies class must start at 14:30");
 assert(FLATUP_CANON.businessHours.includes("18:00〜21:00"), "weekday evening staff hours must end at 21:00");
+assert(FLATUP_CANON.cardKeyReturn.includes("1,000円"), "card key penalty must be 1,000円");
 
 // 単一正本との一貫性: 顧客返信の料金が canon と一致（直書きドリフト検出 = R2ガード）
 const trialDigits = FLATUP_CANON.trialFirst.replace(/[^0-9]/g, "");

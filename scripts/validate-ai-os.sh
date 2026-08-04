@@ -5,12 +5,19 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$ROOT_DIR"
 
 FAILURES=0
+SKIPPED=0
 fail() {
   echo "FAIL: $*" >&2
   FAILURES=$((FAILURES + 1))
 }
 pass() {
   echo "PASS: $*"
+}
+# 実行環境に無いツールへの依存は、失敗ではなく明示的なスキップとして扱う。
+# （CI や Codex 未導入の端末でも、それ以外の検査を成立させるため）
+skip() {
+  echo "SKIP: $*"
+  SKIPPED=$((SKIPPED + 1))
 }
 
 REQUIRED_FILES=(
@@ -126,17 +133,31 @@ pass "pricing and schedule canon checked"
 # 列挙漏れによるドリフト検出（逆方向チェック）。
 # 同期ビューに書かれた金額・時刻は、必ず正本 src/shared/canon.ts にも存在しなければならない。
 # CANON_PAIRS への追加を忘れても、未知のドリフトをここで捕まえる。
-# 「## 差異の扱い」以降は、既知の誤表記をあえて引用する注記セクションのため対象外。
-CANON_VIEW_BODY="$(awk '/^## 差異の扱い/{exit} {print}' docs/ai-os/canon/pricing_and_schedule.md)"
+#
+# 重要: 部分一致を使わない。`grep -F "1,000円"` は正本の「11,000円」にも一致してしまい、
+# 実在しない値を「あり」と誤判定する。前後が数字・カンマでないことを必ず確認する。
+canon_has_amount() {
+  grep -qE "(^|[^0-9,])${1//,/,}([^0-9]|$)" src/shared/canon.ts
+}
+canon_has_time() {
+  grep -qE "(^|[^0-9:])${1}([^0-9:]|$)" src/shared/canon.ts
+}
+
+# 数値を持つ同期ビューはすべて対象にする（pricing だけでは membership の値を見落とす）。
 DRIFT=0
-while IFS= read -r money; do
-  [[ -z "$money" ]] && continue
-  grep -Fq "$money" src/shared/canon.ts || { fail "canon view has an amount absent from canon.ts: $money"; DRIFT=1; }
-done < <(printf '%s\n' "$CANON_VIEW_BODY" | grep -oE '[0-9][0-9,]*円' | sort -u)
-while IFS= read -r clock; do
-  [[ -z "$clock" ]] && continue
-  grep -Fq "$clock" src/shared/canon.ts || { fail "canon view has a time absent from canon.ts: $clock"; DRIFT=1; }
-done < <(printf '%s\n' "$CANON_VIEW_BODY" | grep -oE '[0-9]{1,2}:[0-9]{2}' | sort -u)
+for view in docs/ai-os/canon/pricing_and_schedule.md docs/ai-os/canon/membership_rules.md; do
+  [[ -f "$view" ]] || continue
+  # 「## 差異の扱い」以降は、既知の誤表記をあえて引用する注記セクションのため対象外。
+  body="$(awk '/^## 差異の扱い/{exit} {print}' "$view")"
+  while IFS= read -r money; do
+    [[ -z "$money" ]] && continue
+    canon_has_amount "$money" || { fail "$(basename "$view") has an amount absent from canon.ts: $money"; DRIFT=1; }
+  done < <(printf '%s\n' "$body" | grep -oE '[0-9][0-9,]*円' | sort -u)
+  while IFS= read -r clock; do
+    [[ -z "$clock" ]] && continue
+    canon_has_time "$clock" || { fail "$(basename "$view") has a time absent from canon.ts: $clock"; DRIFT=1; }
+  done < <(printf '%s\n' "$body" | grep -oE '[0-9]{1,2}:[0-9]{2}' | sort -u)
+done
 if [[ "$DRIFT" -eq 0 ]]; then
   pass "canon view amounts and times all trace back to canon.ts"
 fi
@@ -185,7 +206,7 @@ if command -v codex >/dev/null 2>&1; then
     fail "Codex rule decisions did not match forbidden/prompt expectations"
   fi
 else
-  fail "Codex CLI unavailable for execpolicy validation"
+  skip "Codex CLI unavailable — execpolicy validation not run (rules file itself is checked below)"
 fi
 
 DENY_INPUT='{"tool_name":"Bash","tool_input":{"command":"git reset --hard HEAD"}}'
@@ -201,11 +222,16 @@ fi
 if grep -Fxq 'approval_policy = "on-request"' .codex/config.toml \
   && grep -Fxq 'sandbox_mode = "workspace-write"' .codex/config.toml \
   && grep -Fxq 'hooks = true' .codex/config.toml; then
-  FEATURES_OUTPUT="$(codex features list 2>/dev/null || true)"
-  if grep -Eq '^hooks[[:space:]]+stable[[:space:]]+true$' <<<"$FEATURES_OUTPUT"; then
-    pass "Codex project config checked and hooks stable"
+  pass "Codex project config contains required safety settings"
+  if command -v codex >/dev/null 2>&1; then
+    FEATURES_OUTPUT="$(codex features list 2>/dev/null || true)"
+    if grep -Eq '^hooks[[:space:]]+stable[[:space:]]+true$' <<<"$FEATURES_OUTPUT"; then
+      pass "Codex hooks reported stable"
+    else
+      fail "installed Codex CLI does not report stable enabled hooks"
+    fi
   else
-    fail "installed Codex CLI does not report stable enabled hooks"
+    skip "Codex CLI unavailable — hook stability not queried"
   fi
 else
   fail "Codex project config is missing required safety settings"
