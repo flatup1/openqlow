@@ -1,0 +1,49 @@
+name: CI
+
+# main への PR と push で、テストと AI OS 検証を自動実行する。
+# 目的: 正本（src/shared/canon.ts）と同期ビューのズレ、Skills の破損、
+# 秘密情報の混入を、人が目視する前に機械が止める。
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# 同じブランチで新しい push があれば、古い実行は打ち切る（無駄なジョブを残さない）。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # 依存はロックファイルどおりに入れる（本番と同じ組み合わせを保証）。
+      - name: Install dependencies
+        run: npm ci
+
+      # typecheck + 全テスト（package.json の test が一式を連結している）。
+      - name: Run tests
+        run: npm test
+
+      # AI OS の検証。Codex CLI はこの環境に無いため、該当検査は SKIP 扱いになる。
+      - name: Validate AI OS
+        run: |
+          bash scripts/validate-ai-os.sh
+          bash scripts/validate-ai-os.test.sh
+
+      # Skills の正本と配布（.claude / .agents）が一致しているか。
+      - name: Check skill sync
+        run: bash scripts/sync-agent-skills.sh --check
