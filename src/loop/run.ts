@@ -139,7 +139,8 @@ export async function runLoop(opts: LoopRunOptions = {}): Promise<LoopRunResult>
   return { date, ingested, avgTotal: sc.avgTotal, failRate: sc.failRate, outputDirs: loopDirs };
 }
 
-const invokedDirectly = process.argv[1]?.endsWith("run.ts");
+const invokedBasename = process.argv[1] ? path.basename(process.argv[1]) : "";
+const invokedDirectly = invokedBasename === "run.ts" || invokedBasename === "run.js";
 if (invokedDirectly) {
   runLoop().catch(err => {
     console.error("[loop] failed:", err);

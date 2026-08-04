@@ -14,6 +14,7 @@
     "start:monitor": "node dist/index.js monitor",
     "start:serve": "node dist/line_bot/webhook.js",
     "start:crm": "node dist/crm/crm_cli.js",
+    "start:loop": "node dist/loop/run.js",
     "daily": "tsx src/scheduler/daily.ts",
     "daily:check": "tsx src/scheduler/daily_check.ts",
     "morning": "tsx src/scheduler/morning_briefing.ts",
