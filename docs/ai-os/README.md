@@ -1,61 +1,34 @@
 # FLATUP GYM AI OPERATING SYSTEM
 
-FLATUP GYM の業務を、AI に毎回長く説明せず、短い指示で同じ品質を出すための共通基盤です。
-Codex と Claude Code の両方で使えるように設計しています。
+CodexとClaude Codeが、短い指示でもFLATUPの正本・口調・承認ルールを守るための共通基盤です。AIは下ごしらえを担当し、送信・公開・料金・金銭・本番変更の最終判断はJINが行います。
 
-## 目的
+## 最初に読む順番
 
-1. 会員数100人達成に向けた集客強化
-2. 問い合わせ→体験予約の返信品質向上
-3. 体験後の入会率向上
-4. SNS・広告・HP制作の効率化
-5. 料金・営業時間・退会ルールの誤案内防止
-6. 危険なファイル操作・外部送信・公開作業の防止
-7. Codex / Claude Code 共通のナレッジと Skills
+1. `AGENTS.md` と `COORDINATION.md`
+2. `src/shared/canon.ts`（事実の唯一の正本）
+3. `docs/ai-os/canon/approval_matrix.md`
+4. 依頼に合うSkill
 
 ## 構成
 
-```
-docs/ai-os/
-├── canon/          正本（唯一の参照元）
-│   ├── gym_profile.md
-│   ├── pricing_and_schedule.md
-│   ├── membership_rules.md
-│   ├── safety_rules.md
-│   ├── brand_voice.md
-│   └── approval_matrix.md
-├── workflows/      業務の流れ
-├── templates/      返信・投稿・レポートの雛形
-├── integrations/   MCP / 自動化の候補（未接続は候補まで）
-└── skills-source/  Skills 正本（SKILL.md）
-```
+- `canon/`: 正本の参照方法、ブランド、安全、承認境界
+- `workflows/`: 問い合わせ、体験、発信、週次経営、整理の流れ
+- `templates/`: 送信前の下書き雛形
+- `skills-source/`: 10個のSkills正本
+- `integrations/`: 外部連携と自動化の候補。接続を作った記録ではない
 
-Skills の配布先：
-- Codex 用：`.agents/skills/<name>/`
-- Claude Code 用：`.claude/skills/<name>/`
-- 同期：`scripts/sync-agent-skills.sh`（正本は `skills-source/`）
+## 重要な区別
 
-## 最初の10 Skills
-
-1. `flatup-daily-command` — 今日の司令書
-2. `flatup-inquiry-reply` — 問い合わせ返信
-3. `flatup-trial-followup` — 体験前後のフォロー
-4. `flatup-social-repurpose` — SNS媒体別転用
-5. `flatup-content-qc` — 公開前検品
-6. `flatup-weekly-kpi` — 週次KPIレポート
-7. `flatup-faq-update` — FAQ正本更新
-8. `flatup-file-audit` — ファイル健診
-9. `flatup-campaign-planner` — 集客企画作成
-10. `flatup-change-review` — コード・設定変更の検品
-
-## 安全の原則
-
-- 全て下書き。送信・投稿・請求・契約変更・規約判断は人間が実行。
-- 承認区分は `canon/approval_matrix.md`。
-- 個人情報・秘密情報は Git 管理下へ保存しない。
+- `src/shared/canon.ts` が料金・時間・クラス等の唯一の正本です。
+- `docs/ai-os/canon/` は人間とAIが読みやすい同期ビューで、矛盾時はTypeScript正本を優先します。
+- `AIKA`は顧客対応の守り、`openQLOW`は営業・経営支援の攻めです。
+- 自動化は読み取り・集計から始め、顧客への送信や公開は下書きまでです。
 
 ## 検証
 
 ```bash
-bash scripts/validate-ai-os.sh
+./scripts/validate-ai-os.sh
+./scripts/validate-ai-os.test.sh
 ```
+
+Skillsを変更した場合は、先に `docs/ai-os/skills-source/` を編集し、`./scripts/sync-agent-skills.sh --check` で配置を確認します。

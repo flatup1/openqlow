@@ -1,52 +1,58 @@
 #!/usr/bin/env bash
-# Skills 正本（docs/ai-os/skills-source/）を Codex 用（.agents/skills/）と
-# Claude Code 用（.claude/skills/）へ同期する。
-#
-# シンボリックリンクが使える環境ではリンク、使えない環境ではコピー。
-# 既存の他 Skills（例: .claude/skills/run-openqlow-dryrun）は削除しない。
-#
-# 使い方: bash scripts/sync-agent-skills.sh [--copy]
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="${REPO_ROOT}/docs/ai-os/skills-source"
-TARGETS=("${REPO_ROOT}/.claude/skills" "${REPO_ROOT}/.agents/skills")
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+SOURCE_ROOT="$ROOT_DIR/docs/ai-os/skills-source"
+MODE="${1:---check}"
 
-FORCE_COPY="false"
-[[ "${1:-}" == "--copy" ]] && FORCE_COPY="true"
+SKILLS=(
+  flatup-daily-command
+  flatup-inquiry-reply
+  flatup-trial-followup
+  flatup-social-repurpose
+  flatup-content-qc
+  flatup-weekly-kpi
+  flatup-faq-update
+  flatup-file-audit
+  flatup-campaign-planner
+  flatup-change-review
+)
 
-if [[ ! -d "${SRC}" ]]; then
-  echo "❌ 正本ディレクトリが見つかりません: ${SRC}" >&2
-  exit 1
+if [[ "$MODE" != "--check" && "$MODE" != "--sync" ]]; then
+  echo "Usage: $0 [--check|--sync]" >&2
+  exit 2
 fi
 
-sync_one() {
-  local skill_dir="$1" target_root="$2"
-  local name; name="$(basename "${skill_dir}")"
-  local dest="${target_root}/${name}"
-  mkdir -p "${target_root}"
-  rm -rf "${dest}"
-  if [[ "${FORCE_COPY}" == "true" ]]; then
-    cp -R "${skill_dir}" "${dest}"
-    echo "  copied  ${name} -> ${target_root#${REPO_ROOT}/}"
-  else
-    # 相対シンボリックリンクを試す。失敗したらコピーにフォールバック。
-    local rel; rel="$(python3 -c "import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))" "${skill_dir}" "${target_root}" 2>/dev/null || true)"
-    if [[ -n "${rel}" ]] && ln -s "${rel}" "${dest}" 2>/dev/null; then
-      echo "  linked  ${name} -> ${target_root#${REPO_ROOT}/}"
-    else
-      cp -R "${skill_dir}" "${dest}"
-      echo "  copied  ${name} -> ${target_root#${REPO_ROOT}/} (symlink不可)"
-    fi
-  fi
-}
+mkdir -p "$ROOT_DIR/.agents/skills" "$ROOT_DIR/.claude/skills"
 
-for target in "${TARGETS[@]}"; do
-  echo "Sync -> ${target#${REPO_ROOT}/}"
-  for skill_dir in "${SRC}"/*/; do
-    [[ -d "${skill_dir}" ]] || continue
-    sync_one "${skill_dir%/}" "${target}"
+for skill in "${SKILLS[@]}"; do
+  source_dir="$SOURCE_ROOT/$skill"
+  [[ -f "$source_dir/SKILL.md" ]] || {
+    echo "Missing skill source: $skill" >&2
+    exit 1
+  }
+
+  for platform in .agents .claude; do
+    target="$ROOT_DIR/$platform/skills/$skill"
+    relative="../../docs/ai-os/skills-source/$skill"
+
+    if [[ "$MODE" == "--sync" ]]; then
+      if [[ -e "$target" && ! -L "$target" ]]; then
+        echo "Refusing to replace non-symlink: $target" >&2
+        exit 1
+      fi
+      ln -sfn "$relative" "$target"
+    fi
+
+    if [[ ! -L "$target" || ! -f "$target/SKILL.md" ]]; then
+      echo "Skill link missing or broken: $target" >&2
+      exit 1
+    fi
+    cmp -s "$source_dir/SKILL.md" "$target/SKILL.md" || {
+      echo "Skill content mismatch: $target" >&2
+      exit 1
+    }
   done
 done
 
-echo "✅ Skills 同期完了"
+echo "10 skills synchronized for Codex and Claude Code ($MODE)"

@@ -1,18 +1,17 @@
 ---
 name: flatup-file-audit
-description: ファイルの重複・古い料金/営業時間・未使用候補・名前の不統一・保存場所の誤り・正本との矛盾を一覧化する。削除・移動はせず候補一覧までで停止する。使うとき=整理前の健診。使わないとき=コード変更の検品（flatup-change-review）。
+description: Use to audit a defined FLATUP folder for duplicates, stale facts, naming problems, misplaced files, or canon conflicts. Do not use to delete, move, rename, or overwrite files.
 ---
 
-# flatup-file-audit
+# FLATUP File Audit
 
-## 目的
-整理の前に「問題候補」を洗い出す。削除・移動はしない。
+## Procedure
 
-## 手順
-1. 対象ディレクトリを読み取る。
-2. 次を一覧化：重複 / 古い料金 / 古い営業時間 / 未使用候補 / 名前の不統一 / 保存場所の誤り / 正本と矛盾する内容。
-3. 各項目に「なぜ問題か」「正本との差異」を添える（正本＝`canon/`）。
-4. **削除・移動は行わない。候補一覧までで停止する**（`canon/approval_matrix.md` §1, §3）。
+1. Confirm the exact audit root and canonical source.
+2. Inventory files without exposing private contents.
+3. Detect duplicate candidates, stale pricing or hours, inconsistent names, misplaced items, and conflicts with the canon.
+4. For each finding, provide path, evidence, impact, and recommended action.
+5. Separate certain findings from uncertain candidates.
+6. Stop before any mutation.
 
-## 禁止
-- 破壊的な削除コマンドや強制クリーンの実行（`approval_matrix.md` §3）。無断の移動・リネーム。
+If personal or secret information appears, report only its location and category. Use `docs/ai-os/workflows/file_cleanup.md`.

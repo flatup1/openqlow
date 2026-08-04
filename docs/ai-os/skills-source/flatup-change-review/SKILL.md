@@ -1,23 +1,17 @@
 ---
 name: flatup-change-review
-description: コード・設定・文章・正本の変更を、制作担当とは別視点で検品する。意図したファイルだけが変わったか、既存機能を壊していないか、正本と矛盾がないか、秘密情報が含まれないか、テストや人間確認が必要かを確認する。使うとき=commit/公開前の変更レビュー。使わないとき=公開文章そのものの検品（flatup-content-qc）。
+description: Use to independently review proposed code, configuration, copy, or canon changes before integration. Do not use to approve your own release, commit, push, deploy, or bypass the owner gate.
 ---
 
-# flatup-change-review
+# FLATUP Change Review
 
-## 目的
-変更を第二の目で検品し、事故を防ぐ。
+## Review order
 
-## 確認項目
-- 意図したファイルだけが変更されたか（`git diff --stat` を確認）
-- 既存機能を壊していないか
-- 正本（`canon/`）と矛盾していないか
-- 個人情報・秘密情報（APIキー・トークン・会員情報）が含まれていないか
-- テストが必要か
-- 本番公開前に人間確認が必要か（`canon/approval_matrix.md` §2）
+1. Read the request, current `AGENTS.md`, `COORDINATION.md`, and relevant canon.
+2. Inspect the complete diff and list changed files.
+3. Check that only intended files changed and user work is preserved.
+4. Check existing behavior, security, personal data, secrets, and canon consistency.
+5. Run the smallest relevant tests plus `./scripts/validate-ai-os.sh` for AI OS changes.
+6. Classify findings by severity and identify all human approval gates.
 
-## 出力
-- 変更の要約 / 懸念点 / 必要なテスト / 人間確認が必要かの判定。
-
-## 禁止
-- 検品を通したことにして commit / push / デプロイを自走させない。
+If there are no findings, state exactly what was checked and which risks remain. Review never equals permission to publish or deploy.

@@ -137,16 +137,12 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 5. `docs/OPENQLOW_NEW_SYSTEM_DESIGN_*.md` （Codex設計書）
 6. プロジェクト内の関連設計書
 
-## FLATUP GYM AI OS（Codex / Claude Code 共通基盤）
+## FLATUP AI OS 共通基盤
 
-短い指示で同じ品質を出すための共通基盤を `docs/ai-os/` に置く。上記の憲法・承認ゲート・協業ルールを土台とし、事業情報の正本をここに一元化する。事業情報を `AGENTS.md` に重複記載しない。
-
-- 正本（唯一の参照元）：`docs/ai-os/canon/`
-  - `gym_profile.md` / `pricing_and_schedule.md` / `membership_rules.md` / `safety_rules.md` / `brand_voice.md` / `approval_matrix.md`
-- 業務の流れ：`docs/ai-os/workflows/`　雛形：`docs/ai-os/templates/`
-- 外部連携・自動化の候補：`docs/ai-os/integrations/`
-- Skills 正本：`docs/ai-os/skills-source/`　配布：`.agents/skills/`（Codex）/ `.claude/skills/`（Claude）　同期：`scripts/sync-agent-skills.sh`
-- 承認区分の詳細：`docs/ai-os/canon/approval_matrix.md`（本ファイルの承認ゲートと整合）
-- 検証：`bash scripts/validate-ai-os.sh`
-
-Codex 側の安全ルールは `.codex/rules/`、Claude Code 側は `.claude/settings.json` と `scripts/hooks/flatup-guard.sh`。詳細は `docs/ai-os/README.md` と `docs/ai-os/IMPLEMENTATION_REPORT.md`。
+- AI OSの入口は `docs/ai-os/README.md`。事業情報はこのファイルへ重複記載しない。
+- 事実の唯一の正本は `src/shared/canon.ts`。説明用の同期ビューは `docs/ai-os/canon/`。
+- 料金・日時・予約・退会・休会・安全に関する回答は、正本確認後も送信前に人間確認を入れる。
+- Skillsの正本は `docs/ai-os/skills-source/`。CodexとClaude Codeの配置は同期スクリプトで検証する。
+- 削除、外部送信、公開、課金、本番変更、commit、push、PR作成は `docs/ai-os/canon/approval_matrix.md` に従う。
+- 変更後は `./scripts/validate-ai-os.sh` と関連する既存テストを実行する。
+- 完了報告は「作成・変更・保持・検証・未実装・人間確認・Git状態」の順にする。

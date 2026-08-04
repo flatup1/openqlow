@@ -1,19 +1,17 @@
 ---
 name: flatup-faq-update
-description: 新しい問い合わせと正式回答を FAQ 正本へ追加する。既存回答と矛盾する場合は自動上書きせず差分を表示する。料金・退会・休会・安全・医療の変更は代表承認が必要。使うとき=FAQの追記・更新提案。使わないとき=1件の顧客返信そのもの（flatup-inquiry-reply）。
+description: Use to propose an FAQ update from a new question plus a verified official answer. Do not use when the answer is unapproved or when changing fees, leave, cancellation, safety, health, or policy without owner approval.
 ---
 
-# flatup-faq-update
+# FLATUP FAQ Update
 
-## 目的
-繰り返す質問を FAQ 正本へ蓄積し、返信品質を安定させる。
+## Procedure
 
-## 手順
-1. 追加したい質問と、確定した正式回答を受け取る。
-2. 既存 FAQ（`FAQ.md` など）と照合する。
-3. 既存と矛盾する場合：**自動上書きせず、差分（現行 vs 新）を表示** し承認を求める。
-4. 料金 / 退会 / 休会 / 安全 / 医療に関する変更は **代表承認が必要**（`canon/approval_matrix.md` §2）。
-5. 承認後に追記案を提示（実際の書き込みは承認後）。
+1. Locate the current FAQ and relevant canon.
+2. Search for the same or similar question.
+3. Compare the proposed answer with existing answers and `src/shared/canon.ts`.
+4. If consistent, show the exact additive diff.
+5. If inconsistent, do not overwrite; show both versions, sources, and the required decision.
+6. Remove personal information from examples.
 
-## 禁止
-- 正本の無断上書き。未確定回答の FAQ 化。
+The default result is a proposed patch. Apply changes to a canonical file only after human approval.

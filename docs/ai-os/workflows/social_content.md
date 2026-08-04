@@ -1,19 +1,10 @@
-# ワークフロー：SNS・コンテンツ制作
+# SNS・記事制作
 
-対応する Skill：`flatup-social-repurpose`, `flatup-content-qc`, `flatup-campaign-planner`
+1. 対象者と目的を1つに絞る。
+2. 元素材の使用権と個人情報を確認する。
+3. `brand_voice.md` に沿って媒体別下書きを作る。
+4. `flatup-content-qc` で料金、日時、誇大表現、医療表現、リンク、導線を検品する。
+5. 修正案と確認事項を分ける。
+6. 投稿・公開は行わず、人間承認へ渡す。
 
-## 流れ
-
-1. 1つの原稿（コア）を作る、または受け取る。
-2. `flatup-social-repurpose` で媒体別に転用する。
-   - Instagram / X / Threads / LINE VOOM / Googleビジネスプロフィール / HP記事
-   - 各媒体で文章量・冒頭・締めを変える。
-3. `flatup-content-qc` で公開前検品する。
-   - 料金 / 日時 / 曜日 / 体験ルール / 退会ルール / 誤字 / 誇大表現 / 医療表現 / 初心者への怖い表現 / リンク / 個人情報 / 行動導線
-4. 投稿は人間が行う（自動投稿しない、`canon/approval_matrix.md` §2）。
-
-## 原則
-
-- 感情優先（安心・共感・初めの一歩）。技術自慢にしない。
-- 料金・日時は正本参照。捏造しない。
-- 使用権のある画像・動画のみを候補にする。
+同じ原稿の単純コピーではなく、Instagram、X、Threads、LINE VOOM、Googleビジネスプロフィール、Web記事で冒頭・長さ・締めを変えます。

@@ -1,20 +1,21 @@
 ---
 name: flatup-weekly-kpi
-description: 会員数・問い合わせ・体験予約/実施・入会・退会・LINE登録・広告費・体験単価・入会単価・転換率を週ごとに整理する。データがない項目は捏造せず「未取得」と書く。使うとき=週次の数値まとめ。使わないとき=今日の優先順位付け（flatup-daily-command）。
+description: Use to summarize weekly FLATUP membership and funnel metrics from provided or connected data. Do not use to guess missing values, alter source data, approve spend, or contact customers.
 ---
 
-# flatup-weekly-kpi
+# FLATUP Weekly KPI
 
-## 目的
-週次の経営数値を1枚に整理する。読み取り・集計のみ（`canon/approval_matrix.md` §1）。
+## Metrics
 
-## 手順
-1. 利用可能なデータ源（ログ / CRM / スプレッドシート）を確認。
-2. 雛形 `templates/weekly_report.md` に沿って整理：
-   - 会員数 / 新規問い合わせ / 体験予約 / 体験実施 / 入会 / 退会 / LINE登録
-   - 広告費 / 体験単価 / 入会単価 / 体験→入会 転換率
-3. データがない項目は **「未取得」** と表示（捏造しない）。
-4. 100人目標までの残数と、来週やる3つを添える。
+Member count, inquiries, trial bookings, trials completed, enrollments, cancellations, LINE registrations, ad spend, cost per trial, cost per enrollment, and trial-to-enrollment conversion.
 
-## 禁止
-- 数値の捏造。根拠のない断定。
+## Procedure
+
+1. Record the period and source for each number.
+2. Mark absent fields `未取得`; never replace them with zero.
+3. Calculate ratios only with a valid denominator.
+4. Compare with the prior week when comparable data exists.
+5. Identify the single largest funnel bottleneck.
+6. Suggest up to three next actions, keeping spend and publication approval-gated.
+
+Use `docs/ai-os/templates/weekly_report.md`.

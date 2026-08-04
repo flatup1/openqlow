@@ -1,22 +1,18 @@
 ---
 name: flatup-content-qc
-description: 公開前の文章を検品する。料金・日時・曜日・体験/退会ルール・誤字・誇大表現・医療表現・初心者への怖い表現・リンク・個人情報・行動導線を確認し、確認した項目を必ず表示する。使うとき=投稿/掲載/送付の直前チェック。使わないとき=コード・設定の変更検品（flatup-change-review）。
+description: Use before a FLATUP post, reply, ad, handout, or webpage is approved for publication. Do not use as permission to publish or as a substitute for legal, medical, or financial review.
 ---
 
-# flatup-content-qc
+# FLATUP Content QC
 
-## 目的
-公開前の文章に誤りや危険がないか検品する。
+## Check
 
-## チェック項目（すべて表示する）
-- 料金 / 日時 / 曜日（`canon/pricing_and_schedule.md` と一致するか）
-- 体験ルール / 退会ルール（`canon/membership_rules.md`）
-- 誤字 / 誇大表現 / 医療表現 / 初心者への怖い表現（`canon/brand_voice.md`, `canon/safety_rules.md`）
-- リンク切れ / 個人情報の混入 / 行動導線（次の一歩が明確か）
+- Fees, dates, weekdays, class times, trial and membership rules
+- Spelling, links, personal information, and secret information
+- Exaggeration, guaranteed outcomes, medical claims, and frightening language
+- Alignment with `src/shared/canon.ts` and `brand_voice.md`
+- One clear, non-pushy next action
 
-## 出力
-- 「問題なし」とだけ答えない。**確認した各項目に ✓ / 要修正 を付けて表示する。**
-- 要修正は、正本との差異と修正案を添える。
+## Output
 
-## 禁止
-- 未確認項目を「確認済み」と偽らない。
+For every item, show `OK`, `修正`, or `要確認`, plus the exact reason and safe replacement. Never answer only “問題なし”. Publication remains human-approved.

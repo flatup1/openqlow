@@ -1,20 +1,21 @@
 ---
 name: flatup-social-repurpose
-description: 1つのコア原稿を Instagram / X / Threads / LINE VOOM / Googleビジネスプロフィール / HP記事へ媒体別に転用する。各媒体で文章量・冒頭・締めを変える。使うとき=投稿の媒体展開。使わないとき=公開前の検品（flatup-content-qc）、集客企画の設計（flatup-campaign-planner）。
+description: Use to repurpose one approved source into platform-specific FLATUP drafts. Do not use when source rights, personal consent, core facts, or the target audience are unclear, and do not publish.
 ---
 
-# flatup-social-repurpose
+# FLATUP Social Repurpose
 
-## 目的
-1原稿を媒体別に最適化して下書きする。投稿は人間。
+## Inputs
 
-## 手順
-1. コア原稿を受け取る/作る。
-2. 各媒体へ転用（雛形 `templates/social_post.md`）：
-   - Instagram / X / Threads / LINE VOOM / Googleビジネスプロフィール / HP記事
-   - 冒頭・文章量・締めを媒体ごとに変える。
-3. 文体は `canon/brand_voice.md`（感情優先：安心・共感・初めの一歩）。
-4. 料金・日時は `canon/pricing_and_schedule.md` を確認。
+An approved source, target audience, desired action, permitted media, and target channels.
 
-## 禁止
-- 医療効果の断定 / 実績・数字の捏造 / 恐怖をあおる表現 / 使用権のない画像・動画 / 自動投稿。
+## Procedure
+
+1. Remove personal information and unsupported claims.
+2. Apply `docs/ai-os/canon/brand_voice.md`.
+3. Create distinct drafts for Instagram, X, Threads, LINE VOOM, Google Business Profile, and website article as requested.
+4. Change the hook, length, paragraphing, and closing for each channel.
+5. Keep one clear path to a trial or consultation.
+6. Route all drafts through `flatup-content-qc` before approval.
+
+Return drafts and a short list of assets or facts still needing confirmation.

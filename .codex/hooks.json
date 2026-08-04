@@ -1,0 +1,18 @@
+{
+  "description": "Block destructive FLATUP workspace commands before execution.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FLATUP_HOOK_ENGINE=codex /bin/bash \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-command.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking FLATUP safety policy"
+          }
+        ]
+      }
+    ]
+  }
+}
