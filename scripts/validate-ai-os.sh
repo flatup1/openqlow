@@ -106,11 +106,14 @@ fi
 CANON_PAIRS=(
   "初回体験500円|初回体験: 500円"
   "2回目以降ビジター3,000円|2回目以降ビジター: 3,000円"
+  "6回券15,000円|6回券: 15,000円"
+  "12回券30,000円|12回券: 30,000円"
   "キッズ7,700円|キッズ月会費: 7,700円"
   "女性8,800円|女性月会費: 8,800円"
   "男性9,900円|男性月会費: 9,900円"
   "入会金10,000円|入会金: 10,000円"
   "土曜14:30|レディース: 土曜14:30"
+  "18:00〜21:00|スタッフ対応: 平日10:00〜12:00・18:00〜21:00"
 )
 for pair in "${CANON_PAIRS[@]}"; do
   source_text="${pair%%|*}"
@@ -119,6 +122,24 @@ for pair in "${CANON_PAIRS[@]}"; do
   grep -Fq "$doc_text" docs/ai-os/canon/pricing_and_schedule.md || fail "AI OS canon view mismatch: $doc_text"
 done
 pass "pricing and schedule canon checked"
+
+# 列挙漏れによるドリフト検出（逆方向チェック）。
+# 同期ビューに書かれた金額・時刻は、必ず正本 src/shared/canon.ts にも存在しなければならない。
+# CANON_PAIRS への追加を忘れても、未知のドリフトをここで捕まえる。
+# 「## 差異の扱い」以降は、既知の誤表記をあえて引用する注記セクションのため対象外。
+CANON_VIEW_BODY="$(awk '/^## 差異の扱い/{exit} {print}' docs/ai-os/canon/pricing_and_schedule.md)"
+DRIFT=0
+while IFS= read -r money; do
+  [[ -z "$money" ]] && continue
+  grep -Fq "$money" src/shared/canon.ts || { fail "canon view has an amount absent from canon.ts: $money"; DRIFT=1; }
+done < <(printf '%s\n' "$CANON_VIEW_BODY" | grep -oE '[0-9][0-9,]*円' | sort -u)
+while IFS= read -r clock; do
+  [[ -z "$clock" ]] && continue
+  grep -Fq "$clock" src/shared/canon.ts || { fail "canon view has a time absent from canon.ts: $clock"; DRIFT=1; }
+done < <(printf '%s\n' "$CANON_VIEW_BODY" | grep -oE '[0-9]{1,2}:[0-9]{2}' | sort -u)
+if [[ "$DRIFT" -eq 0 ]]; then
+  pass "canon view amounts and times all trace back to canon.ts"
+fi
 
 if rg -n --glob 'SKILL.md' '(rm[[:space:]]+-rf|git[[:space:]]+reset[[:space:]]+--hard|git[[:space:]]+clean[[:space:]]+-fd|git[[:space:]]+push[[:space:]]+(--force|-f))' docs/ai-os/skills-source >/dev/null; then
   fail "dangerous command literal found in a Skill"
