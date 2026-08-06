@@ -17,12 +17,20 @@ import { getFollowupNeeded, getReviewRequestCandidates, getTrialFollowupNeeded }
 import { logError, type ErrorType } from "./self_repair.js";
 import { buildProspectFromInquiry } from "./intake.js";
 import { resolveStatus, type Prospect, type ProspectInput, type ProspectStatus } from "./prospect.js";
+import {
+  buildImportantMattersMessage,
+  CONSENT_TERMS_VERSION,
+  openGuardianConsentStore,
+} from "./guardian_consent.js";
 import { generateInquiryReply } from "../generators/inquiry_reply.js";
 import { generateTrialFollowup } from "../generators/trial_followup.js";
 import type { Gender } from "../generators/shared.js";
 
 const baseDir = process.env.OPENQLOW_DATA_DIR || path.join(process.cwd(), "data");
 const storeFile = path.join(baseDir, "prospects.json");
+// 保護者同意も見込み客と同じ data/ 配下に置く。data/ は .gitignore 済みなので
+// 個人情報がリポジトリに乗らない（OPENQLOW_DATA_DIR で外部へ退避も可能）。
+const consentFile = path.join(baseDir, "guardian_consents.json");
 const followupHours = Number(process.env.OPENQLOW_FOLLOWUP_HOURS) || 24;
 
 function coerceGender(value: string): Gender {
@@ -86,6 +94,12 @@ function printHelp(): void {
   status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
   add [--name 田中 --gender female ...] 手動で1件登録
 
+■ 未成年の保護者同意
+  consent list                         同意の記録を一覧表示
+  consent show <番号|管理番号>         その同意の詳しい内容を表示
+  consent paper <番号|管理番号>        紙の同意書に署名をもらったことを記録
+  consent terms                        保護者に見せる重要事項の文言を表示
+
 ■ その他
   log-error <種別> <メッセージ>        うまく動かない時の記録を残す
   help                                 この使い方を表示
@@ -97,6 +111,7 @@ async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   const { flags, positional } = parseFlags(rest);
   const store = openProspectStore(storeFile);
+  const consentStore = openGuardianConsentStore(consentFile);
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
@@ -261,6 +276,81 @@ async function main(argv: string[]): Promise<number> {
       console.log(markdown);
       console.log(`\n保存しました: ${filePath}`);
       return 0;
+    }
+    case "consent": {
+      const sub = (positional[0] ?? "list").trim();
+
+      // 紙の同意書を作る・見直すときに、電子側と同じ文言を確認するためのコマンド。
+      if (sub === "terms") {
+        console.log(`■ 未成年入会の重要事項（版: ${CONSENT_TERMS_VERSION}）\n`);
+        console.log(buildImportantMattersMessage());
+        console.log("\nヒント: 紙の同意書もこの文言に合わせてください。文言を変えたら CONSENT_TERMS_VERSION を上げます。");
+        return 0;
+      }
+
+      if (sub === "list") {
+        const all = await consentStore.getAll();
+        if (!all.length) {
+          console.log("保護者同意の記録はまだありません。");
+          return 0;
+        }
+        console.log(`■ 保護者同意の記録（${all.length}件）`);
+        for (const c of all) {
+          const paper = c.paperSignedAt ? "紙署名済み" : "紙署名まち";
+          console.log(
+            `#${c.id} ${c.managementNumber} | ${c.minorName || "(氏名未記録)"} | ${c.status} | ${paper} | 同意:${c.consentedAt?.slice(0, 16) || "-"}`,
+          );
+        }
+        console.log("\nヒント: 詳しく見るなら `npm run crm -- consent show <番号または管理番号>`");
+        return 0;
+      }
+
+      if (sub === "show") {
+        const key = (positional[1] ?? "").trim();
+        const c = /^\d+$/.test(key)
+          ? await consentStore.get(Number(key))
+          : await consentStore.findByManagementNumber(key);
+        if (!c) {
+          console.error("Usage: crm consent show <番号または管理番号>");
+          return 1;
+        }
+        const row = (label: string, value: unknown) =>
+          console.log(`  ${label}: ${value === "" || value === undefined || value === null ? "（未記録）" : value}`);
+        console.log(`■ #${c.id} ${c.managementNumber}`);
+        row("ご本人氏名", c.minorName);
+        row("保護者氏名", c.guardianName);
+        row("状態", c.status);
+        row("重要事項の確認", c.confirmedImportantMatters === 1 ? "済み" : "まだ");
+        row("保護者としての同意", c.confirmedGuardianAgreement === 1 ? "済み" : "まだ");
+        row("同意した文言の版", c.termsVersion);
+        row("電子同意の日時", c.consentedAt?.slice(0, 16));
+        row("紙の署名日", c.paperSignedAt?.slice(0, 16));
+        row("メモ", c.memo);
+        row("登録日", c.createdAt?.slice(0, 16));
+        console.log("\n※ 紙の同意書が原本です。電子の記録は事前確認の履歴です。");
+        return 0;
+      }
+
+      // 初回来館時に紙の同意書へ署名をもらったら、その事実をここで記録する。
+      if (sub === "paper") {
+        const key = (positional[1] ?? "").trim();
+        const c = /^\d+$/.test(key)
+          ? await consentStore.get(Number(key))
+          : await consentStore.findByManagementNumber(key);
+        if (!c) {
+          console.error('Usage: crm consent paper <番号または管理番号> [--guardian "保護者氏名"]');
+          return 1;
+        }
+        const updated = await consentStore.update(c.id, {
+          paperSignedAt: new Date().toISOString(),
+          ...(flags.guardian ? { guardianName: flags.guardian } : {}),
+        });
+        console.log(`${updated?.managementNumber} に紙の署名を記録しました（原本を保管してください）。`);
+        return 0;
+      }
+
+      console.error(`不明なサブコマンド: ${sub}\n  使える: list / show <番号> / paper <番号> / terms`);
+      return 1;
     }
     case "log-error": {
       const type = (positional[0] ?? flags.type ?? "unknown") as ErrorType;
