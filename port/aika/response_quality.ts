@@ -76,6 +76,10 @@ const elitistPattern = /(本気の人だけ|覚悟がない人は|甘えるな|�
 const medicalClaimPattern = /(治る|治します|改善します|治療|肩こり.*治|腰痛.*治|うつ.*治)/;
 const mockingWeaknessPattern = /(弱者|ヘタクソ|運動音痴[^。！？\n]{0,8}笑|情けない|ダサい|ビビり|チキン)/;
 const blamingEffortPattern = /(努力不足|自分に甘い|怠け|意志が弱い|だから変われない|言い訳するな|やる気がないだけ)/;
+// 急かして決めさせる販売圧力。憲法「煽り・安売り・威圧NG」に対応する。
+// 恐怖で釣る fearBaiting とは別軸で、期限・希少性・損失で判断を急がせる型を捕まえる。
+const pressureSellingPattern =
+  /(今すぐ.{0,10}(入会|申込|申し込|登録|決め|お申)|早く決め|お早めに.{0,8}(決|申|登録)|損(を)?します|後悔(し|する)|残りわずか|残り\s*\d+\s*(名|席|枠)|定員(間近|迫)|本日限り|今だけ|締切(間近|迫)|このチャンスを逃)/;
 const KINDNESS_BLOCKS: Array<[RegExp, string]> = [
   [phonePattern, "電話番号らしき文字列が含まれています（公開・直書き禁止）。"],
   [emailPattern, "メールアドレスらしき文字列が含まれています。"],
@@ -87,7 +91,12 @@ const KINDNESS_BLOCKS: Array<[RegExp, string]> = [
   [medicalClaimPattern, "医療・治療効果を断定する表現があります。"],
   [mockingWeaknessPattern, "弱さや失敗を笑いものにする表現があります。"],
   [blamingEffortPattern, "努力不足として責める表現があります。"],
+  [pressureSellingPattern, "期限や希少性で判断を急がせる販売圧力があります（煽り・威圧はNG）。"],
 ];
+
+/** 同じ返信の中で何度も取次ぎに逃げていないか（AIKAログ: 出し渋りの連発）。 */
+const PUNT_PATTERN = /(スタッフ|担当者?|店舗)(に|へ|まで)?(ご|お)?(確認|問い合わせ|問合せ|相談|連絡)/g;
+const PUNT_LIMIT = 2;
 
 function clampAxis(score: number): number {
   return Math.max(0, Math.min(AXIS_MAX, Math.round(score)));
@@ -159,6 +168,11 @@ export function scoreNaturalness(reply: string, ctx: ReplyContext = {}): AxisSco
   if (DEFLECTION_PATTERN.test(reply.normalize("NFKC"))) {
     score -= 10;
     issues.push("知っているはずの事実を出し渋っている。正本FAQから答え、不明な点だけ人へ。");
+  }
+  const punts = reply.normalize("NFKC").match(PUNT_PATTERN)?.length ?? 0;
+  if (punts > PUNT_LIMIT) {
+    score -= 15;
+    issues.push(`1つの返信で${punts}回も取次ぎに逃げている。答えられることは自分で答える。`);
   }
   for (const known of ctx.knownFacts ?? []) {
     const pattern = REASK_PATTERNS[known];
