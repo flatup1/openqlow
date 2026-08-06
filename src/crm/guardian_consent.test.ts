@@ -110,6 +110,17 @@ assert(resolveConsentStatus("署名済み") === "paper_signed", "署名済み =>
 assert(resolveConsentStatus("pending") === "pending", "英語コードはそのまま");
 assert(resolveConsentStatus("ぴよぴよ") === undefined, "未知 => undefined");
 
+// --- タイムゾーン非依存であること ---------------------------------------------
+// JST深夜0時ちょうどはUTCでは前日15時。ローカル時刻のメソッドを使うと
+// サーバーがUTCのとき日付が1日ずれ、誕生日当日を前日と誤判定する（CIで実際に落ちた）。
+const jstMidnight = new Date("2026-08-06T00:00:00+09:00");
+assert(calculateAge("2010-08-06", jstMidnight) === 16, "JST深夜0時でも誕生日当日は加齢済み");
+assert(calculateAge("2010-08-07", jstMidnight) === 15, "JST深夜0時でも誕生日前日は未加齢");
+assert(
+  formatManagementNumber(1, jstMidnight) === "FG-MC-2026.08.06.0001",
+  "管理番号の日付もJSTで決まる（UTCだと 08.05 になってしまう）",
+);
+
 // --- 管理番号 -----------------------------------------------------------------
 assert(
   formatManagementNumber(1, new Date("2026-08-06T10:00:00+09:00")) === "FG-MC-2026.08.06.0001",

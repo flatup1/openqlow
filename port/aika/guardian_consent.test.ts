@@ -80,6 +80,11 @@ assert(isGuardianConsentReply("こんにちは") === false, "無関係な発言�
 // --- 記録 ---------------------------------------------------------------------
 const at = new Date("2026-08-06T05:30:00Z"); // JST 14:30
 assert(formatManagementNumber(1, at) === "FG-MC-2026.08.06.0001", "管理番号の形式");
+// JST深夜0時はUTCでは前日15時。ローカル時刻のメソッドを使うと日付が1日ずれる。
+assert(
+  formatManagementNumber(1, new Date("2026-08-06T00:00:00+09:00")) === "FG-MC-2026.08.06.0001",
+  "管理番号の日付はJSTで決まる（UTCサーバーでも 08.05 にならない）",
+);
 assert(formatManagementNumber(1234, at) === "FG-MC-2026.08.06.1234", "4桁でも壊れない");
 
 const record = buildConsentRecordMessage("FG-MC-2026.08.06.0001", at);

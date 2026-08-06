@@ -168,9 +168,11 @@ export function isGuardianConsentReply(text: string): boolean {
  * ドット区切りなら誤検出されない（2026-08-06 に実測して確認）。
  */
 export function formatManagementNumber(seq: number, at: Date = new Date()): string {
-  const y = at.getFullYear();
-  const m = String(at.getMonth() + 1).padStart(2, "0");
-  const d = String(at.getDate()).padStart(2, "0");
+  // 日付は必ず日本時間で決める。サーバーがUTCだと深夜帯に1日ずれるため。
+  const jst = new Date(at.getTime() + 9 * 60 * 60 * 1000);
+  const y = jst.getUTCFullYear();
+  const m = String(jst.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(jst.getUTCDate()).padStart(2, "0");
   return `FG-MC-${y}.${m}.${d}.${String(seq).padStart(4, "0")}`;
 }
 

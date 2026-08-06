@@ -229,18 +229,30 @@ export function parseBirthDate(input: string): string | undefined {
 }
 
 /**
+ * 日本時間での年月日を取り出す。
+ *
+ * `getFullYear()` 等はサーバーのタイムゾーンに従うため、VPSがUTCだと
+ * 深夜帯に日付が1日ずれる（誕生日当日を前日と誤判定する）。
+ * FLATUPは日本で営業しているので、日付の判断は常にJSTで行う。
+ */
+function jstYmd(at: Date): { year: number; month: number; day: number } {
+  const jst = new Date(at.getTime() + 9 * 60 * 60 * 1000);
+  return { year: jst.getUTCFullYear(), month: jst.getUTCMonth() + 1, day: jst.getUTCDate() };
+}
+
+/**
  * 満年齢を計算する。生年月日が不正なら undefined。
  * @param birthDate YYYY-MM-DD（ゆるい表記も parseBirthDate 経由で受ける）
- * @param asOf 基準日（省略時は現在）
+ * @param asOf 基準日（省略時は現在）。日本時間で解釈する。
  */
 export function calculateAge(birthDate: string, asOf: Date = new Date()): number | undefined {
   const normalized = parseBirthDate(birthDate);
   if (!normalized) return undefined;
 
   const [y, m, d] = normalized.split("-").map(Number);
-  let age = asOf.getFullYear() - y;
-  const beforeBirthday =
-    asOf.getMonth() + 1 < m || (asOf.getMonth() + 1 === m && asOf.getDate() < d);
+  const today = jstYmd(asOf);
+  let age = today.year - y;
+  const beforeBirthday = today.month < m || (today.month === m && today.day < d);
   if (beforeBirthday) age -= 1;
   return age < 0 ? undefined : age;
 }
@@ -283,10 +295,10 @@ export function isConsentComplete(
  * port/aika/guardian_consent.ts と同じ形式を保つこと。
  */
 export function formatManagementNumber(id: number, at: Date = new Date()): string {
-  const y = at.getFullYear();
-  const m = String(at.getMonth() + 1).padStart(2, "0");
-  const d = String(at.getDate()).padStart(2, "0");
-  return `FG-MC-${y}.${m}.${d}.${String(id).padStart(4, "0")}`;
+  const { year, month, day } = jstYmd(at);
+  const m = String(month).padStart(2, "0");
+  const d = String(day).padStart(2, "0");
+  return `FG-MC-${year}.${m}.${d}.${String(id).padStart(4, "0")}`;
 }
 
 // --- LINEトークに残す文面 -----------------------------------------------------
