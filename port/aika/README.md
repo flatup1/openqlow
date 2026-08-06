@@ -3,6 +3,31 @@
 AIKA（守りの受付AI / `flatup-ai-os`）の**返信前ゲート**として、OPENQLOWで完成させた
 4観点100点スコアラーをそのまま使えるようにした**依存ゼロ版**です。
 
+## 中身（追加分）
+- `date_guard.ts` … **日付と曜日の食い違いを止めるガード**（依存ゼロ）。
+  2026-08-06 に「8月8日（**木**曜日）」と誤答した事故（正しくは土曜日）を受けて追加。
+  日付は相手の発言から正しく拾えているのに、曜日だけ「返信した当日」のものを付けてしまう型の事故を防ぐ。
+- `guardian_consent.ts` … 未成年入会の保護者同意（年代カード・重要事項カード・同意記録）。
+
+### date_guard の使い方（送信直前）
+
+```ts
+import { findDateWeekdayMismatches, fixDateWeekdays, formatDateWithWeekday } from "./date_guard.js";
+
+// ① 返信文を組み立てるとき、曜日を手で書かない
+const line = `${formatDateWithWeekday(2026, 8, 8)}10:45頃のご来館ですね。`; // → 8月8日（土曜日）…
+
+// ② 送信直前に検査する
+const issues = findDateWeekdayMismatches(reply);
+if (issues.length > 0) {
+  // 送らない。自動で直すなら fixDateWeekdays(reply) を使う。
+  reply = fixDateWeekdays(reply);
+}
+```
+
+曜日は来館日を左右する情報で、間違えるとお客様が別の日に来てしまう。
+`scoreResponseQuality` は**話し方**しか見ないためこの種の誤りを検出できない。必ず別途通すこと。
+
 ## 中身
 - `flatup_canon.ts` … **確定版の正本データ**（料金/営業時間/9クラス/親子割/紹介/住所/最寄り駅/アクセス/グローブセット11,000円/禁止行為/ブランド）。AIKAはこの値だけを案内する。
 - `response_quality.ts` … 自己完結スコアラー（外部import無し）。`scoreResponseQuality(reply, ctx)` を公開。
