@@ -105,7 +105,12 @@ export interface ChoiceCard {
 export function buildAgeBandQuestion(): ChoiceCard {
   return {
     title: "入会手続き",
-    text: "ご入会のお手続きを始めます。\nまず、ご入会される方の年代をお選びください。",
+    text: [
+      "ご入会のお手続きを始めます。",
+      "初心者の方も、ご自身のペースで安心して始めていただけます。",
+      "",
+      "まず、ご入会される方の年代をお選びください。",
+    ].join("\n"),
     options: [
       { label: "小学生", send: `${GUARDIAN_CONSENT_TRIGGER} 小学生` },
       { label: "中学生", send: `${GUARDIAN_CONSENT_TRIGGER} 中学生` },
@@ -125,11 +130,12 @@ export function buildGuardianConsentCard(): ChoiceCard {
   return {
     title: "【保護者の方へ】未成年の方のご入会について",
     text: [
-      "未成年の方のご入会には、保護者の方のご同意が必要です。",
-      "次の4点をご確認ください。",
+      "お子さまに安心して通っていただくために、保護者の方にご確認いただきたいことがあります。",
+      "次の4点をご覧ください。",
       "",
       list,
       "",
+      "初心者の方も、ご自身のペースで無理なく続けられるようお手伝いします。",
       "ご不明な点は、同意される前にお気軽にご相談ください。",
       "",
       "次にすること：下のボタンを押してください。",
@@ -154,14 +160,18 @@ export function isGuardianConsentReply(text: string): boolean {
 // --- 記録 ---------------------------------------------------------------------
 
 /**
- * 管理番号を組み立てる。FG-MC-YYYYMMDD-NNNN（MC = Minor Consent）。
+ * 管理番号を組み立てる。FG-MC-YYYY.MM.DD.NNNN（MC = Minor Consent）。
  * 紙の同意書に手書きで転記して突き合わせる想定のため、短く読みやすい形にする。
+ *
+ * 区切りにハイフンを使わないのは、返信前の品質ゲート（response_quality.ts）が
+ * `20260806-0001` のような並びを**電話番号と誤検出**して送信を止めてしまうため。
+ * ドット区切りなら誤検出されない（2026-08-06 に実測して確認）。
  */
 export function formatManagementNumber(seq: number, at: Date = new Date()): string {
   const y = at.getFullYear();
   const m = String(at.getMonth() + 1).padStart(2, "0");
   const d = String(at.getDate()).padStart(2, "0");
-  return `FG-MC-${y}${m}${d}-${String(seq).padStart(4, "0")}`;
+  return `FG-MC-${y}.${m}.${d}.${String(seq).padStart(4, "0")}`;
 }
 
 /** 同意を受け付けたことをトークに残す文。管理番号は紙の同意書と突き合わせる鍵になる。 */
@@ -173,6 +183,7 @@ export function buildConsentRecordMessage(managementNumber: string, at: Date = n
     `同意日時: ${formatJstStamp(at)}`,
     "",
     "初回ご来館時に、紙の同意書へご署名をお願いいたします。",
+    "安心してお通いいただけるよう、しっかりお手伝いします。",
     "ご不明な点はこのトークでお気軽にお尋ねください。",
   ].join("\n");
 }

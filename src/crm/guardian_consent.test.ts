@@ -112,11 +112,11 @@ assert(resolveConsentStatus("ぴよぴよ") === undefined, "未知 => undefined"
 
 // --- 管理番号 -----------------------------------------------------------------
 assert(
-  formatManagementNumber(1, new Date("2026-08-06T10:00:00+09:00")) === "FG-MC-20260806-0001",
+  formatManagementNumber(1, new Date("2026-08-06T10:00:00+09:00")) === "FG-MC-2026.08.06.0001",
   "管理番号の形式",
 );
 assert(
-  formatManagementNumber(1234, new Date("2026-08-06T10:00:00+09:00")) === "FG-MC-20260806-1234",
+  formatManagementNumber(1234, new Date("2026-08-06T10:00:00+09:00")) === "FG-MC-2026.08.06.1234",
   "4桁を超えても壊れない",
 );
 
@@ -207,7 +207,7 @@ try {
   });
   assert(pending.ageBand === "junior_high", "年代は正規コードで保存される");
   assert(pending.id === 1, "id は1から採番");
-  assert(pending.managementNumber === "FG-MC-20260806-0001", "管理番号が自動採番される");
+  assert(pending.managementNumber === "FG-MC-2026.08.06.0001", "管理番号が自動採番される");
   assert(pending.status === "pending", "未チェックは pending");
   assert(pending.consentedAt === "", "未成立なら同意日時は空");
   assert(pending.ageAtConsent === 14, "同意時点の年齢が確定して残る");
@@ -227,7 +227,7 @@ try {
   // トークに残す記録文。
   const record = buildConsentRecordMessage(done!);
   assert(record.includes("保護者同意を受け付けました"), "受付メッセージ");
-  assert(record.includes("FG-MC-20260806-0001"), "管理番号を含む");
+  assert(record.includes("FG-MC-2026.08.06.0001"), "管理番号を含む");
   assert(record.includes("2026-08-06 14:30"), "同意日時をJSTで含む");
   assert(record.includes("紙の同意書"), "紙の署名を案内する");
 
@@ -238,11 +238,11 @@ try {
   // 同一ユーザーに2件目（きょうだいの入会など）。
   const second = await store.create({ externalId: "U-line-001", minorName: "テスト花子" });
   assert(second.id === 2, "id が進む");
-  assert(second.managementNumber === "FG-MC-20260806-0002", "管理番号も進む");
+  assert(second.managementNumber === "FG-MC-2026.08.06.0002", "管理番号も進む");
   const latest = await store.findByExternalId("U-line-001");
   assert(latest?.id === 2, "同一ユーザーは最新を返す");
 
-  assert((await store.findByManagementNumber("FG-MC-20260806-0001"))?.id === 1, "管理番号で引ける");
+  assert((await store.findByManagementNumber("FG-MC-2026.08.06.0001"))?.id === 1, "管理番号で引ける");
   assert((await store.findByExternalId("")) === undefined, "空IDでは引かない");
   assert((await store.get(999)) === undefined, "存在しないIDは undefined");
   assert((await store.update(999, { memo: "x" })) === undefined, "存在しないIDの更新は undefined");

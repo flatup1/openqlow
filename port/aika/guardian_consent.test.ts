@@ -14,6 +14,7 @@ import {
   requiresGuardianConsent,
   resolveAgeBand,
 } from "./guardian_consent.js";
+import { scoreResponseQuality } from "./response_quality.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -78,13 +79,37 @@ assert(isGuardianConsentReply("こんにちは") === false, "無関係な発言�
 
 // --- 記録 ---------------------------------------------------------------------
 const at = new Date("2026-08-06T05:30:00Z"); // JST 14:30
-assert(formatManagementNumber(1, at) === "FG-MC-20260806-0001", "管理番号の形式");
-assert(formatManagementNumber(1234, at) === "FG-MC-20260806-1234", "4桁でも壊れない");
+assert(formatManagementNumber(1, at) === "FG-MC-2026.08.06.0001", "管理番号の形式");
+assert(formatManagementNumber(1234, at) === "FG-MC-2026.08.06.1234", "4桁でも壊れない");
 
-const record = buildConsentRecordMessage("FG-MC-20260806-0001", at);
+const record = buildConsentRecordMessage("FG-MC-2026.08.06.0001", at);
 assert(record.includes("保護者同意を受け付けました"), "受付メッセージ");
-assert(record.includes("FG-MC-20260806-0001"), "管理番号を含む");
+assert(record.includes("FG-MC-2026.08.06.0001"), "管理番号を含む");
 assert(record.includes("2026-08-06 14:30"), "同意日時をJSTで含む");
 assert(record.includes("紙の同意書"), "紙の署名を案内する");
+
+// --- 文面の品質を固定する（将来の編集でトーンが落ちないように） ---------------
+// 同ディレクトリの4観点スコアラーで満点であることを保証する。
+for (const [name, card] of [
+  ["年代カード", ageCard],
+  ["未成年カード", consentCard],
+] as const) {
+  const q = scoreResponseQuality(card.text);
+  assert(q.total === 100, `${name} は100点であること（実測 ${q.total}）`);
+  assert(q.decision === "perfect", `${name} は perfect であること（実測 ${q.decision}）`);
+}
+
+// 管理番号がハイフン区切りだと電話番号と誤検出され、送信が止まる（2026-08-06 実測）。
+// ドット区切りに変えた経緯を回帰テストとして固定する。
+const recordQuality = scoreResponseQuality(buildConsentRecordMessage("FG-MC-2026.08.06.0001", at));
+assert(
+  recordQuality.total === 100,
+  `同意受付メッセージは100点であること（実測 ${recordQuality.total} / ${recordQuality.kindness.issues.join(",")}）`,
+);
+const hyphenated = scoreResponseQuality(buildConsentRecordMessage("FG-MC-20260806-0001", at));
+assert(
+  hyphenated.decision === "reject",
+  "ハイフン区切りの管理番号は電話番号と誤検出されるため使わない（この挙動を明示的に記録する）",
+);
 
 console.log("port/aika guardian_consent tests passed");

@@ -64,4 +64,46 @@ const closed = scoreResponseQuality(
 );
 assert(closed.total >= 80, `kind closed-day reply should score high, got ${closed.total}`);
 
+// --- 期限・希少性で急かす販売圧力は落とす（憲法「煽り・安売り・威圧NG」）-------
+// 恐怖で釣る fearBaiting は既に検出できていたが、「今すぐ決めないと損」型の
+// 販売圧力は素通りしていた（2026-08-06 実測で98/100 good だった）。
+for (const pushy of [
+  "今すぐ入会しないと損します！絶対に後悔しますよ！早く決めてください！",
+  "残りわずかです。本日限りのご案内なので、お早めにお決めください。",
+  "定員間近です。このチャンスを逃すと次はありません。",
+]) {
+  const q = scoreResponseQuality(pushy);
+  assert(
+    q.decision === "reject" || q.decision === "revise",
+    `pushy sales copy must not pass: ${pushy} (got ${q.decision} ${q.total})`,
+  );
+  assert(
+    q.kindness.issues.some(i => i.includes("販売圧力")),
+    `pushy sales copy should be flagged as 販売圧力: ${pushy}`,
+  );
+}
+
+// --- 1つの返信で取次ぎを繰り返すのは落とす ------------------------------------
+const punting = scoreNaturalness(
+  "詳しくはスタッフにご確認ください。店舗までお問い合わせください。担当に確認いたします。",
+);
+assert(punting.score < 25, `repeated punting should lose points, got ${punting.score}`);
+assert(
+  punting.issues.some(i => i.includes("取次ぎに逃げている")),
+  "repeated punting should be flagged",
+);
+
+// 1〜2回の案内は正常（本当に人が確認すべきことは案内してよい）
+const okPunt = scoreNaturalness(
+  "ご契約内容によって異なりますので、スタッフがご確認のうえご案内いたします。",
+);
+assert(okPunt.score === 25, `single legitimate handoff should not lose points, got ${okPunt.score}`);
+
+// --- FLATUPらしい言葉があれば満点になる ---------------------------------------
+const brandWarm = scoreResponseQuality(
+  "ご入会ありがとうございます。初心者の方も、ご自身のペースで安心して始めていただけます。",
+);
+assert(brandWarm.total === 100, `brand-warm reply should be 100, got ${brandWarm.total}`);
+assert(brandWarm.decision === "perfect", `brand-warm reply should be perfect, got ${brandWarm.decision}`);
+
 console.log("aika port response_quality tests passed");

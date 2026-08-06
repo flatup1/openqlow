@@ -275,14 +275,18 @@ export function isConsentComplete(
 }
 
 /**
- * 管理番号を組み立てる。FG-MC-YYYYMMDD-NNNN（MC = Minor Consent）。
+ * 管理番号を組み立てる。FG-MC-YYYY.MM.DD.NNNN（MC = Minor Consent）。
  * 紙の同意書に手書きで転記して突き合わせる想定のため、短く読みやすい形にする。
+ *
+ * 区切りにハイフンを使わないのは、AIKAの返信前ゲート（port/aika/response_quality.ts）が
+ * `20260806-0001` のような並びを**電話番号と誤検出**して送信を止めてしまうため。
+ * port/aika/guardian_consent.ts と同じ形式を保つこと。
  */
 export function formatManagementNumber(id: number, at: Date = new Date()): string {
   const y = at.getFullYear();
   const m = String(at.getMonth() + 1).padStart(2, "0");
   const d = String(at.getDate()).padStart(2, "0");
-  return `FG-MC-${y}${m}${d}-${String(id).padStart(4, "0")}`;
+  return `FG-MC-${y}.${m}.${d}.${String(id).padStart(4, "0")}`;
 }
 
 // --- LINEトークに残す文面 -----------------------------------------------------
@@ -386,6 +390,7 @@ export function buildConsentRecordMessage(consent: GuardianConsent): string {
   lines.push(
     "",
     "初回ご来館時に、紙の同意書へご署名をお願いいたします。",
+    "安心してお通いいただけるよう、しっかりお手伝いします。",
     "ご不明な点はこのトークでお気軽にお尋ねください。",
   );
   return lines.join("\n");
