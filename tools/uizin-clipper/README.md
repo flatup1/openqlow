@@ -43,15 +43,38 @@ python -m uizin_clipper download "https://www.youtube.com/live/XXXXXXXXXXX"
 # 2-1. 5分おきの静止画を出して、試合中の1枚を探す
 python -m uizin_clipper contact-sheet --video work/XXXXXXXXXXX/source.mp4
 
-# 2-2. 試合中の時刻を指定して1枚だけ書き出し、スコアボードを囲む座標を測る
+# 2-2. 試合中の時刻を指定して1枚だけ書き出し、座標を測る
 python -m uizin_clipper calibrate --video work/XXXXXXXXXXX/source.mp4 --at 00:23:10
 
 # 2-3. 測った座標 (x,y,幅,高さ) を登録する
 python -m uizin_clipper calibrate \
     --video work/XXXXXXXXXXX/source.mp4 \
-    --at 00:23:10 --roi 1180,55,620,130 \
+    --at 00:23:10 \
+    --roi 1180,55,180,120 \
+    --same-match-roi 1380,70,300,40 \
     --profile profiles/uizin.yml
 ```
+
+#### ★ ROIの選び方（ここを間違えると精度が出ません）
+
+登録する枠は2つあります。**役割が違うので、囲む場所も違います。**
+
+| 引数 | 何を囲むか | 囲んではいけないもの |
+|---|---|---|
+| `--roi` | **試合中ずっと変わらない部分**（外枠・ロゴ・区切り線） | 選手名・タイマー・得点 |
+| `--same-match-roi` | **選手名だけ** | **タイマー**・得点・ロゴ |
+
+理由は実測で確認しています（`docs/UIZIN_AUTO_CLIP_SYSTEM_DESIGN.md` §10）。
+
+- `--roi` にスコアボード全体を入れると、選手名の長さが変わるだけで
+  一致度の中央値が **0.945 → 0.856** に落ちました。
+  枠とロゴだけに絞ると **0.994 → 0.993**（ほぼ変化なし）でした。
+- `--same-match-roi` にタイマーを含めると、同じ試合のラウンド間なのに
+  一致度が **0.781** まで落ち、試合が2本に割れました。
+  選手名だけに絞ると同じ試合 **1.000** ／ 別の試合 **0.770** で、はっきり分かれました。
+
+> 無地の部分（真っ白な帯など）を `--roi` に選ぶと1件も検出できません。
+> その場合は calibrate 時に警告が出て、detect は理由を表示して止まります。
 
 > 赤コーナー表示と青コーナー表示でデザインが違うなど、複数パターンがある場合は
 > `--append` を付けて基準画像を追加登録できます。
@@ -130,13 +153,90 @@ python -m uizin_clipper run "https://www.youtube.com/live/YYYYYYYYYYY" \
 
 ---
 
+## ラウンド間で試合が割れないしくみ
+
+1R と 2R の間にスコアボードが消えると、そのままでは1試合が2本に割れます。
+かといって「◯秒までなら繋ぐ」という秒数だけの判断には、逃げ場がありません。
+
+実測（`max_gap_sec` を変えただけの結果）:
+
+| max_gap_sec | 結果 |
+|---|---|
+| 20秒 | 3本（**1試合が2本に分割**） |
+| 30・60秒 | 2本（正解） |
+| 90秒 | 1本（**2試合が1本に結合**） |
+
+そこで秒数では決めず、**途切れの前後で選手名テロップが同じかどうか**を見ます。
+
+- 同じ → ラウンド間なので繋ぐ
+- 違う → 次の試合なので繋がない
+
+`--same-match-roi` を登録すると有効になります。有効にした後は、
+`max_gap_sec` を 5秒 / 20秒 / 30秒 のどれにしても結果は 2本で一定でした。
+**しきい値の当てずっぽうが要らなくなります。**
+
+判断の根拠は実行中にそのまま出ます。
+
+```
+[round] 途切れ 20秒: テロップ一致度 1.000 → 同じ試合（繋ぐ）
+[round] 途切れ 80秒: テロップ一致度 0.770 → 別の試合（繋がない）
+```
+
+---
+
+## 結果を数値で確認する
+
+「だいたい動いた」で終わらせないための点検コマンドです。
+
+まず正解を手で書きます（1大会につき1回、10〜15分）。
+
+```yaml
+# truth.yml
+matches:
+  - {start: "00:12:04", end: "00:18:33", label: "第1試合"}
+  - {start: "00:21:40", end: "00:27:02", label: "第2試合"}
+```
+
+```bash
+python -m uizin_clipper report \
+    --manifest work/XXXXXXXXXXX/segments.json \
+    --truth truth.yml \
+    --out-dir out --event "第13回大会"
+```
+
+```
+■ 正解との突き合わせ（正解 2 試合）
+  正解の試合数: 2
+  検出した試合数: 2
+  正しく検出: 2
+  見逃し: 0
+  余計な検出: 0
+  1試合が複数に分割: 0
+  複数試合が1本に結合: 0
+  開始のずれ  中央 -6.0秒  最小 -6.0秒  最大 -6.0秒
+  終了のずれ  中央 +8.0秒  最小 +8.0秒  最大 +8.0秒
+
+■ 書き出したMP4の点検
+  01.mp4  h264/aac  尺 134.3s（想定 134.0s, 差 +0.3s）  音ズレ -0.13s  エラー 0  → OK
+```
+
+MP4の点検では、次を機械的に確かめます。
+
+- 映像コーデックが元と同じか（＝**再エンコードされていないか**）
+- 尺が想定どおりか
+- 音ズレ（音声と映像の開始時刻の差）
+- 全編デコードしてエラーが出ないか
+
+---
+
 ## よくある調整
 
 | 症状 | 直す場所（`profiles/uizin.yml`） |
 |---|---|
-| 1試合が2本に割れる | `max_gap_sec` を大きくする（20 → 40） |
+| 1試合がラウンドごとに割れる | `--same-match-roi` を登録する（秒数いじりより先にこれ） |
 | MCや表彰まで拾ってしまう | `enter_threshold` を上げる（0.62 → 0.72） |
 | 試合を取りこぼす | `enter_threshold` を下げる（0.62 → 0.52） |
+| 別の試合まで繋がってしまう | `same_match_threshold` を上げる（0.85 → 0.92） |
 | リプレイを別試合として拾う | `min_duration_sec` を大きくする（45 → 90） |
 | 入場から入れたい | `pre_roll_sec` を大きくする（6 → 20） |
 | 解析が遅い | `fps` を下げる（1.0 → 0.5、2秒に1回） |
@@ -156,6 +256,57 @@ python -m unittest discover -s tests -t .
 ```
 
 リポジトリ直下からは `npm run test:uizin-clipper` でも実行できます。
+
+---
+
+## 実配信で確認する手順（オーナー環境で実行）
+
+開発用のクラウド環境からは YouTube に接続できません（組織のエグレスポリシーで遮断）。
+実配信での検証は、YouTube に接続できる手元のPCで次の順に実行してください。
+
+```bash
+cd tools/uizin-clipper
+pip install -r requirements.txt
+
+# 1) 大会動画を取得（4時間で数GB）
+python -m uizin_clipper download "https://www.youtube.com/live/P8CCcO_wWq0"
+
+# 2) 下見（5分おきの静止画が work/P8CCcO_wWq0/contact/ に出る）
+python -m uizin_clipper contact-sheet --video work/P8CCcO_wWq0/source.mp4
+
+# 3) 試合中の1枚を書き出して、2つのROIの座標を測る
+python -m uizin_clipper calibrate --video work/P8CCcO_wWq0/source.mp4 --at 00:23:10
+#    → 出てきたPNGを画像ソフトで開き、
+#       (a) 試合中ずっと変わらない部分（枠・ロゴ）
+#       (b) 選手名だけ（タイマーを含めない）
+#      の x,y,幅,高さ を読む
+
+# 4) 登録
+python -m uizin_clipper calibrate \
+    --video work/P8CCcO_wWq0/source.mp4 --at 00:23:10 \
+    --roi <(a)の座標> --same-match-roi <(b)の座標> \
+    --profile profiles/uizin.yml
+
+# 5) 検出（4時間で10〜20分程度）
+python -m uizin_clipper detect \
+    --video work/P8CCcO_wWq0/source.mp4 --profile profiles/uizin.yml
+
+# 6) 正解を手で書く（truth.yml）。試合表があれば10〜15分。
+
+# 7) 数値で確認
+python -m uizin_clipper report \
+    --manifest work/P8CCcO_wWq0/segments.json --truth truth.yml
+
+# 8) 書き出して、出力も点検
+python -m uizin_clipper render \
+    --manifest work/P8CCcO_wWq0/segments.json --event "第13回大会"
+python -m uizin_clipper report \
+    --manifest work/P8CCcO_wWq0/segments.json \
+    --truth truth.yml --out-dir out --event "第13回大会"
+```
+
+7 と 8 の出力をそのまま貼っていただければ、
+見逃し・誤検出・分割・結合の件数を見て、必要な最小修正を判断できます。
 
 ---
 

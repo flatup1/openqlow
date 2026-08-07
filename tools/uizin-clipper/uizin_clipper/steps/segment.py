@@ -8,7 +8,7 @@ ffmpeg も numpy も使わないので、どの環境でも一瞬でテストで
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Callable, Sequence
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,14 @@ class SegmentParams:
 
     long_segment_sec: float = 1200.0
     """これを超える区間は flags に too_long を立てて人間に見てもらう。"""
+
+    round_gap_sec: float = 180.0
+    """ラウンド間としてありえる最大の途切れ。
+
+    `max_gap_sec` は「テロップの一瞬の消失」を無条件で繋ぐための値（小さくする）。
+    こちらは「同じ試合か」を別途確かめたうえで繋ぐ上限（大きめでよい）。
+    確認手段がない場合は使わない。
+    """
 
     def validate(self) -> None:
         if self.fps <= 0:
@@ -168,11 +176,59 @@ def detect_segments(
             current.start_sec = midpoint
 
     # 4) 採番とフラグ付け
+    _finalize(segments, params)
+    return segments
+
+
+def _finalize(segments: list[Segment], params: SegmentParams) -> list[Segment]:
+    """採番とフラグを付け直す。結合のあとにも呼べるようにしてある。"""
     for number, segment in enumerate(segments, start=1):
         segment.index = number
+        for flag in ("too_long", "low_confidence"):
+            if flag in segment.flags:
+                segment.flags.remove(flag)
         if segment.duration_sec >= params.long_segment_sec:
             segment.flags.append("too_long")
         if segment.confidence < params.enter_threshold:
             segment.flags.append("low_confidence")
-
     return segments
+
+
+def merge_rounds(
+    segments: list[Segment],
+    params: SegmentParams,
+    decide: Callable[[Segment, Segment], bool],
+) -> list[Segment]:
+    """ラウンド間で割れた区間を1試合にまとめる。
+
+    `decide(前の区間, 次の区間)` が True のときだけ繋ぐ。
+    秒数だけで決めないのがこの関数の要点で、判定そのものは呼び出し側に委ねる
+    （実際にはテロップが同じかどうかを見る）。純ロジックなのでテストできる。
+    """
+    if len(segments) < 2:
+        return _finalize(list(segments), params)
+
+    merged: list[Segment] = [segments[0]]
+    for current in segments[1:]:
+        previous = merged[-1]
+        gap = current.core_start_sec - previous.core_end_sec
+        if 0 <= gap <= params.round_gap_sec and decide(previous, current):
+            span_prev = max(1e-6, previous.core_end_sec - previous.core_start_sec)
+            span_cur = max(1e-6, current.core_end_sec - current.core_start_sec)
+            confidence = (
+                previous.confidence * span_prev + current.confidence * span_cur
+            ) / (span_prev + span_cur)
+            flags = list(dict.fromkeys([*previous.flags, *current.flags, "merged_rounds"]))
+            merged[-1] = Segment(
+                index=previous.index,
+                start_sec=previous.start_sec,
+                end_sec=current.end_sec,
+                core_start_sec=previous.core_start_sec,
+                core_end_sec=current.core_end_sec,
+                confidence=round(confidence, 4),
+                flags=flags,
+            )
+        else:
+            merged.append(current)
+
+    return _finalize(merged, params)

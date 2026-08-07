@@ -17,15 +17,18 @@ import sys
 from pathlib import Path
 
 from . import manifest as mf
+from .evaluate import Interval, evaluate, load_truth
 from .naming import build_clip_filename, build_event_dirname, ensure_unique
 from .profile import Profile, load_profile, save_profile
 from .shellcmd import CommandFailedError, ToolMissingError
 from .steps import calibrate as calib
 from .steps import download as dl
+from .steps import inspect_output
 from .steps import probe as probe_step
 from .steps import render as render_step
+from .steps import samematch
 from .steps import score as score_step
-from .steps.segment import detect_segments
+from .steps.segment import detect_segments, merge_rounds
 from .timecode import format_duration, format_timecode, parse_timecode
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -178,7 +181,21 @@ def cmd_calibrate(args) -> int:
     elif not args.append:
         profile.templates = [template_name]
 
+    if args.same_match_roi:
+        profile.same_match_roi = args.same_match_roi
+
     save_profile(profile)
+
+    # 無地のROIを選ぶと検出が常にゼロになるので、ここで気づけるようにする
+    deviation = score_step.template_std(
+        score_step.load_template(template_path, profile.template_size)
+    )
+    if deviation < score_step.MIN_TEMPLATE_STD:
+        print(
+            f"[警告] 基準画像に模様がありません（ばらつき {deviation:.1f}）。\n"
+            "        無地の部分を選ぶと1件も検出できません。"
+            "枠線・ロゴ・区切り線を含む位置にしてください。"
+        )
     print(f"[calibrate] 基準画像: {template_path}")
     print(f"[calibrate] プロファイル更新: {profile_path}")
     print("次は `detect` を実行してください。")
@@ -213,6 +230,20 @@ def cmd_detect(args) -> int:
     segments = detect_segments(
         scores, profile.segment, duration_sec=info["duration_sec"]
     )
+
+    # ラウンド間で割れた区間を、テロップが同じかどうかで繋ぎ直す。
+    # same_match_roi が未設定なら従来どおり max_gap_sec だけで判断する。
+    same_roi = profile.scaled_same_match_roi(info["width"], info["height"])
+    if same_roi and len(segments) > 1:
+        print("[round] ラウンド間の途切れを確認します（テロップが同じなら繋ぎます）")
+        segments = merge_rounds(
+            segments,
+            profile.segment,
+            samematch.make_round_decider(
+                video, same_roi, profile.same_match_size, profile.same_match_threshold
+            ),
+        )
+
     detected = [mf.segment_to_dict(s) for s in segments]
 
     manifest_path = work_dir / "segments.json"
@@ -289,6 +320,84 @@ def cmd_render(args) -> int:
     return 0
 
 
+def cmd_report(args) -> int:
+    """検出結果を正解と突き合わせ、書き出したMP4も点検して数値で出す。"""
+    manifest = mf.load_manifest(args.manifest)
+    detected = [
+        Interval(s["start_sec"], s["end_sec"], f"{s['index']:02d}")
+        for s in mf.renderable_segments(manifest)
+    ]
+
+    print(f"■ 検出結果  {len(detected)} 本")
+    for segment in mf.renderable_segments(manifest):
+        marks = " ".join(segment.get("flags") or [])
+        print(
+            f"  {segment['index']:02d}  "
+            f"{format_timecode(segment['start_sec'], with_millis=False)} → "
+            f"{format_timecode(segment['end_sec'], with_millis=False)}  "
+            f"({format_duration(segment['duration_sec'])})  conf {segment['confidence']:.2f}"
+            f"{'  [' + marks + ']' if marks else ''}"
+        )
+
+    if args.truth:
+        truth = load_truth(args.truth)
+        result = evaluate(truth, detected, min_overlap=args.min_overlap)
+        print(f"\n■ 正解との突き合わせ（正解 {len(truth)} 試合）")
+        for key, value in result.summary(len(truth), len(detected)).items():
+            print(f"  {key}: {value}")
+        if result.missed:
+            print(f"  見逃した正解番号: {result.missed}")
+        if result.spurious:
+            print(f"  余計に検出した番号: {result.spurious}")
+        for ti, dis in result.split:
+            print(f"  分割: 正解{ti} → 検出{dis}")
+        for di, tis in result.fused:
+            print(f"  結合: 検出{di} → 正解{tis}")
+        if result.start_errors_sec:
+            starts = sorted(result.start_errors_sec)
+            ends = sorted(result.end_errors_sec)
+            middle = len(starts) // 2
+            print(
+                f"  開始のずれ  中央 {starts[middle]:+.1f}秒  "
+                f"最小 {starts[0]:+.1f}秒  最大 {starts[-1]:+.1f}秒"
+            )
+            print(
+                f"  終了のずれ  中央 {ends[middle]:+.1f}秒  "
+                f"最小 {ends[0]:+.1f}秒  最大 {ends[-1]:+.1f}秒"
+            )
+
+    if args.out_dir:
+        source = Path(manifest["source"]["path"])
+        source_codec = ""
+        if source.exists():
+            source_codec = inspect_output.inspect(source, 0.0, deep=False).video_codec
+        event = args.event or manifest["source"].get("title") or manifest["source"]["video_id"]
+        directory = Path(args.out_dir) / build_event_dirname(event)
+        print(f"\n■ 書き出したMP4の点検  {directory}")
+        taken: set[str] = set()
+        problem_count = 0
+        for segment in mf.renderable_segments(manifest):
+            filename = ensure_unique(
+                build_clip_filename(segment["index"], segment.get("red"), segment.get("blue")),
+                taken,
+            )
+            taken.add(filename)
+            check = inspect_output.inspect(
+                directory / filename, segment["duration_sec"], deep=not args.quick
+            )
+            issues = check.problems(source_video_codec=source_codec)
+            problem_count += bool(issues)
+            status = "NG: " + " / ".join(issues) if issues else "OK"
+            print(
+                f"  {check.name}  {check.video_codec or '-'}/{check.audio_codec or '-'}  "
+                f"尺 {check.duration_sec:.1f}s（想定 {check.expected_sec:.1f}s, "
+                f"差 {check.duration_error_sec:+.1f}s）  音ズレ {check.av_offset_sec:+.2f}s  "
+                f"エラー {check.decode_errors}  → {status}"
+            )
+        print(f"  問題のあったファイル: {problem_count} / {len(taken)}")
+    return 0
+
+
 def cmd_run(args) -> int:
     work_root = Path(args.work_dir)
     video_id = dl.extract_video_id(args.url)
@@ -345,6 +454,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_cal.add_argument("--profile", default=str(DEFAULT_PROFILE))
     p_cal.add_argument("--append", action="store_true", help="基準画像を追加する（複数デザイン対応）")
     p_cal.add_argument("--template-width", type=int, default=160, help="照合用に縮小する幅")
+    p_cal.add_argument(
+        "--same-match-roi",
+        type=parse_roi,
+        help="選手名テロップの位置。指定するとラウンド間の途切れを繋げるようになる",
+    )
     p_cal.set_defaults(func=cmd_calibrate)
 
     p_det = sub.add_parser("detect", help="試合区間を検出して segments.json を作る")
@@ -356,6 +470,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="segments.json を表示する")
     p_list.add_argument("--manifest", required=True)
     p_list.set_defaults(func=cmd_list)
+
+    p_rep = sub.add_parser("report", help="検出結果と出力MP4を数値で点検する")
+    p_rep.add_argument("--manifest", required=True)
+    p_rep.add_argument("--truth", help="正解ファイル（YAML）。指定すると精度を数値化する")
+    p_rep.add_argument("--out-dir", help="指定すると書き出したMP4も点検する")
+    p_rep.add_argument("--event", help="出力フォルダ名（render と同じもの）")
+    p_rep.add_argument("--min-overlap", type=float, default=0.3, help="対応とみなす重なりの割合")
+    p_rep.add_argument("--quick", action="store_true", help="全編デコード検査を省く")
+    p_rep.set_defaults(func=cmd_report)
 
     p_ren = sub.add_parser("render", help="segments.json どおりにMP4を書き出す")
     p_ren.add_argument("--manifest", required=True)

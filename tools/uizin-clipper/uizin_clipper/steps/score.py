@@ -105,6 +105,16 @@ def load_template(path: Path, size: Sequence[int]):
     return np.frombuffer(result.stdout[: width * height], dtype=np.uint8).astype(np.float32)
 
 
+MIN_TEMPLATE_STD = 6.0
+"""基準画像に必要な最低限の「模様の濃さ」。これ未満は無地とみなす。"""
+
+
+def template_std(template) -> float:
+    """基準画像のばらつき。無地（真っ白な帯など）だと 0 に近づく。"""
+    np = _numpy()
+    return float(np.std(template))
+
+
 def zncc(sample, template) -> float:
     """正規化相互相関。-1.0〜1.0 を返す。"""
     np = _numpy()
@@ -131,6 +141,18 @@ def score_video(
         raise ValueError("基準画像が1枚もありません。先に calibrate を実行してください。")
 
     loaded = [load_template(Path(t), size) for t in templates]
+
+    # 無地のROIを選ぶと ZNCC は常に 0 になり、「1件も検出されない」だけで
+    # 理由が分からなくなる。黙って失敗させず、ここで止めて原因を伝える。
+    for path, template in zip(templates, loaded):
+        deviation = template_std(template)
+        if deviation < MIN_TEMPLATE_STD:
+            raise ValueError(
+                f"基準画像に模様がありません（ばらつき {deviation:.1f} < {MIN_TEMPLATE_STD}）: {path}\n"
+                "無地の帯や単色部分をROIに選ぶと判定できません。\n"
+                "枠線・ロゴ・区切り線など、形のある部分を含めて calibrate し直してください。"
+            )
+
     scores: list[float] = []
     for i, raw in enumerate(iter_roi_frames(video, roi, size, fps)):
         sample = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
