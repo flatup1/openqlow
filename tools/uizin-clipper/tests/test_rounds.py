@@ -97,6 +97,19 @@ class DefaultsTest(unittest.TestCase):
         self.assertGreater(gap, 70, "ラウンド間(約60秒)を繋げる大きさが必要")
         self.assertLess(gap, 120, "試合間の休憩(2分以上)まで繋いではいけない")
 
+    def test_min_duration_keeps_a_short_finish(self) -> None:
+        """第13回大会の31秒決着を捨てない大きさであること（実配信で判明）。"""
+        self.assertLessEqual(SegmentParams().min_duration_sec, 31)
+
+    def test_post_roll_covers_the_winner_announcement(self) -> None:
+        """勝者表示まで最大およそ40秒かかる（実配信で判明）。
+
+        ただし試合間の休憩へ食い込まないよう round_gap_sec より小さく保つ。
+        """
+        params = SegmentParams()
+        self.assertGreaterEqual(params.post_roll_sec, 45, "勝者発表の前に切れてはいけない")
+        self.assertLess(params.post_roll_sec, params.round_gap_sec, "隣の試合へ食い込ませない")
+
     def test_same_match_threshold_default_is_not_too_strict(self) -> None:
         """0.85 だと同じ試合を2件割った（実測）。0.70〜0.80 が全問正解。"""
         from uizin_clipper.profile import Profile  # noqa: PLC0415
