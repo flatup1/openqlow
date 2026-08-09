@@ -46,6 +46,7 @@ import {
   type CorrectableField,
   type WithdrawalOpResult,
 } from "./withdrawal_store.js";
+import { pushLineMessage } from "../line_bot/notifier.js";
 import { generateInquiryReply } from "../generators/inquiry_reply.js";
 import { generateTrialFollowup } from "../generators/trial_followup.js";
 import type { Gender } from "../generators/shared.js";
@@ -129,6 +130,30 @@ function printWithdrawalBanner(all: WithdrawalCase[]): void {
   }
 }
 
+/**
+ * 会員のLINEへ文面を送る（スタッフが明示的に --push を付けたときだけ）。
+ *
+ * 実際に届いたときだけ true を返す。dry-run や送信失敗を「送れた」ことにしない
+ * （送っていないのに送信済みとして記録すると、あとで事実確認ができなくなる）。
+ */
+async function pushToMember(c: WithdrawalCase, text: string): Promise<boolean> {
+  if (!c.lineUserId) {
+    console.error("この会員のLINE userId が未登録のため送信できません。文面をコピーして手動で送ってください。");
+    return false;
+  }
+  const result = await pushLineMessage(text, { userId: c.lineUserId });
+  if (result.mode === "sent" && result.ok) {
+    console.log("LINEへ送信しました。");
+    return true;
+  }
+  console.log(
+    result.mode === "dry_run"
+      ? "dry-run のため送信していません（OPENQLOW_LINE_DRY_RUN=false で実送信）。"
+      : `送信していません（${result.mode}${result.error ? `: ${result.error}` : ""}）。`,
+  );
+  return false;
+}
+
 /** 操作結果の共通表示。何もしなかった場合もその理由を必ず出す。 */
 function printOpResult(result: WithdrawalOpResult): number {
   console.log(result.message);
@@ -159,10 +184,10 @@ function printWithdrawalHelp(): void {
 ■ 手続き（押した事実を記録します。送信そのものは人が行います）
   open --member <会員番号> [--name 氏名] [--line <userId>] [--channel LINE|電話|メール|来館]
                                   退会のご相談を受けた（正式受付にはなりません）
-  guide <番号> [--sent]           手続き案内の文面を表示。--sent で送信済みとして記録
+  guide <番号> [--sent|--push]    手続き案内の文面を表示。--sent=送信済み記録 / --push=LINEへ送信
   form <番号>                     ［退会届受領］
   key <番号>                      ［カードキー返却］
-  notice <番号> [--sent]          正式受付のご案内文面を表示。--sent で送信済みとして記録
+  notice <番号> [--sent|--push]   正式受付のご案内。--sent=送信済み記録 / --push=LINEへ送信
   payment-done <番号>             ［会費ペイ処理済］（会費ペイ側の操作を終えてから押す）
   owner-review <番号> --reason "…"  ［オーナー確認へ］
   closing-notice <番号>           退会完了のご案内文面を表示
@@ -349,8 +374,11 @@ async function runWithdrawal(
         console.log("■ 手続き案内（確認して送信してください・自動送信はしません）\n");
         console.log(buildProcedureGuideMessage());
         console.log(`\n送信したら: npm run crm -- withdrawal guide ${c.id} --sent`);
+        console.log(`このまま送るなら: npm run crm -- withdrawal guide ${c.id} --push`);
         return 0;
       }
+      // --push はスタッフが押したワンクリック送信。届いたときだけ送信済みにする。
+      if ("push" in flags && !(await pushToMember(c, buildProcedureGuideMessage()))) return 1;
       return printOpResult(await service.markProcedureGuided({ caseId: c.id, actor, source: "CLI" }));
     }
 
@@ -373,7 +401,7 @@ async function runWithdrawal(
         console.error("正式受付がまだ成立していません（退会届とカードキーの両方が必要です）。");
         return 1;
       }
-      if (!("sent" in flags)) {
+      if (!("sent" in flags) && !("push" in flags)) {
         if (c.withdrawalConfirmationSentAt) {
           console.log(`※ 正式受付のご案内は送信済みです（${formatJstStamp(c.withdrawalConfirmationSentAt)}）。`);
           return 0;
@@ -382,8 +410,10 @@ async function runWithdrawal(
         // 日付はすべて台帳の確定値。ここで計算し直さない。
         console.log(buildFormalReceiptMessage(c));
         console.log(`\n送信したら: npm run crm -- withdrawal notice ${c.id} --sent`);
+        console.log(`このまま送るなら: npm run crm -- withdrawal notice ${c.id} --push`);
         return 0;
       }
+      if ("push" in flags && !(await pushToMember(c, buildFormalReceiptMessage(c)))) return 1;
       return printOpResult(await service.markConfirmationSent({ caseId: c.id, actor }));
     }
 
