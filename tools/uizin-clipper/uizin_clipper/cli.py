@@ -369,8 +369,11 @@ def cmd_report(args) -> int:
     if args.out_dir:
         source = Path(manifest["source"]["path"])
         source_codec = ""
+        keyframes: list[float] = []
         if source.exists():
             source_codec = inspect_output.inspect(source, 0.0, deep=False).video_codec
+            work_dir = Path(args.manifest).resolve().parent
+            keyframes = probe_step.load_or_probe(source, work_dir)["keyframes"]
         event = args.event or manifest["source"].get("title") or manifest["source"]["video_id"]
         directory = Path(args.out_dir) / build_event_dirname(event)
         print(f"\n■ 書き出したMP4の点検  {directory}")
@@ -382,8 +385,11 @@ def cmd_report(args) -> int:
                 taken,
             )
             taken.add(filename)
+            plan = render_step.plan_cut(
+                segment["start_sec"], segment["end_sec"], keyframes
+            )
             check = inspect_output.inspect(
-                directory / filename, segment["duration_sec"], deep=not args.quick
+                directory / filename, plan.duration_sec, deep=not args.quick
             )
             issues = check.problems(source_video_codec=source_codec)
             problem_count += bool(issues)
