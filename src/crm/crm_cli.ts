@@ -22,6 +22,29 @@ import {
   CONSENT_TERMS_VERSION,
   openGuardianConsentStore,
 } from "./guardian_consent.js";
+import {
+  buildFormalReceiptMessage,
+  buildProcedureGuideMessage,
+  buildWithdrawalClosedMessage,
+  detectOwnerReviewSignals,
+  formatJstStamp,
+  getConfirmationNotSent,
+  getOwnerReviewRequired,
+  getPaymentStopPending,
+  getReadyToClose,
+  missingForClose,
+  PAYMENT_STOP_LABELS,
+  withdrawalStatusLabel,
+  type WithdrawalCase,
+} from "./withdrawal.js";
+import {
+  buildWithdrawalTimeline,
+  CORRECTABLE_FIELDS,
+  openWithdrawalService,
+  type Actor,
+  type CorrectableField,
+  type WithdrawalOpResult,
+} from "./withdrawal_store.js";
 import { generateInquiryReply } from "../generators/inquiry_reply.js";
 import { generateTrialFollowup } from "../generators/trial_followup.js";
 import type { Gender } from "../generators/shared.js";
@@ -32,6 +55,8 @@ const storeFile = path.join(baseDir, "prospects.json");
 // 個人情報がリポジトリに乗らない（OPENQLOW_DATA_DIR で外部へ退避も可能）。
 const consentFile = path.join(baseDir, "guardian_consents.json");
 const followupHours = Number(process.env.OPENQLOW_FOLLOWUP_HOURS) || 24;
+// 退会操作の担当者名。誰が押したかを監査ログへ残すために使う。
+const staffName = process.env.OPENQLOW_STAFF_NAME || "";
 
 function coerceGender(value: string): Gender {
   if (value === "female" || /女/.test(value)) return "female";
@@ -76,6 +101,364 @@ function flagsToProspectInput(flags: Record<string, string>): ProspectInput {
   return input;
 }
 
+// --- 退会管理（スタッフ画面） --------------------------------------------------
+
+/** 誰が操作したか。--owner が付いたときだけオーナー権限になる。 */
+function resolveActor(flags: Record<string, string>): Actor {
+  const name = flags.staff || staffName;
+  if ("owner" in flags) return { type: "owner", id: flags.owner || name || "オーナー" };
+  return { type: "staff", id: name };
+}
+
+/** 「未 / 済」表示。日時があれば日付も出す。 */
+function doneMark(iso: string): string {
+  return iso ? `済（${formatJstStamp(iso)}）` : "未";
+}
+
+function shortName(c: WithdrawalCase): string {
+  return c.memberName || c.memberId || `#${c.id}`;
+}
+
+/** 会費ペイ未処理の件数を画面の一番上に出す（見落とすと事故になるため）。 */
+function printWithdrawalBanner(all: WithdrawalCase[]): void {
+  const pending = getPaymentStopPending(all);
+  if (pending.length > 0) {
+    console.log(`⚠ 会費ペイ未処理 ${pending.length}件`);
+    console.log("");
+  }
+}
+
+/** 操作結果の共通表示。何もしなかった場合もその理由を必ず出す。 */
+function printOpResult(result: WithdrawalOpResult): number {
+  console.log(result.message);
+  if (result.case) {
+    const c = result.case;
+    console.log(`  状態: ${withdrawalStatusLabel(c.currentWithdrawalStatus)}`);
+    if (c.scheduledWithdrawalDate) {
+      console.log(`  退会予定日: ${c.scheduledWithdrawalDate}（最終在籍月 ${c.finalMembershipMonth}）`);
+    }
+    if (c.paymentStopStatus === "pending") {
+      console.log(`  会費ペイ: 未処理 → 処理後に \`npm run crm -- withdrawal payment-done ${c.id}\``);
+    }
+  }
+  return result.ok ? 0 : 1;
+}
+
+function printWithdrawalHelp(): void {
+  console.log(`退会管理の使い方
+
+  npm run crm -- withdrawal <コマンド>
+
+■ 毎日見る
+  alerts                          要処理の一覧（会費ペイ未処理・受付LINE未送信・オーナー確認）
+  list [--all]                    対応中の一覧（--all で完了済みも表示）
+  show <番号>                     【退会管理】1人分の画面
+  timeline <番号>                 時系列（オーナー確認用・監査ログから生成）
+
+■ 手続き（押した事実を記録します。送信そのものは人が行います）
+  open --member <会員番号> [--name 氏名] [--line <userId>] [--channel LINE|電話|メール|来館]
+                                  退会のご相談を受けた（正式受付にはなりません）
+  guide <番号> [--sent]           手続き案内の文面を表示。--sent で送信済みとして記録
+  form <番号>                     ［退会届受領］
+  key <番号>                      ［カードキー返却］
+  notice <番号> [--sent]          正式受付のご案内文面を表示。--sent で送信済みとして記録
+  payment-done <番号>             ［会費ペイ処理済］（会費ペイ側の操作を終えてから押す）
+  owner-review <番号> --reason "…"  ［オーナー確認へ］
+  closing-notice <番号>           退会完了のご案内文面を表示
+  close <番号>                    退会完了（退会予定日の到来後・4条件を満たす場合のみ）
+
+■ 管理者のみ
+  resolve <番号> --note "判断内容" --owner        オーナー確認を解除
+  correct <番号> --field <項目> --value <値> --reason "理由" --owner   記録の修正
+
+■ 共通オプション
+  --staff <名前>                  担当者名（環境変数 OPENQLOW_STAFF_NAME でも指定可）
+
+退会日・最終在籍月・状態はシステムが決めます。スタッフが計算・入力する必要はありません。
+修正できる項目: ${CORRECTABLE_FIELDS.join(" / ")}`);
+}
+
+async function runWithdrawal(
+  positional: string[],
+  flags: Record<string, string>,
+): Promise<number> {
+  const service = openWithdrawalService({ dataDir: baseDir });
+  const sub = (positional[0] ?? "list").trim();
+  const actor = resolveActor(flags);
+
+  /** 番号（id）または管理番号から1件取る。 */
+  const pick = async (key: string) => {
+    const t = (key ?? "").trim();
+    if (!t) return undefined;
+    return /^\d+$/.test(t) ? service.cases.get(Number(t)) : service.cases.findByCaseNumber(t);
+  };
+
+  const requireCase = async (key: string) => {
+    const found = await pick(key);
+    if (!found) console.error("対象が見つかりません。`npm run crm -- withdrawal list` で番号を確認してください。");
+    return found;
+  };
+
+  switch (sub) {
+    case "help":
+      printWithdrawalHelp();
+      return 0;
+
+    case "alerts": {
+      const all = await service.cases.getAll();
+      const pending = getPaymentStopPending(all);
+      const notSent = getConfirmationNotSent(all);
+      const ownerReview = getOwnerReviewRequired(all);
+      const ready = getReadyToClose(all, new Date());
+
+      printWithdrawalBanner(all);
+      console.log(`■ 会費ペイ未処理（${pending.length}件）`);
+      if (!pending.length) console.log("  なし");
+      for (const c of pending) {
+        console.log(`  要処理  ${shortName(c)}`);
+        console.log(`    正式受付  ${c.formalReceivedAt.slice(0, 10)}`);
+        console.log(`    退会予定  ${c.scheduledWithdrawalDate}`);
+        console.log(`    会費ペイ  ${PAYMENT_STOP_LABELS[c.paymentStopStatus]}`);
+        console.log(`    処理したら: npm run crm -- withdrawal payment-done ${c.id}`);
+      }
+
+      const print = (title: string, list: WithdrawalCase[], hint: (c: WithdrawalCase) => string) => {
+        console.log(`\n■ ${title}（${list.length}件）`);
+        if (!list.length) console.log("  なし");
+        for (const c of list) console.log(`  ${shortName(c)} → ${hint(c)}`);
+      };
+      print("正式受付LINE 未送信", notSent, c => `npm run crm -- withdrawal notice ${c.id}`);
+      print("オーナー確認", ownerReview, c => c.ownerReviewReason || "理由未記録");
+      print("退会完了にできる", ready, c => `npm run crm -- withdrawal close ${c.id}`);
+      return 0;
+    }
+
+    case "list": {
+      const all = await service.cases.getAll();
+      const rows = "all" in flags ? all : all.filter(c => !c.closedAt && c.currentWithdrawalStatus !== "ACTIVE");
+      printWithdrawalBanner(all);
+      if (!rows.length) {
+        console.log("対応中の退会手続きはありません。");
+        return 0;
+      }
+      console.log(`■ 退会手続き（${rows.length}件）`);
+      for (const c of rows) {
+        const pay = c.formalReceivedAt ? ` | 会費ペイ:${PAYMENT_STOP_LABELS[c.paymentStopStatus]}` : "";
+        const due = c.scheduledWithdrawalDate ? ` | 退会予定:${c.scheduledWithdrawalDate}` : "";
+        console.log(`#${c.id} ${shortName(c)} | ${withdrawalStatusLabel(c.currentWithdrawalStatus)}${due}${pay}`);
+      }
+      console.log("\nヒント: 詳しく見るなら `npm run crm -- withdrawal show <番号>`");
+      return 0;
+    }
+
+    case "show": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      const row = (label: string, value: unknown) =>
+        console.log(`  ${label}: ${value === "" || value === undefined || value === null ? "（未記録）" : value}`);
+      console.log(`■ #${c.id} ${shortName(c)}　${c.caseNumber}`);
+      console.log("【退会管理】");
+      row("状態", withdrawalStatusLabel(c.currentWithdrawalStatus));
+      row("最初の相談", `${formatJstStamp(c.firstWithdrawalInquiryAt) || "（未記録）"}（${c.withdrawalInquiryChannel || "経路未記録"}）`);
+      row("手続き案内", doneMark(c.procedureGuidedAt));
+      row("退会届", doneMark(c.withdrawalFormReceivedAt));
+      row("カードキー", doneMark(c.cardKeyReturnedAt));
+      row("正式受付", c.formalReceivedAt ? c.formalReceivedAt.slice(0, 10) : "（未成立：退会届とカードキーの両方が必要）");
+      row("退会予定日", c.scheduledWithdrawalDate);
+      row("最終在籍月", c.finalMembershipMonth);
+      row("会費ペイ", c.formalReceivedAt ? PAYMENT_STOP_LABELS[c.paymentStopStatus] : "（正式受付後に判定）");
+      row("LINE受付通知", doneMark(c.withdrawalConfirmationSentAt));
+      row("オーナー確認", c.ownerReviewRequired === 1 ? `必要（${c.ownerReviewReason || "理由未記録"}）` : "不要");
+      row("担当", c.handledBy);
+      row("退会完了", doneMark(c.closedAt));
+      row("メモ", c.memo);
+
+      const missing = missingForClose(c);
+      if (!c.closedAt && missing.length) console.log(`\n  残りの手続き: ${missing.join(" / ")}`);
+      console.log(
+        "\nボタン: " +
+          [
+            `［退会届受領］ withdrawal form ${c.id}`,
+            `［カードキー返却］ withdrawal key ${c.id}`,
+            `［会費ペイ処理済］ withdrawal payment-done ${c.id}`,
+            `［オーナー確認へ］ withdrawal owner-review ${c.id} --reason "…"`,
+          ].join("\n        "),
+      );
+      return 0;
+    }
+
+    case "timeline": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      // 入会時の重要事項は既存の同意記録が正本。退会側では複製せず、ここで参照して並べる。
+      const consentStore = openGuardianConsentStore(consentFile);
+      const consent = c.lineUserId ? await consentStore.findByExternalId(c.lineUserId) : undefined;
+      const entries = buildWithdrawalTimeline(await service.audit.getByCase(c.id), {
+        termsVersion: consent?.termsVersion || c.onboardingTermsVersion,
+        sentAt: consent?.createdAt || c.onboardingTermsSentAt,
+        confirmedAt: consent?.consentedAt || c.onboardingTermsConfirmedAt,
+      });
+      console.log(`■ #${c.id} ${shortName(c)}　${c.caseNumber} の時系列`);
+      console.log("（監査ログそのままの元データです。要約を付ける場合もこの表を必ず併記してください）\n");
+      if (!entries.length) console.log("  記録はまだありません。");
+      for (const e of entries) {
+        console.log(`${e.at}  ${e.label}${e.detail ? `\n            ${e.detail}` : ""}`);
+      }
+      return 0;
+    }
+
+    case "open": {
+      const memberId = (flags.member ?? "").trim();
+      const lineUserId = (flags.line ?? "").trim();
+      if (!memberId && !lineUserId) {
+        console.error('Usage: crm withdrawal open --member <会員番号> [--name 氏名] [--line <userId>] [--channel LINE]');
+        return 1;
+      }
+      const result = await service.recordInquiry({
+        memberId,
+        lineUserId,
+        memberName: flags.name,
+        channel: flags.channel || "来館",
+        keywords: flags.text ? detectOwnerReviewSignals(flags.text).map(s => s.reason) : [],
+        actor,
+        source: "CLI",
+      });
+      // 特殊ケースの可能性があれば、判断材料として出す（自動でオーナー確認にはしない）。
+      if (flags.text) {
+        const signals = detectOwnerReviewSignals(flags.text);
+        if (signals.length) {
+          console.log(`※ オーナー確認が必要かもしれません: ${signals.map(s => s.reason).join("、")}`);
+          console.log(`   回すなら: npm run crm -- withdrawal owner-review ${result.case?.id} --reason "…"`);
+        }
+      }
+      return printOpResult(result);
+    }
+
+    case "guide": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      if (!("sent" in flags)) {
+        if (c.procedureGuidedAt) {
+          console.log(`※ 手続き案内は送信済みです（${formatJstStamp(c.procedureGuidedAt)}）。重複送信しないでください。`);
+          return 0;
+        }
+        console.log("■ 手続き案内（確認して送信してください・自動送信はしません）\n");
+        console.log(buildProcedureGuideMessage());
+        console.log(`\n送信したら: npm run crm -- withdrawal guide ${c.id} --sent`);
+        return 0;
+      }
+      return printOpResult(await service.markProcedureGuided({ caseId: c.id, actor, source: "CLI" }));
+    }
+
+    case "form":
+      return printOpResult(
+        await (async () => {
+          const c = await requireCase(positional[1] ?? "");
+          if (!c) return { ok: false, message: "" };
+          return service.receiveWithdrawalForm({ caseId: c.id, actor });
+        })(),
+      );
+
+    case "key":
+      return printOpResult(
+        await (async () => {
+          const c = await requireCase(positional[1] ?? "");
+          if (!c) return { ok: false, message: "" };
+          return service.returnCardKey({ caseId: c.id, actor });
+        })(),
+      );
+
+    case "notice": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      if (!c.formalReceivedAt) {
+        console.error("正式受付がまだ成立していません（退会届とカードキーの両方が必要です）。");
+        return 1;
+      }
+      if (!("sent" in flags)) {
+        if (c.withdrawalConfirmationSentAt) {
+          console.log(`※ 正式受付のご案内は送信済みです（${formatJstStamp(c.withdrawalConfirmationSentAt)}）。`);
+          return 0;
+        }
+        console.log("■ 正式受付のご案内（確認して送信してください・自動送信はしません）\n");
+        // 日付はすべて台帳の確定値。ここで計算し直さない。
+        console.log(buildFormalReceiptMessage(c));
+        console.log(`\n送信したら: npm run crm -- withdrawal notice ${c.id} --sent`);
+        return 0;
+      }
+      return printOpResult(await service.markConfirmationSent({ caseId: c.id, actor }));
+    }
+
+    case "closing-notice": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      if (!c.scheduledWithdrawalDate) {
+        console.error("退会予定日が未確定です（正式受付が必要です）。");
+        return 1;
+      }
+      console.log("■ 退会完了のご案内（確認して送信してください・自動送信はしません）\n");
+      console.log(buildWithdrawalClosedMessage(c));
+      return 0;
+    }
+
+    case "payment-done": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      return printOpResult(await service.completePaymentStop({ caseId: c.id, actor, note: flags.note }));
+    }
+
+    case "owner-review": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      if (!flags.reason?.trim()) {
+        console.error('Usage: crm withdrawal owner-review <番号> --reason "返金要求あり など"');
+        return 1;
+      }
+      return printOpResult(await service.requestOwnerReview({ caseId: c.id, reason: flags.reason, actor }));
+    }
+
+    case "resolve": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      if (!("owner" in flags)) {
+        console.error("オーナー確認の解除はオーナーのみです。`--owner` を付けてください。");
+        return 1;
+      }
+      if (!flags.note?.trim()) {
+        console.error('Usage: crm withdrawal resolve <番号> --note "判断内容" --owner');
+        return 1;
+      }
+      return printOpResult(await service.resolveOwnerReview({ caseId: c.id, note: flags.note, actor }));
+    }
+
+    case "close": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      return printOpResult(await service.closeWithdrawal({ caseId: c.id, actor }));
+    }
+
+    case "correct": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      const field = (flags.field ?? "") as CorrectableField;
+      if (!("owner" in flags) || !flags.reason?.trim() || !CORRECTABLE_FIELDS.includes(field)) {
+        console.error('Usage: crm withdrawal correct <番号> --field <項目> --value <値> --reason "理由" --owner');
+        console.error(`  修正できる項目: ${CORRECTABLE_FIELDS.join(" / ")}`);
+        console.error("  退会予定日・最終在籍月・正式受付日・状態は自動計算のため直接修正できません。");
+        return 1;
+      }
+      return printOpResult(
+        await service.adminCorrect({ caseId: c.id, field, value: flags.value ?? "", reason: flags.reason, actor }),
+      );
+    }
+
+    default:
+      console.error(`不明なサブコマンド: ${sub}`);
+      printWithdrawalHelp();
+      return 1;
+  }
+}
+
 function printHelp(): void {
   console.log(`CRM（集客・追客アシスタント）の使い方
 
@@ -93,6 +476,13 @@ function printHelp(): void {
   show <番号>                          その人の詳しい情報をすべて表示
   status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
   add [--name 田中 --gender female ...] 手動で1件登録
+
+■ 退会手続き（退会トラブルゼロ化OS）
+  withdrawal alerts                    要処理の一覧（会費ペイ未処理など）
+  withdrawal list                      対応中の退会手続き一覧
+  withdrawal show <番号>               【退会管理】1人分の画面
+  withdrawal timeline <番号>           時系列（オーナー確認用）
+  withdrawal help                      退会管理の使い方をすべて表示
 
 ■ 未成年の保護者同意
   consent list                         同意の記録を一覧表示
@@ -269,9 +659,13 @@ async function main(argv: string[]): Promise<number> {
       );
       return 0;
     }
+    case "withdrawal":
+      return runWithdrawal(positional, flags);
     case "daily-report": {
       const all = await store.getAll();
-      const { markdown, dateIso } = buildDailyReport(all, new Date(), { followupHours });
+      // 退会の要処理（会費ペイ未処理など）も日報に載せる。
+      const withdrawals = await openWithdrawalService({ dataDir: baseDir }).cases.getAll();
+      const { markdown, dateIso } = buildDailyReport(all, new Date(), { followupHours, withdrawals });
       const { filePath } = await saveDailyReport(markdown, dateIso, baseDir);
       console.log(markdown);
       console.log(`\n保存しました: ${filePath}`);
