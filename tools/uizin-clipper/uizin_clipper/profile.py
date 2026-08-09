@@ -64,8 +64,13 @@ class Profile:
     未設定なら従来どおり `max_gap_sec` だけで判断する（動作は変わらない）。
     """
 
-    same_match_threshold: float = 0.85
-    """この一致度以上なら「同じ試合のラウンド間」とみなす。"""
+    same_match_threshold: float = 0.80
+    """この一致度以上なら「同じ試合のラウンド間」とみなす。
+
+    4時間・12試合の検証では 0.70〜0.80 が全問正解、0.85 だと同じ試合を2件割った。
+    誤って繋ぐのを防ぐ主役は `round_gap_sec`（秒数の上限）で、
+    こちらはその中でさらに確かめる二段目。上げすぎると1試合が割れる。
+    """
 
     @property
     def same_match_size(self) -> tuple[int, int]:

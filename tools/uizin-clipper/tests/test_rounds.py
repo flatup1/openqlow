@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from uizin_clipper.evaluate import Interval, evaluate, overlap_fraction
 from uizin_clipper.steps.segment import Segment, SegmentParams, merge_rounds
@@ -82,6 +83,27 @@ class MergeRoundsTest(unittest.TestCase):
 
         merge_rounds([seg(1, 0, 60), seg(2, 80, 140)], self.params, decide)
         self.assertEqual(seen, [(60, 80)])
+
+
+class DefaultsTest(unittest.TestCase):
+    """4時間・12試合の実測で決めた既定値。理由なく変えると結合・分割が再発する。"""
+
+    def test_round_gap_default_is_between_round_break_and_match_break(self) -> None:
+        """ラウンド間(約60秒)より大きく、試合間の休憩(2分以上)より小さいこと。
+
+        180秒にすると 4組の試合が1本に結合した（実測）。
+        """
+        gap = SegmentParams().round_gap_sec
+        self.assertGreater(gap, 70, "ラウンド間(約60秒)を繋げる大きさが必要")
+        self.assertLess(gap, 120, "試合間の休憩(2分以上)まで繋いではいけない")
+
+    def test_same_match_threshold_default_is_not_too_strict(self) -> None:
+        """0.85 だと同じ試合を2件割った（実測）。0.70〜0.80 が全問正解。"""
+        from uizin_clipper.profile import Profile  # noqa: PLC0415
+
+        threshold = Profile(path=Path("p.yml")).same_match_threshold
+        self.assertGreaterEqual(threshold, 0.70)
+        self.assertLessEqual(threshold, 0.80)
 
 
 class OverlapTest(unittest.TestCase):
