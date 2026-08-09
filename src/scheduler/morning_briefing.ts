@@ -18,10 +18,14 @@ import { startMorningDialog } from "../commands/memory_keeper.js";
 import { loadConfig } from "../config.js";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { formatDateInTimeZone } from "../utils/date.js";
+import { openqlowPath } from "../utils/paths.js";
+import { acquireRunLock } from "./run_lock.js";
+
+const RUN_LOCK_KEY = "morning_briefing_sent";
 
 export interface MorningBriefingResult {
   ok: boolean;
-  mode: "sent" | "dry_run" | "skipped" | "disabled" | "no_user";
+  mode: "sent" | "dry_run" | "skipped" | "disabled" | "no_user" | "duplicate_today";
   reason?: string;
   message?: string;
   dateJst?: string;
@@ -38,6 +42,8 @@ export interface MorningBriefingOptions {
   writeDailyBrief?: boolean;
   /** テスト用に Vault root を差し替え */
   obsidianVaultRoot?: string;
+  /** テスト用に state ディレクトリ差し替え */
+  stateDir?: string;
 }
 
 function renderDailyBrief(dateJst: string, morningMessage: string, mode: MorningBriefingResult["mode"]): string {
@@ -89,12 +95,20 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
     return { ok: true, mode: "no_user", reason: "JIN_LINE_USER_ID not configured" };
   }
 
+  const now = opts.now ?? new Date();
+  const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
+  const stateDir = opts.stateDir ?? openqlowPath("state");
+
+  // 送信の前にロックを取る。timer が同じ日に2回発火しても、届くのは1通だけ。
+  const lock = await acquireRunLock(stateDir, RUN_LOCK_KEY, dateJst, now.toISOString());
+  if (!lock.acquired) {
+    return { ok: true, mode: "duplicate_today", reason: `already sent on ${dateJst}`, dateJst };
+  }
+
   // 1. 対話モードのセッションを事前作成。Jin の次の返信が即 Q1 の答えになる
   const dialog = await startMorningDialog(userId);
 
   // 2. メッセージ組み立て
-  const now = opts.now ?? new Date();
-  const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
   const message = [
     `☀ おはようございます (${dateJst})`,
     "",
@@ -106,6 +120,8 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
   const pushResult = await pushFn(message, { userId });
 
   if (!pushResult.ok) {
+    // 送れなかった日はやり直せるようにロックを外す。
+    await lock.release();
     return {
       ok: false,
       mode: "sent",
@@ -116,6 +132,10 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
   }
 
   const mode = pushResult.mode === "dry_run" ? "dry_run" : pushResult.mode === "skipped" ? "skipped" : "sent";
+  // 実際に届いたときだけロックを残す。
+  if (mode !== "sent") {
+    await lock.release();
+  }
   const shouldWriteDailyBrief = opts.writeDailyBrief ?? process.env.OPENQLOW_WRITE_DAILY_BRIEF === "true";
   let dailyBriefPath: string | undefined;
   if (shouldWriteDailyBrief) {

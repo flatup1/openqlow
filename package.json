@@ -108,6 +108,7 @@
     "test:daily-report-todo": "tsx src/commands/daily_report_todo.test.ts",
     "test:monthly-report": "tsx src/commands/monthly_report.test.ts",
     "test:answer-normalize": "tsx src/commands/answer_normalize.test.ts",
+    "test:run-lock": "tsx src/scheduler/run_lock.test.ts",
     "test:daily-check": "tsx src/scheduler/daily_check.test.ts",
     "test:daily-approval": "tsx src/scheduler/daily_approval.test.ts",
     "test:morning-briefing": "tsx src/scheduler/morning_briefing.test.ts",
