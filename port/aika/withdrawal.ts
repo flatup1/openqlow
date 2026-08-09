@@ -88,6 +88,8 @@ export function detectWithdrawalIntent(text: string): WithdrawalIntentResult {
 }
 
 const OWNER_REVIEW_SIGNALS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  // 規定どおりに進められない要求。ここをAIが独断で飲むとルールが崩れる。
+  ["規約外・特例の要求", ["即日", "日割り", "特例", "例外", "特別に", "違約金", "無料に", "今月末で退会"]],
   ["返金要求", ["返金", "返してほしい", "払い戻し"]],
   ["クレーム", ["クレーム", "納得できない", "おかしい", "ひどい"]],
   ["説明を受けていない主張", ["聞いてない", "聞いていない", "聞いてません", "聞いていません", "説明されて", "知らされて"]],

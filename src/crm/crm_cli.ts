@@ -27,6 +27,7 @@ import {
   buildProcedureGuideMessage,
   buildWithdrawalClosedMessage,
   detectOwnerReviewSignals,
+  detectWithdrawalIntent,
   formatJstStamp,
   getConfirmationNotSent,
   getOwnerReviewRequired,
@@ -319,7 +320,10 @@ async function runWithdrawal(
         lineUserId,
         memberName: flags.name,
         channel: flags.channel || "来館",
-        keywords: flags.text ? detectOwnerReviewSignals(flags.text).map(s => s.reason) : [],
+        // --text にお客様の言葉を渡すと、拾った語と退会/休会の別を証跡に残せる
+        ...(flags.text
+          ? { keywords: detectWithdrawalIntent(flags.text).keywords, kind: detectWithdrawalIntent(flags.text).kind }
+          : {}),
         actor,
         source: "CLI",
       });
@@ -350,23 +354,17 @@ async function runWithdrawal(
       return printOpResult(await service.markProcedureGuided({ caseId: c.id, actor, source: "CLI" }));
     }
 
-    case "form":
-      return printOpResult(
-        await (async () => {
-          const c = await requireCase(positional[1] ?? "");
-          if (!c) return { ok: false, message: "" };
-          return service.receiveWithdrawalForm({ caseId: c.id, actor });
-        })(),
-      );
+    case "form": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      return printOpResult(await service.receiveWithdrawalForm({ caseId: c.id, actor }));
+    }
 
-    case "key":
-      return printOpResult(
-        await (async () => {
-          const c = await requireCase(positional[1] ?? "");
-          if (!c) return { ok: false, message: "" };
-          return service.returnCardKey({ caseId: c.id, actor });
-        })(),
-      );
+    case "key": {
+      const c = await requireCase(positional[1] ?? "");
+      if (!c) return 1;
+      return printOpResult(await service.returnCardKey({ caseId: c.id, actor }));
+    }
 
     case "notice": {
       const c = await requireCase(positional[1] ?? "");

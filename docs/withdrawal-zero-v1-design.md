@@ -210,7 +210,10 @@ npm run crm -- withdrawal notice <番号> --sent      ← ［正式受付LINE送
 npm run crm -- withdrawal payment-done <番号>       ← ［会費ペイ処理済］
 npm run crm -- withdrawal owner-review <番号> --reason "…"  ← ［オーナー確認へ］
 npm run crm -- withdrawal timeline <番号>           ← オーナー確認画面（時系列）
+npm run crm -- withdrawal closing-notice <番号>     ← 退会完了のご案内文面
 npm run crm -- withdrawal close <番号>              ← 退会完了（退会予定日以降のみ）
+npm run crm -- withdrawal resolve <番号> --note "…" --owner   ← オーナー確認の解除
+npm run crm -- withdrawal help                      ← 全コマンドの一覧
 ```
 
 スタッフは**退会日・最終在籍月・ステータス・LINE文面を入力しない**。全部システムが決める。
@@ -227,6 +230,14 @@ npm run crm -- withdrawal close <番号>              ← 退会完了（退会�
 4. `withdrawal payment-done <番号> --staff 名前` を実行 → `paymentStopCompletedAt` / `handledBy` / 監査ログを記録。
 
 「人の記憶」ではなく**システム上の未完了状態**として残り続けるので、押すまで消えない。
+
+### 既存 scheduler の再利用（新しい cron は足さない）
+
+`deploy/systemd/openqlow-crm-daily-report.timer` が既に毎日 `crm daily-report` を実行している。
+`buildDailyReport` に退会ケースを渡すようにしたので、**新しいタイマーもcronも足さずに**
+「会費ペイ未処理 ◯件」が毎日の日報に自動で載る。退会予定日が到来したケースも
+「退会完了にできる：◯件」として同じ日報に出るため、`CLOSED` への移行は日報を見て
+ワンコマンドで実行する運用にした（自動で完了させない＝人の確認を最後に必ず挟む）。
 
 ## 10. 想定リスク
 

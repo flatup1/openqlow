@@ -109,8 +109,13 @@ try {
       channel: "LINE",
       messageId: "msg-0001",
       keywords: ["退会"],
+      kind: "withdrawal",
     });
     assert(first.ok && first.case, "1回目は記録される");
+    {
+      const log = (await service.audit.getByCase(first.case!.id))[0];
+      assert(log.metadata.kind === "withdrawal", "退会寄りか休会寄りかが証跡に残る");
+    }
     assert(first.case!.currentWithdrawalStatus === "WITHDRAWAL_INQUIRY", "LINEでは退会相談どまり");
     assert(first.case!.formalReceivedAt === "", "ケース8: LINEでは正式受付にならない");
 

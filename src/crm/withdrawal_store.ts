@@ -295,6 +295,8 @@ export interface WithdrawalService {
     /** LINE の messageId。同じイベントが2回来ても二重処理しないための鍵 */
     messageId?: string;
     keywords?: string[];
+    /** 退会寄りか休会寄りか。日付の規定は同じだが、証跡としては区別して残す */
+    kind?: "withdrawal" | "suspension" | "none";
     actor?: Actor;
     source?: string;
   }): Promise<WithdrawalOpResult>;
@@ -479,7 +481,7 @@ export function openWithdrawalService(options: WithdrawalServiceOptions = {}): W
           actorId: actor.id ?? "",
           source,
           // 本文は残さない。拾った言葉だけ残す（個人情報を増やさない）
-          metadata: { keywords: input.keywords ?? [], messageId: input.messageId ?? "" },
+          metadata: { keywords: input.keywords ?? [], kind: input.kind ?? "", messageId: input.messageId ?? "" },
         });
         return {
           ok: true,
@@ -511,6 +513,7 @@ export function openWithdrawalService(options: WithdrawalServiceOptions = {}): W
           source,
           metadata: {
             keywords: input.keywords ?? [],
+            kind: input.kind ?? "",
             messageId: input.messageId ?? "",
             note: "初回相談日時は保持（上書きしない）",
           },
@@ -534,7 +537,7 @@ export function openWithdrawalService(options: WithdrawalServiceOptions = {}): W
         eventType: "WITHDRAWAL_INQUIRY_RECEIVED",
         actor,
         source,
-        metadata: { keywords: input.keywords ?? [], messageId: input.messageId ?? "" },
+        metadata: { keywords: input.keywords ?? [], kind: input.kind ?? "", messageId: input.messageId ?? "" },
       });
       return {
         ok: true,
