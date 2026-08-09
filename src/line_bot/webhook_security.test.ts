@@ -15,11 +15,13 @@ assert.equal(exceedsWebhookBodyLimit(MAX_WEBHOOK_BODY_BYTES - 1, 1), false);
 assert.equal(exceedsWebhookBodyLimit(MAX_WEBHOOK_BODY_BYTES, 1), true);
 
 const webhookSource = readFileSync(fileURLToPath(new URL("./webhook.ts", import.meta.url)), "utf8");
+const webhookEventsSource = readFileSync(fileURLToPath(new URL("./webhook_events.ts", import.meta.url)), "utf8");
 const notifierSource = readFileSync(fileURLToPath(new URL("./notifier.ts", import.meta.url)), "utf8");
 const replySource = readFileSync(fileURLToPath(new URL("./reply.ts", import.meta.url)), "utf8");
 
 for (const [name, source] of [
   ["webhook.ts", webhookSource],
+  ["webhook_events.ts", webhookEventsSource],
   ["notifier.ts", notifierSource],
   ["reply.ts", replySource],
 ] as const) {

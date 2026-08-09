@@ -5,6 +5,7 @@ import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
+import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
   exceedsWebhookBodyLimit,
@@ -24,60 +25,6 @@ function isSignatureValid(rawBody: string, signature: string | string[] | undefi
     channelSecret,
     dryRun: process.env.OPENQLOW_DRY_RUN !== "false",
   });
-}
-
-interface ExtractedEvent {
-  kind: "text" | "media";
-  text?: string;
-  messageId?: string;
-  messageType?: "image" | "video";
-  userId?: string;
-}
-
-function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
-  try {
-    const payload = JSON.parse(rawBody) as {
-      events?: Array<{
-        type?: string;
-        replyToken?: string;
-        source?: { userId?: string };
-        message?: { type?: string; text?: string; id?: string };
-      }>;
-    };
-
-    if (!Array.isArray(payload.events)) {
-      return { events: [{ kind: "text", text: rawBody }], linePayload: false };
-    }
-
-    const events: ExtractedEvent[] = [];
-    let replyToken: string | undefined;
-    for (const event of payload.events) {
-      if (event.type !== "message") continue;
-      const userId = event.source?.userId;
-      if (allowedApproverIds.size > 0 && !allowedApproverIds.has(userId || "")) {
-        return { events: [], linePayload: true, ignored: "non_approver_user" };
-      }
-      replyToken ??= event.replyToken;
-
-      if (event.message?.type === "text" && event.message.text) {
-        console.log(safeLineLog("text_received"));
-        events.push({ kind: "text", text: event.message.text, userId });
-      }
-
-      if ((event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
-        events.push({
-          kind: "media",
-          messageId: event.message.id,
-          messageType: event.message.type,
-          userId,
-        });
-      }
-    }
-
-    return { events, linePayload: true, replyToken };
-  } catch {
-    return { events: [{ kind: "text", text: rawBody }], linePayload: false };
-  }
 }
 
 async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, unknown>> {
@@ -134,7 +81,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const extracted = extractLineEvents(body);
+    const extracted = extractLineEvents(body, allowedApproverIds);
     if (extracted.ignored) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, ignored: extracted.ignored }));
