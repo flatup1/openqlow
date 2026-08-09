@@ -14,7 +14,12 @@ import {
   openWithdrawalService,
   WITHDRAWAL_EVENT_LABELS,
 } from "./withdrawal_store.js";
-import { getPaymentStopPending, toJstDate } from "./withdrawal.js";
+import {
+  canTransition,
+  getPaymentStopPending,
+  toJstDate,
+  type WithdrawalStatus,
+} from "./withdrawal.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -422,6 +427,69 @@ try {
     const dumped = JSON.stringify(logs);
     assert(!dumped.includes("line-700"), "LINE userId は監査ログへ書かない");
     assert(dumped.includes("退会"), "拾った言葉だけは残す（判断根拠として必要）");
+  }
+
+  // --- 遷移表と実際の遷移が一致していること -------------------------------------
+  //
+  // 状態は事実から導出されるため、宣言した遷移表（canTransition）が現実とズレていても
+  // 普段は誰も気づかない。しかし後からこの表で検査を掛けた瞬間、正常な業務が止まる。
+  // そこで「実際に起きた全ての遷移」を監査ログから拾い、表が許しているかを機械的に検査する。
+  {
+    const clock = fixedClock(jst("2026-08-18T11:00:00"));
+    const service = openWithdrawalService({ dataDir: path.join(dir, "transitions"), now: clock.now });
+
+    // 経路A: 案内 → 退会届 → カードキー → 受付LINE → 会費ペイ → 完了（標準）
+    const a = await service.recordInquiry({ memberId: "M-801", keywords: ["退会"] });
+    await service.markProcedureGuided({ caseId: a.case!.id });
+    await service.receiveWithdrawalForm({ caseId: a.case!.id });
+    clock.set(jst("2026-08-18T11:05:00"));
+    await service.returnCardKey({ caseId: a.case!.id });
+    await service.markConfirmationSent({ caseId: a.case!.id });
+    await service.completePaymentStop({ caseId: a.case!.id });
+    clock.set(jst("2026-09-30T20:00:00"));
+    await service.closeWithdrawal({ caseId: a.case!.id });
+
+    // 経路B: 案内なしで来館（実務で起きる）／カードキーが先／受付LINEを後から送る
+    clock.set(jst("2026-08-18T11:00:00"));
+    const b = await service.recordInquiry({ memberId: "M-802", keywords: ["退会"] });
+    await service.returnCardKey({ caseId: b.case!.id });
+    clock.set(jst("2026-08-18T11:05:00"));
+    await service.receiveWithdrawalForm({ caseId: b.case!.id });
+    await service.completePaymentStop({ caseId: b.case!.id });
+    await service.markConfirmationSent({ caseId: b.case!.id });
+
+    // 経路C: オーナー確認へ退避して復帰
+    const c = await service.recordInquiry({ memberId: "M-803", keywords: ["退会"] });
+    await service.requestOwnerReview({ caseId: c.case!.id, reason: "返金要求あり" });
+    await service.resolveOwnerReview({ caseId: c.case!.id, note: "規定どおり", actor: { type: "owner", id: "JIN" } });
+    await service.receiveWithdrawalForm({ caseId: c.case!.id });
+
+    const logs = await service.audit.getAll();
+    const observed = new Set<string>();
+    for (const log of logs) {
+      if (!log.oldStatus || !log.newStatus || log.oldStatus === log.newStatus) continue;
+      // 管理者修正だけは元の日付を直すため後戻りしうる。設計どおりなので検査対象外。
+      if (log.eventType === "ADMIN_CORRECTION") continue;
+      observed.add(`${log.oldStatus}->${log.newStatus}`);
+      assert(
+        canTransition(log.oldStatus as WithdrawalStatus, log.newStatus as WithdrawalStatus),
+        `実際に起きた遷移が遷移表で禁止されている: ${log.oldStatus} -> ${log.newStatus}（${log.eventType}）`,
+      );
+    }
+    // 検査が空振りしていないこと（経路を通していれば必ず観測される代表的な遷移）
+    for (const edge of [
+      "ACTIVE->WITHDRAWAL_INQUIRY",
+      "WITHDRAWAL_INQUIRY->PROCEDURE_GUIDED",
+      "FORM_RECEIVED->PAYMENT_STOP_PENDING",
+      "PAYMENT_STOP_PENDING->WITHDRAWAL_CONFIRMED",
+      "WITHDRAWAL_CONFIRMED->CLOSED",
+      "KEY_RETURNED->PAYMENT_STOP_PENDING",
+      "WITHDRAWAL_INQUIRY->OWNER_REVIEW_REQUIRED",
+      "OWNER_REVIEW_REQUIRED->WITHDRAWAL_INQUIRY",
+    ]) {
+      assert(observed.has(edge), `この遷移が観測されていない（検査が空振りしている）: ${edge}`);
+    }
+    assert(observed.size >= 10, `観測した遷移が少なすぎる: ${observed.size}`);
   }
 
   // --- イベント表示名 -------------------------------------------------------------

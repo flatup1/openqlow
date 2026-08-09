@@ -70,12 +70,16 @@ export function withdrawalStatusLabel(status: string): string {
  */
 const ALLOWED_TRANSITIONS: Readonly<Record<WithdrawalStatus, readonly WithdrawalStatus[]>> = {
   ACTIVE: ["WITHDRAWAL_INQUIRY"],
-  WITHDRAWAL_INQUIRY: ["PROCEDURE_GUIDED"],
-  PROCEDURE_GUIDED: ["FORM_RECEIVED", "KEY_RETURNED", "FORM_AND_KEY_RECEIVED"],
-  FORM_RECEIVED: ["FORM_AND_KEY_RECEIVED"],
-  KEY_RETURNED: ["FORM_AND_KEY_RECEIVED"],
-  FORM_AND_KEY_RECEIVED: ["PAYMENT_STOP_PENDING"],
-  PAYMENT_STOP_PENDING: ["PAYMENT_STOPPED"],
+  // 案内前に来館して退会届を出す会員は実在するので、案内を飛ばす経路も正規とする。
+  WITHDRAWAL_INQUIRY: ["PROCEDURE_GUIDED", "FORM_RECEIVED", "KEY_RETURNED", "FORM_AND_KEY_RECEIVED", "PAYMENT_STOP_PENDING"],
+  PROCEDURE_GUIDED: ["FORM_RECEIVED", "KEY_RETURNED", "FORM_AND_KEY_RECEIVED", "PAYMENT_STOP_PENDING"],
+  // 2つ目が揃うと「正式受付」と「会費ペイ待ち」が同時に立つため、PAYMENT_STOP_PENDING へ直接進む。
+  // FORM_AND_KEY_RECEIVED で止まるのは会費ペイ対象外（not_applicable）の会員だけ。
+  FORM_RECEIVED: ["FORM_AND_KEY_RECEIVED", "PAYMENT_STOP_PENDING"],
+  KEY_RETURNED: ["FORM_AND_KEY_RECEIVED", "PAYMENT_STOP_PENDING"],
+  FORM_AND_KEY_RECEIVED: ["PAYMENT_STOP_PENDING", "PAYMENT_STOPPED", "WITHDRAWAL_CONFIRMED"],
+  // 正式受付LINEを先に送っておくと、会費ペイ処理済の瞬間に4条件が揃って退会確定になる。
+  PAYMENT_STOP_PENDING: ["PAYMENT_STOPPED", "WITHDRAWAL_CONFIRMED"],
   PAYMENT_STOPPED: ["WITHDRAWAL_CONFIRMED"],
   WITHDRAWAL_CONFIRMED: ["CLOSED"],
   CLOSED: [],
@@ -91,6 +95,11 @@ const ALLOWED_TRANSITIONS: Readonly<Record<WithdrawalStatus, readonly Withdrawal
  *   特殊ケースを「行き場が無いから握りつぶす」ほうがトラブルになる。
  * - OWNER_REVIEW_REQUIRED からは CLOSED 以外へ復帰できる（オーナー判断＋理由必須は呼び出し側で担保）。
  * - CLOSED からは動かさない（完了を後から書き換えない）。
+ *
+ * 注意: 状態は事実から導出される（deriveWithdrawalStatus）ため、この表は「実際に起きうる遷移」と
+ * 一致していなければならない。ズレていると、後からこの表で検査を掛けたときに正常な業務が止まる。
+ * 一致は withdrawal_store.test.ts が全操作の監査ログを走査して機械的に検査している。
+ * 管理者修正（ADMIN_CORRECTION）だけは元の日付を直すため後戻りしうるので、その検査の対象外。
  */
 export function canTransition(from: WithdrawalStatus, to: WithdrawalStatus): boolean {
   if (from === to) return true;
