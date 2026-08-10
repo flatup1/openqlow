@@ -15,6 +15,29 @@ AIの推論ではなく画像の照合なので、無料・CPUだけ・結果の
 
 ## 準備（初回だけ）
 
+### Mac の人：これ1行で全部そろいます
+
+```bash
+bash tools/uizin-clipper/setup-mac.sh
+```
+
+まだこのコードを持っていない段階でも動かせます。ターミナルにこれを貼ってください。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-auto-clip-system-klrph3/tools/uizin-clipper/setup-mac.sh -o /tmp/setup-mac.sh && bash /tmp/setup-mac.sh
+```
+
+開発ツール → Homebrew → ffmpeg → コード取得 → Python部品、の順に
+**入っていないものだけ**入れます。何度実行しても安全です。
+
+> 最初の「開発ツール」だけは、**画面に出るダイアログを人間が押す**必要があります。
+> ダイアログは他のウィンドウの裏に隠れがちなので、F3（Mission Control）で探してください。
+> 押して待つ（5〜20分）→ もう一度スクリプトを実行、で先に進みます。
+
+### 手で入れる場合
+
+
+
 ```bash
 # 1. ffmpeg を入れる
 brew install ffmpeg          # macOS
