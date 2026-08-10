@@ -722,6 +722,9 @@ def cmd_run(args) -> int:
 
     print("\n=== 2/3 試合検出 ===")
     args.video = None
+    # detect も内部で download を呼ぶ。ここで force を落とさないと、
+    # --force-download のとき4時間の動画を二度落とすことになる。
+    args.force_download = False
     rc = cmd_detect(args)
     if rc:
         return rc
