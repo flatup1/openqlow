@@ -6,24 +6,33 @@
   calibrate      スコアボードの位置と基準画像を登録する（初回だけ）
   detect         試合区間を検出して segments.json を作る
   list           segments.json を人が読める形で表示する
+  card           対戦表（card.yml）から選手名を入れる
   render         segments.json どおりに無劣化MP4を書き出す
+  highlights     1試合の中からSNS向けの見どころ候補を選ぶ
+  captions       投稿文の下書きを作る（送信はしない）
   run            download → detect → render を一気に実行する
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from . import captions as caption_step
 from . import manifest as mf
+from .card import apply_card, parse_card
 from .evaluate import Interval, evaluate, load_truth
+from .highlight import HighlightParams, combine_scores, pick_highlights
 from .naming import build_clip_filename, build_event_dirname, ensure_unique
 from .profile import Profile, load_profile, save_profile
 from .shellcmd import CommandFailedError, ToolMissingError
 from .steps import calibrate as calib
 from .steps import download as dl
 from .steps import inspect_output
+from .steps import loudness as loudness_step
+from .steps import motion as motion_step
 from .steps import probe as probe_step
 from .steps import render as render_step
 from .steps import samematch
@@ -320,6 +329,191 @@ def cmd_render(args) -> int:
     return 0
 
 
+def cmd_card(args) -> int:
+    """対戦表から選手名を入れる。ファイル名が `01_赤選手vs青選手.mp4` になる。"""
+    from .profile import _read_structured  # noqa: PLC0415
+
+    manifest = mf.load_manifest(args.manifest)
+    card = parse_card(_read_structured(Path(args.card)))
+
+    written = apply_card(manifest["segments"], card, overwrite=args.overwrite)
+    mf.save_manifest(args.manifest, manifest)
+
+    print(f"[card] {written} 件に選手名を入れました。")
+    for segment in mf.renderable_segments(manifest):
+        filename = build_clip_filename(
+            segment["index"], segment.get("red"), segment.get("blue")
+        )
+        print(f"  {segment['index']:02d}  {filename}")
+    print("\n名前が違っていたら segments.json を直して \"locked\": true を付けてください。")
+    return 0
+
+
+def cmd_highlights(args) -> int:
+    """1試合の中から、SNS向けの短い見どころ候補を選ぶ。
+
+    音量と運動量を測るだけで、AIも学習も外部APIも使わない。
+    結果は highlights.json に書き、**人間が見て選ぶ**。
+    """
+    manifest = mf.load_manifest(args.manifest)
+    source = Path(args.video) if args.video else Path(manifest["source"]["path"])
+    if not source.exists():
+        raise FileNotFoundError(f"元動画がありません: {source}（--video で指定できます）")
+
+    params = HighlightParams(
+        top_n=args.top,
+        min_clip_sec=args.min_sec,
+        max_clip_sec=args.max_sec,
+    )
+    params.validate()
+
+    targets = mf.renderable_segments(manifest)
+    if args.match:
+        targets = [s for s in targets if s["index"] == args.match]
+        if not targets:
+            raise ValueError(f"{args.match} 番の試合がありません")
+
+    step = args.step
+    results: list[dict] = []
+    for segment in targets:
+        start = float(segment["start_sec"])
+        duration = float(segment["duration_sec"])
+        label = build_clip_filename(segment["index"], segment.get("red"), segment.get("blue"))
+        print(f"[highlights] {label} を解析中…（{format_duration(duration)}）")
+
+        loud = loudness_step.measure(
+            source, start_sec=start, duration_sec=duration, step_sec=step
+        )
+        move = motion_step.measure(
+            source, start_sec=start, duration_sec=duration, step_sec=step
+        )
+        if not loud and not move:
+            print("  → 音声も映像も読めませんでした。飛ばします。")
+            continue
+        if not loud:
+            print("  → 音声トラックがないので、動きだけで判断します。")
+
+        scores = combine_scores(loud or [0.0] * len(move), move, params, step_sec=step)
+        picked = pick_highlights(
+            scores,
+            params,
+            step_sec=step,
+            offset_sec=start,
+            match_duration_sec=duration,
+        )
+        if not picked:
+            print("  → 目立つ盛り上がりがありませんでした（無理に作りません）。")
+
+        for highlight in picked:
+            print(
+                f"  {highlight.index}: "
+                f"{format_timecode(highlight.start_sec, with_millis=False)} → "
+                f"{format_timecode(highlight.end_sec, with_millis=False)} "
+                f"({format_duration(highlight.duration_sec)})  "
+                f"スコア {highlight.score:.2f}  {highlight.reason}"
+            )
+            results.append(
+                {
+                    "match_index": segment["index"],
+                    "index": highlight.index,
+                    "start": format_timecode(highlight.start_sec),
+                    "end": format_timecode(highlight.end_sec),
+                    "start_sec": highlight.start_sec,
+                    "end_sec": highlight.end_sec,
+                    "peak_sec": highlight.peak_sec,
+                    "duration_sec": round(highlight.duration_sec, 3),
+                    "score": highlight.score,
+                    "reason": highlight.reason,
+                    "skip": False,
+                }
+            )
+
+    out_path = Path(args.out or (Path(args.manifest).resolve().parent / "highlights.json"))
+    out_path.write_text(
+        json.dumps(
+            {"source": manifest["source"], "highlights": results},
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(f"\n[highlights] {len(results)} 本の候補: {out_path}")
+    print("中身を見て、要らない候補には \"skip\": true を付けてください。")
+    print(f"書き出しは: render-highlights --highlights {out_path}")
+    return 0
+
+
+def cmd_render_highlights(args) -> int:
+    """highlights.json どおりに、短い動画を無劣化で書き出す。"""
+    data = json.loads(Path(args.highlights).read_text(encoding="utf-8"))
+    entries = [h for h in data.get("highlights", []) if not h.get("skip")]
+    if not entries:
+        print("書き出す候補がありません。")
+        return 1
+
+    source = Path(args.video) if args.video else Path(data["source"]["path"])
+    if not source.exists():
+        raise FileNotFoundError(f"元動画がありません: {source}（--video で指定できます）")
+
+    work_dir = Path(args.highlights).resolve().parent
+    info = probe_step.load_or_probe(source, work_dir)
+
+    event = args.event or data["source"].get("title") or data["source"]["video_id"]
+    out_dir = Path(args.out_dir) / build_event_dirname(event) / "shorts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    taken: set[str] = set()
+    for entry in entries:
+        name = f"{int(entry['match_index']):02d}_short{int(entry['index'])}.mp4"
+        filename = ensure_unique(name, taken)
+        taken.add(filename)
+        plan = render_step.plan_cut(
+            entry["start_sec"], entry["end_sec"], info["keyframes"]
+        )
+        render_step.cut(source, out_dir / filename, plan, overwrite=args.overwrite)
+        print(
+            f"[shorts] {filename}  "
+            f"{format_timecode(plan.seek_sec, with_millis=False)} + "
+            f"{format_duration(plan.duration_sec)}"
+        )
+
+    print(f"\n[shorts] 完了: {out_dir}  ({len(entries)} 本)")
+    print(
+        "※ 無劣化カットなのでキーフレームまで手前に戻ります。"
+        "秒単位でぴったり切りたい場合だけ、再エンコードが必要です。"
+    )
+    return 0
+
+
+def cmd_captions(args) -> int:
+    """投稿文の下書きを作る。**送信はしない。**"""
+    manifest = mf.load_manifest(args.manifest)
+    event = args.event or manifest["source"].get("title") or manifest["source"]["video_id"]
+    hashtags = [t for t in (args.hashtags or "").split(",") if t.strip()]
+
+    out_dir = Path(args.out_dir) / build_event_dirname(event) / "captions"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for segment in mf.renderable_segments(manifest):
+        context = caption_step.CaptionContext(
+            event=event,
+            index=segment["index"],
+            red=segment.get("red"),
+            blue=segment.get("blue"),
+            result=segment.get("result"),
+            note=segment.get("note"),
+            **({"hashtags": hashtags} if hashtags else {}),
+        )
+        target = out_dir / f"{segment['index']:02d}.txt"
+        target.write_text(caption_step.render_text(context), encoding="utf-8")
+        print(f"[captions] {target.name}  {caption_step.youtube_title(context)}")
+
+    print(f"\n[captions] 下書き: {out_dir}")
+    print("★ これは下書きです。投稿・公開はオーナー承認後に人間が行ってください。")
+    return 0
+
+
 def cmd_report(args) -> int:
     """検出結果を正解と突き合わせ、書き出したMP4も点検して数値で出す。"""
     manifest = mf.load_manifest(args.manifest)
@@ -485,6 +679,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_rep.add_argument("--min-overlap", type=float, default=0.3, help="対応とみなす重なりの割合")
     p_rep.add_argument("--quick", action="store_true", help="全編デコード検査を省く")
     p_rep.set_defaults(func=cmd_report)
+
+    p_card = sub.add_parser("card", help="対戦表から選手名を入れる")
+    p_card.add_argument("--manifest", required=True)
+    p_card.add_argument("--card", required=True, help="対戦表 YAML（matches: に上から順に書く）")
+    p_card.add_argument("--overwrite", action="store_true", help="既に入っている名前も上書きする")
+    p_card.set_defaults(func=cmd_card)
+
+    p_hl = sub.add_parser("highlights", help="SNS向けの見どころ候補を選ぶ")
+    p_hl.add_argument("--manifest", required=True)
+    p_hl.add_argument("--video", help="元動画（既定は manifest に記録されたパス）")
+    p_hl.add_argument("--match", type=int, help="この番号の試合だけ解析する")
+    p_hl.add_argument("--top", type=int, default=3, help="1試合あたりの本数（既定3）")
+    p_hl.add_argument("--min-sec", type=float, default=15.0, dest="min_sec")
+    p_hl.add_argument("--max-sec", type=float, default=60.0, dest="max_sec")
+    p_hl.add_argument("--step", type=float, default=1.0, help="何秒ごとに測るか（既定1秒）")
+    p_hl.add_argument("--out", help="出力先（既定 work/<id>/highlights.json）")
+    p_hl.set_defaults(func=cmd_highlights)
+
+    p_rh = sub.add_parser("render-highlights", help="highlights.json どおりに短い動画を書き出す")
+    p_rh.add_argument("--highlights", required=True)
+    p_rh.add_argument("--video", help="元動画（既定は highlights.json に記録されたパス）")
+    p_rh.add_argument("--event", help="出力フォルダ名（例 第13回大会）")
+    p_rh.add_argument("--out-dir", default=str(DEFAULT_OUT_ROOT))
+    p_rh.add_argument("--overwrite", action="store_true")
+    p_rh.set_defaults(func=cmd_render_highlights)
+
+    p_cap = sub.add_parser("captions", help="投稿文の下書きを作る（送信はしない）")
+    p_cap.add_argument("--manifest", required=True)
+    p_cap.add_argument("--event", help="大会名（例 第13回大会）")
+    p_cap.add_argument("--out-dir", default=str(DEFAULT_OUT_ROOT))
+    p_cap.add_argument("--hashtags", help="カンマ区切り（既定 UIZIN,格闘技,アマチュア格闘技）")
+    p_cap.set_defaults(func=cmd_captions)
 
     p_ren = sub.add_parser("render", help="segments.json どおりにMP4を書き出す")
     p_ren.add_argument("--manifest", required=True)
