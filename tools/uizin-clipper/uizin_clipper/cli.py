@@ -7,7 +7,9 @@
   detect         試合区間を検出して segments.json を作る
   list           segments.json を人が読める形で表示する
   card           対戦表（card.yml）から選手名を入れる
+  refine         ゴングで開始位置を数秒だけ寄せる
   render         segments.json どおりに無劣化MP4を書き出す
+  vertical       書き出したMP4を9:16にする（再エンコード・任意）
   highlights     1試合の中からSNS向けの見どころ候補を選ぶ
   captions       投稿文の下書きを作る（送信はしない）
   run            download → detect → render を一気に実行する
@@ -26,6 +28,7 @@ from .card import apply_card, parse_card
 from .evaluate import Interval, evaluate, load_truth
 from .highlight import HighlightParams, combine_scores, pick_highlights
 from .naming import build_clip_filename, build_event_dirname, ensure_unique
+from .onset import OnsetParams, refine_start
 from .profile import Profile, load_profile, save_profile
 from .shellcmd import CommandFailedError, ToolMissingError
 from .steps import calibrate as calib
@@ -37,6 +40,7 @@ from .steps import probe as probe_step
 from .steps import render as render_step
 from .steps import samematch
 from .steps import score as score_step
+from .steps import vertical as vertical_step
 from .steps.segment import detect_segments, merge_rounds
 from .timecode import format_duration, format_timecode, parse_timecode
 
@@ -346,6 +350,92 @@ def cmd_card(args) -> int:
         )
         print(f"  {segment['index']:02d}  {filename}")
     print("\n名前が違っていたら segments.json を直して \"locked\": true を付けてください。")
+    return 0
+
+
+def cmd_refine(args) -> int:
+    """ゴング（試合開始の合図）で開始位置を数秒だけ寄せる。
+
+    スコアボードで決めた位置の**前後数秒だけ**を探す。範囲を絞ることが安全装置。
+    立ち上がりが見つからなければ動かさない。`locked` の区間は触らない。
+    """
+    manifest = mf.load_manifest(args.manifest)
+    source = Path(args.video) if args.video else Path(manifest["source"]["path"])
+    if not source.exists():
+        raise FileNotFoundError(f"元動画がありません: {source}（--video で指定できます）")
+
+    params = OnsetParams(search_sec=args.window)
+    step = 0.25  # ゴングは一瞬なので、見どころ抽出より細かく測る
+    moved_count = 0
+
+    for segment in manifest["segments"]:
+        if segment.get("locked"):
+            print(f"  {segment['index']:02d}  locked のため触りません")
+            continue
+
+        core_start = float(segment.get("core_start_sec", segment["start_sec"]))
+        window_start = max(0.0, core_start - params.search_sec)
+        window_length = params.search_sec * 2
+
+        values = loudness_step.measure(
+            source, start_sec=window_start, duration_sec=window_length, step_sec=step
+        )
+        if not values:
+            print(f"  {segment['index']:02d}  音が読めませんでした")
+            continue
+
+        moved, shift = refine_start(
+            core_start, values, params, step_sec=step, window_start_sec=window_start
+        )
+        if shift is None:
+            print(f"  {segment['index']:02d}  はっきりした合図なし → 動かしません")
+            continue
+
+        # 前のりしろを保ったまま、全体を同じだけずらす
+        segment["core_start_sec"] = round(moved, 3)
+        segment["start_sec"] = round(float(segment["start_sec"]) + shift, 3)
+        mf.normalize_segment(segment)
+        moved_count += 1
+        print(
+            f"  {segment['index']:02d}  {shift:+.2f}秒 寄せました → "
+            f"{format_timecode(segment['start_sec'], with_millis=False)}"
+        )
+
+    mf.save_manifest(args.manifest, manifest)
+    print(f"\n[refine] {moved_count} 件の開始位置を調整しました。")
+    print("納得できない区間は segments.json を直して \"locked\": true を付けてください。")
+    return 0
+
+
+def cmd_vertical(args) -> int:
+    """書き出し済みのMP4を 9:16 に変換する。**再エンコードするので画質は落ちる。**"""
+    source_dir = Path(args.in_dir)
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"フォルダがありません: {source_dir}")
+
+    files = sorted(p for p in source_dir.glob("*.mp4") if p.is_file())
+    if not files:
+        print(f"MP4がありません: {source_dir}")
+        return 1
+
+    out_dir = Path(args.out_dir) if args.out_dir else source_dir / "vertical"
+    print(f"■ 9:16 変換  {len(files)} 本  埋め方={args.fill}")
+    print("※ 再エンコードします。元の横型（無劣化）はそのまま残ります。")
+
+    for path in files:
+        target = out_dir / path.name
+        vertical_step.convert(
+            path,
+            target,
+            fill=args.fill,
+            target_width=args.width,
+            target_height=args.height,
+            crf=args.crf,
+            overwrite=args.overwrite,
+        )
+        print(f"[vertical] {target.name}")
+
+    print(f"\n[vertical] 完了: {out_dir}")
     return 0
 
 
@@ -685,6 +775,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_card.add_argument("--card", required=True, help="対戦表 YAML（matches: に上から順に書く）")
     p_card.add_argument("--overwrite", action="store_true", help="既に入っている名前も上書きする")
     p_card.set_defaults(func=cmd_card)
+
+    p_ref = sub.add_parser("refine", help="ゴングで開始位置を数秒だけ寄せる")
+    p_ref.add_argument("--manifest", required=True)
+    p_ref.add_argument("--video", help="元動画（既定は manifest に記録されたパス）")
+    p_ref.add_argument("--window", type=float, default=6.0, help="前後何秒まで探すか（既定6秒）")
+    p_ref.set_defaults(func=cmd_refine)
+
+    p_vert = sub.add_parser("vertical", help="書き出したMP4を9:16にする（再エンコード）")
+    p_vert.add_argument("--in-dir", required=True, help="横型MP4の入っているフォルダ")
+    p_vert.add_argument("--out-dir", help="出力先（既定 <in-dir>/vertical）")
+    p_vert.add_argument("--fill", choices=list(vertical_step.FILLS), default="blur")
+    p_vert.add_argument("--width", type=int, default=vertical_step.TARGET_WIDTH)
+    p_vert.add_argument("--height", type=int, default=vertical_step.TARGET_HEIGHT)
+    p_vert.add_argument("--crf", type=int, default=20, help="小さいほど高画質・大きいファイル")
+    p_vert.add_argument("--overwrite", action="store_true")
+    p_vert.set_defaults(func=cmd_vertical)
 
     p_hl = sub.add_parser("highlights", help="SNS向けの見どころ候補を選ぶ")
     p_hl.add_argument("--manifest", required=True)
