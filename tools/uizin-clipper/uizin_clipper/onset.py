@@ -34,6 +34,18 @@ class OnsetParams:
     単位は、その窓の中での偏差値。1.0 は「ばらつき1つぶん跳ねた」という意味。
     """
 
+    min_deviation: float = 0.005
+    """窓の中の音量のばらつきがこれ未満なら、最初から探さない。
+
+    ★偏差値は「ばらつきで割る」ので、**ばらつきがほぼゼロだと計算上の微小な揺れが
+      巨大な跳ねに化ける**。4時間素材で実際に起きた:
+        ばらつき 0.000001 の平坦な音に対して、2件の開始位置が誤って動いた。
+      ゼロ割り防止（1e-12）だけでは足りず、**音量の実寸での下限**が要る。
+
+      音量は 0.0〜1.0。本物のゴングなら 0.02 → 0.3 のように跳ねるので、
+      その窓のばらつきは 0.05 以上になる。0.005 はその10分の1で、十分に安全側。
+    """
+
 
 def find_onset(
     values: list[float],
@@ -55,9 +67,10 @@ def find_onset(
     count = len(values)
     mean = sum(values) / count
     variance = sum((v - mean) ** 2 for v in values) / count
-    if variance <= 1e-12:
-        return None
     deviation = variance**0.5
+    if deviation < params.min_deviation:
+        # 平坦な音。ここで割ると微小な揺れが巨大な跳ねに化けるので、探さない。
+        return None
     normalized = [(v - mean) / deviation for v in values]
 
     best_position = None
