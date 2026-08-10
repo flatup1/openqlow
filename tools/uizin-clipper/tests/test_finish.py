@@ -243,3 +243,28 @@ class CaptionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StaleNamesTest(unittest.TestCase):
+    """★選手名を入れて書き出し直すと、名前なしの古いMP4が残る。
+
+    12試合なのに24本並ぶことになり、間違ったほうを投稿する事故につながる。
+    """
+
+    def test_old_unnamed_files_are_reported(self) -> None:
+        from uizin_clipper.naming import stale_names  # noqa: PLC0415
+
+        existing = ["01.mp4", "01_赤vs青.mp4", "02.mp4", "02_赤2vs青2.mp4"]
+        produced = {"01_赤vs青.mp4", "02_赤2vs青2.mp4"}
+
+        self.assertEqual(stale_names(existing, produced), ["01.mp4", "02.mp4"])
+
+    def test_nothing_stale_when_names_match(self) -> None:
+        from uizin_clipper.naming import stale_names  # noqa: PLC0415
+
+        self.assertEqual(stale_names(["01.mp4"], {"01.mp4"}), [])
+
+    def test_result_is_sorted(self) -> None:
+        from uizin_clipper.naming import stale_names  # noqa: PLC0415
+
+        self.assertEqual(stale_names(["03.mp4", "01.mp4"], set()), ["01.mp4", "03.mp4"])

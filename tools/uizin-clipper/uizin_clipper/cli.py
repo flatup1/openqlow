@@ -27,7 +27,7 @@ from . import manifest as mf
 from .card import apply_card, parse_card
 from .evaluate import Interval, evaluate, load_truth
 from .highlight import HighlightParams, combine_scores, pick_highlights
-from .naming import build_clip_filename, build_event_dirname, ensure_unique
+from .naming import build_clip_filename, build_event_dirname, ensure_unique, stale_names
 from .onset import OnsetParams, refine_start
 from .profile import Profile, load_profile, save_profile
 from .shellcmd import CommandFailedError, ToolMissingError
@@ -330,6 +330,7 @@ def cmd_render(args) -> int:
         )
 
     print(f"\n[render] 完了: {out_dir}  ({len(targets)} 本)")
+    warn_about_stale(out_dir, taken, prune=getattr(args, "prune", False))
     return 0
 
 
@@ -569,6 +570,7 @@ def cmd_render_highlights(args) -> int:
         )
 
     print(f"\n[shorts] 完了: {out_dir}  ({len(entries)} 本)")
+    warn_about_stale(out_dir, taken, prune=getattr(args, "prune", False))
     print(
         "※ 無劣化カットなのでキーフレームまで手前に戻ります。"
         "秒単位でぴったり切りたい場合だけ、再エンコードが必要です。"
@@ -602,6 +604,29 @@ def cmd_captions(args) -> int:
     print(f"\n[captions] 下書き: {out_dir}")
     print("★ これは下書きです。投稿・公開はオーナー承認後に人間が行ってください。")
     return 0
+
+
+def warn_about_stale(out_dir: Path, produced: set[str], *, prune: bool) -> None:
+    """今回作らなかったMP4が残っていたら知らせる（既定では消さない）。
+
+    ★選手名を入れて書き出し直すと `01.mp4` と `01_赤選手vs青選手.mp4` が両方残り、
+      12試合なのに24本並ぶ。**間違ったほうを投稿する事故**につながるので必ず知らせる。
+    """
+    leftovers = stale_names([p.name for p in out_dir.glob("*.mp4")], produced)
+    if not leftovers:
+        return
+
+    print(f"\n⚠ 今回作らなかったMP4が {len(leftovers)} 本残っています（古い書き出し）:")
+    for name in leftovers:
+        print(f"    {name}")
+
+    if not prune:
+        print("  中身を確かめて、要らなければ削除してください（--prune で自動削除）。")
+        return
+
+    for name in leftovers:
+        (out_dir / name).unlink()
+    print(f"  --prune 指定のため削除しました（{len(leftovers)} 本）。")
 
 
 def cmd_report(args) -> int:
@@ -809,6 +834,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_rh.add_argument("--event", help="出力フォルダ名（例 第13回大会）")
     p_rh.add_argument("--out-dir", default=str(DEFAULT_OUT_ROOT))
     p_rh.add_argument("--overwrite", action="store_true")
+    p_rh.add_argument("--prune", action="store_true", help="今回作らなかった古いMP4を削除する")
     p_rh.set_defaults(func=cmd_render_highlights)
 
     p_cap = sub.add_parser("captions", help="投稿文の下書きを作る（送信はしない）")
@@ -824,6 +850,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ren.add_argument("--event", help="出力フォルダ名（例 第13回大会）")
     p_ren.add_argument("--out-dir", default=str(DEFAULT_OUT_ROOT))
     p_ren.add_argument("--overwrite", action="store_true")
+    p_ren.add_argument("--prune", action="store_true", help="今回作らなかった古いMP4を削除する")
     p_ren.set_defaults(func=cmd_render)
 
     p_run = sub.add_parser("run", help="取得→検出→書き出しを一気に実行する")
@@ -834,6 +861,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--force", action="store_true", help="解析キャッシュを使わず検出し直す")
     p_run.add_argument("--force-download", action="store_true", help="動画を取り直す")
     p_run.add_argument("--overwrite", action="store_true", help="既にあるMP4も書き直す")
+    p_run.add_argument("--prune", action="store_true", help="今回作らなかった古いMP4を削除する")
     p_run.add_argument(
         "--stop-after",
         choices=["detect", "render"],

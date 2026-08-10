@@ -75,6 +75,17 @@ def build_clip_filename(
     return f"{stem}.{suffix}"
 
 
+def stale_names(existing: list[str], produced: set[str]) -> list[str]:
+    """出力フォルダに残っている「今回作らなかったファイル」を返す。
+
+    ★選手名を入れて書き出し直すと、`01.mp4` と `01_赤選手vs青選手.mp4` が
+      両方フォルダに残る。12試合なのに24本並ぶことになり、
+      **間違ったほうを投稿する事故につながる。**
+      消すかどうかは人間が決めるので、ここでは「これは古い」と教えるだけ。
+    """
+    return sorted(name for name in existing if name not in produced)
+
+
 def ensure_unique(name: str, taken: set[str]) -> str:
     """同名が既にあるときだけ `_2` `_3` を足す。呼び出し側で taken を更新すること。"""
     if name not in taken:
