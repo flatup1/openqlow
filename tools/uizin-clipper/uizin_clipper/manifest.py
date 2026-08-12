@@ -119,6 +119,54 @@ def normalize_segment(segment: dict) -> dict:
     return segment
 
 
+def resolve_overlaps(segments: list[dict], *, duration_sec: float | None = None) -> list[str]:
+    """隣同士が重なっていたら中間点で分け、動画の外へはみ出していたら戻す。
+
+    直した内容の説明を返す（何も直さなければ空）。
+
+    ★`detect` は のりしろ が重なったときに中間点で分けています。しかし `refine` は
+      そのあとに境界を動かすので、**そこで重なりが復活します**。実測で確認:
+
+        1本目の終了 300秒 → 304秒（ゴングへ +4.0秒 寄せた）
+        2本目の開始 303秒 のまま  → 1秒ぶん、同じ映像が2本に入る
+
+      同じ理由で、動画の尺を超える位置へ動くこともあります（尺500秒に対して502秒）。
+      **境界を動かす処理のあとには、必ずここを通すこと。**
+    """
+    notes: list[str] = []
+    ordered = sorted(segments, key=lambda s: float(s["start_sec"]))
+
+    for segment in ordered:
+        if float(segment["start_sec"]) < 0.0:
+            notes.append(f"{segment['index']:02d} 開始が0秒より前だったので戻しました")
+            segment["start_sec"] = 0.0
+            normalize_segment(segment)
+        if duration_sec is not None and float(segment["end_sec"]) > duration_sec:
+            notes.append(f"{segment['index']:02d} 終了が動画の尺を超えていたので戻しました")
+            segment["end_sec"] = duration_sec
+            normalize_segment(segment)
+
+    for previous, current in zip(ordered, ordered[1:]):
+        if float(current["start_sec"]) >= float(previous["end_sec"]):
+            continue
+        # 中間点は「試合そのもの」の境目で取る。のりしろ同士の重なりなので、
+        # 中身のある部分（core）を基準にしたほうが、どちらの試合も欠けない。
+        previous_core = float(previous.get("core_end_sec", previous["end_sec"]))
+        current_core = float(current.get("core_start_sec", current["start_sec"]))
+        midpoint = (previous_core + current_core) / 2.0
+        midpoint = max(previous_core, min(current_core, midpoint))
+        notes.append(
+            f"{previous['index']:02d} と {current['index']:02d} が重なっていたので"
+            f" {format_timecode(midpoint, with_millis=False)} で分けました"
+        )
+        previous["end_sec"] = midpoint
+        current["start_sec"] = midpoint
+        normalize_segment(previous)
+        normalize_segment(current)
+
+    return notes
+
+
 def renumber(segments: list[dict]) -> list[dict]:
     """開始時刻順に並べ替えて 1 から採番し直し、派生値も更新する。"""
     ordered = sorted(segments, key=lambda s: float(s["start_sec"]))

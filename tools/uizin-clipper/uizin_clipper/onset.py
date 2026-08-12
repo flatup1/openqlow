@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .stats import MIN_DEVIATION, normalize
+
 
 @dataclass
 class OnsetParams:
@@ -34,7 +36,7 @@ class OnsetParams:
     単位は、その窓の中での偏差値。1.0 は「ばらつき1つぶん跳ねた」という意味。
     """
 
-    min_deviation: float = 0.005
+    min_deviation: float = MIN_DEVIATION
     """窓の中の音量のばらつきがこれ未満なら、最初から探さない。
 
     ★偏差値は「ばらつきで割る」ので、**ばらつきがほぼゼロだと計算上の微小な揺れが
@@ -64,15 +66,12 @@ def find_onset(
         return None
 
     # 窓の中で正規化する。会場の音量そのものではなく「跳ね方」だけを見たいため。
-    count = len(values)
-    mean = sum(values) / count
-    variance = sum((v - mean) ** 2 for v in values) / count
-    deviation = variance**0.5
-    if deviation < params.min_deviation:
+    normalized = normalize(values, min_deviation=params.min_deviation)
+    if normalized is None:
         # 平坦な音。ここで割ると微小な揺れが巨大な跳ねに化けるので、探さない。
         return None
-    normalized = [(v - mean) / deviation for v in values]
 
+    count = len(values)
     best_position = None
     best_jump = 0.0
     for position in range(span, count - span):

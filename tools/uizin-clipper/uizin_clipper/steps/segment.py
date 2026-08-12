@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
+from ..matchshape import MatchShape
+
 
 @dataclass(frozen=True)
 class SegmentParams:
@@ -44,8 +46,16 @@ class SegmentParams:
       `round_gap_sec`(90) より小さくしておくこと。試合間の休憩へ食い込むと隣の試合が混ざる。
     """
 
-    long_segment_sec: float = 1200.0
-    """これを超える区間は flags に too_long を立てて人間に見てもらう。"""
+    long_segment_sec: float = MatchShape().max_expected_sec()
+    """これを超える区間は flags に too_long を立てて人間に見てもらう。
+
+    ★大会の進行から決まる値（`matchshape.MatchShape`）をそのまま使う。
+      1ラウンド1分30秒×2 ＋ インターバル1分 = 4分00秒。余白を足して 5分30秒。
+
+      以前は 1200秒（20分）だった。緩すぎて、2試合が繋がった8分の区間を
+      見逃していた。さらに `list` 側が別の基準で「長すぎます」と言うようになり、
+      **同じ名前で違う基準が2か所にある**状態になっていたので1本化した。
+    """
 
     round_gap_sec: float = 90.0
     """ラウンド間としてありえる最大の途切れ。

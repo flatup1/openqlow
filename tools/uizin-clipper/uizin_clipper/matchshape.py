@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .stats import MIN_DEVIATION, mean_and_deviation
+
 
 @dataclass(frozen=True)
 class MatchShape:
@@ -81,7 +83,7 @@ class KoHintParams:
     min_spike: float = 1.2
     """この偏差値以上跳ねていれば「大きな歓声があった」とみなす。"""
 
-    min_deviation: float = 0.005
+    min_deviation: float = MIN_DEVIATION
     """音量のばらつきがこれ未満なら判定しない。
 
     ★偏差値は「ばらつきで割る」ので、平坦だと微小な揺れが巨大な跳ねに化ける。
@@ -104,12 +106,12 @@ def ending_spike(values: list[float], params: KoHintParams, *, step_sec: float) 
     if len(values) < 4:
         return None
 
-    count = len(values)
-    mean = sum(values) / count
-    deviation = (sum((v - mean) ** 2 for v in values) / count) ** 0.5
+    mean, deviation = mean_and_deviation(values)
     if deviation < params.min_deviation:
         # 平坦な音。ここで割ると微小な揺れが巨大な跳ねに化ける。
         return None
+
+    count = len(values)
 
     span = max(1, int(round(params.ending_span_sec / step_sec)))
     span = min(span, count - 1)

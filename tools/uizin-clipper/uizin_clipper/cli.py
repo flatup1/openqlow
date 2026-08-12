@@ -149,20 +149,27 @@ def print_segments(manifest: dict) -> None:
         numbers = ", ".join("{:02d}".format(s["index"]) for s in low)
         print(f"\n※ 確認推奨: {numbers} （一致度が低い区間）")
 
-    print_shape_warnings(segments)
+    # 検出時に使った基準を manifest から読む。無ければ既定値。
+    recorded = (manifest.get("profile") or {}).get("params") or {}
+    print_shape_warnings(segments, recorded.get("min_duration_sec"))
 
 
-def print_shape_warnings(segments: list[dict]) -> None:
+def print_shape_warnings(segments: list[dict], min_duration_sec: float | None = None) -> None:
     """大会の進行から見ておかしい長さの区間を知らせる。
 
     UIZIN大会は 1ラウンド1分30秒×2、インターバル1分。試合そのものは最長4分。
     ★消さずに知らせるだけ。延長や中断など、本当に特殊な試合を黙って消さないため。
+
+    `min_duration_sec` は検出に使った値を渡す。★渡さずに既定値を使うと、
+    プロファイルで基準を変えている場合に **検出と表示で言うことが食い違う**。
     """
     shape = MatchShape()
+    if min_duration_sec is None:
+        min_duration_sec = SegmentParams().min_duration_sec
     suspicious = []
     for segment in segments:
         flags = duration_flags(
-            float(segment["duration_sec"]), shape, min_duration_sec=SegmentParams().min_duration_sec
+            float(segment["duration_sec"]), shape, min_duration_sec=min_duration_sec
         )
         if flags:
             suspicious.append((segment, flags))
@@ -327,7 +334,18 @@ def cmd_detect(args) -> int:
 
     manifest = mf.build_manifest(
         source=source_meta,
-        profile={"name": profile.name, "path": str(Path(args.profile))},
+        profile={
+            "name": profile.name,
+            "path": str(Path(args.profile)),
+            # ★検出に使った基準を残す。あとから list や report が同じ基準で
+            #   話せるようにするため。残さないと、表示だけ既定値で判断してしまう。
+            "params": {
+                "min_duration_sec": profile.segment.min_duration_sec,
+                "post_roll_sec": profile.segment.post_roll_sec,
+                "round_gap_sec": profile.segment.round_gap_sec,
+                "long_segment_sec": profile.segment.long_segment_sec,
+            },
+        },
         segments=merged,
     )
     mf.save_manifest(manifest_path, manifest)
@@ -480,6 +498,19 @@ def cmd_refine(args) -> int:
             f"  {segment['index']:02d}  終了: {end_shift:+.2f}秒 後ろへ寄せました → "
             f"{format_timecode(segment['end_sec'], with_millis=False)}"
         )
+
+    # ★境界を動かしたあとは必ず整える。動かした結果、隣と重なったり
+    #   動画の外へはみ出したりする（実測で確認済み）。
+    duration_sec = None
+    try:
+        duration_sec = probe_step.load_or_probe(source, Path(args.manifest).resolve().parent)[
+            "duration_sec"
+        ]
+    except (CommandFailedError, ToolMissingError, KeyError, OSError):
+        print("  ※ 動画の尺が読めないので、尺のはみ出しは確認できませんでした")
+
+    for note in mf.resolve_overlaps(manifest["segments"], duration_sec=duration_sec):
+        print(f"  整えました: {note}")
 
     mf.save_manifest(args.manifest, manifest)
     print(f"\n[refine] {moved_count} 件の境界を調整しました。")

@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-from ..shellcmd import run
+from ..shellcmd import CommandFailedError, ToolMissingError, run
 
 # yt-dlp の -f 指定: 横動画のmp4を優先し、無ければ最良のものにフォールバック
 #
@@ -114,16 +114,21 @@ def classify_leftovers(names: list[str]) -> tuple[list[str], list[str]]:
 
 def has_video_stream(path: Path) -> bool:
     """ffprobe で映像が入っているか確かめる。"""
-    out = run(
-        [
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=codec_type",
-            "-of", "csv=p=0",
-            str(path),
-        ],
-        quiet=True,
-    ).strip()
+    try:
+        out = run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                str(path),
+            ],
+            quiet=True,
+        ).strip()
+    except (CommandFailedError, ToolMissingError, OSError):
+        # ★読めないファイルを「映像あり」にはしない。ここで例外を投げると、
+        #   救済処理そのものが止まって、隣にある正常な映像まで使えなくなる。
+        return False
     return out.startswith("video")
 
 
@@ -190,8 +195,10 @@ def download(
     )
     try:
         run(command, capture=False)
-    except Exception:
+    except CommandFailedError:
         # ★失敗の理由をここで説明する。エラー文だけでは次に何をすべきか分からない。
+        #   ただし「yt-dlp が入っていない」場合にこの案内を出すと、
+        #   YouTube のせいだと誤解させる。取得を試して断られたときだけ出す。
         print(f"\n{BLOCKED_HINT}\n")
         raise
 
