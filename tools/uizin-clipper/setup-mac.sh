@@ -47,11 +47,29 @@ fi
 # ---------------------------------------------------------------- 2. Homebrew
 step "2/5  Homebrew（道具を入れるための道具）"
 
+# ★このスクリプトの中で PATH を直すだけでは足りない。
+#   利用者が普段使うターミナルにも登録しないと、次に開いたとき ffmpeg が消える。
+#   実機で起きた: セットアップは「ffmpeg 入っています」と出たのに、
+#   本人のターミナルでは `zsh: command not found: ffmpeg`。
+#   yt-dlp は映像と音声の合体を ffmpeg にやらせるので、
+#   **合体だけが黙って抜けた状態**になり、原因が非常に分かりにくかった。
+remember_brew() {
+    local line="eval \"\$($1 shellenv)\""
+    for profile in "$HOME/.zprofile" "$HOME/.zshrc"; do
+        if [ -f "$profile" ] && grep -qF "$line" "$profile" 2>/dev/null; then
+            return 0   # すでに書いてある。二重に足さない。
+        fi
+    done
+    echo "$line" >> "$HOME/.zprofile"
+    todo "次回以降も使えるよう $HOME/.zprofile に登録しました"
+}
+
 if ! command -v brew >/dev/null 2>&1; then
     # インストール済みだがPATHに無いだけ、という場合を先に救う
     for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
         if [ -x "$candidate" ]; then
             eval "$("$candidate" shellenv)"
+            remember_brew "$candidate"
             break
         fi
     done
@@ -59,6 +77,7 @@ fi
 
 if command -v brew >/dev/null 2>&1; then
     ok "入っています（$(brew --version | head -1)）"
+    remember_brew "$(command -v brew)"
 else
     todo "入れます。${BOLD}Macのログインパスワード${OFF}を聞かれます。"
     echo "   （打っても画面には何も出ませんが、入力されています）"
@@ -68,8 +87,8 @@ else
     }
     for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
         if [ -x "$candidate" ]; then
-            echo "eval \"\$($candidate shellenv)\"" >> "$HOME/.zprofile"
             eval "$("$candidate" shellenv)"
+            remember_brew "$candidate"
             break
         fi
     done
@@ -85,6 +104,16 @@ else
     todo "入れます。${BOLD}5〜15分かかります${OFF}（部品が多いので）。"
     brew install ffmpeg || { ng "ffmpeg のインストールに失敗しました。"; exit 1; }
     ok "入りました"
+fi
+
+# ★このスクリプトから見えるだけでは不十分。利用者が普段開くターミナルから見えるか確かめる。
+if zsh -lc 'command -v ffmpeg' >/dev/null 2>&1; then
+    ok "普段のターミナルからも使えます"
+else
+    ng "このスクリプトからは見えますが、普段のターミナルからは見えません。"
+    echo "  この状態だと、映像と音声の合体が黙って抜けます（実機で発生）。"
+    echo "  ターミナルを一度閉じて開き直してから、もう一度実行してください。"
+    exit 1
 fi
 
 # ---------------------------------------------------------------- 4. コード

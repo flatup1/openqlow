@@ -75,6 +75,25 @@ class SetupScriptTest(unittest.TestCase):
         """
         self.assertIn("source .venv/bin/activate", self.text)
 
+    def test_brew_path_is_registered_for_the_users_own_terminal(self) -> None:
+        """★スクリプトの中で PATH を直すだけでは足りない（実機で発生）。
+
+        セットアップは「ffmpeg 入っています」と出たのに、本人のターミナルでは
+        `zsh: command not found: ffmpeg` だった。yt-dlp は映像と音声の合体を
+        ffmpeg にやらせるので、**合体だけが黙って抜けた**状態になり、
+        「音声だけのファイルができた」という分かりにくい形で表面化した。
+        """
+        self.assertIn("remember_brew", self.code)
+        self.assertIn(".zprofile", self.code)
+
+    def test_registration_does_not_pile_up(self) -> None:
+        """何度実行しても .zprofile に同じ行が積み上がらないこと。"""
+        self.assertIn("grep -qF", self.code)
+
+    def test_ffmpeg_is_checked_from_a_login_shell(self) -> None:
+        """★このスクリプトから見えるかではなく、普段のターミナルから見えるかを確かめる。"""
+        self.assertIn("zsh -lc", self.code)
+
     def test_it_is_executable(self) -> None:
         self.assertTrue(SCRIPT.stat().st_mode & 0o111, "実行権限がありません")
 
