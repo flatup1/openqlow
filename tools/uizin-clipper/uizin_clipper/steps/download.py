@@ -42,7 +42,65 @@ def extract_video_id(url: str) -> str:
     return safe
 
 
-def download(url: str, work_dir: Path, *, force: bool = False) -> Path:
+def build_command(
+    url: str,
+    work_dir: Path,
+    *,
+    cookies_from_browser: str | None = None,
+    extra_args: list[str] | None = None,
+) -> list[str]:
+    """yt-dlp に渡すコマンドを組み立てる（純関数・テストできる形）。
+
+    ★追加の指定を通せるようにしてあるのは、**YouTube 側の締め付けが変わるから**です。
+      ここを固定してしまうと、YouTube が対策を変えるたびにコード修正が要ります。
+      渡し口を用意しておけば、その場で回避できます。
+    """
+    command = [
+        "yt-dlp",
+        "-f", FORMAT_SELECTOR,
+        "--merge-output-format", "mp4",
+        "--write-info-json",
+        "--no-playlist",
+        "--retries", "10",
+        "--fragment-retries", "10",
+    ]
+    if cookies_from_browser:
+        command += ["--cookies-from-browser", cookies_from_browser]
+    command += list(extra_args or [])
+    command += ["-o", str(work_dir / "source.%(ext)s"), url]
+    return command
+
+
+BLOCKED_HINT = """
+YouTube に取得を断られました。動画が消えたわけではありません。
+YouTube は自動取得を止めるしくみを頻繁に変えるので、次の順に試してください。
+
+  1) yt-dlp を最新にする（これで直ることが多い）
+       python -m pip install -U --pre "yt-dlp[default]"
+
+  2) ブラウザのログイン情報を使う（YouTube で普通に見られているなら効く）
+       python -m uizin_clipper download "URL" --cookies-from-browser chrome
+     （safari / firefox / edge / brave も指定できます。そのブラウザで
+       YouTube にログインしておいてください）
+
+  3) 取りに行き方を変える
+       python -m uizin_clipper download "URL" \\
+           --yt-dlp-arg --extractor-args --yt-dlp-arg "youtube:player_client=web_safari,ios"
+
+どれでも駄目な場合は、ブラウザで手元に落とした mp4 を
+  --video そのファイル
+で直接渡せます。以降の処理は同じように動きます。
+""".strip()
+
+
+def download(
+    url: str,
+    work_dir: Path,
+    *,
+    force: bool = False,
+    cookies_from_browser: str | None = None,
+    extra_args: list[str] | None = None,
+) -> Path:
     """work_dir/source.mp4 を用意して返す。"""
     work_dir.mkdir(parents=True, exist_ok=True)
     target = work_dir / "source.mp4"
@@ -51,20 +109,18 @@ def download(url: str, work_dir: Path, *, force: bool = False) -> Path:
         print(f"[download] 既にあるので取得を省略: {target}")
         return target
 
-    run(
-        [
-            "yt-dlp",
-            "-f", FORMAT_SELECTOR,
-            "--merge-output-format", "mp4",
-            "--write-info-json",
-            "--no-playlist",
-            "--retries", "10",
-            "--fragment-retries", "10",
-            "-o", str(work_dir / "source.%(ext)s"),
-            url,
-        ],
-        capture=False,
+    command = build_command(
+        url,
+        work_dir,
+        cookies_from_browser=cookies_from_browser,
+        extra_args=extra_args,
     )
+    try:
+        run(command, capture=False)
+    except Exception:
+        # ★失敗の理由をここで説明する。エラー文だけでは次に何をすべきか分からない。
+        print(f"\n{BLOCKED_HINT}\n")
+        raise
 
     if not target.exists():
         # コンテナが mp4 にならなかった場合の救済

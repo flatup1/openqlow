@@ -71,7 +71,13 @@ def resolve_source(args, work_root: Path) -> tuple[Path, Path, str]:
     if getattr(args, "url", None):
         video_id = dl.extract_video_id(args.url)
         work_dir = work_root / video_id
-        video = dl.download(args.url, work_dir, force=getattr(args, "force_download", False))
+        video = dl.download(
+            args.url,
+            work_dir,
+            force=getattr(args, "force_download", False),
+            cookies_from_browser=getattr(args, "cookies_from_browser", None),
+            extra_args=getattr(args, "yt_dlp_arg", None),
+        )
         return video, work_dir, video_id
 
     video = Path(args.video).expanduser().resolve()
@@ -143,7 +149,13 @@ def print_segments(manifest: dict) -> None:
 def cmd_download(args) -> int:
     work_root = Path(args.work_dir)
     video_id = dl.extract_video_id(args.url)
-    video = dl.download(args.url, work_root / video_id, force=args.force)
+    video = dl.download(
+        args.url,
+        work_root / video_id,
+        force=args.force,
+        cookies_from_browser=args.cookies_from_browser,
+        extra_args=args.yt_dlp_arg,
+    )
     print(f"[download] 完了: {video}")
     return 0
 
@@ -718,7 +730,13 @@ def cmd_run(args) -> int:
     video_id = dl.extract_video_id(args.url)
 
     print("=== 1/3 ダウンロード ===")
-    dl.download(args.url, work_root / video_id, force=args.force_download)
+    dl.download(
+        args.url,
+        work_root / video_id,
+        force=args.force_download,
+        cookies_from_browser=args.cookies_from_browser,
+        extra_args=args.yt_dlp_arg,
+    )
 
     print("\n=== 2/3 試合検出 ===")
     args.video = None
@@ -746,15 +764,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-dir", default=str(DEFAULT_WORK_ROOT), help="作業フォルダ（既定 tools/uizin-clipper/work）")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    def add_download_options(sp):
+        """★YouTube に断られたときの逃げ道。
+
+        YouTube は自動取得を止めるしくみを頻繁に変えます。回避方法を
+        コードに埋め込むと、変わるたびに修正が必要になるので、渡し口だけ用意します。
+        """
+        sp.add_argument(
+            "--cookies-from-browser",
+            help="ブラウザのログイン情報を使う（chrome / safari / firefox / edge / brave）",
+        )
+        sp.add_argument(
+            "--yt-dlp-arg",
+            action="append",
+            metavar="ARG",
+            help="yt-dlp にそのまま渡す引数（何回でも指定できる）",
+        )
+
     def add_source(sp, *, allow_url: bool = True):
         group = sp.add_mutually_exclusive_group(required=True)
         if allow_url:
             group.add_argument("--url", help="YouTube URL")
+            add_download_options(sp)
         group.add_argument("--video", help="ローカル動画ファイル")
 
     p_dl = sub.add_parser("download", help="大会動画を取得する")
     p_dl.add_argument("url")
     p_dl.add_argument("--force", action="store_true", help="既にあっても取り直す")
+    add_download_options(p_dl)
     p_dl.set_defaults(func=cmd_download)
 
     p_cs = sub.add_parser("contact-sheet", help="下見用の静止画を出す")
@@ -860,6 +897,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--out-dir", default=str(DEFAULT_OUT_ROOT))
     p_run.add_argument("--force", action="store_true", help="解析キャッシュを使わず検出し直す")
     p_run.add_argument("--force-download", action="store_true", help="動画を取り直す")
+    add_download_options(p_run)
     p_run.add_argument("--overwrite", action="store_true", help="既にあるMP4も書き直す")
     p_run.add_argument("--prune", action="store_true", help="今回作らなかった古いMP4を削除する")
     p_run.add_argument(

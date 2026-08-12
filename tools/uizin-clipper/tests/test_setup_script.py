@@ -56,8 +56,17 @@ class SetupScriptTest(unittest.TestCase):
                 )
 
     def test_python_version_is_checked(self) -> None:
-        """このコードは 3.9 以上が要る。古いまま進むと後で分かりにくく壊れる。"""
-        self.assertIn("version_info", self.text)
+        """★yt-dlp が 3.9 を非推奨にした（実機で警告）。3.10 以上を要求する。
+
+        Mac に最初から入っている python3 は 3.9 のことが多い。
+        古いまま進むと、あとで分かりにくい形で壊れる。
+        """
+        self.assertIn("version_info", self.code)
+        self.assertIn("(3, 10)", self.code)
+
+    def test_an_old_place_is_rebuilt(self) -> None:
+        """★古い Python で作った置き場所が残っていると、直しても効かない。"""
+        self.assertIn("venv --clear", self.code)
 
     def test_final_instructions_use_the_dedicated_place(self) -> None:
         """★案内が `python3 -m uizin_clipper` のままだと、入れた部品を使わない。

@@ -122,20 +122,33 @@ step "5/5  Python の部品（yt-dlp / numpy / PyYAML）"
 #     ・古い pip には --break-system-packages が無く「no such option」で終わる
 #   専用の置き場所を使えば、そもそも拒否されないので回避策自体が要りません。
 
+# ★必要なのは 3.10 以上。yt-dlp が 3.9 を非推奨にしており（実機で警告が出た）、
+#   いずれ動かなくなる。Mac に最初から入っている python3 は 3.9 のことが多い。
+NEEDED='(3, 10)'
+is_new_enough() {
+    [ -x "$1" ] && [ "$("$1" -c "import sys; print(1 if sys.version_info >= $NEEDED else 0)" 2>/dev/null)" = "1" ]
+}
+
 PY="$(command -v python3 || true)"
 [ -n "$PY" ] || { ng "python3 が見つかりません"; exit 1; }
 
-if [ "$("$PY" -c 'import sys; print(1 if sys.version_info >= (3, 9) else 0)' 2>/dev/null)" != "1" ]; then
-    todo "Python が古いので新しいものを入れます（$("$PY" -V 2>&1)）"
+if ! is_new_enough "$PY"; then
+    todo "Python が古いので新しいものを入れます（今: $("$PY" -V 2>&1)）"
     brew install python || { ng "Python の導入に失敗しました。"; exit 1; }
     PY="$(brew --prefix)/bin/python3"
-    [ -x "$PY" ] || { ng "新しい Python が見つかりません: $PY"; exit 1; }
+    is_new_enough "$PY" || { ng "新しい Python が見つかりません: $PY"; exit 1; }
 fi
+ok "使う Python: $("$PY" -V 2>&1)"
 
 VENV="$TOOL_DIR/.venv"
-if [ ! -x "$VENV/bin/python" ]; then
-    todo "この道具専用の置き場所を作ります: $VENV"
-    "$PY" -m venv "$VENV" || {
+if ! is_new_enough "$VENV/bin/python"; then
+    if [ -e "$VENV" ]; then
+        # 古い Python で作った置き場所が残っている。--clear で中身だけ作り直す。
+        todo "置き場所が古い Python で作られていたので、作り直します"
+    else
+        todo "この道具専用の置き場所を作ります: $VENV"
+    fi
+    "$PY" -m venv --clear "$VENV" || {
         ng "置き場所を作れませんでした。上のエラーをそのまま貼ってください。"
         exit 1
     }

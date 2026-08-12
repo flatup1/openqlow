@@ -82,6 +82,34 @@ python -m uizin_clipper download "https://www.youtube.com/live/XXXXXXXXXXX"
 
 `work/XXXXXXXXXXX/source.mp4` に保存されます。もう一度実行しても再取得はしません。
 
+#### YouTube に断られたとき
+
+```
+WARNING: YouTube is forcing SABR streaming for this client
+ERROR: [youtube] XXXXXXXXXXX: The page needs to be reloaded.
+```
+
+**動画が消えたわけではありません。** YouTube は自動取得を止めるしくみを頻繁に変えるので、
+この種のエラーは定期的に起きます。上から順に試してください。
+
+```bash
+# 1) yt-dlp を最新にする（これで直ることが多い）
+python -m pip install -U --pre "yt-dlp[default]"
+
+# 2) ブラウザのログイン情報を使う（そのブラウザで YouTube にログインしておく）
+python -m uizin_clipper download "URL" --cookies-from-browser chrome
+
+# 3) 取りに行き方を変える
+python -m uizin_clipper download "URL" \
+    --yt-dlp-arg --extractor-args --yt-dlp-arg "youtube:player_client=web_safari,ios"
+```
+
+> ★回避方法をコードに埋め込まず、`--yt-dlp-arg` で**その場で渡せる形**にしてあります。
+> YouTube 側が変わるたびにコードを直すことになると、いずれ誰も追随できなくなるためです。
+
+どれでも駄目なら、ブラウザで手元に落とした mp4 を `--video そのファイル` で直接渡せます。
+**以降の処理はまったく同じように動きます**（このシステムは YouTube に依存していません）。
+
 ### ステップ2：スコアボードの位置を教える（初回だけ・約10分）
 
 ```bash
