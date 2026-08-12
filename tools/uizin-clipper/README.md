@@ -21,11 +21,17 @@ AIの推論ではなく画像の照合なので、無料・CPUだけ・結果の
 bash tools/uizin-clipper/setup-mac.sh
 ```
 
-まだこのコードを持っていない段階でも動かせます。ターミナルにこれを貼ってください。
+まだこのコードを持っていない段階では、**clone してからブランチを切り替えて**実行します。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-auto-clip-system-klrph3/tools/uizin-clipper/setup-mac.sh -o /tmp/setup-mac.sh && bash /tmp/setup-mac.sh
+git clone https://github.com/flatup1/openqlow.git ~/openqlow
+git -C ~/openqlow checkout claude/uizin-auto-clip-system-klrph3
+bash ~/openqlow/tools/uizin-clipper/setup-mac.sh
 ```
+
+> ★2行目を飛ばすと `No such file or directory` で止まります（実機で発生）。
+> このツールはまだ `main` に入っていないので、clone しただけでは
+> `setup-mac.sh` 自体が存在しません。マージ後はこの行が不要になります。
 
 開発ツール → Homebrew → ffmpeg → コード取得 → Python部品、の順に
 **入っていないものだけ**入れます。何度実行しても安全です。
@@ -34,19 +40,35 @@ curl -fsSL https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-auto-
 > ダイアログは他のウィンドウの裏に隠れがちなので、F3（Mission Control）で探してください。
 > 押して待つ（5〜20分）→ もう一度スクリプトを実行、で先に進みます。
 
+### 使うたびに必要な2行
+
+```bash
+cd ~/openqlow/tools/uizin-clipper
+source .venv/bin/activate
+```
+
+行の先頭に `(.venv)` が出れば準備完了です。**ターミナルを開き直すたびに必要**です。
+以降このREADMEの `python -m uizin_clipper ...` は、この状態で打つ前提です。
+
 ### 手で入れる場合
-
-
 
 ```bash
 # 1. ffmpeg を入れる
 brew install ffmpeg          # macOS
 sudo apt install ffmpeg      # Linux
 
-# 2. Python の依存を入れる（3つだけ）
+# 2. この道具専用の置き場所を作って、そこに依存を入れる（3つだけ）
 cd tools/uizin-clipper
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
+
+> ★システムの Python に直接入れないでください。最近の macOS は
+> `externally-managed-environment` で拒否します。`--break-system-packages` で
+> 押し通す手もありますが、**古い pip にはそのオプションが無く**（実機で発生）、
+> システム側を壊す危険もあります。専用の置き場所なら、どちらの問題も起きません。
 
 ---
 

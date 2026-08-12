@@ -113,27 +113,58 @@ TOOL_DIR="$DEST/tools/uizin-clipper"
 # ---------------------------------------------------------------- 5. 部品
 step "5/5  Python の部品（yt-dlp / numpy / PyYAML）"
 
-PIP_ARGS=(install -r "$TOOL_DIR/requirements.txt" --quiet)
-if ! python3 -m pip "${PIP_ARGS[@]}" 2>/dev/null; then
-    # 最近の macOS は外部管理エラーを出すので、その場合だけ回避オプションを付ける
-    todo "通常の方法が拒否されたので、--break-system-packages で入れ直します"
-    python3 -m pip "${PIP_ARGS[@]}" --break-system-packages || {
-        ng "部品のインストールに失敗しました。"
+# ★この道具専用の置き場所（.venv）に入れます。
+#   システムの Python を汚さないので、失敗しても元に戻せます。
+#
+#   以前は「システムの Python に直接入れる → 拒否されたら --break-system-packages」
+#   という2段構えでしたが、実機で壊れました:
+#     ・最初の失敗を 2>/dev/null で隠していたので、本当の原因が分からない
+#     ・古い pip には --break-system-packages が無く「no such option」で終わる
+#   専用の置き場所を使えば、そもそも拒否されないので回避策自体が要りません。
+
+PY="$(command -v python3 || true)"
+[ -n "$PY" ] || { ng "python3 が見つかりません"; exit 1; }
+
+if [ "$("$PY" -c 'import sys; print(1 if sys.version_info >= (3, 9) else 0)' 2>/dev/null)" != "1" ]; then
+    todo "Python が古いので新しいものを入れます（$("$PY" -V 2>&1)）"
+    brew install python || { ng "Python の導入に失敗しました。"; exit 1; }
+    PY="$(brew --prefix)/bin/python3"
+    [ -x "$PY" ] || { ng "新しい Python が見つかりません: $PY"; exit 1; }
+fi
+
+VENV="$TOOL_DIR/.venv"
+if [ ! -x "$VENV/bin/python" ]; then
+    todo "この道具専用の置き場所を作ります: $VENV"
+    "$PY" -m venv "$VENV" || {
+        ng "置き場所を作れませんでした。上のエラーをそのまま貼ってください。"
         exit 1
     }
 fi
-ok "入りました"
+
+# 古い pip のままだと新しい部品を落とせないことがあるので、先に更新する
+"$VENV/bin/python" -m pip install --upgrade pip --quiet || true
+
+# ★ここでエラーを隠さない。隠すと、次に失敗したとき原因が分からなくなる。
+"$VENV/bin/python" -m pip install -r "$TOOL_DIR/requirements.txt" --quiet || {
+    ng "部品のインストールに失敗しました。上のエラーをそのまま貼ってください。"
+    exit 1
+}
+ok "入りました（$VENV）"
 
 # ---------------------------------------------------------------- 完了
 step "セットアップ完了"
 echo
 echo "${BOLD}次にやること${OFF}"
 echo
-echo "  1) この行をコピーして実行（作業フォルダへ移動）"
+echo "  1) この2行をコピーして実行（作業フォルダへ移動して、道具を使える状態にする）"
 echo "       cd $TOOL_DIR"
+echo "       source .venv/bin/activate"
+echo
+echo "     ${BOLD}ターミナルを開き直すたびに、この2行が必要です。${OFF}"
+echo "     成功すると、行の先頭に (.venv) と出ます。"
 echo
 echo "  2) 大会動画を落とす（4時間ぶんなので20分〜1時間かかります）"
-echo "       python3 -m uizin_clipper download \"https://www.youtube.com/live/P8CCcO_wWq0\""
+echo "       python -m uizin_clipper download \"https://www.youtube.com/live/P8CCcO_wWq0\""
 echo
 echo "  3) 落ちたら、スコアボードの位置を教える作業に進みます（初回だけ・約10分）"
 echo "       README.md の「ステップ2」を見てください"
