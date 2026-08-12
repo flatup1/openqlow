@@ -109,3 +109,38 @@ def refine_start(
         # 窓の端に張り付いた＝窓の外にもっと大きい音がある可能性。動かさない。
         return current_start_sec, None
     return moved_to, shift
+
+
+def refine_end(
+    current_end_sec: float,
+    values: list[float],
+    params: OnsetParams,
+    *,
+    step_sec: float,
+    window_start_sec: float,
+) -> tuple[float, float | None]:
+    """終了位置を、終了のゴングに寄せた結果と、動かした秒数を返す。
+
+    **開始と同じ理屈です。** スコアボードが消えるのはゴングと同時とは限りません。
+    ゴングは試合終了そのものなので、そこに寄せると終わりが実際の終了に近づきます。
+
+    ★★**終了はゴングより前に動かしません。**
+      前に動かすと、決着の瞬間そのものが切り抜きから落ちます。
+      切り抜きは「決まった瞬間」が命なので、迷ったら後ろに残すのが正しい。
+      ゴングが検出位置より前に見つかった場合は、動かさずそのままにします。
+
+    動かさなかった場合は `(元の位置, None)`。
+    """
+    found = find_onset(values, params, step_sec=step_sec)
+    if found is None:
+        return current_end_sec, None
+
+    moved_to = window_start_sec + found
+    shift = moved_to - current_end_sec
+    if abs(shift) > params.search_sec:
+        # 窓の端に張り付いた＝窓の外にもっと大きい音がある可能性。動かさない。
+        return current_end_sec, None
+    if shift < 0:
+        # ゴングが検出位置より前。切り詰める方向には動かさない。
+        return current_end_sec, None
+    return moved_to, shift

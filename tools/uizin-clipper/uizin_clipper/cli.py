@@ -7,7 +7,7 @@
   detect         試合区間を検出して segments.json を作る
   list           segments.json を人が読める形で表示する
   card           対戦表（card.yml）から選手名を入れる
-  refine         ゴングで開始位置を数秒だけ寄せる
+  refine         ゴングで開始・終了を数秒だけ寄せる
   render         segments.json どおりに無劣化MP4を書き出す
   vertical       書き出したMP4を9:16にする（再エンコード・任意）
   highlights     1試合の中からSNS向けの見どころ候補を選ぶ
@@ -27,8 +27,15 @@ from . import manifest as mf
 from .card import apply_card, parse_card
 from .evaluate import Interval, evaluate, load_truth
 from .highlight import HighlightParams, combine_scores, pick_highlights
+from .matchshape import (
+    KoHintParams,
+    MatchShape,
+    duration_flags,
+    ko_hint,
+    looks_like_two_matches,
+)
 from .naming import build_clip_filename, build_event_dirname, ensure_unique, stale_names
-from .onset import OnsetParams, refine_start
+from .onset import OnsetParams, refine_end, refine_start
 from .profile import Profile, load_profile, save_profile
 from .shellcmd import CommandFailedError, ToolMissingError
 from .steps import calibrate as calib
@@ -41,7 +48,7 @@ from .steps import render as render_step
 from .steps import samematch
 from .steps import score as score_step
 from .steps import vertical as vertical_step
-from .steps.segment import detect_segments, merge_rounds
+from .steps.segment import SegmentParams, detect_segments, merge_rounds
 from .timecode import format_duration, format_timecode, parse_timecode
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -141,6 +148,37 @@ def print_segments(manifest: dict) -> None:
     if low:
         numbers = ", ".join("{:02d}".format(s["index"]) for s in low)
         print(f"\n※ 確認推奨: {numbers} （一致度が低い区間）")
+
+    print_shape_warnings(segments)
+
+
+def print_shape_warnings(segments: list[dict]) -> None:
+    """大会の進行から見ておかしい長さの区間を知らせる。
+
+    UIZIN大会は 1ラウンド1分30秒×2、インターバル1分。試合そのものは最長4分。
+    ★消さずに知らせるだけ。延長や中断など、本当に特殊な試合を黙って消さないため。
+    """
+    shape = MatchShape()
+    suspicious = []
+    for segment in segments:
+        flags = duration_flags(
+            float(segment["duration_sec"]), shape, min_duration_sec=SegmentParams().min_duration_sec
+        )
+        if flags:
+            suspicious.append((segment, flags))
+
+    if not suspicious:
+        return
+
+    print(f"\n※ 長さが目安から外れています（1試合の目安は最長 {format_duration(shape.core_sec())}）")
+    for segment, flags in suspicious:
+        reason = "長すぎます" if "too_long" in flags else "短すぎます"
+        if "too_long" in flags and looks_like_two_matches(float(segment["duration_sec"]), shape):
+            reason = "長すぎます（2試合が繋がった疑い）"
+        print(
+            f"  {segment['index']:02d}  {format_duration(segment['duration_sec'])}  → {reason}"
+        )
+    print("  中身を確認してください。自動では消しません。")
 
 
 # ---------------------------------------------------------------- コマンド
@@ -401,21 +439,50 @@ def cmd_refine(args) -> int:
             core_start, values, params, step_sec=step, window_start_sec=window_start
         )
         if shift is None:
-            print(f"  {segment['index']:02d}  はっきりした合図なし → 動かしません")
+            print(f"  {segment['index']:02d}  開始: はっきりした合図なし → 動かしません")
+        else:
+            # 前のりしろを保ったまま、全体を同じだけずらす
+            segment["core_start_sec"] = round(moved, 3)
+            segment["start_sec"] = round(float(segment["start_sec"]) + shift, 3)
+            mf.normalize_segment(segment)
+            moved_count += 1
+            print(
+                f"  {segment['index']:02d}  開始: {shift:+.2f}秒 寄せました → "
+                f"{format_timecode(segment['start_sec'], with_millis=False)}"
+            )
+
+        if args.start_only:
             continue
 
-        # 前のりしろを保ったまま、全体を同じだけずらす
-        segment["core_start_sec"] = round(moved, 3)
-        segment["start_sec"] = round(float(segment["start_sec"]) + shift, 3)
+        # ---- 終了のゴング。開始と同じ理屈だが、前へは絶対に動かさない ----
+        core_end = float(segment.get("core_end_sec", segment["end_sec"]))
+        end_window_start = max(0.0, core_end - params.search_sec)
+
+        end_values = loudness_step.measure(
+            source, start_sec=end_window_start, duration_sec=window_length, step_sec=step
+        )
+        if not end_values:
+            print(f"  {segment['index']:02d}  終了: 音が読めませんでした")
+            continue
+
+        moved_end, end_shift = refine_end(
+            core_end, end_values, params, step_sec=step, window_start_sec=end_window_start
+        )
+        if end_shift is None:
+            print(f"  {segment['index']:02d}  終了: 動かしません")
+            continue
+
+        segment["core_end_sec"] = round(moved_end, 3)
+        segment["end_sec"] = round(float(segment["end_sec"]) + end_shift, 3)
         mf.normalize_segment(segment)
         moved_count += 1
         print(
-            f"  {segment['index']:02d}  {shift:+.2f}秒 寄せました → "
-            f"{format_timecode(segment['start_sec'], with_millis=False)}"
+            f"  {segment['index']:02d}  終了: {end_shift:+.2f}秒 後ろへ寄せました → "
+            f"{format_timecode(segment['end_sec'], with_millis=False)}"
         )
 
     mf.save_manifest(args.manifest, manifest)
-    print(f"\n[refine] {moved_count} 件の開始位置を調整しました。")
+    print(f"\n[refine] {moved_count} 件の境界を調整しました。")
     print("納得できない区間は segments.json を直して \"locked\": true を付けてください。")
     return 0
 
@@ -496,6 +563,20 @@ def cmd_highlights(args) -> int:
         if not loud:
             print("  → 音声トラックがないので、動きだけで判断します。")
 
+        # ★KOらしさの「下書き」。ここで音量を測っているので、ついでに見積もる。
+        #   result は自動で確定しない。KOと判定を取り違えた切り抜きを公開する事故は、
+        #   手入力3秒で防げる。機械が「らしい」と言い、人間が決める。
+        if loud:
+            core_end = float(segment.get("core_end_sec", segment["end_sec"]))
+            core_len = max(0.0, core_end - start)
+            core_loud = loud[: max(1, int(round(core_len / step)))]
+            looks_ko, reason = ko_hint(
+                core_len, core_loud, MatchShape(), KoHintParams(), step_sec=step
+            )
+            segment["result_hint"] = "KO?" if looks_ko else ""
+            segment["result_hint_reason"] = reason
+            print(f"  勝敗の下書き: {'KOらしい' if looks_ko else '判断しない'} — {reason}")
+
         scores = combine_scores(loud or [0.0] * len(move), move, params, step_sec=step)
         picked = pick_highlights(
             scores,
@@ -541,8 +622,12 @@ def cmd_highlights(args) -> int:
         + "\n",
         encoding="utf-8",
     )
+    # 勝敗の下書き（result_hint）を書き戻す。result そのものには触らない。
+    mf.save_manifest(args.manifest, manifest)
+
     print(f"\n[highlights] {len(results)} 本の候補: {out_path}")
     print("中身を見て、要らない候補には \"skip\": true を付けてください。")
+    print("勝敗の下書きは segments.json の result_hint に入れました（確定は人間が）。")
     print(f"書き出しは: render-highlights --highlights {out_path}")
     return 0
 
@@ -838,10 +923,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_card.add_argument("--overwrite", action="store_true", help="既に入っている名前も上書きする")
     p_card.set_defaults(func=cmd_card)
 
-    p_ref = sub.add_parser("refine", help="ゴングで開始位置を数秒だけ寄せる")
+    p_ref = sub.add_parser("refine", help="ゴングで開始・終了を数秒だけ寄せる")
     p_ref.add_argument("--manifest", required=True)
     p_ref.add_argument("--video", help="元動画（既定は manifest に記録されたパス）")
     p_ref.add_argument("--window", type=float, default=6.0, help="前後何秒まで探すか（既定6秒）")
+    p_ref.add_argument(
+        "--start-only",
+        action="store_true",
+        help="開始だけ調整する（終了のゴングは見ない）",
+    )
     p_ref.set_defaults(func=cmd_refine)
 
     p_vert = sub.add_parser("vertical", help="書き出したMP4を9:16にする（再エンコード）")
