@@ -14,7 +14,14 @@ from pathlib import Path
 from ..shellcmd import run
 
 # yt-dlp の -f 指定: 横動画のmp4を優先し、無ければ最良のものにフォールバック
-FORMAT_SELECTOR = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
+#
+# ★最後の受け皿に `[vcodec!=none]` を必ず付けること。
+#   これが無いと、YouTube が映像を渡さなかったとき **音声だけのファイルで成功**してしまう。
+#   実機で起きた（4時間の大会動画のはずが 248MB の .m4a が1つだけ残った）。
+#   映像が無ければ、このシステムは何もできない。取れなかったなら失敗として止めるのが正しい。
+FORMAT_SELECTOR = (
+    "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4][vcodec!=none]/b[vcodec!=none]"
+)
 
 _ID_PATTERNS = (
     re.compile(r"youtube\.com/live/([A-Za-z0-9_-]{6,})"),
@@ -93,6 +100,72 @@ YouTube は自動取得を止めるしくみを頻繁に変えるので、次の
 """.strip()
 
 
+def classify_leftovers(names: list[str]) -> tuple[list[str], list[str]]:
+    """残っているファイル名を (映像を含みそう, 音声だけっぽい) に分ける（純関数）。
+
+    yt-dlp は合体前に `source.f299.mp4`（映像）と `source.f140.m4a`（音声）のように
+    別々に落とします。合体が抜けると両方が残ります。
+    """
+    media = [n for n in sorted(names) if not n.endswith((".json", ".tmp", ".part", ".ytdl"))]
+    audio_only = [n for n in media if n.endswith((".m4a", ".aac", ".opus", ".webm.audio", ".mp3"))]
+    video = [n for n in media if n not in audio_only]
+    return video, audio_only
+
+
+def has_video_stream(path: Path) -> bool:
+    """ffprobe で映像が入っているか確かめる。"""
+    out = run(
+        [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=codec_type",
+            "-of", "csv=p=0",
+            str(path),
+        ],
+        quiet=True,
+    ).strip()
+    return out.startswith("video")
+
+
+def salvage(work_dir: Path, target: Path) -> Path:
+    """合体が抜けたときに、落ちているファイルから source.mp4 を作る。
+
+    ★以前はここで名前順の1つ目を黙って返していた。そのせいで実機では、
+      8.3GB の映像が隣にあるのに **248MB の音声だけのファイルを「完了」**として返し、
+      利用者は成功したと思い込んだ。**映像が無いものを成功にしてはいけない。**
+    """
+    names = [p.name for p in work_dir.glob("source.*")]
+    video, audio_only = classify_leftovers(names)
+
+    if video and audio_only:
+        # 映像と音声が別々に残っている＝合体だけが抜けた。無劣化で入れ物を移すだけ。
+        print(f"[download] 合体が抜けていたので、ここで合体します: {video[0]} + {audio_only[0]}")
+        run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(work_dir / video[0]),
+                "-i", str(work_dir / audio_only[0]),
+                "-c", "copy", "-movflags", "+faststart",
+                str(target),
+            ],
+            capture=False,
+        )
+        if target.exists():
+            return target
+
+    for name in video:
+        candidate = work_dir / name
+        if has_video_stream(candidate):
+            return candidate
+
+    if audio_only:
+        raise RuntimeError(
+            "音声だけしか取れていません。映像が無いと切り抜きは作れません。\n"
+            f"  残っているもの: {', '.join(names) or '（無し）'}\n\n" + BLOCKED_HINT
+        )
+    raise FileNotFoundError(f"ダウンロード結果が見つかりません: {work_dir}")
+
+
 def download(
     url: str,
     work_dir: Path,
@@ -123,12 +196,7 @@ def download(
         raise
 
     if not target.exists():
-        # コンテナが mp4 にならなかった場合の救済
-        candidates = sorted(work_dir.glob("source.*"))
-        media = [p for p in candidates if p.suffix not in (".json", ".tmp")]
-        if not media:
-            raise FileNotFoundError(f"ダウンロード結果が見つかりません: {work_dir}")
-        return media[0]
+        return salvage(work_dir, target)
     return target
 
 
