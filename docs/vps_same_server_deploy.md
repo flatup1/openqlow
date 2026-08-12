@@ -151,7 +151,7 @@ sudo systemctl start openqlow-webhook.service
 sudo systemctl start openqlow-daily.timer
 sudo systemctl start openqlow-monitor.timer
 sudo systemctl enable --now openqlow-crm-daily-report.timer
-sudo systemctl start openqlow-morning.timer   # 毎朝 07:00 JST に LINE push（要 JIN_LINE_USER_ID + LINE_CHANNEL_ACCESS_TOKEN）
+sudo systemctl start openqlow-morning.timer   # 毎朝 06:00 JST に LINE push（要 JIN_LINE_USER_ID + LINE_CHANNEL_ACCESS_TOKEN）
 sudo systemctl status openqlow-webhook.service
 sudo systemctl list-timers 'openqlow-*'
 ```
