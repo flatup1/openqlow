@@ -73,11 +73,21 @@ def looks_like_two_matches(duration_sec: float, shape: MatchShape) -> bool:
 class KoHintParams:
     """KOらしさを見積もるための値。"""
 
-    ending_span_sec: float = 10.0
-    """終わり際として見る長さ。ここの音量の跳ねを見る。
+    before_finish_sec: float = 2.0
+    """決着の何秒前から見るか。"""
 
-    ★長くしすぎると薄まる。歓声が10秒でも、20秒で平均すると半分に薄まって
-      「跳ねていない」と判定してしまう（実測で 2.0 → 0.75 に落ちた）。
+    after_finish_sec: float = 8.0
+    """決着の何秒後まで見るか。
+
+    ★★**ここが要点です。歓声は決着の「あと」に来ます。**
+      最初は「終了より前の10秒」を見ていましたが、実際に動かすとKOの試合で
+      1件も反応しませんでした（偏差 +0.4 / +0.6。しきい値 1.2 に届かない）。
+
+      スコアボードは決着とほぼ同時に消えるので、**歓声の大半は終了より後ろ**にあります。
+      前だけ見ていては、一番大きい音を丸ごと窓の外に置いていたことになります。
+
+    ★長くしすぎると薄まる点は変わりません。歓声が10秒でも20秒で平均すると
+      半分に薄まって「跳ねていない」と判定します（実測で 2.0 → 0.75 に落ちた）。
     """
 
     min_spike: float = 1.2
@@ -94,12 +104,21 @@ class KoHintParams:
     """試合そのものの長さに対してこの割合より短ければ「早く決着した」とみなす。"""
 
 
-def ending_spike(values: list[float], params: KoHintParams, *, step_sec: float) -> float | None:
-    """終わり際の音量の跳ね（偏差値）を返す。測れなければ None。
+def ending_spike(
+    values: list[float],
+    params: KoHintParams,
+    *,
+    step_sec: float,
+    finish_at_sec: float | None = None,
+) -> float | None:
+    """決着まわりの音量の跳ね（偏差値）を返す。測れなければ None。
 
-    ★`values` は **検出した終了までの音量**を渡すこと（`post_roll` を含めない）。
-      後ろの余白まで入れると、「終わり際」が勝ち名乗りのアナウンスになってしまい、
-      決着の瞬間の歓声を見逃します。
+    `finish_at_sec` は `values` の先頭から数えた決着の位置。
+    省略すると末尾を決着とみなします。
+
+    ★`values` は **決着の少しあとまで**渡すこと。歓声は決着のあとに来ます。
+      ただし勝ち名乗りのアナウンス（数十秒）まで入れると薄まるので、
+      `after_finish_sec` ぶんだけで十分です。
     """
     if step_sec <= 0:
         raise ValueError("step_sec は正の数にしてください")
@@ -112,11 +131,14 @@ def ending_spike(values: list[float], params: KoHintParams, *, step_sec: float) 
         return None
 
     count = len(values)
+    finish = count if finish_at_sec is None else int(round(finish_at_sec / step_sec))
+    first = max(0, finish - max(1, int(round(params.before_finish_sec / step_sec))))
+    last = min(count, finish + max(1, int(round(params.after_finish_sec / step_sec))))
+    if last <= first:
+        return None
 
-    span = max(1, int(round(params.ending_span_sec / step_sec)))
-    span = min(span, count - 1)
-    ending = values[-span:]
-    return (sum(ending) / len(ending) - mean) / deviation
+    window = values[first:last]
+    return (sum(window) / len(window) - mean) / deviation
 
 
 def ko_hint(
@@ -126,6 +148,7 @@ def ko_hint(
     params: KoHintParams,
     *,
     step_sec: float,
+    finish_at_sec: float | None = None,
 ) -> tuple[bool, str]:
     """(KOらしいか, 理由) を返す。
 
@@ -133,7 +156,7 @@ def ko_hint(
       KOと判定を取り違えた切り抜きを公開する事故は、手入力3秒で防げます。
       機械が「らしい」と言い、人間が決める。この順番は変えません。
     """
-    spike = ending_spike(values, params, step_sec=step_sec)
+    spike = ending_spike(values, params, step_sec=step_sec, finish_at_sec=finish_at_sec)
     if spike is None:
         return False, "音が平坦で判断できません"
 

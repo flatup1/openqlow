@@ -88,6 +88,41 @@ class EndingSpikeTest(unittest.TestCase):
     def test_too_short_input(self) -> None:
         self.assertIsNone(ending_spike([0.1, 0.9], self.params, step_sec=1.0))
 
+    def test_the_roar_after_the_finish_is_caught(self) -> None:
+        """★★実際に動かして見つけた設計ミス。
+
+        歓声は決着の**あと**に来ます。スコアボードは決着とほぼ同時に消えるので、
+        「終了より前の10秒」だけを見ていると、一番大きい音を窓の外に置くことになります。
+        合成素材のKO2試合で、偏差 +0.4 / +0.6 しか出ず1件も反応しませんでした。
+        """
+        # 決着は40秒目。歓声はその直後（40〜52秒）に来る。
+        values = [0.05] * 40 + [0.7] * 12
+        spike = ending_spike(values, self.params, step_sec=1.0, finish_at_sec=40.0)
+
+        self.assertIsNotNone(spike)
+        self.assertGreater(spike, self.params.min_spike)
+
+    def test_looking_only_before_the_finish_would_miss_it(self) -> None:
+        """同じ音でも、決着より前だけを見ると見逃すことの確認。"""
+        values = [0.05] * 40 + [0.7] * 12
+        before_only = ending_spike(
+            values,
+            KoHintParams(after_finish_sec=0.1),   # 決着より後ろを見ない設定
+            step_sec=1.0,
+            finish_at_sec=40.0,
+        )
+
+        self.assertIsNotNone(before_only)
+        self.assertLess(before_only, self.params.min_spike)
+
+    def test_the_winner_announcement_is_not_included(self) -> None:
+        """★勝ち名乗り（数十秒）まで入れると薄まる。窓は決着まわりだけ。"""
+        values = [0.05] * 40 + [0.7] * 8 + [0.3] * 60
+        spike = ending_spike(values, self.params, step_sec=1.0, finish_at_sec=40.0)
+
+        self.assertIsNotNone(spike)
+        self.assertGreater(spike, self.params.min_spike)
+
 
 class KoHintTest(unittest.TestCase):
     def setUp(self) -> None:

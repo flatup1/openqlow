@@ -598,11 +598,20 @@ def cmd_highlights(args) -> int:
         #   result は自動で確定しない。KOと判定を取り違えた切り抜きを公開する事故は、
         #   手入力3秒で防げる。機械が「らしい」と言い、人間が決める。
         if loud:
+            ko_params = KoHintParams()
+            core_start = float(segment.get("core_start_sec", start))
             core_end = float(segment.get("core_end_sec", segment["end_sec"]))
-            core_len = max(0.0, core_end - start)
-            core_loud = loud[: max(1, int(round(core_len / step)))]
+            # ★決着の少しあとまで渡す。歓声は決着の「あと」に来るため。
+            #   勝ち名乗りまで入れると薄まるので、after_finish_sec ぶんで切る。
+            tail = min(duration, core_end - start + ko_params.after_finish_sec)
+            core_loud = loud[: max(1, int(round(tail / step)))]
             looks_ko, reason = ko_hint(
-                core_len, core_loud, MatchShape(), KoHintParams(), step_sec=step
+                max(0.0, core_end - core_start),
+                core_loud,
+                MatchShape(),
+                ko_params,
+                step_sec=step,
+                finish_at_sec=core_end - start,
             )
             segment["result_hint"] = "KO?" if looks_ko else ""
             segment["result_hint_reason"] = reason
