@@ -58,12 +58,12 @@ def iter_roi_frames(
     fps: float,
 ) -> Iterator[bytes]:
     """ROI を fps 間隔で切り出し、1フレームぶんの生バイト列を順に返す。"""
-    require_tool("ffmpeg")
+    ffmpeg = require_tool("ffmpeg")
     width, height = (int(v) for v in size)
     frame_bytes = width * height
 
     argv = [
-        "ffmpeg", "-v", "error", "-nostdin",
+        ffmpeg, "-v", "error", "-nostdin",
         "-i", str(video),
         "-an", "-sn", "-dn",
         "-vf", build_filter(roi, size, fps),
@@ -88,10 +88,10 @@ def iter_roi_frames(
 def load_template(path: Path, size: Sequence[int]):
     """基準画像(PNG)を指定サイズのグレースケール配列として読む。"""
     np = _numpy()
-    require_tool("ffmpeg")
+    ffmpeg = require_tool("ffmpeg")
     width, height = (int(v) for v in size)
     argv = [
-        "ffmpeg", "-v", "error", "-nostdin",
+        ffmpeg, "-v", "error", "-nostdin",
         "-i", str(path),
         "-vf", f"scale={width}:{height},format=gray",
         "-frames:v", "1",
