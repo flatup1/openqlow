@@ -100,7 +100,7 @@ def resolve_source(args, work_root: Path) -> tuple[Path, Path, str]:
     return video, work_dir, video_id
 
 
-def scores_meta(profile: Profile, roi, video: Path) -> dict:
+def scores_meta(profile: Profile, roi, video: Path, *, from_sec=0.0, until_sec=None) -> dict:
     templates = []
     for path in profile.template_paths:
         stat = path.stat() if path.exists() else None
@@ -117,6 +117,10 @@ def scores_meta(profile: Profile, roi, video: Path) -> dict:
         "template_size": list(profile.template_size),
         "fps": profile.fps,
         "templates": templates,
+        # ★範囲もキャッシュの鍵に含める。含めないと、範囲を変えたのに
+        #   古い解析結果を使い回して「変えたのに結果が同じ」になる。
+        "from_sec": round(float(from_sec), 3),
+        "until_sec": None if until_sec is None else round(float(until_sec), 3),
     }
 
 
@@ -282,7 +286,15 @@ def cmd_detect(args) -> int:
     roi = profile.scaled_roi(info["width"], info["height"])
 
     scores_path = work_dir / "scores.json"
-    meta = scores_meta(profile, roi, video)
+    from_sec = parse_timecode(args.since) if getattr(args, "since", None) else 0.0
+    until_sec = parse_timecode(args.until) if getattr(args, "until", None) else None
+    if until_sec is not None and until_sec <= from_sec:
+        raise ValueError("--until は --from より後の時刻にしてください")
+    if from_sec or until_sec is not None:
+        end = format_timecode(until_sec, with_millis=False) if until_sec else "最後まで"
+        print(f"[score] 解析範囲: {format_timecode(from_sec, with_millis=False)} → {end}")
+
+    meta = scores_meta(profile, roi, video, from_sec=from_sec, until_sec=until_sec)
     scores: list[float] | None = None
     if scores_path.exists() and not args.force:
         cached, cached_meta = score_step.load_scores(scores_path)
@@ -293,12 +305,16 @@ def cmd_detect(args) -> int:
             print("[score] 設定が変わっているので解析し直します")
     if scores is None:
         scores = score_step.score_video(
-            video, profile.template_paths, roi, profile.template_size, profile.fps
+            video, profile.template_paths, roi, profile.template_size, profile.fps,
+            from_sec=from_sec, until_sec=until_sec,
         )
         score_step.save_scores(scores_path, scores, meta)
 
     segments = detect_segments(
-        scores, profile.segment, duration_sec=info["duration_sec"]
+        scores,
+        profile.segment,
+        duration_sec=info["duration_sec"],
+        start_offset_sec=from_sec,
     )
 
     # ラウンド間で割れた区間を、テロップが同じかどうかで繋ぎ直す。
@@ -941,6 +957,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_det = sub.add_parser("detect", help="試合区間を検出して segments.json を作る")
     add_source(p_det)
     p_det.add_argument("--profile", default=str(DEFAULT_PROFILE))
+    p_det.add_argument(
+        "--from", dest="since", metavar="時刻",
+        help="この時刻から解析する（例 00:10:00）",
+    )
+    p_det.add_argument(
+        "--until", metavar="時刻",
+        help="この時刻まで解析する（例 03:52:00）。"
+             "★配信の最後にハイライト映像が入る大会では必ず指定してください。"
+             "過去の試合のテロップが再び映るので、同じ試合を2回検出します。",
+    )
     p_det.add_argument("--force", action="store_true", help="スコアのキャッシュを使わず解析し直す")
     p_det.set_defaults(func=cmd_detect)
 

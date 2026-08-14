@@ -56,15 +56,30 @@ def iter_roi_frames(
     roi: Sequence[int],
     size: Sequence[int],
     fps: float,
+    *,
+    from_sec: float = 0.0,
+    until_sec: float | None = None,
 ) -> Iterator[bytes]:
-    """ROI を fps 間隔で切り出し、1フレームぶんの生バイト列を順に返す。"""
+    """ROI を fps 間隔で切り出し、1フレームぶんの生バイト列を順に返す。
+
+    `from_sec` / `until_sec` で解析する範囲を絞れる。
+
+    ★大会配信の**最後にハイライト映像が入る**ことがある（第13回大会で実際にあった）。
+      そこには過去の試合のテロップが再び映るので、範囲を絞らないと
+      **同じ試合を2回検出**してしまう。試合が終わる時刻で切るのが確実。
+    """
     ffmpeg = require_tool("ffmpeg")
     width, height = (int(v) for v in size)
     frame_bytes = width * height
 
-    argv = [
-        ffmpeg, "-v", "error", "-nostdin",
-        "-i", str(video),
+    argv = [ffmpeg, "-v", "error", "-nostdin"]
+    if from_sec > 0:
+        # -i より前に置くと速い（そこまで読み飛ばす）
+        argv += ["-ss", f"{from_sec:.3f}"]
+    argv += ["-i", str(video)]
+    if until_sec is not None:
+        argv += ["-t", f"{max(0.0, until_sec - from_sec):.3f}"]
+    argv += [
         "-an", "-sn", "-dn",
         "-vf", build_filter(roi, size, fps),
         "-f", "rawvideo", "-pix_fmt", "gray", "-",
@@ -134,6 +149,8 @@ def score_video(
     fps: float,
     *,
     progress_every: int = 600,
+    from_sec: float = 0.0,
+    until_sec: float | None = None,
 ) -> list[float]:
     """1サンプルごとの一致度(0.0〜1.0)を返す。複数テンプレートは最大値を採用。"""
     np = _numpy()
@@ -154,12 +171,14 @@ def score_video(
             )
 
     scores: list[float] = []
-    for i, raw in enumerate(iter_roi_frames(video, roi, size, fps)):
+    for i, raw in enumerate(
+        iter_roi_frames(video, roi, size, fps, from_sec=from_sec, until_sec=until_sec)
+    ):
         sample = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
         best = max(zncc(sample, template) for template in loaded)
         scores.append(round(max(0.0, best), 4))
         if progress_every and i and i % progress_every == 0:
-            print(f"[score] {i / fps / 60:.0f} 分ぶん解析済み")
+            print(f"[score] {(from_sec + i / fps) / 60:.0f} 分まで解析済み")
     return scores
 
 
