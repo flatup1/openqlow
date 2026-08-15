@@ -5,6 +5,7 @@ import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
+import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
   exceedsWebhookBodyLimit,
@@ -32,6 +33,12 @@ interface ExtractedEvent {
   messageId?: string;
   messageType?: "image" | "video";
   userId?: string;
+  /**
+   * 承認者（オーナー）からのイベントか。
+   * false = 会員。会員のメッセージは退会相談の受付だけに使い、
+   * 承認・push などのコマンド経路（executeApprovalText）へは絶対に渡さない。
+   */
+  isApprover: boolean;
 }
 
 function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
@@ -46,7 +53,8 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
     };
 
     if (!Array.isArray(payload.events)) {
-      return { events: [{ kind: "text", text: rawBody }], linePayload: false };
+      // LINE形式でない本文（署名検証は通過済み＝オーナーの直接呼び出し）。従来どおり承認者扱い。
+      return { events: [{ kind: "text", text: rawBody, isApprover: true }], linePayload: false };
     }
 
     const events: ExtractedEvent[] = [];
@@ -54,29 +62,42 @@ function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePay
     for (const event of payload.events) {
       if (event.type !== "message") continue;
       const userId = event.source?.userId;
-      if (allowedApproverIds.size > 0 && !allowedApproverIds.has(userId || "")) {
-        return { events: [], linePayload: true, ignored: "non_approver_user" };
-      }
-      replyToken ??= event.replyToken;
+      // 承認者IDが未設定の環境では、従来どおり全員を承認者として扱う（挙動を変えない）。
+      const isApprover = allowedApproverIds.size === 0 || allowedApproverIds.has(userId || "");
 
       if (event.message?.type === "text" && event.message.text) {
-        console.log(safeLineLog("text_received"));
-        events.push({ kind: "text", text: event.message.text, userId });
+        if (isApprover) {
+          console.log(safeLineLog("text_received"));
+          // 返信はオーナー向けの操作結果なので、承認者のイベントからだけ返信トークンを取る。
+          // 会員に内部の処理結果を返さないための線引き。
+          replyToken ??= event.replyToken;
+        }
+        events.push({
+          kind: "text",
+          text: event.message.text,
+          messageId: event.message.id,
+          userId,
+          isApprover,
+        });
       }
 
-      if ((event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
+      // メディアの取り込みはオーナーの素材投稿用。会員からは受け付けない。
+      if (isApprover && (event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
+        replyToken ??= event.replyToken;
         events.push({
           kind: "media",
           messageId: event.message.id,
           messageType: event.message.type,
           userId,
+          isApprover,
         });
       }
     }
 
     return { events, linePayload: true, replyToken };
   } catch {
-    return { events: [{ kind: "text", text: rawBody }], linePayload: false };
+    // LINE形式でない本文（署名検証は通過済み＝オーナーの直接呼び出し）。従来どおり承認者扱い。
+    return { events: [{ kind: "text", text: rawBody, isApprover: true }], linePayload: false };
   }
 }
 
@@ -150,6 +171,19 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
+        // 会員（承認者以外）のメッセージは退会相談の受付だけに使う。
+        // executeApprovalText には絶対に渡さない（承認・push コマンドを踏ませないため）。
+        if (!ev.isApprover) {
+          const withdrawal = await executeLineWithdrawalIntake({
+            text: ev.text ?? "",
+            lineUserId: ev.userId,
+            messageId: ev.messageId,
+          });
+          if (withdrawal.handled) results.push(withdrawal);
+          else results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+          continue;
+        }
+
         if (ev.kind === "media") {
           results.push(await executeLineMedia(ev));
         } else {
