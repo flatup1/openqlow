@@ -30,6 +30,23 @@ npm run site-audit -- --file ./index.html
 npm run test
 ```
 
+### テストの走らせ方
+
+`npm test` は全テストを担当領域ごとのグループに分けて実行します。
+1本落ちても最後まで走り、落ちたテストを最後に一覧で出します。
+
+```bash
+npm test                    # typecheck + 全グループ
+npm run test:list           # どのテストがどのグループかを確認
+npm run test:group:line     # LINE窓口・承認だけ
+npm run test:group:crm      # 顧客台帳だけ
+npm run <テスト名>           # 1本だけ再実行（例: npm run test:line-webhook-events）
+```
+
+グループ: `core`（土台・正本・安全） / `aika`（守りの顧客対応） / `line`（LINE窓口・承認） /
+`crm`（顧客台帳） / `publish`（発信・メディア） / `ops`（定時処理・経費・運用スクリプト）。
+どのグループに入るかは実行ファイルの置き場所で自動的に決まるので、テストを増やしたときの登録漏れは起きません。
+
 ## 集客AI司令塔 / 問い合わせ返信AIKA（第1段階）
 
 LINE / Instagram DM に届いた問い合わせ文を貼ると、AIKA 口調の返信案（丁寧・短め・予約誘導強め）と

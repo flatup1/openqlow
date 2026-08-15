@@ -5,6 +5,7 @@ import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
+import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
 import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
@@ -25,80 +26,6 @@ function isSignatureValid(rawBody: string, signature: string | string[] | undefi
     channelSecret,
     dryRun: process.env.OPENQLOW_DRY_RUN !== "false",
   });
-}
-
-interface ExtractedEvent {
-  kind: "text" | "media";
-  text?: string;
-  messageId?: string;
-  messageType?: "image" | "video";
-  userId?: string;
-  /**
-   * 承認者（オーナー）からのイベントか。
-   * false = 会員。会員のメッセージは退会相談の受付だけに使い、
-   * 承認・push などのコマンド経路（executeApprovalText）へは絶対に渡さない。
-   */
-  isApprover: boolean;
-}
-
-function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
-  try {
-    const payload = JSON.parse(rawBody) as {
-      events?: Array<{
-        type?: string;
-        replyToken?: string;
-        source?: { userId?: string };
-        message?: { type?: string; text?: string; id?: string };
-      }>;
-    };
-
-    if (!Array.isArray(payload.events)) {
-      // LINE形式でない本文（署名検証は通過済み＝オーナーの直接呼び出し）。従来どおり承認者扱い。
-      return { events: [{ kind: "text", text: rawBody, isApprover: true }], linePayload: false };
-    }
-
-    const events: ExtractedEvent[] = [];
-    let replyToken: string | undefined;
-    for (const event of payload.events) {
-      if (event.type !== "message") continue;
-      const userId = event.source?.userId;
-      // 承認者IDが未設定の環境では、従来どおり全員を承認者として扱う（挙動を変えない）。
-      const isApprover = allowedApproverIds.size === 0 || allowedApproverIds.has(userId || "");
-
-      if (event.message?.type === "text" && event.message.text) {
-        if (isApprover) {
-          console.log(safeLineLog("text_received"));
-          // 返信はオーナー向けの操作結果なので、承認者のイベントからだけ返信トークンを取る。
-          // 会員に内部の処理結果を返さないための線引き。
-          replyToken ??= event.replyToken;
-        }
-        events.push({
-          kind: "text",
-          text: event.message.text,
-          messageId: event.message.id,
-          userId,
-          isApprover,
-        });
-      }
-
-      // メディアの取り込みはオーナーの素材投稿用。会員からは受け付けない。
-      if (isApprover && (event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
-        replyToken ??= event.replyToken;
-        events.push({
-          kind: "media",
-          messageId: event.message.id,
-          messageType: event.message.type,
-          userId,
-          isApprover,
-        });
-      }
-    }
-
-    return { events, linePayload: true, replyToken };
-  } catch {
-    // LINE形式でない本文（署名検証は通過済み＝オーナーの直接呼び出し）。従来どおり承認者扱い。
-    return { events: [{ kind: "text", text: rawBody, isApprover: true }], linePayload: false };
-  }
 }
 
 async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, unknown>> {
@@ -155,7 +82,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const extracted = extractLineEvents(body);
+    const extracted = extractLineEvents(body, allowedApproverIds);
     if (extracted.ignored) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, ignored: extracted.ignored }));
