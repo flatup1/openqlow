@@ -27,10 +27,10 @@ def sample_roi(video: Path, at_sec: float, roi: Sequence[int], size: Sequence[in
     from .score import _numpy  # noqa: PLC0415
 
     np = _numpy()
-    require_tool("ffmpeg")
+    ffmpeg = require_tool("ffmpeg")
     width, height = (int(v) for v in size)
     argv = [
-        "ffmpeg", "-v", "error", "-nostdin",
+        ffmpeg, "-v", "error", "-nostdin",
         "-ss", f"{max(0.0, at_sec):.3f}",
         "-i", str(video),
         "-frames:v", "1",

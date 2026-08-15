@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..shellcmd import run
+from ..shellcmd import require_tool, run
 
 
 @dataclass
@@ -47,7 +47,7 @@ class OutputCheck:
 def _probe_streams(path: Path) -> dict:
     out = run(
         [
-            "ffprobe", "-v", "error",
+            require_tool("ffprobe"), "-v", "error",
             "-show_entries", "stream=codec_type,codec_name,start_time",
             "-show_entries", "format=duration",
             "-of", "json",
@@ -61,7 +61,7 @@ def _probe_streams(path: Path) -> dict:
 def count_decode_errors(path: Path) -> int:
     """全編デコードして、ffmpeg が出したエラー行数を数える。"""
     result = subprocess.run(
-        ["ffmpeg", "-v", "error", "-nostdin", "-i", str(path), "-f", "null", "-"],
+        [require_tool("ffmpeg"), "-v", "error", "-nostdin", "-i", str(path), "-f", "null", "-"],
         capture_output=True,
         text=True,
     )

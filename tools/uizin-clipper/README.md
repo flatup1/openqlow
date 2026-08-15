@@ -21,11 +21,17 @@ AIの推論ではなく画像の照合なので、無料・CPUだけ・結果の
 bash tools/uizin-clipper/setup-mac.sh
 ```
 
-まだこのコードを持っていない段階でも動かせます。ターミナルにこれを貼ってください。
+まだこのコードを持っていない段階では、**clone してからブランチを切り替えて**実行します。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-auto-clip-system-klrph3/tools/uizin-clipper/setup-mac.sh -o /tmp/setup-mac.sh && bash /tmp/setup-mac.sh
+git clone https://github.com/flatup1/openqlow.git ~/openqlow
+git -C ~/openqlow checkout claude/uizin-auto-clip-system-klrph3
+bash ~/openqlow/tools/uizin-clipper/setup-mac.sh
 ```
+
+> ★2行目を飛ばすと `No such file or directory` で止まります（実機で発生）。
+> このツールはまだ `main` に入っていないので、clone しただけでは
+> `setup-mac.sh` 自体が存在しません。マージ後はこの行が不要になります。
 
 開発ツール → Homebrew → ffmpeg → コード取得 → Python部品、の順に
 **入っていないものだけ**入れます。何度実行しても安全です。
@@ -34,19 +40,35 @@ curl -fsSL https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-auto-
 > ダイアログは他のウィンドウの裏に隠れがちなので、F3（Mission Control）で探してください。
 > 押して待つ（5〜20分）→ もう一度スクリプトを実行、で先に進みます。
 
+### 使うたびに必要な2行
+
+```bash
+cd ~/openqlow/tools/uizin-clipper
+source .venv/bin/activate
+```
+
+行の先頭に `(.venv)` が出れば準備完了です。**ターミナルを開き直すたびに必要**です。
+以降このREADMEの `python -m uizin_clipper ...` は、この状態で打つ前提です。
+
 ### 手で入れる場合
-
-
 
 ```bash
 # 1. ffmpeg を入れる
 brew install ffmpeg          # macOS
 sudo apt install ffmpeg      # Linux
 
-# 2. Python の依存を入れる（3つだけ）
+# 2. この道具専用の置き場所を作って、そこに依存を入れる（3つだけ）
 cd tools/uizin-clipper
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
+
+> ★システムの Python に直接入れないでください。最近の macOS は
+> `externally-managed-environment` で拒否します。`--break-system-packages` で
+> 押し通す手もありますが、**古い pip にはそのオプションが無く**（実機で発生）、
+> システム側を壊す危険もあります。専用の置き場所なら、どちらの問題も起きません。
 
 ---
 
@@ -59,6 +81,34 @@ python -m uizin_clipper download "https://www.youtube.com/live/XXXXXXXXXXX"
 ```
 
 `work/XXXXXXXXXXX/source.mp4` に保存されます。もう一度実行しても再取得はしません。
+
+#### YouTube に断られたとき
+
+```
+WARNING: YouTube is forcing SABR streaming for this client
+ERROR: [youtube] XXXXXXXXXXX: The page needs to be reloaded.
+```
+
+**動画が消えたわけではありません。** YouTube は自動取得を止めるしくみを頻繁に変えるので、
+この種のエラーは定期的に起きます。上から順に試してください。
+
+```bash
+# 1) yt-dlp を最新にする（これで直ることが多い）
+python -m pip install -U --pre "yt-dlp[default]"
+
+# 2) ブラウザのログイン情報を使う（そのブラウザで YouTube にログインしておく）
+python -m uizin_clipper download "URL" --cookies-from-browser chrome
+
+# 3) 取りに行き方を変える
+python -m uizin_clipper download "URL" \
+    --yt-dlp-arg --extractor-args --yt-dlp-arg "youtube:player_client=web_safari,ios"
+```
+
+> ★回避方法をコードに埋め込まず、`--yt-dlp-arg` で**その場で渡せる形**にしてあります。
+> YouTube 側が変わるたびにコードを直すことになると、いずれ誰も追随できなくなるためです。
+
+どれでも駄目なら、ブラウザで手元に落とした mp4 を `--video そのファイル` で直接渡せます。
+**以降の処理はまったく同じように動きます**（このシステムは YouTube に依存していません）。
 
 ### ステップ2：スコアボードの位置を教える（初回だけ・約10分）
 
@@ -200,19 +250,89 @@ python -m uizin_clipper render --manifest work/XXXX/segments.json --event "第13
 
 ---
 
-## ゴングで開始位置を寄せる（任意）
+## ゴングで開始・終了を寄せる（任意）
 
 スコアボードは、ゴングと同時に出るとは限りません。数秒早いことも遅いこともあります。
-ゴングは試合開始そのものなので、**スコアボードで決めた位置の前後数秒だけ**を音で探して寄せます。
+ゴングは試合の開始・終了そのものなので、**スコアボードで決めた位置の前後数秒だけ**を
+音で探して寄せます。
 
 ```bash
 python -m uizin_clipper refine --manifest work/XXXX/segments.json --window 6
+
+# 開始だけ調整したいとき
+python -m uizin_clipper refine --manifest work/XXXX/segments.json --start-only
 ```
 
 - **探す範囲を絞ることが安全装置です。** 全編からゴングを探すと、歓声・入場曲・
   マイクのハウリングを拾って壊れます。前後6秒なら、その危険はほぼ消えます。
 - **はっきりした立ち上がりが無ければ動かしません。** 自信のないときに動かすほうが危険です。
+- ★**終了は前へ絶対に動かしません。** 前に動かすと決着の瞬間そのものが落ちます。
+  切り抜きは「決まった瞬間」が命なので、迷ったら後ろに残します。
 - `"locked": true` の区間は触りません。
+
+---
+
+## 大会の進行から、おかしな検出に気づく
+
+UIZIN大会の進行は決まっています。
+
+```
+入場曲 → 青コーナー紹介 → 赤コーナー紹介 → 試合 → 終了のゴング
+1ラウンド 1分30秒 × 2ラウンド、インターバル 1分。KOならもっと短い。
+```
+
+つまり **1試合そのものは最長 1:30 + 1:00 + 1:30 = 4分00秒**。
+`list` はここから外れた区間を知らせます。
+
+```
+※ 長さが目安から外れています（1試合の目安は最長 4:00）
+  03  8:20  → 長すぎます（2試合が繋がった疑い）
+  04  0:12  → 短すぎます
+  中身を確認してください。自動では消しません。
+```
+
+> ★**消さずに知らせるだけ**です。延長や中断など、本当に特殊な試合を黙って消さないため。
+> また、KOの31秒決着は「短すぎる」に**入れません**。短い決着ほど切り抜きの価値が高いので、
+> 正常な試合として扱います。
+
+### 勝敗の下書き（KOらしさ）
+
+`highlights` は音量を測るので、そのついでに **KOらしさ**を見積もって
+`segments.json` の `result_hint` に書きます。
+
+```
+勝敗の下書き: KOらしい — 早い決着（60秒）で終わり際に大きな歓声（偏差 +2.2）
+```
+
+判定の材料は2つです。**早い決着**（規定の3/4未満）と**決着まわりの大きな歓声**。
+片方だけでは示唆しません。判定決着でも最後は盛り上がるからです。
+
+> ★★**歓声は決着の「あと」に来ます。** 最初は「終了より前の10秒」を見ていましたが、
+> 実際に動かすとKOの試合で1件も反応しませんでした（偏差 +0.4 / +0.6）。
+> スコアボードは決着とほぼ同時に消えるので、**一番大きい音を窓の外に置いていた**のです。
+> 決着の2秒前から8秒後を見るように直しました。
+
+**実素材（4試合・うちKO2試合）での測定:**
+
+| 試合 | 長さ | 偏差 | 下書き | 正解 |
+|---|---|---|---|---|
+| 01 判定 | 4:00 | +0.9 | 判断しない | ○ |
+| 02 **KO** | 35秒 | +1.1 | 判断しない | **×（見逃し）** |
+| 03 判定 | 4:00 | +0.9 | 判断しない | ○ |
+| 04 **KO** | 62秒 | +1.6 | **KOらしい** | ○ |
+
+窓を直す前は 0/2、直したあと 1/2。**しきい値（1.2）は実配信で詰める必要があります。**
+合成音の歓声は本物ほど際立たないので、ここを合成素材に合わせて下げるのは
+「自分が作った素材に合わせる」ことになり、危険です（同じ失敗を2度しています）。
+
+> **見逃しても損はしません。** `result` を書くのは人間なので、下書きが出なければ
+> 今までどおり手で書くだけです。逆に**誤って「KO」と書くほうが危険**なので、
+> 迷ったら出さない側に倒しています。
+
+> ★★**`result` は自動で確定しません。** `result_hint` はあくまで下書きで、
+> `card.yml` の `result:` に書くのは人間です。
+> KOと判定を取り違えた切り抜きを公開する事故は、手入力3秒で防げます。
+> **機械が「らしい」と言い、人間が決める。この順番は変えません。**
 
 ---
 

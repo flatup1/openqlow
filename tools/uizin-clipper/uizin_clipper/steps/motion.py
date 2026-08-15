@@ -54,12 +54,12 @@ def measure(
     if sample_fps <= 0:
         raise ValueError("sample_fps は正の数にしてください")
 
-    require_tool("ffmpeg")
+    ffmpeg = require_tool("ffmpeg")
     numpy = _numpy()
 
     frame_bytes = FRAME_WIDTH * FRAME_HEIGHT
     argv = [
-        "ffmpeg", "-v", "error", "-nostdin",
+        ffmpeg, "-v", "error", "-nostdin",
         "-ss", f"{max(0.0, start_sec):.3f}",
         "-t", f"{duration_sec:.3f}",
         "-i", str(video),

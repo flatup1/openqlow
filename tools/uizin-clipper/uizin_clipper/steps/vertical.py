@@ -73,7 +73,7 @@ def convert(
     overwrite: bool = False,
 ) -> Path:
     """1本の動画を 9:16 に変換する。**再エンコードするので画質は落ちる。**"""
-    require_tool("ffmpeg")
+    ffmpeg = require_tool("ffmpeg")
     if output.exists() and not overwrite:
         raise FileExistsError(f"既にあります: {output}（--overwrite で上書き）")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -85,7 +85,7 @@ def convert(
     filter_option = ["-filter_complex", graph] if fill == "blur" else ["-vf", graph]
 
     argv = [
-        "ffmpeg", "-v", "error", "-nostdin", "-y" if overwrite else "-n",
+        ffmpeg, "-v", "error", "-nostdin", "-y" if overwrite else "-n",
         "-i", str(source),
         *filter_option,
         "-c:v", "libx264", "-preset", preset, "-crf", str(crf),

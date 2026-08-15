@@ -78,5 +78,7 @@ tools/uizin-clipper/profiles/*.yml
 tools/uizin-clipper/profiles/*.png
 # 対戦表（選手名は個人情報として扱う）
 tools/uizin-clipper/**/card*.yml
+# この道具専用の Python 置き場所（各自の環境で作る）
+tools/uizin-clipper/.venv/
 __pycache__/
 *.pyc

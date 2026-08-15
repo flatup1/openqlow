@@ -48,11 +48,11 @@ def measure(
     if step_sec <= 0:
         raise ValueError("step_sec は正の数にしてください")
 
-    require_tool("ffmpeg")
+    ffmpeg = require_tool("ffmpeg")
     numpy = _numpy()
 
     argv = [
-        "ffmpeg", "-v", "error", "-nostdin",
+        ffmpeg, "-v", "error", "-nostdin",
         "-ss", f"{max(0.0, start_sec):.3f}",
         "-t", f"{duration_sec:.3f}",
         "-i", str(video),

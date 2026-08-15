@@ -7,7 +7,7 @@
   detect         試合区間を検出して segments.json を作る
   list           segments.json を人が読める形で表示する
   card           対戦表（card.yml）から選手名を入れる
-  refine         ゴングで開始位置を数秒だけ寄せる
+  refine         ゴングで開始・終了を数秒だけ寄せる
   render         segments.json どおりに無劣化MP4を書き出す
   vertical       書き出したMP4を9:16にする（再エンコード・任意）
   highlights     1試合の中からSNS向けの見どころ候補を選ぶ
@@ -27,8 +27,15 @@ from . import manifest as mf
 from .card import apply_card, parse_card
 from .evaluate import Interval, evaluate, load_truth
 from .highlight import HighlightParams, combine_scores, pick_highlights
+from .matchshape import (
+    KoHintParams,
+    MatchShape,
+    duration_flags,
+    ko_hint,
+    looks_like_two_matches,
+)
 from .naming import build_clip_filename, build_event_dirname, ensure_unique, stale_names
-from .onset import OnsetParams, refine_start
+from .onset import OnsetParams, refine_end, refine_start
 from .profile import Profile, load_profile, save_profile
 from .shellcmd import CommandFailedError, ToolMissingError
 from .steps import calibrate as calib
@@ -41,7 +48,7 @@ from .steps import render as render_step
 from .steps import samematch
 from .steps import score as score_step
 from .steps import vertical as vertical_step
-from .steps.segment import detect_segments, merge_rounds
+from .steps.segment import SegmentParams, detect_segments, merge_rounds
 from .timecode import format_duration, format_timecode, parse_timecode
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -71,7 +78,13 @@ def resolve_source(args, work_root: Path) -> tuple[Path, Path, str]:
     if getattr(args, "url", None):
         video_id = dl.extract_video_id(args.url)
         work_dir = work_root / video_id
-        video = dl.download(args.url, work_dir, force=getattr(args, "force_download", False))
+        video = dl.download(
+            args.url,
+            work_dir,
+            force=getattr(args, "force_download", False),
+            cookies_from_browser=getattr(args, "cookies_from_browser", None),
+            extra_args=getattr(args, "yt_dlp_arg", None),
+        )
         return video, work_dir, video_id
 
     video = Path(args.video).expanduser().resolve()
@@ -87,7 +100,7 @@ def resolve_source(args, work_root: Path) -> tuple[Path, Path, str]:
     return video, work_dir, video_id
 
 
-def scores_meta(profile: Profile, roi, video: Path) -> dict:
+def scores_meta(profile: Profile, roi, video: Path, *, from_sec=0.0, until_sec=None) -> dict:
     templates = []
     for path in profile.template_paths:
         stat = path.stat() if path.exists() else None
@@ -104,6 +117,10 @@ def scores_meta(profile: Profile, roi, video: Path) -> dict:
         "template_size": list(profile.template_size),
         "fps": profile.fps,
         "templates": templates,
+        # ★範囲もキャッシュの鍵に含める。含めないと、範囲を変えたのに
+        #   古い解析結果を使い回して「変えたのに結果が同じ」になる。
+        "from_sec": round(float(from_sec), 3),
+        "until_sec": None if until_sec is None else round(float(until_sec), 3),
     }
 
 
@@ -136,6 +153,44 @@ def print_segments(manifest: dict) -> None:
         numbers = ", ".join("{:02d}".format(s["index"]) for s in low)
         print(f"\n※ 確認推奨: {numbers} （一致度が低い区間）")
 
+    # 検出時に使った基準を manifest から読む。無ければ既定値。
+    recorded = (manifest.get("profile") or {}).get("params") or {}
+    print_shape_warnings(segments, recorded.get("min_duration_sec"))
+
+
+def print_shape_warnings(segments: list[dict], min_duration_sec: float | None = None) -> None:
+    """大会の進行から見ておかしい長さの区間を知らせる。
+
+    UIZIN大会は 1ラウンド1分30秒×2、インターバル1分。試合そのものは最長4分。
+    ★消さずに知らせるだけ。延長や中断など、本当に特殊な試合を黙って消さないため。
+
+    `min_duration_sec` は検出に使った値を渡す。★渡さずに既定値を使うと、
+    プロファイルで基準を変えている場合に **検出と表示で言うことが食い違う**。
+    """
+    shape = MatchShape()
+    if min_duration_sec is None:
+        min_duration_sec = SegmentParams().min_duration_sec
+    suspicious = []
+    for segment in segments:
+        flags = duration_flags(
+            float(segment["duration_sec"]), shape, min_duration_sec=min_duration_sec
+        )
+        if flags:
+            suspicious.append((segment, flags))
+
+    if not suspicious:
+        return
+
+    print(f"\n※ 長さが目安から外れています（1試合の目安は最長 {format_duration(shape.core_sec())}）")
+    for segment, flags in suspicious:
+        reason = "長すぎます" if "too_long" in flags else "短すぎます"
+        if "too_long" in flags and looks_like_two_matches(float(segment["duration_sec"]), shape):
+            reason = "長すぎます（2試合が繋がった疑い）"
+        print(
+            f"  {segment['index']:02d}  {format_duration(segment['duration_sec'])}  → {reason}"
+        )
+    print("  中身を確認してください。自動では消しません。")
+
 
 # ---------------------------------------------------------------- コマンド
 
@@ -143,7 +198,13 @@ def print_segments(manifest: dict) -> None:
 def cmd_download(args) -> int:
     work_root = Path(args.work_dir)
     video_id = dl.extract_video_id(args.url)
-    video = dl.download(args.url, work_root / video_id, force=args.force)
+    video = dl.download(
+        args.url,
+        work_root / video_id,
+        force=args.force,
+        cookies_from_browser=args.cookies_from_browser,
+        extra_args=args.yt_dlp_arg,
+    )
     print(f"[download] 完了: {video}")
     return 0
 
@@ -225,7 +286,15 @@ def cmd_detect(args) -> int:
     roi = profile.scaled_roi(info["width"], info["height"])
 
     scores_path = work_dir / "scores.json"
-    meta = scores_meta(profile, roi, video)
+    from_sec = parse_timecode(args.since) if getattr(args, "since", None) else 0.0
+    until_sec = parse_timecode(args.until) if getattr(args, "until", None) else None
+    if until_sec is not None and until_sec <= from_sec:
+        raise ValueError("--until は --from より後の時刻にしてください")
+    if from_sec or until_sec is not None:
+        end = format_timecode(until_sec, with_millis=False) if until_sec else "最後まで"
+        print(f"[score] 解析範囲: {format_timecode(from_sec, with_millis=False)} → {end}")
+
+    meta = scores_meta(profile, roi, video, from_sec=from_sec, until_sec=until_sec)
     scores: list[float] | None = None
     if scores_path.exists() and not args.force:
         cached, cached_meta = score_step.load_scores(scores_path)
@@ -236,12 +305,16 @@ def cmd_detect(args) -> int:
             print("[score] 設定が変わっているので解析し直します")
     if scores is None:
         scores = score_step.score_video(
-            video, profile.template_paths, roi, profile.template_size, profile.fps
+            video, profile.template_paths, roi, profile.template_size, profile.fps,
+            from_sec=from_sec, until_sec=until_sec,
         )
         score_step.save_scores(scores_path, scores, meta)
 
     segments = detect_segments(
-        scores, profile.segment, duration_sec=info["duration_sec"]
+        scores,
+        profile.segment,
+        duration_sec=info["duration_sec"],
+        start_offset_sec=from_sec,
     )
 
     # ラウンド間で割れた区間を、テロップが同じかどうかで繋ぎ直す。
@@ -277,7 +350,18 @@ def cmd_detect(args) -> int:
 
     manifest = mf.build_manifest(
         source=source_meta,
-        profile={"name": profile.name, "path": str(Path(args.profile))},
+        profile={
+            "name": profile.name,
+            "path": str(Path(args.profile)),
+            # ★検出に使った基準を残す。あとから list や report が同じ基準で
+            #   話せるようにするため。残さないと、表示だけ既定値で判断してしまう。
+            "params": {
+                "min_duration_sec": profile.segment.min_duration_sec,
+                "post_roll_sec": profile.segment.post_roll_sec,
+                "round_gap_sec": profile.segment.round_gap_sec,
+                "long_segment_sec": profile.segment.long_segment_sec,
+            },
+        },
         segments=merged,
     )
     mf.save_manifest(manifest_path, manifest)
@@ -389,21 +473,63 @@ def cmd_refine(args) -> int:
             core_start, values, params, step_sec=step, window_start_sec=window_start
         )
         if shift is None:
-            print(f"  {segment['index']:02d}  はっきりした合図なし → 動かしません")
+            print(f"  {segment['index']:02d}  開始: はっきりした合図なし → 動かしません")
+        else:
+            # 前のりしろを保ったまま、全体を同じだけずらす
+            segment["core_start_sec"] = round(moved, 3)
+            segment["start_sec"] = round(float(segment["start_sec"]) + shift, 3)
+            mf.normalize_segment(segment)
+            moved_count += 1
+            print(
+                f"  {segment['index']:02d}  開始: {shift:+.2f}秒 寄せました → "
+                f"{format_timecode(segment['start_sec'], with_millis=False)}"
+            )
+
+        if args.start_only:
             continue
 
-        # 前のりしろを保ったまま、全体を同じだけずらす
-        segment["core_start_sec"] = round(moved, 3)
-        segment["start_sec"] = round(float(segment["start_sec"]) + shift, 3)
+        # ---- 終了のゴング。開始と同じ理屈だが、前へは絶対に動かさない ----
+        core_end = float(segment.get("core_end_sec", segment["end_sec"]))
+        end_window_start = max(0.0, core_end - params.search_sec)
+
+        end_values = loudness_step.measure(
+            source, start_sec=end_window_start, duration_sec=window_length, step_sec=step
+        )
+        if not end_values:
+            print(f"  {segment['index']:02d}  終了: 音が読めませんでした")
+            continue
+
+        moved_end, end_shift = refine_end(
+            core_end, end_values, params, step_sec=step, window_start_sec=end_window_start
+        )
+        if end_shift is None:
+            print(f"  {segment['index']:02d}  終了: 動かしません")
+            continue
+
+        segment["core_end_sec"] = round(moved_end, 3)
+        segment["end_sec"] = round(float(segment["end_sec"]) + end_shift, 3)
         mf.normalize_segment(segment)
         moved_count += 1
         print(
-            f"  {segment['index']:02d}  {shift:+.2f}秒 寄せました → "
-            f"{format_timecode(segment['start_sec'], with_millis=False)}"
+            f"  {segment['index']:02d}  終了: {end_shift:+.2f}秒 後ろへ寄せました → "
+            f"{format_timecode(segment['end_sec'], with_millis=False)}"
         )
 
+    # ★境界を動かしたあとは必ず整える。動かした結果、隣と重なったり
+    #   動画の外へはみ出したりする（実測で確認済み）。
+    duration_sec = None
+    try:
+        duration_sec = probe_step.load_or_probe(source, Path(args.manifest).resolve().parent)[
+            "duration_sec"
+        ]
+    except (CommandFailedError, ToolMissingError, KeyError, OSError):
+        print("  ※ 動画の尺が読めないので、尺のはみ出しは確認できませんでした")
+
+    for note in mf.resolve_overlaps(manifest["segments"], duration_sec=duration_sec):
+        print(f"  整えました: {note}")
+
     mf.save_manifest(args.manifest, manifest)
-    print(f"\n[refine] {moved_count} 件の開始位置を調整しました。")
+    print(f"\n[refine] {moved_count} 件の境界を調整しました。")
     print("納得できない区間は segments.json を直して \"locked\": true を付けてください。")
     return 0
 
@@ -484,6 +610,29 @@ def cmd_highlights(args) -> int:
         if not loud:
             print("  → 音声トラックがないので、動きだけで判断します。")
 
+        # ★KOらしさの「下書き」。ここで音量を測っているので、ついでに見積もる。
+        #   result は自動で確定しない。KOと判定を取り違えた切り抜きを公開する事故は、
+        #   手入力3秒で防げる。機械が「らしい」と言い、人間が決める。
+        if loud:
+            ko_params = KoHintParams()
+            core_start = float(segment.get("core_start_sec", start))
+            core_end = float(segment.get("core_end_sec", segment["end_sec"]))
+            # ★決着の少しあとまで渡す。歓声は決着の「あと」に来るため。
+            #   勝ち名乗りまで入れると薄まるので、after_finish_sec ぶんで切る。
+            tail = min(duration, core_end - start + ko_params.after_finish_sec)
+            core_loud = loud[: max(1, int(round(tail / step)))]
+            looks_ko, reason = ko_hint(
+                max(0.0, core_end - core_start),
+                core_loud,
+                MatchShape(),
+                ko_params,
+                step_sec=step,
+                finish_at_sec=core_end - start,
+            )
+            segment["result_hint"] = "KO?" if looks_ko else ""
+            segment["result_hint_reason"] = reason
+            print(f"  勝敗の下書き: {'KOらしい' if looks_ko else '判断しない'} — {reason}")
+
         scores = combine_scores(loud or [0.0] * len(move), move, params, step_sec=step)
         picked = pick_highlights(
             scores,
@@ -529,8 +678,12 @@ def cmd_highlights(args) -> int:
         + "\n",
         encoding="utf-8",
     )
+    # 勝敗の下書き（result_hint）を書き戻す。result そのものには触らない。
+    mf.save_manifest(args.manifest, manifest)
+
     print(f"\n[highlights] {len(results)} 本の候補: {out_path}")
     print("中身を見て、要らない候補には \"skip\": true を付けてください。")
+    print("勝敗の下書きは segments.json の result_hint に入れました（確定は人間が）。")
     print(f"書き出しは: render-highlights --highlights {out_path}")
     return 0
 
@@ -718,7 +871,13 @@ def cmd_run(args) -> int:
     video_id = dl.extract_video_id(args.url)
 
     print("=== 1/3 ダウンロード ===")
-    dl.download(args.url, work_root / video_id, force=args.force_download)
+    dl.download(
+        args.url,
+        work_root / video_id,
+        force=args.force_download,
+        cookies_from_browser=args.cookies_from_browser,
+        extra_args=args.yt_dlp_arg,
+    )
 
     print("\n=== 2/3 試合検出 ===")
     args.video = None
@@ -749,15 +908,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-dir", default=str(DEFAULT_WORK_ROOT), help="作業フォルダ（既定 tools/uizin-clipper/work）")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    def add_download_options(sp):
+        """★YouTube に断られたときの逃げ道。
+
+        YouTube は自動取得を止めるしくみを頻繁に変えます。回避方法を
+        コードに埋め込むと、変わるたびに修正が必要になるので、渡し口だけ用意します。
+        """
+        sp.add_argument(
+            "--cookies-from-browser",
+            help="ブラウザのログイン情報を使う（chrome / safari / firefox / edge / brave）",
+        )
+        sp.add_argument(
+            "--yt-dlp-arg",
+            action="append",
+            metavar="ARG",
+            help="yt-dlp にそのまま渡す引数（何回でも指定できる）",
+        )
+
     def add_source(sp, *, allow_url: bool = True):
         group = sp.add_mutually_exclusive_group(required=True)
         if allow_url:
             group.add_argument("--url", help="YouTube URL")
+            add_download_options(sp)
         group.add_argument("--video", help="ローカル動画ファイル")
 
     p_dl = sub.add_parser("download", help="大会動画を取得する")
     p_dl.add_argument("url")
     p_dl.add_argument("--force", action="store_true", help="既にあっても取り直す")
+    add_download_options(p_dl)
     p_dl.set_defaults(func=cmd_download)
 
     p_cs = sub.add_parser("contact-sheet", help="下見用の静止画を出す")
@@ -782,6 +960,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_det = sub.add_parser("detect", help="試合区間を検出して segments.json を作る")
     add_source(p_det)
     p_det.add_argument("--profile", default=str(DEFAULT_PROFILE))
+    p_det.add_argument(
+        "--from", dest="since", metavar="時刻",
+        help="この時刻から解析する（例 00:10:00）",
+    )
+    p_det.add_argument(
+        "--until", metavar="時刻",
+        help="この時刻まで解析する（例 03:52:00）。"
+             "★配信の最後にハイライト映像が入る大会では必ず指定してください。"
+             "過去の試合のテロップが再び映るので、同じ試合を2回検出します。",
+    )
     p_det.add_argument("--force", action="store_true", help="スコアのキャッシュを使わず解析し直す")
     p_det.set_defaults(func=cmd_detect)
 
@@ -804,10 +992,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_card.add_argument("--overwrite", action="store_true", help="既に入っている名前も上書きする")
     p_card.set_defaults(func=cmd_card)
 
-    p_ref = sub.add_parser("refine", help="ゴングで開始位置を数秒だけ寄せる")
+    p_ref = sub.add_parser("refine", help="ゴングで開始・終了を数秒だけ寄せる")
     p_ref.add_argument("--manifest", required=True)
     p_ref.add_argument("--video", help="元動画（既定は manifest に記録されたパス）")
     p_ref.add_argument("--window", type=float, default=6.0, help="前後何秒まで探すか（既定6秒）")
+    p_ref.add_argument(
+        "--start-only",
+        action="store_true",
+        help="開始だけ調整する（終了のゴングは見ない）",
+    )
     p_ref.set_defaults(func=cmd_refine)
 
     p_vert = sub.add_parser("vertical", help="書き出したMP4を9:16にする（再エンコード）")
@@ -863,6 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--out-dir", default=str(DEFAULT_OUT_ROOT))
     p_run.add_argument("--force", action="store_true", help="解析キャッシュを使わず検出し直す")
     p_run.add_argument("--force-download", action="store_true", help="動画を取り直す")
+    add_download_options(p_run)
     p_run.add_argument("--overwrite", action="store_true", help="既にあるMP4も書き直す")
     p_run.add_argument("--prune", action="store_true", help="今回作らなかった古いMP4を削除する")
     p_run.add_argument(

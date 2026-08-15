@@ -57,6 +57,28 @@ class FindOnsetTest(unittest.TestCase):
         """★立ち上がりが無ければ動かさない。自信がないのに動かすほうが危ない。"""
         self.assertIsNone(find_onset([0.2] * 20, self.params, step_sec=1.0))
 
+    def test_almost_flat_audio_returns_nothing(self) -> None:
+        """★4時間素材で実際に出た誤り。
+
+        ばらつきが 0.000001 しかない平坦な音なのに、偏差値に直すと
+        計算上の微小な揺れが「巨大な跳ね」に化けて、開始位置が動いてしまった。
+        ゼロ割り防止だけでは足りず、音量の実寸での下限が要る。
+        """
+        values = [0.08829 + (i % 3) * 0.000001 for i in range(40)]
+        self.assertIsNone(find_onset(values, self.params, step_sec=0.25))
+
+    def test_small_but_real_variation_is_still_rejected(self) -> None:
+        """ばらつき 0.0004 程度（会場のざわめきの揺らぎ）でも動かさない。"""
+        values = [0.088, 0.0885, 0.0875, 0.0888] * 10
+        self.assertIsNone(find_onset(values, self.params, step_sec=0.25))
+
+    def test_a_real_gong_still_passes(self) -> None:
+        """本物のゴングは 0.02 → 0.3 のように跳ねる。これは見逃さない。"""
+        values = [0.02] * 20 + [0.30] * 20
+        found = find_onset(values, self.params, step_sec=0.25)
+        self.assertIsNotNone(found)
+        self.assertAlmostEqual(found, 5.0, delta=0.5)
+
     def test_gradual_rise_is_not_an_onset(self) -> None:
         """観客が徐々にざわつくのはゴングではない。"""
         values = [0.01 * i for i in range(20)]
