@@ -8,8 +8,8 @@ export const FLATUP_CANON = {
   // 料金
   trialFirst: "初回体験500円",
   visitorSecond: "2回目以降ビジター3,000円",
-  visitorPass5: "5回券14,000円（回数券は割引価格）",
-  visitorPass10: "10回券24,000円（回数券は割引価格）",
+  visitorPass5: "5回券14,000円（1年有効）",
+  visitorPass10: "10回券24,000円（1年有効）",
   priceKids: "キッズ7,700円",
   priceWomen: "女性8,800円",
   priceMen: "男性9,900円",
