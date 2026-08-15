@@ -58,3 +58,35 @@ export type { VersionBundle } from "./contracts/version_bundle.js";
 export { PHASE1_VERSION_BUNDLE } from "./contracts/version_bundle.js";
 
 export { explainDecision, route } from "./router/route.js";
+
+// --- Phase 2: Knowledge Registry（台帳のみ。中身は持たない）---
+
+export type {
+  KnowledgeAuthority,
+  KnowledgeCategory,
+  KnowledgeConflict,
+  KnowledgeEntry,
+  KnowledgeLocation,
+  KnowledgeQuery,
+  KnowledgeRegistry,
+  KnowledgeResult,
+  KnowledgeStatus,
+  PriorityGroup,
+  SelectedKnowledge,
+  WithheldKnowledge,
+  WithheldReason,
+} from "./contracts/knowledge.js";
+
+export {
+  createRegistry,
+  findEntry,
+  isSelectableStatus,
+  KnowledgeRegistryError,
+  SELECTABLE_STATUSES,
+} from "./knowledge/registry.js";
+
+export { AUTHORITY_ORDER, authorityRank } from "./knowledge/precedence.js";
+export { scanConflicts } from "./knowledge/conflicts.js";
+export { applyTokenBudget, isProtected } from "./knowledge/token_budget.js";
+export { createManifestRegistry, MANIFEST_ENTRIES, MANIFEST_VERSION } from "./knowledge/manifest.js";
+export { explainKnowledgeResult, queryKnowledge } from "./knowledge/query.js";
