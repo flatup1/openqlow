@@ -30,6 +30,7 @@
 | `openqlow/src/distribution/` | Claude | open | 2026-06-06 |
 | `openqlow/src/generators/` | Claude | open | 2026-06-06 |
 | `openqlow/src/crm/` | Claude | open | 2026-06-11 |
+| `openqlow/src/brand_growth/` | Claude | open | 2026-08-15 |
 | `openqlow/src/scheduler/` | Codex | open | 2026-06-06 |
 | `openqlow/src/monitor/` | Codex | open | 2026-06-06 |
 | `openqlow/src/line_bot/` | Codex | open | 2026-06-06 |
@@ -99,6 +100,7 @@
   - 集客AI司令塔「サイト改善チェック」 `src/generators/site_audit.ts`（入力テキスト評価・ネットワーク取得なし）
   - 見込み客CRM `src/crm/`（台帳・追客抽出・日報・自己修復ログ・intake）
   - LINE接続口 `src/crm/line_intake.ts`（webhook配線はCodexへハンドオフ → `docs/HANDOFF_2026-06-11_claude→codex.md`）
+- Brand Growth 領域 `src/brand_growth/`（Phase 1: 純関数Routerのみ。外部I/O・課金・公開なし。AIKA / canon / safety / line_bot / publish / scheduler / loop / animation / deploy は読み取りもせず変更しない）
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）
