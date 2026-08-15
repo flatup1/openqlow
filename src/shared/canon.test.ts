@@ -11,7 +11,7 @@ assert(FLATUP_INFO === FLATUP_CANON, "FLATUP_INFO must be the single source FLAT
 
 // 重要フィールドが欠けていないこと（再エクスポートで取りこぼしが無いか）。
 const requiredKeys = [
-  "trialFirst", "visitorSecond", "visitorPass6", "visitorPass12", "priceKids", "priceWomen", "priceMen", "joinFee",
+  "trialFirst", "visitorSecond", "visitorPass5", "visitorPass10", "priceKids", "priceWomen", "priceMen", "joinFee",
   "bring", "parking", "gloveSet", "address", "nearestStation", "access",
   "scheduleKids", "scheduleLadies", "bookingMen", "bookingWomen", "noBooking",
   "businessHours", "classes", "parentDiscount", "referralBenefit", "cardKeyReturn",
@@ -24,8 +24,17 @@ for (const k of requiredKeys) {
 assert(FLATUP_CANON.gloveSet.includes("11,000"), "glove set price must be 11,000");
 assert(FLATUP_CANON.nearestStation === "成田駅", "nearest station must be 成田駅");
 assert(FLATUP_CANON.classes.includes("ムエタイ"), "classes must include ムエタイ");
-assert(FLATUP_CANON.visitorPass6 === "6回券15,000円（1年有効）", "6-visit pass must match current pricing");
-assert(FLATUP_CANON.visitorPass12 === "12回券30,000円（1年有効）", "12-visit pass must match current pricing");
+// オーナー確定 2026-08-07（お客様への案内）。館内ボードの表示が最新・正しい料金。
+assert(FLATUP_CANON.visitorPass5.includes("5回券14,000円"), "5-visit pass must be 14,000円 (owner-confirmed 2026-08-07)");
+assert(FLATUP_CANON.visitorPass10.includes("10回券24,000円"), "10-visit pass must be 24,000円 (owner-confirmed 2026-08-07)");
+// 有効期限はオーナー確認済み（2026-08-15）。案内から抜けないよう固定する。
+assert(FLATUP_CANON.visitorPass5.includes("1年有効"), "5-visit pass validity must stay 1年有効");
+assert(FLATUP_CANON.visitorPass10.includes("1年有効"), "10-visit pass validity must stay 1年有効");
+// 旧値（6回券15,000円 / 12回券30,000円）が復活しないこと。
+const canonAll = Object.values(FLATUP_CANON).join("\n");
+for (const stale of ["6回券", "12回券", "15,000円", "30,000円"]) {
+  assert(!canonAll.includes(stale), `stale ticket pricing must not return to canon: ${stale}`);
+}
 assert(FLATUP_CANON.scheduleLadies === "土曜14:30〜15:30", "ladies class must be 14:30-15:30");
 assert(FLATUP_CANON.businessHours.includes("18:00〜21:00"), "weekday evening staff hours must end at 21:00");
 assert(FLATUP_CANON.cardKeyReturn.includes("1,000円"), "card key penalty must be 1,000円");
