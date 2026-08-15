@@ -36,4 +36,39 @@ const womenReply = generateInquiryReply({ message: "料金を教えてくださ�
 assert(womenReply.includes(trialDigits), "inquiry reply trial price stays consistent with canon");
 assert(womenReply.includes(FLATUP_CANON.priceWomen), "inquiry reply women monthly price comes from canon");
 
+// 逆方向ガード: 生成した返信が、正本に無い金額を作り出していないこと。
+//
+// 上の検査は「正本の値が返信に入っているか」しか見ていない。お客様に実害が出るのは
+// その逆で、正本のどこにも無い金額を返信が語ってしまう場合（料金の捏造・誤案内）。
+// 部分一致では "1,000円" が正本の "11,000円" に一致して見逃すため、
+// 前後が数字・カンマでないことまで確認する。
+const canonText = Object.values(FLATUP_CANON).join("\n");
+function canonHasAmount(amount: string): boolean {
+  const escaped = amount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^0-9,])${escaped}([^0-9]|$)`).test(canonText);
+}
+
+const sampleMessages = [
+  "料金を教えてください",
+  "はじめてで不安ですが女性でも大丈夫ですか",
+  "子どもを通わせたいのですが",
+  "体験を予約したいです",
+  "退会したい場合はどうすればよいですか",
+];
+for (const message of sampleMessages) {
+  for (const gender of ["female", "male", undefined] as const) {
+    const result = generateInquiryReply(gender ? { message, gender } : { message });
+    for (const [variant, reply] of Object.entries(result.replies)) {
+      // obstacleConsult / membershipConsult は該当する問い合わせの時だけ生成される任意項目。
+      if (typeof reply !== "string") continue;
+      for (const amount of reply.match(/[0-9][0-9,]*円/g) ?? []) {
+        assert(
+          canonHasAmount(amount),
+          `inquiry reply invented an amount absent from canon: ${amount} (message="${message}", variant=${variant})`,
+        );
+      }
+    }
+  }
+}
+
 console.log("shared canon tests passed");
