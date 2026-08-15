@@ -105,7 +105,10 @@ class RunForceDownloadTest(unittest.TestCase):
     def test_detect_does_not_force_download_again(self) -> None:
         forces: list[bool] = []
 
-        def fake_download(url, work_dir, *, force=False):
+        # このテストが見たいのは force が二重に渡らないことだけ。
+        # download 側に無関係な引数（cookies_from_browser 等）が増えても
+        # 壊れないよう、残りは **kwargs で受け流す。
+        def fake_download(url, work_dir, *, force=False, **_kwargs):
             forces.append(force)
             target = Path(work_dir)
             target.mkdir(parents=True, exist_ok=True)
