@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { FLATUP_CANON } from "./canon.js";
 import { FLATUP_INFO } from "../generators/shared.js";
 import { generateInquiryReply } from "../generators/inquiry_reply.js";
@@ -78,6 +79,21 @@ for (const message of sampleMessages) {
       }
     }
   }
+}
+
+// 出典台帳の網羅性。
+//
+// 2026-08-15、回数券の料金が実際と違っていた（公式サイト由来の値が実運用と不一致）。
+// ドリフト検出は canon.ts と同期ビューの内部一貫性しか見ないため、両方が揃って
+// 同じ誤りを持つと永久に気づけない。外部との突合は人間にしかできない以上、
+// せめて「どの値がどこ由来か」を機械可読にしておき、出典不明の値が
+// 黙って増えないようにする。
+const ledger = readFileSync(new URL("../../docs/ai-os/canon/VERIFICATION_LEDGER.md", import.meta.url), "utf8");
+for (const key of Object.keys(FLATUP_CANON)) {
+  assert(
+    ledger.includes(`\`${key}\``),
+    `canon field is missing from VERIFICATION_LEDGER.md: ${key} — 追加した値の出典（オーナー確認/一次資料/公式サイト/不明）を台帳へ記録してください`,
+  );
 }
 
 console.log("shared canon tests passed");
