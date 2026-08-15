@@ -1,13 +1,13 @@
 # 01 矛盾一覧と採用ルール（CONFLICT AND DECISION TABLE）
 
-作成: 2026-07-19 ／ 対象: `flatup1/openqlow` リポジトリ内で確認できた資料。
-ローカルMac上のVault・HelMES配下のファイルはこのセッションから参照できないため、リポジトリ外の資料との突き合わせは「オーナー確認」列に残した。
+作成: 2026-07-19 ／ 最終確認: 2026-08-13。
+対象: `flatup1/openqlow`、Obsidian Vault、AIKA本番VPS。公開サイトは旧版と判明したため同期対象から除外している。
 
 判定の優先順位は `00_FLATUP_AI_OS_CANON.md` §3 に従う。
 
 | # | 論点 | 資料A | 資料B | 矛盾内容 | 推奨する正本 | 根拠 | オーナー確認 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | レディースクラスの時刻 | `src/shared/canon.ts`（土曜14:30） | `knowledge/wiki/flatup-canonical-faq.md`・`knowledge/sources/20260624-flatup-canon-facts.md`（土曜14:00） | 30分ズレ | **canon.ts（14:30）** | オーナー確認済みの確定値。canon.tsが最新 | 不要（確定済み）。wiki側の修正のみ推奨 |
+| 1 | レディースクラスの時刻 | `src/shared/canon.ts`・本番AIKA・Vault FAQ/人格（土曜14:30〜15:30） | `knowledge/wiki/flatup-canonical-faq.md`・旧公開サイト（14:00〜15:00） | 旧資料に30分ズレ | **canon.ts（14:30〜15:30）** | 2026-08-12オーナー確認、2026-08-13 AIKA本番反映・検証済み | 旧wikiは補助資料として修正。公開サイトは新版受領まで保留 |
 | 2 | 事実データの更新場所 | `src/shared/canon.ts`（本ファイルだけが正本、shared.tsは再エクスポート） | `flatup-canonical-faq.md` 使い方ルール2（`src/generators/shared.ts` の FLATUP_INFO を更新せよ） | 更新手順が旧構成のまま | **canon.ts** | canon.tsヘッダに互換関係が明記。FAQの手順は構成変更前の記述 | 不要。FAQの手順文の修正のみ推奨 |
 | 3 | 個別ルール文書の所在 | `AGENTS.md`（`docs/AIKA_RULES.md`・`docs/OPENQLOW_RULES.md`・`docs/CAMPAIGN_RULES.md` を参照せよ） | 実際のリポジトリ（3ファイルとも存在しない） | 参照先が欠落 | 判定不能 | `docs/REFERRAL_PLAYBOOK.md` も同名文書を参照しており、HelMES直下か別リポジトリにある可能性 | **要**。所在確認のうえ、openqlowへ複製するかAGENTS.mdの参照を修正 |
 | 4 | 営業時間の表現 | `src/shared/canon.ts` businessHours（2026-07-06確定。会員24時間セルフ利用とスタッフ在館を区別） | `flatup-canonical-faq.md` 営業時間（2026-06-25確定。セルフ利用の記載なし） | 24時間セルフ利用の有無 | **canon.ts** | より新しいオーナー確定（2026-07-06） | 不要。FAQ側へ追記推奨 |

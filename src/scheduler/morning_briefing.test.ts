@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { isMorningBriefingCliEntry, runMorningBriefing } from "./morning_briefing.js";
@@ -11,12 +11,14 @@ async function setRootTmp(): Promise<string> {
   return root;
 }
 
-const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
+const FIXED_NOW = new Date("2026-06-05T21:00:00Z"); // JST 06:00 of 2026-06-06
 
 // 0. tsx 実行時の CLI エントリポイント判定
 {
   assert.equal(isMorningBriefingCliEntry("file:///repo/src/scheduler/morning_briefing.ts", "/repo/src/scheduler/morning_briefing.ts"), true);
+  assert.equal(isMorningBriefingCliEntry("file:///repo/dist/scheduler/morning_briefing.js", "/repo/dist/scheduler/morning_briefing.js"), true);
   assert.equal(isMorningBriefingCliEntry("file:///repo/src/scheduler/other.ts", "/repo/src/scheduler/morning_briefing.ts"), false);
+  assert.equal(isMorningBriefingCliEntry("file:///repo/dist/scheduler/morning_briefing.js", "/repo/dist/scheduler/other.js"), false);
 }
 
 // 1. JIN_LINE_USER_ID 未設定 → no_user
@@ -37,13 +39,20 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
   delete process.env.OPENQLOW_MORNING_PUSH_DISABLED;
 }
 
-// 3. 正常パス: push 呼ばれ、かんたん日報セッションが事前作成される
+// 3. 正常パス: 管理ブリーフが1回生成され、pushされる
 {
   await setRootTmp();
   const pushCalls: Array<{ text: string; opts: unknown }> = [];
   const result = await runMorningBriefing({
     now: FIXED_NOW,
     userId: "U_TEST_JIN",
+    briefBuilder: async (_vault, dateJst) => [
+      `☀ おはようございます (${dateJst})`,
+      "【前回】",
+      "- 記録なし",
+      "【今日】",
+      "- 月間体験予約30件へ向けた行動を1つ実行する",
+    ].join("\n"),
     pushFn: async (text, opts) => {
       pushCalls.push({ text, opts });
       return { ok: true, mode: "sent" };
@@ -55,16 +64,9 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
   assert.equal(pushCalls.length, 1, "push が1回呼ばれる");
   assert.match(pushCalls[0].text, /おはようございます/);
   assert.match(pushCalls[0].text, /2026-06-06/, "JST 日付が入る");
-  assert.match(pushCalls[0].text, /昨日のFLATUPを1通で送ってください/);
-  assert.match(pushCalls[0].text, /体験 ひかりちゃん1名/);
-  assert.doesNotMatch(pushCalls[0].text, /1\/8: 昨日、体験/);
-  assert.doesNotMatch(pushCalls[0].text, /1問ずつ/);
-
-  // セッションファイルが事前作成されている
-  const conversationsDir = path.join(process.env.OPENQLOW_ROOT!, "state", "conversations");
-  const files = await readdir(conversationsDir);
-  const sessionFile = files.find((f) => f.includes("U_TEST_JIN"));
-  assert.ok(sessionFile, "Jin の会話セッションが作られる");
+  assert.match(pushCalls[0].text, /【前回】/);
+  assert.match(pushCalls[0].text, /【今日】/);
+  assert.doesNotMatch(pushCalls[0].text, /昨日のFLATUPを1通で送ってください/);
 
   await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });
 }
@@ -112,8 +114,11 @@ const FIXED_NOW = new Date("2026-06-05T22:00:00Z"); // JST 07:00 of 2026-06-06
 
   const brief = await readFile(path.join(vault, "DAILY-BRIEF.md"), "utf8");
   assert.match(brief, /# DAILY-BRIEF — 2026-06-06/);
-  assert.match(brief, /FOLLOW-UP QUEUE/);
-  assert.match(brief, /HUMAN CHECK REQUIRED/);
+  assert.match(brief, /【前回】/);
+  assert.match(brief, /【現在】/);
+  assert.match(brief, /【今日】/);
+  assert.match(brief, /【正式決定】/);
+  assert.match(brief, /【今やらなくていいこと】/);
   assert.match(brief, /OPENQLOW_LINE_DRY_RUN/);
 
   await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });

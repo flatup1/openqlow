@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { SessionStore } from "../conversation/session_store.js";
 import { saveRecord } from "../state/file_store.js";
 import type { DraftRecord } from "../types.js";
 import { executeLineCommand } from "./commands.js";
@@ -74,6 +75,8 @@ const PUSH_CALL = ["-C", "/tmp/vault", "push", "origin", "HEAD"];
 const ADD_ALLOWLIST_CALL = [
   "-C", "/tmp/vault", "add", "-A", "--",
   "01_DAILY_OPERATIONS/daily_logs",
+  "01_DAILY_OPERATIONS/体験予約・入会管理.md",
+  "DAILY-BRIEF.md",
   "6_システム/openqlow_logs",
 ];
 
@@ -167,7 +170,7 @@ async function testPushCommandExcludesNonAllowlistedChanges(): Promise<void> {
 
   assert.equal(result.ok, true);
   assert.match(result.message, /GitHubへpushしました/);
-  assert.match(result.message, /⚠️ メモ以外の変更が2件あります。これらはpushしていません。/);
+  assert.match(result.message, /⚠️ メモ以外の変更が1件あります。これらはpushしていません。/);
   // add はallowlistのパス限定でだけ呼ばれる（-A 単独は絶対に呼ばれない）
   const addCalls = calls.filter(args => args.includes("add"));
   assert.deepEqual(addCalls, [ADD_ALLOWLIST_CALL]);
@@ -232,7 +235,51 @@ async function testHelpCommandShowsJuniorHighModeReply(): Promise<void> {
   assert.match(result.message, /やめる/);
   assert.match(result.message, /\/追記 内容/);
   assert.match(result.message, /\/push/);
+  assert.match(result.message, /予約 山田 T\. 8\/20/);
+  assert.match(result.message, /体験集計/);
   assert.doesNotMatch(result.message, /FG-\d{8}-\d{3}/);
+}
+
+async function testPrimaryOwnerMessageIsAutomaticallySaved(): Promise<void> {
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-auto-memory-vault-"));
+  const result = await executeLineCommand("検討: レディース体験会を月1回にする 電話090-1234-5678", {
+    now: new Date("2026-08-13T00:10:00.000Z"),
+    vaultRoot: vault,
+    userId: "U_JIN",
+    primaryOwnerUserId: "U_JIN",
+    memorySessionStore: new SessionStore({ baseDir: path.join(vault, "sessions") }),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "auto_memory");
+  assert.match(result.message, /status: CONSIDERING/);
+
+  const log = await readFile(path.join(vault, "01_DAILY_OPERATIONS", "daily_logs", "2026-08-13.md"), "utf8");
+  assert.match(log, /## LINE自動メモ/);
+  assert.match(log, /- status: CONSIDERING/);
+  assert.match(log, /- capture: automatic/);
+  assert.doesNotMatch(log, /090-1234-5678/);
+  assert.match(log, /████/);
+}
+
+async function testNonOwnerAndTerseReplyAreNotAutomaticallySaved(): Promise<void> {
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-auto-memory-deny-vault-"));
+  const nonOwner = await executeLineCommand("新しい企画を考えた", {
+    vaultRoot: vault,
+    userId: "U_BACKUP",
+    primaryOwnerUserId: "U_JIN",
+    memorySessionStore: new SessionStore({ baseDir: path.join(vault, "sessions-backup") }),
+  });
+  assert.equal(nonOwner.handled, false);
+
+  const terse = await executeLineCommand("おk", {
+    vaultRoot: vault,
+    userId: "U_JIN",
+    primaryOwnerUserId: "U_JIN",
+    memorySessionStore: new SessionStore({ baseDir: path.join(vault, "sessions-jin") }),
+  });
+  assert.equal(terse.handled, false);
 }
 
 async function testRevisionCommandUpdatesPendingDraft(): Promise<void> {
@@ -342,6 +389,8 @@ await testPushCommandOnlyNonAllowlistedChangesDoesNotPush();
 await testPushCommandAbortsOnRebaseConflict();
 await testNonCommandIsNotHandled();
 await testHelpCommandShowsJuniorHighModeReply();
+await testPrimaryOwnerMessageIsAutomaticallySaved();
+await testNonOwnerAndTerseReplyAreNotAutomaticallySaved();
 await testRevisionCommandUpdatesPendingDraft();
 await testInsertCommandAttachesWhitelistedMedia();
 await testImageChoiceCommandSelectsAndClearsMedia();

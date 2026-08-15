@@ -45,9 +45,9 @@
 
 | ファイル | 確認事項 |
 | --- | --- |
-| `knowledge/wiki/flatup-canonical-faq.md` | レディース14:00→14:30、営業時間の24hセルフ追記、更新手順の修正（矛盾表#1,2,4）。修正後は補助資料へ |
+| `knowledge/wiki/flatup-canonical-faq.md` | レディース14:00〜15:00→14:30〜15:30、営業時間の24hセルフ追記、更新手順の修正（矛盾表#1,2,4）。修正後は補助資料へ |
 | `docs/AIKA_RULES.md`・`OPENQLOW_RULES.md`・`CAMPAIGN_RULES.md` | リポジトリに存在しない。所在の確認（矛盾表#3） |
-| Vaultの `FLATUPGYM_AI_HOME.md`・`AIKA_OS_CONSTITUTION_v1.md`・`1_AIKA人格_本番.md` | このセッションから参照不能。canon.tsとの整合をオーナー環境で確認 |
+| Vaultの `FLATUPGYM_AI_HOME.md`・`AIKA_OS_CONSTITUTION_v1.md` | 現行性を確認してから統合。`1_AIKA人格_本番.md` のレディース時間は2026-08-13に修正・本番反映済み |
 | `docs/PERPETUAL_ENGINE_REQUIREMENTS.md`・`UNIFY_3_REPOS.md` | 現行性を確認のうえ、補助資料かアーカイブへ |
 
 ## 推奨する統合順
@@ -60,5 +60,5 @@
 ## 今は統合しない方がよい資料
 
 - `knowledge/sources/*`（原本不可侵の原則。統合ではなくwiki側で補正）
-- Vault側文書（参照できない状態で統合すると、確認できない事実が正本へ混入する）
+- Vault側の未確認文書（参照できても、オーナー確定前の仮説は正本へ混入させない）
 - `docs/REFERRAL_PLAYBOOK.md`（正本化するには日付・キャンペーン規約の確定が先）

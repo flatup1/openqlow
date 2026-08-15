@@ -10,8 +10,11 @@
 export const FLATUP_CANON = {
   trialFirst: "初回体験500円",
   visitorSecond: "2回目以降ビジター3,000円",
-  visitorPass6: "6回券15,000円（1年有効）",
-  visitorPass12: "12回券30,000円（1年有効）",
+  // オーナー確定（2026-08-07 のお客様案内 + 2026-08-15 の有効期限確認）。
+  // 館内ボードの表示が最新・正しい料金。回数券は割引価格。
+  // 旧「6回券15,000円 / 12回券30,000円（公式サイト 2026-07-18 参照）」は枚数・金額とも誤り。
+  visitorPass5: "5回券14,000円（1年有効）",
+  visitorPass10: "10回券24,000円（1年有効）",
   priceKids: "キッズ7,700円",
   priceWomen: "女性8,800円",
   priceMen: "男性9,900円",
@@ -23,7 +26,7 @@ export const FLATUP_CANON = {
   nearestStation: "成田駅",
   access: "成田駅からイオンモール行きのバスに乗り、イオンのバス停で下車、徒歩約5分",
   scheduleKids: "火曜・木曜18:00〜19:00、土曜13:00〜",
-  scheduleLadies: "土曜14:30",
+  scheduleLadies: "土曜14:30〜15:30",
   bookingMen: "火曜・木曜・土曜（男性インストラクター在籍）、または平日19:00以降",
   bookingWomen: "月曜・水曜・土曜",
   noBooking: "日曜・祝日は原則体験不可",

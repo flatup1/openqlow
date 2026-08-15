@@ -1,10 +1,10 @@
-// 毎朝 cron で起動される morning briefing。
-// systemd timer (OnCalendar=*-*-* 07:00:00 Asia/Tokyo) から呼び出される想定。
+// 毎朝 cron で起動される management briefing。
+// systemd timer (OnCalendar=*-*-* 06:00:00 Asia/Tokyo) から呼び出される想定。
 //
 // 動作:
-//   1. JIN_LINE_USER_ID 向けに「かんたん日報」セッションを事前作成
-//   2. 1通で返信できる短い入力例を LINE Push API で送信
-//   3. Jin が次に LINE で返信すると、その1通を日報として保存する
+//   1. Obsidianの日次ログと体験・入会集計を読み取る
+//   2. 前回・現在・今日・保留・不要を1通にまとめてLINE送信
+//   3. 同じ内容をDAILY-BRIEF.mdへ保存する
 //
 // 安全装置:
 //   - JIN_LINE_USER_ID 未設定なら何もしない
@@ -14,12 +14,12 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { startMorningDialog } from "../commands/memory_keeper.js";
 import { loadConfig } from "../config.js";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { formatDateInTimeZone } from "../utils/date.js";
 import { openqlowPath } from "../utils/paths.js";
 import { acquireRunLock } from "./run_lock.js";
+import { buildManagementBrief } from "./management_brief.js";
 
 const RUN_LOCK_KEY = "morning_briefing_sent";
 
@@ -44,33 +44,24 @@ export interface MorningBriefingOptions {
   obsidianVaultRoot?: string;
   /** テスト用に state ディレクトリ差し替え */
   stateDir?: string;
+  /** テスト用にブリーフ生成を差し替え */
+  briefBuilder?: typeof buildManagementBrief;
 }
 
 function renderDailyBrief(dateJst: string, morningMessage: string, mode: MorningBriefingResult["mode"]): string {
   return [
     `# DAILY-BRIEF — ${dateJst}`,
     "",
-    "> openQLOW morning briefing により生成。送信・予約確定・料金判断は人間確認後。",
+    "> openQLOW management briefing により生成。根拠のない補完はせず、正式決定はJIN確認後。",
     "",
-    "## 今日の最重要タスク",
-    "- LINEで昨日の体験・入会・追客状況を1通で返す",
+    "## 本日のブリーフ",
     "",
-    "## FOLLOW-UP QUEUE",
-    "- 日報返信後、openQLOWのCRM/日報から追客候補を確認する",
+    morningMessage,
     "",
-    "## REVIEW REQUEST CANDIDATES",
-    "- 日報返信後、口コミ候補がいれば確認する",
-    "",
-    "## HUMAN CHECK REQUIRED",
-    "- 顧客への送信、予約確定、料金・返金・退会判断はJIN確認後",
+    "## 実行情報",
     `- LINE push mode: ${mode}`,
     `- OPENQLOW_LINE_DRY_RUN: ${process.env.OPENQLOW_LINE_DRY_RUN ?? "(unset)"}`,
     `- OPENQLOW_MORNING_PUSH_DISABLED: ${process.env.OPENQLOW_MORNING_PUSH_DISABLED ?? "(unset)"}`,
-    "",
-    "## 朝の入力依頼",
-    "```text",
-    morningMessage,
-    "```",
     "",
   ].join("\n");
 }
@@ -105,17 +96,12 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
     return { ok: true, mode: "duplicate_today", reason: `already sent on ${dateJst}`, dateJst };
   }
 
-  // 1. 対話モードのセッションを事前作成。Jin の次の返信が即 Q1 の答えになる
-  const dialog = await startMorningDialog(userId);
+  // メッセージ組み立て。対話プロンプトは management brief へ置き換え済み。
+  const vaultRoot = opts.obsidianVaultRoot ?? loadConfig().obsidianVaultRoot;
+  const briefBuilder = opts.briefBuilder ?? buildManagementBrief;
+  const message = await briefBuilder(vaultRoot, dateJst, now);
 
-  // 2. メッセージ組み立て
-  const message = [
-    `☀ おはようございます (${dateJst})`,
-    "",
-    dialog.reply,
-  ].join("\n");
-
-  // 3. LINE Push
+  // LINE Push
   const pushFn = opts.pushFn ?? pushLineMessage;
   const pushResult = await pushFn(message, { userId });
 
@@ -140,7 +126,7 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
   let dailyBriefPath: string | undefined;
   if (shouldWriteDailyBrief) {
     dailyBriefPath = await writeDailyBriefToVault(
-      opts.obsidianVaultRoot ?? loadConfig().obsidianVaultRoot,
+      vaultRoot,
       dateJst,
       message,
       mode,
@@ -158,7 +144,8 @@ export async function runMorningBriefing(opts: MorningBriefingOptions = {}): Pro
 
 export function isMorningBriefingCliEntry(importMetaUrl: string, argv1: string | undefined): boolean {
   if (!argv1) return false;
-  return importMetaUrl.endsWith("/morning_briefing.ts") && argv1.endsWith("morning_briefing.ts");
+  return /\/morning_briefing\.(?:ts|js)$/.test(importMetaUrl)
+    && /(?:^|\/)morning_briefing\.(?:ts|js)$/.test(argv1);
 }
 
 // CLI 実行（systemd oneshot 用）

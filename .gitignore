@@ -67,3 +67,18 @@ health*.csv
 *.token
 *_secret*
 credentials*.json
+
+# --- UIZIN 大会動画 自動切り抜き（tools/uizin-clipper） ---
+# 動画本体・解析中間物・書き出したMP4はコミットしない（容量と肖像権のため）
+tools/uizin-clipper/work/
+tools/uizin-clipper/out/
+# キャリブレーション実体（大会ごとの実測値・基準画像）はローカル管理
+tools/uizin-clipper/profiles/*.yml
+!tools/uizin-clipper/profiles/*.example.yml
+tools/uizin-clipper/profiles/*.png
+# 対戦表（選手名は個人情報として扱う）
+tools/uizin-clipper/**/card*.yml
+# この道具専用の Python 置き場所（各自の環境で作る）
+tools/uizin-clipper/.venv/
+__pycache__/
+*.pyc
