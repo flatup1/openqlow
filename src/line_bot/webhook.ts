@@ -3,7 +3,6 @@ import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
-import { formatLineMessageLog } from "./logging.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
 import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
@@ -122,7 +121,6 @@ const server = http.createServer(async (req, res) => {
         if (ev.kind === "media") {
           results.push(await executeLineMedia(ev));
         } else {
-          console.log(formatLineMessageLog(ev.userId, ev.text ?? ""));
           const crmResult = await executeLineCrmIntake({
             text: ev.text ?? "",
             lineUserId: ev.userId,
