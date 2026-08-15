@@ -6,6 +6,7 @@ import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
 import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
+import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
   exceedsWebhookBodyLimit,
@@ -97,6 +98,19 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
+        // 会員（承認者以外）のメッセージは退会相談の受付だけに使う。
+        // executeApprovalText には絶対に渡さない（承認・push コマンドを踏ませないため）。
+        if (!ev.isApprover) {
+          const withdrawal = await executeLineWithdrawalIntake({
+            text: ev.text ?? "",
+            lineUserId: ev.userId,
+            messageId: ev.messageId,
+          });
+          if (withdrawal.handled) results.push(withdrawal);
+          else results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+          continue;
+        }
+
         if (ev.kind === "media") {
           results.push(await executeLineMedia(ev));
         } else {

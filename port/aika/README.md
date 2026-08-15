@@ -8,6 +8,37 @@ AIKA（守りの受付AI / `flatup-ai-os`）の**返信前ゲート**として�
   2026-08-06 に「8月8日（**木**曜日）」と誤答した事故（正しくは土曜日）を受けて追加。
   日付は相手の発言から正しく拾えているのに、曜日だけ「返信した当日」のものを付けてしまう型の事故を防ぐ。
 - `guardian_consent.ts` … 未成年入会の保護者同意（年代カード・重要事項カード・同意記録）。
+- `withdrawal.ts` … **退会トラブルゼロ化OS v1**（退会・休会の言葉の検知／手続き案内／正式受付の控え／退会日計算）。
+
+### withdrawal の使い方（受信時）
+
+```ts
+import { decideWithdrawalTurn } from "./withdrawal.js";
+
+const d = decideWithdrawalTurn(event.message.text, {
+  firstWithdrawalInquiryAt: member.firstWithdrawalInquiryAt, // 未記録なら ""
+  procedureGuidedAt: member.procedureGuidedAt,               // 未送信なら ""
+  handledMessageIds: member.handledMessageIds,               // webhook再送よけ
+}, new Date().toISOString(), event.message.id);
+
+if (d.recordFirstInquiryAt) save({ firstWithdrawalInquiryAt: d.recordFirstInquiryAt }); // 上書きしない
+if (d.shouldSendGuide) {
+  await push(d.message);
+  save({ procedureGuidedAt: d.recordProcedureGuidedAt });
+}
+if (d.ownerReviewSignals.length > 0) notifyOwner(d.ownerReviewSignals.map(s => s.reason));
+```
+
+**絶対に守ること**
+
+- LINEで「退会します」と来ても**正式退会にしない**。相談として記録するだけ。
+- 正式受付日は「退会届の受領日時」と「カードキーの返却日時」の**遅いほう**（`resolveFormalReceipt`）。
+- 退会日・最終在籍月は**AIに計算させない**。`calcScheduledWithdrawalDate` の結果か台帳の確定値だけを使う。
+- 返金・特例・会費ペイの停止可否は判断しない。`detectOwnerReviewSignals` で拾ったら人へ渡す。
+
+設計の全体像とスタッフ運用は `docs/withdrawal-zero-v1-design.md`。openQLOW本体の正本は
+`src/crm/withdrawal.ts` / `src/crm/withdrawal_store.ts`（文面・日付計算がズレたら
+`npm run test:aika-withdrawal` が落ちる）。
 
 ### date_guard の使い方（送信直前）
 

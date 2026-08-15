@@ -133,7 +133,11 @@
     "test:group:publish": "node scripts/run-tests.mjs --group=publish",
     "test:group:ops": "node scripts/run-tests.mjs --group=ops",
     "richmenu": "node scripts/setup-rich-menu.mjs",
-    "test:rich-menu": "node scripts/setup-rich-menu.test.mjs"
+    "test:rich-menu": "node scripts/setup-rich-menu.test.mjs",
+    "test:withdrawal": "tsx src/crm/withdrawal.test.ts",
+    "test:withdrawal-store": "tsx src/crm/withdrawal_store.test.ts",
+    "test:aika-withdrawal": "tsx port/aika/withdrawal.test.ts",
+    "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

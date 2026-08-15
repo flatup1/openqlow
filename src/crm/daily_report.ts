@@ -14,6 +14,14 @@ import {
   getTrialFollowupNeeded,
   getTrialScheduled,
 } from "./queries.js";
+import {
+  getConfirmationNotSent,
+  getOwnerReviewRequired,
+  getPaymentStopPending,
+  getReadyToClose,
+  withdrawalStatusLabel,
+  type WithdrawalCase,
+} from "./withdrawal.js";
 
 function nameOf(p: Prospect): string {
   return p.name?.trim() || `#${p.id}`;
@@ -31,6 +39,11 @@ export interface DailyReport {
 export interface DailyReportOptions {
   /** 追客対象とみなす経過時間（既定24h） */
   followupHours?: number;
+  /**
+   * 退会ケース（任意）。渡すと会費ペイ未処理などの「要処理」を日報に載せる。
+   * 省略時の出力は従来と完全に同じ（既存の呼び出しを壊さない）。
+   */
+  withdrawals?: WithdrawalCase[];
 }
 
 /** 見込み客一覧から日次レポートの Markdown を生成する（I/Oなし）。 */
@@ -56,8 +69,17 @@ export function buildDailyReport(
   const joinedToday = prospects.filter(p => p.joined === 1 && p.updatedAt.slice(0, 10) === date);
   const lost = prospects.filter(p => p.status === "lost");
 
-  // 改善アクション Top3（優先度: 返信漏れ > 追客 > 体験後フォロー > 口コミ）
+  // 退会まわりの「処理漏れ」。人の記憶ではなくシステム上の未完了として毎日出す。
+  const withdrawals = options.withdrawals ?? [];
+  const paymentPending = getPaymentStopPending(withdrawals);
+  const confirmationPending = getConfirmationNotSent(withdrawals);
+  const ownerReview = getOwnerReviewRequired(withdrawals);
+  const readyToClose = getReadyToClose(withdrawals, now);
+
+  // 改善アクション Top3（優先度: 会費ペイ > 返信漏れ > 追客 > 体験後フォロー > 口コミ）
   const actions: string[] = [];
+  // 会費ペイの止め忘れは金銭トラブルに直結するので、集客系より先に出す。
+  if (paymentPending.length) actions.push(`会費ペイ未処理 ${paymentPending.length}件を今日中に処理する`);
   if (replyMissing.length) actions.push(`返信漏れ ${replyMissing.length}件を今日中に返信する`);
   if (chasing.length) actions.push(`追客候補 ${chasing.length}件に再提案を送る`);
   if (trialFollowups.length) actions.push(`体験後フォロー ${trialFollowups.length}件に連絡する`);
@@ -68,6 +90,11 @@ export function buildDailyReport(
   const lines: string[] = [];
   lines.push(`# FLATUP集客日報 ${date}`);
   lines.push("");
+  // 見落とすと事故になるものだけ、先頭に短く出す。
+  if (paymentPending.length > 0) {
+    lines.push(`> ⚠ 会費ペイ未処理 ${paymentPending.length}件（詳細は「退会手続きの要処理」）`);
+    lines.push("");
+  }
   lines.push("## 1. 今日の新規問い合わせ");
   lines.push(`- 件数：${newInquiries.length}`);
   lines.push(`- 内容：${newInquiries.map(p => `${nameOf(p)}（${p.category}/${p.purpose || "目的未記録"}）`).join("、") || "なし"}`);
@@ -92,6 +119,38 @@ export function buildDailyReport(
   lines.push(`- 失注：${lost.length}`);
   lines.push(`- 失注理由：${lost.map(p => `${nameOf(p)}：${p.lostReason || "理由未記録"}`).join("、") || "なし"}`);
   lines.push("");
+  if (withdrawals.length > 0) {
+    lines.push("## 7-2. 退会手続きの要処理");
+    lines.push(`- 会費ペイ未処理：${paymentPending.length}件`);
+    lines.push(
+      bullet(
+        paymentPending.map(
+          c =>
+            `  - ${c.memberName || c.memberId || `#${c.id}`} / 正式受付：${c.formalReceivedAt.slice(0, 10)} / ` +
+            `退会予定：${c.scheduledWithdrawalDate} → 会費ペイ側の処理後に \`crm withdrawal payment-done ${c.id}\``,
+        ),
+      ),
+    );
+    lines.push(
+      `- 正式受付LINE未送信：${confirmationPending.length}件` +
+        (confirmationPending.length
+          ? `（${confirmationPending.map(c => c.memberName || `#${c.id}`).join("、")}）`
+          : ""),
+    );
+    lines.push(
+      `- オーナー確認：${ownerReview.length}件` +
+        (ownerReview.length
+          ? `（${ownerReview.map(c => `${c.memberName || `#${c.id}`}：${c.ownerReviewReason || "理由未記録"}`).join("、")}）`
+          : ""),
+    );
+    lines.push(
+      `- 退会完了にできる：${readyToClose.length}件` +
+        (readyToClose.length
+          ? `（${readyToClose.map(c => `${c.memberName || `#${c.id}`}：${withdrawalStatusLabel(c.currentWithdrawalStatus)}`).join("、")}）`
+          : ""),
+    );
+    lines.push("");
+  }
   lines.push("## 8. 今日の改善アクションTop3");
   actions.slice(0, 3).forEach((a, i) => lines.push(`${i + 1}. ${a}`));
   lines.push("");
