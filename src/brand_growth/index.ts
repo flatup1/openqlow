@@ -90,3 +90,41 @@ export { scanConflicts } from "./knowledge/conflicts.js";
 export { applyTokenBudget, isProtected } from "./knowledge/token_budget.js";
 export { createManifestRegistry, MANIFEST_ENTRIES, MANIFEST_VERSION } from "./knowledge/manifest.js";
 export { explainKnowledgeResult, queryKnowledge } from "./knowledge/query.js";
+
+// --- Phase 3: Director と Provider 非依存の Prompt IR（dry-run のみ）---
+
+export type {
+  BriefResult,
+  CreativeBrief,
+  HeroMoment,
+  PersonContext,
+  ReusePlan,
+  Shot,
+  ShotPlan,
+  StoryBeat,
+  StoryRoleOfFlatup,
+  TwoLayer,
+} from "./contracts/creative_brief.js";
+
+export { buildBrief, DIRECTOR_VERSION } from "./director/build_brief.js";
+export { arcFor } from "./director/emotional_arc.js";
+export { heroMomentFor, primaryActionFor } from "./director/hero_moment.js";
+export { childSurfaceIsClean, requiresTwoLayer, twoLayerFor } from "./director/two_layer.js";
+
+export type { NegativeBlock, NegativeCategory, PromptIR } from "./prompts/prompt_ir.js";
+export {
+  buildVersionBundle,
+  NEGATIVE_RULES_VERSION,
+  PROMPT_ENGINE_VERSION,
+  PROMPT_TEMPLATE_VERSION,
+} from "./prompts/prompt_ir.js";
+
+export { composePromptIR, renderFinalPrompt } from "./prompts/compose.js";
+export {
+  composeNegatives,
+  selectNegativeCategories,
+  subjectPreservationFor,
+} from "./prompts/negative_compose.js";
+export { guardStyleNames, isFreeOfStyleNames } from "./prompts/style_name_guard.js";
+export type { ApprovalRequirement, CreativePackage } from "./prompts/render_preview.js";
+export { renderCreativePackage } from "./prompts/render_preview.js";
