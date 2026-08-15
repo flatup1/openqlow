@@ -15,7 +15,7 @@ Scope: Design Pack integration and current Brand Growth OS readiness
 
 ## 検証結果
 
-- Design Pack: 35 Markdown files / 5,633 lines
+- Design Pack: 35 Markdown files / 5,613 lines
 - ADR: 14件
 - Acceptance Tests: 50件
 - 相対リンク切れ: 0件
