@@ -214,34 +214,48 @@ export function composePromptIR(input: ComposeInput): PromptIR {
  * Provider の記法を使わず、素直な英文で書く。固有名も事実も入れない。
  */
 export function renderFinalPrompt(ir: PromptIR): string {
+  const context = ir.human_context;
   const lines = [
-    `Subject: ${ir.target.replace(/_/g, " ")} at a friendly kickboxing gym. The member is the protagonist.`,
+    `Target: ${ir.target.replace(/_/g, " ")} at a friendly kickboxing gym. The member is the protagonist.`,
+    `Objective: ${ir.objective}.`,
     `Emotional goal: ${ir.emotional_goal}.`,
+    `Human context: fear — ${context.fear}; frustration — ${context.frustration}; desire — ${context.desire}; barrier — ${context.barrier}.`,
     `Story: ${ir.story.join(" -> ")}.`,
     `Key moment: ${ir.hero_moment}.`,
-    `Action: ${ir.action}. Exactly one action in the clip.`,
-    `Body mechanics: ${ir.body_mechanics.join(", ")}.`,
-    `Camera: ${ir.camera}. ${ir.lens}.`,
-    `Composition: ${ir.composition}.`,
-    `Lighting: ${ir.lighting}. Atmosphere: ${ir.atmosphere}.`,
-    `Color: ${ir.color}. Speed: ${ir.speed}.`,
-    `Continuity: ${ir.continuity.join("; ")}.`,
   ];
 
   if (ir.subject_preservation.length > 0) {
     lines.push(`Preserve: ${ir.subject_preservation.join("; ")}.`);
   }
+
+  lines.push(
+    `Action: ${ir.action}. Exactly one action in the clip.`,
+    `Body mechanics: ${ir.body_mechanics.join(", ")}.`,
+    `Camera: ${ir.camera}.`,
+    `Lens and composition: ${ir.lens}. ${ir.composition}.`,
+    `Lighting: ${ir.lighting}.`,
+    `Atmosphere and color: ${ir.atmosphere}. ${ir.color}.`,
+    `Speed: ${ir.speed}.`,
+    `Sound: ${ir.sound}. Music: ${ir.music}.`,
+    `Continuity: ${ir.continuity.join("; ")}.`,
+  );
+
+  const avoid = ir.negative_categories
+    .map(block => `${block.category}: ${block.rules.join(", ")}`)
+    .join(" | ");
+  lines.push(`Avoid -> ${avoid}.`);
+
   if (ir.duration_seconds !== null) {
     lines.push(`Duration: ${ir.duration_seconds} seconds.`);
   }
   if (ir.aspect_ratio !== null) {
     lines.push(`Aspect ratio: ${ir.aspect_ratio}.`);
   }
-
-  const avoid = ir.negative_categories
-    .map(block => `${block.category}: ${block.rules.join(", ")}`)
-    .join(" | ");
-  lines.push(`Avoid -> ${avoid}.`);
+  if (ir.cta_editing_note !== null) {
+    lines.push(
+      `CTA / editing note: do not place this inside the generated footage; apply only after human approval. ${ir.cta_editing_note}`,
+    );
+  }
 
   return lines.join("\n");
 }

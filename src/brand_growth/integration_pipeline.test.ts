@@ -237,6 +237,7 @@ function assert(condition: unknown, message: string): void {
   // Verify PromptIR
   assert(prompt_ir.subject_preservation.length > 0, "Subject preservation included");
   assert(prompt_ir.negative_categories.length > 0, "Negative categories composed");
+  assert(prompt_ir.cta_editing_note?.includes("体験の空き状況"), "Trial CTA editing note included");
 
   // Step 7: Render Final Prompt
   const final_prompt = renderFinalPrompt(prompt_ir);
@@ -268,6 +269,13 @@ function assert(condition: unknown, message: string): void {
       final_prompt.toLowerCase().includes("beginner"),
     "Prompt includes target demographic"
   );
+  assert(final_prompt.includes("Objective: trial."), "Prompt includes the trial objective");
+  assert(final_prompt.includes("CTA / editing note:"), "Prompt includes a separate CTA editing note");
+  assert(final_prompt.includes("体験の空き状況"), "Prompt includes the non-urgent trial CTA draft");
+  assert(final_prompt.includes("after human approval"), "Prompt preserves the human approval gate");
+  assert(final_prompt.includes(`Key moment: ${prompt_ir.hero_moment}.`), "Prompt includes one hero moment");
+  assert(final_prompt.includes("Sound:") && final_prompt.includes("Music:"), "Prompt includes sound and music");
+  assert(final_prompt.includes("Duration: 15 seconds."), "Prompt includes the requested duration");
 
   console.log("\n" + "=".repeat(60));
   console.log("✅ Integration Test 2: PASSED");
