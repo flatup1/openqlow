@@ -11,6 +11,7 @@ export interface LineCrmIntakeResult extends Record<string, unknown> {
   handled: boolean;
   ok: boolean;
   message: string;
+  replyToSender?: boolean;
   action?: LineCrmIntakeAction;
   meta?: Record<string, unknown>;
 }
@@ -22,6 +23,7 @@ export interface ExecuteLineCrmIntakeOptions {
   lineUserId?: string;
   text: string;
   displayName?: string;
+  approver?: boolean;
   dataDir?: string;
   now?: () => Date;
   notifyOwner?: NotifyOwner;
@@ -79,6 +81,10 @@ async function safeLogCrmError(opts: ExecuteLineCrmIntakeOptions, dataDir: strin
 }
 
 export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): Promise<LineCrmIntakeResult> {
+  if (opts.approver === false) {
+    return { handled: false, ok: false, message: "line crm intake requires approver" };
+  }
+
   const inquiryText = parseLineCrmInquiryText(opts.text);
   if (inquiryText === undefined) {
     return { handled: false, ok: false, message: "line crm intake not matched" };
@@ -119,6 +125,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       handled: true,
       ok: notificationResult.ok,
       action: "crm_intake",
+      replyToSender: false,
       message: [
         `OPENQLOW: 問い合わせをCRMに${result.created ? "登録" : "更新"}しました。`,
         `ID: ${result.prospect.id}`,
@@ -138,6 +145,7 @@ export async function executeLineCrmIntake(opts: ExecuteLineCrmIntakeOptions): P
       handled: true,
       ok: false,
       action: "crm_intake",
+      replyToSender: false,
       message: `OPENQLOW: 問い合わせのCRM登録に失敗しました。\n理由: ${message}`,
       meta: { error: message },
     };
