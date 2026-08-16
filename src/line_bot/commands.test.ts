@@ -76,6 +76,7 @@ const ADD_ALLOWLIST_CALL = [
   "-C", "/tmp/vault", "add", "-A", "--",
   "01_DAILY_OPERATIONS/daily_logs",
   "01_DAILY_OPERATIONS/体験予約・入会管理.md",
+  "01_DAILY_OPERATIONS/weekly_reviews",
   "DAILY-BRIEF.md",
   "6_システム/openqlow_logs",
 ];

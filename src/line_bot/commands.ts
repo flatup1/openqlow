@@ -11,6 +11,11 @@ import {
 import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js";
 import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
 import { executeTrialKpiCommand } from "../commands/trial_kpi.js";
+import {
+  WEEKLY_REVIEW_DIRECTORY,
+  executeWeeklyOrganizeCommand,
+  parseWeeklyOrganizeCommand,
+} from "../commands/weekly_organize.js";
 import { SessionStore, defaultSessionStore } from "../conversation/session_store.js";
 import { sanitiseFreeText } from "../privacy/rules.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
@@ -34,6 +39,7 @@ export type LineCommandAction =
   | "image_choice"
   | "media_post_candidate"
   | "monthly_report"
+  | "weekly_organize"
   | "trial_kpi"
   | "auto_memory";
 
@@ -97,6 +103,7 @@ function helpMessage(): string {
     "決定: 内容 → 正式決定候補として保存",
     "/追記 内容 → 手動でObsidianに保存",
     "/push → GitHubへ送る（iPhoneに届く）",
+    "整理 → 今週のメモを1枚にまとめる",
     "※1メッセージに1コマンド",
     "",
     "体験・入会はこれだけ:",
@@ -178,6 +185,7 @@ function parseAheadCount(output: string): number {
 const PUSH_ALLOWLIST = [
   "01_DAILY_OPERATIONS/daily_logs",
   "01_DAILY_OPERATIONS/体験予約・入会管理.md",
+  WEEKLY_REVIEW_DIRECTORY,
   "DAILY-BRIEF.md",
   "6_システム/openqlow_logs",
 ];
@@ -414,6 +422,33 @@ async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOption
   }
 }
 
+async function executeWeeklyOrganize(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  const now = opts.now ?? new Date();
+  if (!parseWeeklyOrganizeCommand(text, now)) return undefined;
+
+  const vaultRoot = opts.vaultRoot ?? defaultVaultRoot();
+  try {
+    const result = await executeWeeklyOrganizeCommand(text, { now, vaultRoot });
+    if (!result.handled) return undefined;
+    return {
+      handled: true,
+      ok: result.ok,
+      action: "weekly_organize",
+      message: result.message,
+      meta: result.meta,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "weekly_organize",
+      message: `OPENQLOW: 週次整理の下書き作成に失敗しました。\n理由: ${message}`,
+      meta: { error: message },
+    };
+  }
+}
+
 export async function executeLineCommand(text: string, opts: ExecuteLineCommandOptions = {}): Promise<LineCommandResult> {
   // 0) オーナー情報: 「今何してる」「妻向け」等 → 家族向け説明を返す
   //    （誰でも聞ける情報なので allowlist チェック前に処理して OK）
@@ -485,6 +520,10 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
   // 2.5) /月報: その月の日報を日付順にまとめて返信（記憶係より前で確定させる）
   const monthly = await executeMonthlyReport(text, opts);
   if (monthly) return monthly;
+
+  // 2.55) /整理: 直近7日のメモから週次レビューの下書きを作る（正本には書かない）
+  const organize = await executeWeeklyOrganize(text, opts);
+  if (organize) return organize;
 
   // 2.6) JIN本人だけが体験予約・参加・入会の正本を更新できる。
   if (isPrimaryOwner(opts)) {
