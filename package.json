@@ -125,7 +125,7 @@
     "test:keihi-import": "tsx src/keihi/import_csv.test.ts",
     "test:organize-posts": "node scripts/organize-posts.test.mjs",
     "test:brand-growth": "tsx src/sources/integration_knowledge.test.ts && tsx src/brand_growth/integration_pipeline.test.ts && tsx src/sources/knowledge_source_verifier.test.ts && tsx src/brand_growth/router/router.test.ts && tsx src/brand_growth/knowledge/registry.test.ts && tsx src/brand_growth/director/director.test.ts && tsx src/brand_growth/prompts/prompts.test.ts && npm run test:brand-growth-phase4",
-    "test:brand-growth-phase4": "tsx src/brand_growth/quality/quality.test.ts && tsx src/brand_growth/storage/storage.test.ts && tsx src/brand_growth/growth/growth.test.ts",
+    "test:brand-growth-phase4": "tsx src/brand_growth/quality/quality.test.ts && tsx src/brand_growth/storage/storage.test.ts && tsx src/brand_growth/growth/growth.test.ts && tsx src/brand_growth/integration_phase4.test.ts",
     "test:run-tests": "node scripts/run-tests.test.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:list": "node scripts/run-tests.mjs --list",

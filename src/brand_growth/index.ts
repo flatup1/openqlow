@@ -176,8 +176,12 @@ export {
 
 export type {
   AttemptCostRecord,
+  ContentLifecycleStatus,
   ContentOutcomeView,
+  ContentRecord,
   CostSummary,
+  PublicationRecord,
+  PublicationStatus,
   EffectiveCostReason,
   Experiment,
   ExperimentArm,
@@ -194,12 +198,22 @@ export type {
   PredictedEmotionalScore,
 } from "./contracts/growth.js";
 export {
+  CONTENT_SCHEMA_VERSION,
   COST_SCHEMA_VERSION,
   EXPERIMENT_SCHEMA_VERSION,
   METRIC_FIELD_NAMES,
   METRIC_SCHEMA_VERSION,
   PREDICTED_AXIS_NAMES,
+  PUBLICATION_SCHEMA_VERSION,
 } from "./contracts/growth.js";
+
+export {
+  advanceLifecycle,
+  buildContentRecord,
+  explainContentRecord,
+  isAwaitingMetrics,
+  recordPublication,
+} from "./growth/content_record.js";
 
 export { explainCost, summarizeCost } from "./growth/cost.js";
 export {

@@ -13,6 +13,7 @@
 // ここで扱う金額は「生成にかかった費用」であって、会員料金ではない。
 
 import type { AssessedBy, Usability } from "./quality.js";
+import type { VersionBundle } from "./version_bundle.js";
 
 // --- お金 -------------------------------------------------------------------
 
@@ -73,6 +74,90 @@ export interface CostSummary {
   readonly effective_cost_reason: EffectiveCostReason;
   /** 人が見るべき赤信号。 */
   readonly health_warnings: readonly string[];
+}
+
+// --- 作ったものの一生（ContentRecord）------------------------------------------
+
+/**
+ * 1本のコンテンツが今どこにいるか。SCHEMA_CATALOG §12 の lifecycle_status。
+ *
+ * 前に進むだけで、勝手に戻らない。
+ * measured まで来て初めて「結果が分かった」と言える。
+ */
+export type ContentLifecycleStatus =
+  | "drafted"
+  | "generated"
+  | "assessed"
+  | "approved"
+  | "published"
+  | "measured"
+  | "rejected"
+  | "archived";
+
+export const CONTENT_SCHEMA_VERSION = "brand_growth.content_record.4.0.0";
+
+/** SCHEMA_CATALOG §12 ContentRecord。1本ぶんの台帳。 */
+export interface ContentRecord {
+  readonly schema_version: string;
+  readonly content_id: string;
+  readonly request_id: string;
+  readonly brief_id: string | null;
+  readonly master_asset_ids: readonly string[];
+  readonly variant_asset_ids: readonly string[];
+  readonly target: string;
+  readonly objective: string;
+  /** 「こうすればこう感じるはず」という仮説。実測ではない。 */
+  readonly emotional_hypothesis: string | null;
+  readonly hook: string | null;
+  readonly story_type: string | null;
+  readonly hero_moment: string | null;
+  readonly source_asset_ids: readonly string[];
+  readonly platforms: readonly string[];
+  readonly lifecycle_status: ContentLifecycleStatus;
+  readonly experiment_id: string | null;
+  readonly version_bundle: VersionBundle | null;
+  readonly cost_summary: CostSummary;
+  /** UTC ISO 8601。 */
+  readonly created_at: string;
+  readonly warnings: readonly string[];
+}
+
+// --- 出したことの記録（PublicationRecord）---------------------------------------
+
+/**
+ * 出したかどうか。SCHEMA_CATALOG §13。
+ *
+ * draft_saved（下書きを保存しただけ）を posted（実際に出した）と混ぜない。
+ * これを混ぜると、出していないものの数字を待ち続けることになる。
+ */
+export type PublicationStatus = "draft_saved" | "scheduled" | "posted" | "failed" | "removed";
+
+export const PUBLICATION_SCHEMA_VERSION = "brand_growth.publication_record.4.0.0";
+
+/** SCHEMA_CATALOG §13 PublicationRecord。 */
+export interface PublicationRecord {
+  readonly schema_version: string;
+  readonly publication_id: string;
+  readonly content_id: string;
+  readonly platform: string;
+  /**
+   * 出した先の証跡（投稿URLや投稿IDなど）。
+   * posted のときは必須。「出したはず」では posted にしない。
+   */
+  readonly platform_content_reference: string | null;
+  readonly variant_asset_id: string | null;
+  readonly hook_variant: string | null;
+  readonly cta_variant: string | null;
+  readonly aspect_ratio: string | null;
+  readonly duration_seconds: number | null;
+  readonly approved_at: string | null;
+  readonly approval_id: string | null;
+  readonly scheduled_at: string | null;
+  /** UTC ISO 8601。posted のときだけ入る。 */
+  readonly posted_at: string | null;
+  readonly attribution_tags: readonly string[];
+  readonly status: PublicationStatus;
+  readonly warnings: readonly string[];
 }
 
 // --- 実測値（手入力）---------------------------------------------------------
