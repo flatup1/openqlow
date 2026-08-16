@@ -2,6 +2,7 @@ import http from "node:http";
 import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
+import { executeBrandGrowthRouting } from "./brand_growth_adapter.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
@@ -105,7 +106,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
-        // 会員（承認者以外）のメッセージは退会相談の受付だけに使う。
+        // 会員（承認者以外）のメッセージは退会相談と創作依頼の受付に使う。
         // executeApprovalText には絶対に渡さない（承認・push コマンドを踏ませないため）。
         if (!ev.isApprover) {
           const withdrawal = await executeLineWithdrawalIntake({
@@ -113,8 +114,20 @@ const server = http.createServer(async (req, res) => {
             lineUserId: ev.userId,
             messageId: ev.messageId,
           });
-          if (withdrawal.handled) results.push(withdrawal);
-          else results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+          if (withdrawal.handled) {
+            results.push(withdrawal);
+          } else {
+            const brandGrowth = await executeBrandGrowthRouting({
+              text: ev.text ?? "",
+              lineUserId: ev.userId ?? "",
+              messageId: ev.messageId,
+            });
+            if (brandGrowth.handled) {
+              results.push(brandGrowth as unknown as Record<string, unknown>);
+            } else {
+              results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+            }
+          }
           continue;
         }
 
