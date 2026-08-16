@@ -273,8 +273,10 @@ function assert(condition: unknown, message: string): void {
   assert(final_prompt.includes("CTA / editing note:"), "Prompt includes a separate CTA editing note");
   assert(final_prompt.includes("体験の空き状況"), "Prompt includes the non-urgent trial CTA draft");
   assert(final_prompt.includes("after human approval"), "Prompt preserves the human approval gate");
+  assert(final_prompt.includes("Human context:"), "Prompt includes the audience's human context");
   assert(final_prompt.includes(`Key moment: ${prompt_ir.hero_moment}.`), "Prompt includes one hero moment");
   assert(final_prompt.includes("Sound:") && final_prompt.includes("Music:"), "Prompt includes sound and music");
+  assert(final_prompt.includes("Avoid ->"), "Prompt includes selected failure-prevention rules");
   assert(final_prompt.includes("Duration: 15 seconds."), "Prompt includes the requested duration");
 
   console.log("\n" + "=".repeat(60));
