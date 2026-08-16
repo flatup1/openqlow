@@ -38,7 +38,7 @@
     "test:fallback": "tsx src/shared/fallback_reply.test.ts",
     "test:aika-receptionist": "tsx src/aika/receptionist.test.ts",
     "test:date": "tsx src/utils/date.test.ts",
-    "test:uizin-clipper": "cd tools/uizin-clipper && python3 -m unittest discover -s tests -t .",
+    "test:uizin-clipper": "bash scripts/test-uizin-clipper.sh",
     "test:draft-date": "tsx src/utils/draft_date.test.ts",
     "test:safety": "tsx src/safety/check.test.ts",
     "test:response-quality": "tsx src/safety/response_quality.test.ts",
