@@ -208,6 +208,12 @@ function packageFor(creativeInput: CreativeInput, target: string, mode: string, 
   assert(ir.cta_editing_note?.includes("承認後"), "AT-014 CTA waits for human approval");
   assert(pkg.approval.cta_approval_required, "AT-014 flags CTA approval");
 
+  const finalPrompt = pkg.final_prompt ?? "";
+  assert(finalPrompt.includes("Objective: trial."), "AT-014 final prompt keeps the trial objective");
+  assert(finalPrompt.includes("CTA / editing note:"), "AT-014 final prompt keeps the editing-only CTA");
+  assert(finalPrompt.includes("体験の空き状況"), "AT-014 final prompt keeps the approved CTA draft");
+  assert(finalPrompt.includes("after human approval"), "AT-014 final prompt states the approval gate");
+
   // 煽らない。
   for (const word of ["今だけ", "限定", "急いで", "残りわずか"]) {
     assert(!JSON.stringify(pkg).includes(word), `AT-014 must not use urgency: ${word}`);

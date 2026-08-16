@@ -22,7 +22,7 @@ import type {
 import type { PersonContext } from "../contracts/creative_brief.js";
 
 export const PROMPT_ENGINE_VERSION = "3.0.0";
-export const PROMPT_TEMPLATE_VERSION = "3.0.0";
+export const PROMPT_TEMPLATE_VERSION = "3.0.1";
 export const NEGATIVE_RULES_VERSION = "3.0.0";
 
 /** 避けたいものの分類。必要な分類だけを選ぶ（全部入れない）。 */
