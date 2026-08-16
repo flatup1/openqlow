@@ -33,4 +33,20 @@ assert.doesNotMatch(script, /LINE_CHANNEL_ACCESS_TOKEN=[A-Za-z0-9+/]{10,}/, "ト
 const mode = (await stat(scriptPath)).mode;
 assert.ok((mode & 0o111) !== 0, "実行権限が必要");
 
+// --- 同期スクリプト側 -----------------------------------------------------
+const sync = await readFile(path.join(root, "deploy/scripts/sync-to-vps.sh"), "utf8");
+
+// npm キャッシュを本番へ送らない（--delete が消せず rsync 23 で落ちる原因になる）
+assert.match(sync, /--exclude '\.npm\/'/, ".npm を除外する");
+assert.match(sync, /--exclude '\.DS_Store'/, ".DS_Store を除外する");
+
+// 本番データを消さない除外は維持されていること
+for (const keep of ["state/", "drafts/", "logs/", ".env"]) {
+  assert.ok(sync.includes(`--exclude '${keep}'`), `${keep} の除外を消さない`);
+}
+
+// rsync の軽微な警告(23/24)では止まらず、それ以外は異常終了する
+assert.match(sync, /23\|24\)/, "23/24 は警告として扱う");
+assert.match(sync, /exit "\$rsync_status"/, "その他の失敗はそのまま落とす");
+
 console.log("deploy-vps tests passed");
