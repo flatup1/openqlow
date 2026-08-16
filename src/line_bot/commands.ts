@@ -190,13 +190,24 @@ const PUSH_ALLOWLIST = [
   "6_システム/openqlow_logs",
 ];
 
+const GENERATED_STATUS_PREFIXES = [
+  "6_システム/openqlow_crm_logs",
+  "6_システム/openqlow_drafts",
+  "6_システム/openqlow_loop",
+];
+
 function isAllowlistedPath(p: string): boolean {
   return PUSH_ALLOWLIST.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
+}
+
+function isGeneratedStatusPath(p: string): boolean {
+  return GENERATED_STATUS_PREFIXES.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
 }
 
 interface VaultChanges {
   allowed: string[];
   others: string[];
+  generated: string[];
   /**
    * git add に渡す実パス。許可リストの定義そのものではなく「実際に変更のあったパス」を渡す。
    * 許可リストをそのまま渡すと、まだ存在しないファイル（例: 体験予約・入会管理.md）で
@@ -209,6 +220,7 @@ interface VaultChanges {
 function partitionVaultStatus(statusOutput: string): VaultChanges {
   const allowed: string[] = [];
   const others: string[] = [];
+  const generated: string[] = [];
   const pathspecs: string[] = [];
   for (const line of statusOutput.split("\n")) {
     if (!line.trim()) continue;
@@ -221,11 +233,13 @@ function partitionVaultStatus(statusOutput: string): VaultChanges {
       for (const p of paths) {
         if (!pathspecs.includes(p)) pathspecs.push(p);
       }
+    } else if (paths.every(isGeneratedStatusPath)) {
+      generated.push(displayPath);
     } else {
       others.push(displayPath);
     }
   }
-  return { allowed, others, pathspecs };
+  return { allowed, others, generated, pathspecs };
 }
 
 async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandResult> {
@@ -236,9 +250,12 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
   const status = await runGit([
     "-C", vaultRoot, "-c", "core.quotepath=false", "status", "--porcelain",
   ]);
-  const { allowed, others, pathspecs } = partitionVaultStatus(status);
+  const { allowed, others, generated, pathspecs } = partitionVaultStatus(status);
   const warning = others.length > 0
     ? `⚠️ メモ以外の変更が${others.length}件あります。これらはpushしていません。`
+    : "";
+  const generatedNote = generated.length > 0
+    ? `自動生成物${generated.length}件はpush対象外です。`
     : "";
 
   if (allowed.length > 0) {
@@ -258,7 +275,7 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
       handled: true,
       ok: true,
       action: "git_push",
-      message: ["GitHubへpushする変更はありません。", warning].filter(Boolean).join("\n"),
+      message: ["GitHubへpushする変更はありません。", generatedNote, warning].filter(Boolean).join("\n"),
     };
   }
 
@@ -286,9 +303,10 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
     ? [
         `GitHubへpushしました。（メモ${allowed.length}件）`,
         ...allowed.map(f => `- ${f}`),
+        generatedNote,
         warning,
       ]
-    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, warning];
+    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, generatedNote, warning];
 
   return {
     handled: true,

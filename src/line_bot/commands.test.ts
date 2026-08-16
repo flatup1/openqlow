@@ -154,6 +154,8 @@ async function testPushCommandExcludesNonAllowlistedChanges(): Promise<void> {
         return [
           " M 01_DAILY_OPERATIONS/daily_logs/2026-07-10.md",
           " M 00_CORE/FLATUPGYM_AI_HOME.md",
+          "?? 6_システム/openqlow_drafts/threads/2026-07-10-fg-20260710-003-threads.md",
+          "?? 6_システム/openqlow_loop/",
           "?? DAILY-BRIEF.md",
           "",
         ].join("\n");
@@ -168,9 +170,36 @@ async function testPushCommandExcludesNonAllowlistedChanges(): Promise<void> {
   assert.equal(result.ok, true);
   assert.match(result.message, /GitHubへpushしました/);
   assert.match(result.message, /⚠️ メモ以外の変更が1件あります。これらはpushしていません。/);
+  assert.match(result.message, /自動生成物2件はpush対象外です。/);
   // add はallowlistのパス限定でだけ呼ばれる（-A 単独は絶対に呼ばれない）
   const addCalls = calls.filter(args => args.includes("add"));
   assert.deepEqual(addCalls, [addCall("01_DAILY_OPERATIONS/daily_logs/2026-07-10.md", "DAILY-BRIEF.md")]);
+}
+
+async function testPushCommandDoesNotWarnForOnlyGeneratedChanges(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) {
+        return [
+          "?? 6_システム/openqlow_crm_logs/2026-08-04.md",
+          "?? 6_システム/openqlow_drafts/x/2026-07-10-fg-20260710-003-x.md",
+          "?? 6_システム/openqlow_loop/",
+          "",
+        ].join("\n");
+      }
+      if (args.includes("rev-list")) return "0\t0\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.message, /変更はありません/);
+  assert.match(result.message, /自動生成物3件はpush対象外です。/);
+  assert.doesNotMatch(result.message, /⚠️ メモ以外の変更/);
+  assert.deepEqual(calls, [STATUS_CALL, REV_LIST_CALL]);
 }
 
 async function testPushCommandOnlyNonAllowlistedChangesDoesNotPush(): Promise<void> {
@@ -444,6 +473,7 @@ await testPushCommandSkipsWhenNoChanges();
 await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
 await testPushCommandExcludesNonAllowlistedChanges();
+await testPushCommandDoesNotWarnForOnlyGeneratedChanges();
 await testPushCommandOnlyNonAllowlistedChangesDoesNotPush();
 await testPushCommandAbortsOnRebaseConflict();
 await testNonCommandIsNotHandled();
