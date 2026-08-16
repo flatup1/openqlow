@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-07-18
+最終更新: 2026-08-16
 
 ---
 
@@ -30,6 +30,7 @@
 | `openqlow/src/distribution/` | Claude | open | 2026-06-06 |
 | `openqlow/src/generators/` | Claude | open | 2026-06-06 |
 | `openqlow/src/crm/` | Claude | open | 2026-06-11 |
+| `openqlow/src/brand_growth/` | Claude | open | 2026-08-15 |
 | `openqlow/src/scheduler/` | Codex | open | 2026-06-06 |
 | `openqlow/src/monitor/` | Codex | open | 2026-06-06 |
 | `openqlow/src/line_bot/` | Codex | open | 2026-06-06 |
@@ -45,6 +46,8 @@
 | `openqlow/scripts/` | Codex | open | 2026-06-06 |
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
+| `openqlow/docs/flatup-ai-os/` | Codex（設計） | open | 2026-08-14 |
+| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 1〜3 pushed / Design Pack integration in progress | 2026-08-16 |
 | `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
@@ -100,6 +103,7 @@
   - 集客AI司令塔「サイト改善チェック」 `src/generators/site_audit.ts`（入力テキスト評価・ネットワーク取得なし）
   - 見込み客CRM `src/crm/`（台帳・追客抽出・日報・自己修復ログ・intake）
   - LINE接続口 `src/crm/line_intake.ts`（webhook配線はCodexへハンドオフ → `docs/HANDOFF_2026-06-11_claude→codex.md`）
+- Brand Growth 領域 `src/brand_growth/`（Phase 1: 純関数Routerのみ。外部I/O・課金・公開なし。AIKA / canon / safety / line_bot / publish / scheduler / loop / animation / deploy は読み取りもせず変更しない）
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）
@@ -111,6 +115,14 @@
 - 自己修復ロジック
 - 汎用ブラウザ投稿ランナー `scripts/mac-browser-poster.mjs`
 - **Google Business / LINE VOOM 専用アダプタ** `scripts/adapters/`（半自動・JIN視覚確認）
+
+### Brand Growth Design Pack（2026-08-14 JIN承認）
+
+- Codex: `docs/flatup-ai-os/` の設計、競合確認、受入条件、Claude Codeへの引き渡し
+- Claude Code: 承認された設計に従う `src/brand_growth/` の段階実装とテスト
+- JIN: ブランド、料金、規約、安全、主要KPI、Provider有効化、本番変更の最終承認
+- 既存AIKA、canon、承認、LINE、公開、デプロイの責務は変更しない。Brand Growth側から重複実装しない。
+- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Design Packを同branchへdocs-only commitで統合するが、本番には未統合で、外部接続と本番変更は未着手。
 
 ---
 
