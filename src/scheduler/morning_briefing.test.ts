@@ -125,4 +125,52 @@ const FIXED_NOW = new Date("2026-06-05T21:00:00Z"); // JST 06:00 of 2026-06-06
   await rm(vault, { recursive: true, force: true });
 }
 
+// 7. 同じ日の2回目は送らない。timer の二重発火でJinに同じ通知が2通届くのを防ぐ。
+{
+  await setRootTmp();
+  let calls = 0;
+  const pushFn = async (): Promise<{ ok: true; mode: "sent" }> => {
+    calls += 1;
+    return { ok: true, mode: "sent" };
+  };
+
+  const first = await runMorningBriefing({ now: FIXED_NOW, userId: "U_DUP", pushFn });
+  const second = await runMorningBriefing({ now: FIXED_NOW, userId: "U_DUP", pushFn });
+
+  assert.equal(first.mode, "sent");
+  assert.equal(second.mode, "duplicate_today");
+  assert.equal(calls, 1, "2回目は push を呼ばない");
+
+  // 翌日はまた送る
+  const nextDay = await runMorningBriefing({
+    now: new Date("2026-06-06T22:00:00Z"),
+    userId: "U_DUP",
+    pushFn,
+  });
+  assert.equal(nextDay.mode, "sent");
+  assert.equal(calls, 2);
+
+  await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });
+}
+
+// 8. 送信に失敗した日はやり直せる（ロックを残さない）。
+{
+  await setRootTmp();
+  const failed = await runMorningBriefing({
+    now: FIXED_NOW,
+    userId: "U_RETRY",
+    pushFn: async () => ({ ok: false, mode: "sent", error: "rate_limit_exceeded" }),
+  });
+  assert.equal(failed.ok, false);
+
+  const retry = await runMorningBriefing({
+    now: FIXED_NOW,
+    userId: "U_RETRY",
+    pushFn: async () => ({ ok: true, mode: "sent" }),
+  });
+  assert.equal(retry.mode, "sent", "失敗した日はやり直せる");
+
+  await rm(process.env.OPENQLOW_ROOT!, { recursive: true, force: true });
+}
+
 console.log("morning briefing tests passed");
