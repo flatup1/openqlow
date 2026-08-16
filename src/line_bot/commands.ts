@@ -197,11 +197,19 @@ function isAllowlistedPath(p: string): boolean {
 interface VaultChanges {
   allowed: string[];
   others: string[];
+  /**
+   * git add に渡す実パス。許可リストの定義そのものではなく「実際に変更のあったパス」を渡す。
+   * 許可リストをそのまま渡すと、まだ存在しないファイル（例: 体験予約・入会管理.md）で
+   * `fatal: pathspec ... did not match any files` になり push 全体が失敗するため。
+   * リネームは新旧どちらも渡さないと削除側が staged されない。
+   */
+  pathspecs: string[];
 }
 
 function partitionVaultStatus(statusOutput: string): VaultChanges {
   const allowed: string[] = [];
   const others: string[] = [];
+  const pathspecs: string[] = [];
   for (const line of statusOutput.split("\n")) {
     if (!line.trim()) continue;
     // porcelain形式: `XY <path>`（リネームは `XY <old> -> <new>`）
@@ -210,11 +218,14 @@ function partitionVaultStatus(statusOutput: string): VaultChanges {
     const displayPath = paths[paths.length - 1]!;
     if (paths.every(isAllowlistedPath)) {
       allowed.push(displayPath);
+      for (const p of paths) {
+        if (!pathspecs.includes(p)) pathspecs.push(p);
+      }
     } else {
       others.push(displayPath);
     }
   }
-  return { allowed, others };
+  return { allowed, others, pathspecs };
 }
 
 async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandResult> {
@@ -225,13 +236,13 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
   const status = await runGit([
     "-C", vaultRoot, "-c", "core.quotepath=false", "status", "--porcelain",
   ]);
-  const { allowed, others } = partitionVaultStatus(status);
+  const { allowed, others, pathspecs } = partitionVaultStatus(status);
   const warning = others.length > 0
     ? `⚠️ メモ以外の変更が${others.length}件あります。これらはpushしていません。`
     : "";
 
   if (allowed.length > 0) {
-    await runGit(["-C", vaultRoot, "add", "-A", "--", ...PUSH_ALLOWLIST]);
+    await runGit(["-C", vaultRoot, "add", "-A", "--", ...pathspecs]);
     await runGit([
       "-C", vaultRoot, "commit", "-m",
       `memo: LINE追記 ${formatDateInTimeZone(now)} (${allowed.length}件)`,
