@@ -12,15 +12,16 @@
 //   - JIN_LINE_USER_ID / LINE_CHANNEL_ACCESS_TOKEN 未設定で no-op
 //   - OPENQLOW_LINE_DRY_RUN=true で送信せず stdout
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import { defaultSessionStore, type ConversationSession, type SessionStore } from "../conversation/session_store.js";
 import { __interviewInternals } from "../conversation/interview_flow.js";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { formatDateInTimeZone } from "../utils/date.js";
 import { openqlowPath } from "../utils/paths.js";
+import { acquireRunLock } from "./run_lock.js";
 
 const STALE_HOURS = 12;
+// ロックファイル名は既存の reminder_sent_<日付>.txt のまま。
+const RUN_LOCK_KEY = "reminder_sent";
 
 export type ReminderMode =
   | "sent"
@@ -50,24 +51,6 @@ export interface ReminderOptions {
   store?: SessionStore;
   /** テスト用に state ディレクトリ差し替え */
   stateDir?: string;
-}
-
-function reminderStampPath(stateDir: string, dateJst: string): string {
-  return path.join(stateDir, `reminder_sent_${dateJst}.txt`);
-}
-
-async function alreadyRemindedToday(stateDir: string, dateJst: string): Promise<boolean> {
-  try {
-    await fs.stat(reminderStampPath(stateDir, dateJst));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function markReminded(stateDir: string, dateJst: string, isoNow: string): Promise<void> {
-  await fs.mkdir(stateDir, { recursive: true });
-  await fs.writeFile(reminderStampPath(stateDir, dateJst), isoNow);
 }
 
 function currentQuestionText(session: ConversationSession): string {
@@ -104,10 +87,6 @@ export async function runReminder(opts: ReminderOptions = {}): Promise<ReminderR
   const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
   const stateDir = opts.stateDir ?? openqlowPath("state");
 
-  if (await alreadyRemindedToday(stateDir, dateJst)) {
-    return { ok: true, mode: "duplicate_today", reason: `already reminded on ${dateJst}` };
-  }
-
   const store = opts.store ?? defaultSessionStore();
   const session = await store.load(userId);
 
@@ -128,9 +107,21 @@ export async function runReminder(opts: ReminderOptions = {}): Promise<ReminderR
     return { ok: true, mode: "stale", reason: `session ${ageHours.toFixed(1)}h old, skipping` };
   }
 
+  // 送信の直前にロックを取る。timer が同じ日に2回発火しても、届くのは1通だけ。
+  // 「見てから書く」方式と違い、同時に走った2つが両方とも通ることがない。
+  const lock = await acquireRunLock(stateDir, RUN_LOCK_KEY, dateJst, now.toISOString());
+  if (!lock.acquired) {
+    return { ok: true, mode: "duplicate_today", reason: `already reminded on ${dateJst}` };
+  }
+
   const message = buildMessage(session);
   const pushFn = opts.pushFn ?? pushLineMessage;
   const pushResult = await pushFn(message, { userId });
+
+  // 実際に届いたときだけロックを残す。送れなかった日はやり直せるようにする。
+  if (pushResult.mode !== "sent" || !pushResult.ok) {
+    await lock.release();
+  }
 
   if (pushResult.mode === "dry_run") {
     return { ok: true, mode: "dry_run" };
@@ -141,8 +132,6 @@ export async function runReminder(opts: ReminderOptions = {}): Promise<ReminderR
   if (!pushResult.ok) {
     return { ok: false, mode: "sent", reason: pushResult.error };
   }
-  // sent
-  await markReminded(stateDir, dateJst, now.toISOString());
   return { ok: true, mode: "sent" };
 }
 

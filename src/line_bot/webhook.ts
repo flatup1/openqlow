@@ -5,6 +5,8 @@ import { executeApprovalText } from "./approval_dispatch.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
+import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
+import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
   exceedsWebhookBodyLimit,
@@ -14,6 +16,7 @@ import {
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
+const healthPaths = new Set(["/openqlow/health"]);
 const channelSecret = process.env.LINE_CHANNEL_SECRET || "";
 const jinLineUserId = process.env.JIN_LINE_USER_ID || "";
 const backupApproverLineUserId = process.env.BACKUP_APPROVER_LINE_USER_ID || "";
@@ -24,60 +27,6 @@ function isSignatureValid(rawBody: string, signature: string | string[] | undefi
     channelSecret,
     dryRun: process.env.OPENQLOW_DRY_RUN !== "false",
   });
-}
-
-interface ExtractedEvent {
-  kind: "text" | "media";
-  text?: string;
-  messageId?: string;
-  messageType?: "image" | "video";
-  userId?: string;
-}
-
-function extractLineEvents(rawBody: string): { events: ExtractedEvent[]; linePayload: boolean; ignored?: string; replyToken?: string } {
-  try {
-    const payload = JSON.parse(rawBody) as {
-      events?: Array<{
-        type?: string;
-        replyToken?: string;
-        source?: { userId?: string };
-        message?: { type?: string; text?: string; id?: string };
-      }>;
-    };
-
-    if (!Array.isArray(payload.events)) {
-      return { events: [{ kind: "text", text: rawBody }], linePayload: false };
-    }
-
-    const events: ExtractedEvent[] = [];
-    let replyToken: string | undefined;
-    for (const event of payload.events) {
-      if (event.type !== "message") continue;
-      const userId = event.source?.userId;
-      if (allowedApproverIds.size > 0 && !allowedApproverIds.has(userId || "")) {
-        return { events: [], linePayload: true, ignored: "non_approver_user" };
-      }
-      replyToken ??= event.replyToken;
-
-      if (event.message?.type === "text" && event.message.text) {
-        console.log(safeLineLog("text_received"));
-        events.push({ kind: "text", text: event.message.text, userId });
-      }
-
-      if ((event.message?.type === "image" || event.message?.type === "video") && event.message.id) {
-        events.push({
-          kind: "media",
-          messageId: event.message.id,
-          messageType: event.message.type,
-          userId,
-        });
-      }
-    }
-
-    return { events, linePayload: true, replyToken };
-  } catch {
-    return { events: [{ kind: "text", text: rawBody }], linePayload: false };
-  }
 }
 
 async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, unknown>> {
@@ -101,6 +50,12 @@ async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, u
 
 const server = http.createServer(async (req, res) => {
   const requestPath = new URL(req.url || "/", "http://localhost").pathname;
+  if (req.method === "GET" && healthPaths.has(requestPath)) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, service: "openqlow-webhook" }));
+    return;
+  }
+
   if (req.method !== "POST" || !webhookPaths.has(requestPath)) {
     res.writeHead(404);
     res.end("not found");
@@ -134,7 +89,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const extracted = extractLineEvents(body);
+    const extracted = extractLineEvents(body, allowedApproverIds);
     if (extracted.ignored) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, ignored: extracted.ignored }));
@@ -150,15 +105,39 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
+        // 会員（承認者以外）のメッセージは退会相談の受付だけに使う。
+        // executeApprovalText には絶対に渡さない（承認・push コマンドを踏ませないため）。
+        if (!ev.isApprover) {
+          const withdrawal = await executeLineWithdrawalIntake({
+            text: ev.text ?? "",
+            lineUserId: ev.userId,
+            messageId: ev.messageId,
+          });
+          if (withdrawal.handled) results.push(withdrawal);
+          else results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+          continue;
+        }
+
         if (ev.kind === "media") {
           results.push(await executeLineMedia(ev));
         } else {
-          const crmResult = await executeLineCrmIntake({ text: ev.text ?? "", lineUserId: ev.userId });
-          results.push(crmResult.handled ? crmResult : await executeApprovalText(ev.text ?? "", ev.userId));
+          const crmResult = await executeLineCrmIntake({
+            text: ev.text ?? "",
+            lineUserId: ev.userId,
+            approver: ev.isApprover,
+          });
+          if (crmResult.handled) {
+            results.push(crmResult);
+          } else if (ev.isApprover) {
+            results.push(await executeApprovalText(ev.text ?? "", ev.userId));
+          } else {
+            results.push({ ok: true, action: "ignored_non_approver_text", replyToSender: false });
+          }
         }
       }
-      if (extracted.linePayload) {
-        await replyLineMessage(extracted.replyToken, formatWebhookReply(results));
+      const replyableResults = results.filter(result => result.replyToSender !== false);
+      if (extracted.linePayload && replyableResults.length > 0) {
+        await replyLineMessage(extracted.replyToken, formatWebhookReply(replyableResults));
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: results.every(result => result.ok === true), results }));

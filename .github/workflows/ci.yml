@@ -18,10 +18,17 @@ permissions:
   contents: read
 
 jobs:
+  # テストは担当領域ごとに並列で走らせる。
+  # どの領域が壊れたかが GitHub の画面で一目で分かり、他の領域は最後まで走る。
   test:
-    name: test and validate
+    name: test (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      # 1グループ落ちても残りは打ち切らない。壊れた範囲を1回で把握するため。
+      fail-fast: false
+      matrix:
+        group: [core, aika, line, crm, publish, ops]
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +41,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # typecheck + 全テスト（package.json の test が一式を連結している）。
+      # グループ単位のテスト。typecheck は下の validate ジョブが1回だけ実行する。
       - name: Run tests
-        run: npm test
+        run: npm run test:group:${{ matrix.group }}
+
+  validate:
+    name: typecheck and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
 
       # AI OS の検証。Codex CLI はこの環境に無いため、該当検査は SKIP 扱いになる。
       - name: Validate AI OS
