@@ -43,26 +43,22 @@ Mac / iPhone の Obsidian
 
 ## ステップA: VPSに新しいコードを反映
 
-Macのターミナルで:
+**Macのターミナルで、これ1行だけ:**
 
 ```bash
-cd "/Users/jin/Desktop/OPENQLOW HelMES/openqlow"
-git pull origin main
-bash deploy/scripts/sync-to-vps.sh
+cd "/Users/jin/Desktop/OPENQLOW HelMES/openqlow" && npm run deploy
 ```
 
-VPSにSSHして、ビルドと再起動:
+これで「取り込み → VPSへ同期 → ビルド → 再起動 → 起動確認」まで全部やる。
+最後に `OK: openqlow-webhook は動いています` と出れば成功。
+
+リッチメニューも登録し直すときは:
 
 ```bash
-ssh -i ~/.ssh/openqlow_vps root@162.43.41.182
-cd /opt/openqlow
-npm ci
-npm run build
-systemctl restart openqlow-webhook
-systemctl status openqlow-webhook --no-pager
+npm run deploy -- --richmenu
 ```
 
-`active (running)` と出ればOK。
+失敗したらその場で止まり、原因のログが出る（本番が半端な状態にならない）。
 
 ## ステップB: VPSのVaultとGitHubをつなぐ
 

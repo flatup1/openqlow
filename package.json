@@ -126,7 +126,7 @@
     "test:organize-posts": "node scripts/organize-posts.test.mjs",
     "test:brand-growth": "tsx src/sources/integration_knowledge.test.ts && tsx src/brand_growth/integration_pipeline.test.ts && tsx src/sources/knowledge_source_verifier.test.ts && tsx src/brand_growth/router/router.test.ts && tsx src/brand_growth/knowledge/registry.test.ts && tsx src/brand_growth/director/director.test.ts && tsx src/brand_growth/prompts/prompts.test.ts",
     "test:run-tests": "node scripts/run-tests.test.mjs",
-    "test": "node scripts/run-tests.mjs && npm run test:weekly-organize",
+    "test": "node scripts/run-tests.mjs && npm run test:weekly-organize && npm run test:deploy-vps",
     "test:list": "node scripts/run-tests.mjs --list",
     "test:group:core": "node scripts/run-tests.mjs --group=core",
     "test:group:aika": "node scripts/run-tests.mjs --group=aika",
@@ -140,7 +140,9 @@
     "test:withdrawal-store": "tsx src/crm/withdrawal_store.test.ts",
     "test:aika-withdrawal": "tsx port/aika/withdrawal.test.ts",
     "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts",
-    "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts"
+    "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts",
+    "deploy": "bash deploy/scripts/deploy-vps.sh",
+    "test:deploy-vps": "node scripts/deploy-vps.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
