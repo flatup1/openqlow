@@ -1,7 +1,9 @@
 import http from "node:http";
+import path from "node:path";
 import { loadConfig } from "../config.js";
 import { saveLineMessageMediaAndAttach } from "../publish/line_media.js";
 import { executeApprovalText } from "./approval_dispatch.js";
+import { executeBrandGrowthRouting } from "./brand_growth_adapter.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
@@ -13,6 +15,7 @@ import {
   publicWebhookError,
   safeLineLog,
 } from "./webhook_security.js";
+import { logError as writeSelfRepairLog } from "../crm/self_repair.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
@@ -46,6 +49,30 @@ async function executeLineMedia(event: ExtractedEvent): Promise<Record<string, u
     id: result.id,
     message: result.message,
   };
+}
+
+async function logBrandGrowthRouting(input: {
+  lineUserId: string;
+  text: string;
+  target?: string;
+  objective?: string;
+  intent?: string;
+}): Promise<void> {
+  try {
+    const dataDir = process.env.OPENQLOW_DATA_DIR || path.join(process.cwd(), "data");
+    const timestamp = new Date().toISOString();
+    const logMessage = [
+      `【Brand Growth Routing】${timestamp}`,
+      `User: ${input.lineUserId}`,
+      `Input: ${input.text.substring(0, 50)}...`,
+      `Target: ${input.target || "skipped"}`,
+      `Objective: ${input.objective || "N/A"}`,
+      `Intent: ${input.intent || "N/A"}`,
+    ].join("\n");
+    await writeSelfRepairLog("line_webhook_error", logMessage, "brand_growth_routing", dataDir);
+  } catch (error) {
+    console.error("Failed to log brand growth routing:", error);
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -105,7 +132,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const results = [];
       for (const ev of extracted.events) {
-        // 会員（承認者以外）のメッセージは退会相談の受付だけに使う。
+        // 会員（承認者以外）のメッセージは退会相談と創作依頼の受付に使う。
         // executeApprovalText には絶対に渡さない（承認・push コマンドを踏ませないため）。
         if (!ev.isApprover) {
           const withdrawal = await executeLineWithdrawalIntake({
@@ -113,8 +140,28 @@ const server = http.createServer(async (req, res) => {
             lineUserId: ev.userId,
             messageId: ev.messageId,
           });
-          if (withdrawal.handled) results.push(withdrawal);
-          else results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+          if (withdrawal.handled) {
+            results.push(withdrawal);
+          } else {
+            const brandGrowth = await executeBrandGrowthRouting({
+              text: ev.text ?? "",
+              lineUserId: ev.userId ?? "",
+              messageId: ev.messageId,
+            });
+            if (brandGrowth.handled) {
+              // Log to CRM
+              await logBrandGrowthRouting({
+                lineUserId: ev.userId ?? "unknown",
+                text: ev.text ?? "",
+                target: typeof brandGrowth.target === "string" ? brandGrowth.target : undefined,
+                objective: typeof brandGrowth.objective === "string" ? brandGrowth.objective : undefined,
+                intent: typeof brandGrowth.intent === "string" ? brandGrowth.intent : undefined,
+              });
+              results.push(brandGrowth as unknown as Record<string, unknown>);
+            } else {
+              results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+            }
+          }
           continue;
         }
 

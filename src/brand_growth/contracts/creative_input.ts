@@ -8,7 +8,7 @@
 
 import type { ContentMode, Objective, PlatformId, TargetPrimary } from "./route_decision.js";
 
-export type InputChannel = "cli" | "web" | "owner_line" | "api" | "fixture";
+export type InputChannel = "cli" | "web" | "owner_line" | "line" | "api" | "fixture";
 
 export type MediaType = "image" | "video" | "audio" | "character_sheet" | "document";
 
