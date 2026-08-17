@@ -11,6 +11,11 @@ import {
 import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js";
 import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
 import { executeTrialKpiCommand } from "../commands/trial_kpi.js";
+import {
+  WEEKLY_REVIEW_DIRECTORY,
+  executeWeeklyOrganizeCommand,
+  parseWeeklyOrganizeCommand,
+} from "../commands/weekly_organize.js";
 import { SessionStore, defaultSessionStore } from "../conversation/session_store.js";
 import { sanitiseFreeText } from "../privacy/rules.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
@@ -34,6 +39,7 @@ export type LineCommandAction =
   | "image_choice"
   | "media_post_candidate"
   | "monthly_report"
+  | "weekly_organize"
   | "trial_kpi"
   | "auto_memory";
 
@@ -97,6 +103,7 @@ function helpMessage(): string {
     "決定: 内容 → 正式決定候補として保存",
     "/追記 内容 → 手動でObsidianに保存",
     "/push → GitHubへ送る（iPhoneに届く）",
+    "整理 → 今週のメモを1枚にまとめる",
     "※1メッセージに1コマンド",
     "",
     "体験・入会はこれだけ:",
@@ -178,22 +185,43 @@ function parseAheadCount(output: string): number {
 const PUSH_ALLOWLIST = [
   "01_DAILY_OPERATIONS/daily_logs",
   "01_DAILY_OPERATIONS/体験予約・入会管理.md",
+  WEEKLY_REVIEW_DIRECTORY,
   "DAILY-BRIEF.md",
   "6_システム/openqlow_logs",
+];
+
+const GENERATED_STATUS_PREFIXES = [
+  "6_システム/openqlow_crm_logs",
+  "6_システム/openqlow_drafts",
+  "6_システム/openqlow_loop",
 ];
 
 function isAllowlistedPath(p: string): boolean {
   return PUSH_ALLOWLIST.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
 }
 
+function isGeneratedStatusPath(p: string): boolean {
+  return GENERATED_STATUS_PREFIXES.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
+}
+
 interface VaultChanges {
   allowed: string[];
   others: string[];
+  generated: string[];
+  /**
+   * git add に渡す実パス。許可リストの定義そのものではなく「実際に変更のあったパス」を渡す。
+   * 許可リストをそのまま渡すと、まだ存在しないファイル（例: 体験予約・入会管理.md）で
+   * `fatal: pathspec ... did not match any files` になり push 全体が失敗するため。
+   * リネームは新旧どちらも渡さないと削除側が staged されない。
+   */
+  pathspecs: string[];
 }
 
 function partitionVaultStatus(statusOutput: string): VaultChanges {
   const allowed: string[] = [];
   const others: string[] = [];
+  const generated: string[] = [];
+  const pathspecs: string[] = [];
   for (const line of statusOutput.split("\n")) {
     if (!line.trim()) continue;
     // porcelain形式: `XY <path>`（リネームは `XY <old> -> <new>`）
@@ -202,11 +230,16 @@ function partitionVaultStatus(statusOutput: string): VaultChanges {
     const displayPath = paths[paths.length - 1]!;
     if (paths.every(isAllowlistedPath)) {
       allowed.push(displayPath);
+      for (const p of paths) {
+        if (!pathspecs.includes(p)) pathspecs.push(p);
+      }
+    } else if (paths.every(isGeneratedStatusPath)) {
+      generated.push(displayPath);
     } else {
       others.push(displayPath);
     }
   }
-  return { allowed, others };
+  return { allowed, others, generated, pathspecs };
 }
 
 async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandResult> {
@@ -217,13 +250,16 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
   const status = await runGit([
     "-C", vaultRoot, "-c", "core.quotepath=false", "status", "--porcelain",
   ]);
-  const { allowed, others } = partitionVaultStatus(status);
+  const { allowed, others, generated, pathspecs } = partitionVaultStatus(status);
   const warning = others.length > 0
     ? `⚠️ メモ以外の変更が${others.length}件あります。これらはpushしていません。`
     : "";
+  const generatedNote = generated.length > 0
+    ? `自動生成物${generated.length}件はpush対象外です。`
+    : "";
 
   if (allowed.length > 0) {
-    await runGit(["-C", vaultRoot, "add", "-A", "--", ...PUSH_ALLOWLIST]);
+    await runGit(["-C", vaultRoot, "add", "-A", "--", ...pathspecs]);
     await runGit([
       "-C", vaultRoot, "commit", "-m",
       `memo: LINE追記 ${formatDateInTimeZone(now)} (${allowed.length}件)`,
@@ -239,7 +275,7 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
       handled: true,
       ok: true,
       action: "git_push",
-      message: ["GitHubへpushする変更はありません。", warning].filter(Boolean).join("\n"),
+      message: ["GitHubへpushする変更はありません。", generatedNote, warning].filter(Boolean).join("\n"),
     };
   }
 
@@ -267,9 +303,10 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
     ? [
         `GitHubへpushしました。（メモ${allowed.length}件）`,
         ...allowed.map(f => `- ${f}`),
+        generatedNote,
         warning,
       ]
-    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, warning];
+    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, generatedNote, warning];
 
   return {
     handled: true,
@@ -414,6 +451,33 @@ async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOption
   }
 }
 
+async function executeWeeklyOrganize(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  const now = opts.now ?? new Date();
+  if (!parseWeeklyOrganizeCommand(text, now)) return undefined;
+
+  const vaultRoot = opts.vaultRoot ?? defaultVaultRoot();
+  try {
+    const result = await executeWeeklyOrganizeCommand(text, { now, vaultRoot });
+    if (!result.handled) return undefined;
+    return {
+      handled: true,
+      ok: result.ok,
+      action: "weekly_organize",
+      message: result.message,
+      meta: result.meta,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "weekly_organize",
+      message: `OPENQLOW: 週次整理の下書き作成に失敗しました。\n理由: ${message}`,
+      meta: { error: message },
+    };
+  }
+}
+
 export async function executeLineCommand(text: string, opts: ExecuteLineCommandOptions = {}): Promise<LineCommandResult> {
   // 0) オーナー情報: 「今何してる」「妻向け」等 → 家族向け説明を返す
   //    （誰でも聞ける情報なので allowlist チェック前に処理して OK）
@@ -485,6 +549,10 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
   // 2.5) /月報: その月の日報を日付順にまとめて返信（記憶係より前で確定させる）
   const monthly = await executeMonthlyReport(text, opts);
   if (monthly) return monthly;
+
+  // 2.55) /整理: 直近7日のメモから週次レビューの下書きを作る（正本には書かない）
+  const organize = await executeWeeklyOrganize(text, opts);
+  if (organize) return organize;
 
   // 2.6) JIN本人だけが体験予約・参加・入会の正本を更新できる。
   if (isPrimaryOwner(opts)) {

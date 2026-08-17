@@ -1,18 +1,38 @@
 # OPENQLOW
 
+![CI](https://github.com/flatup1/openqlow/actions/workflows/ci.yml/badge.svg)
+
 地図: この箱はFLATUP AIの頭脳・安全網・正本です。
 地図: 事実の正本は `openqlow/src/shared/canon.ts` です。
 地図: 触る前に `src/shared/canon.ts` と `src/aika/receptionist.ts` を読みます。
 
-OPENQLOW is FLATUP GYM's attack AI for YouTube/SNS growth.
+OPENQLOW is FLATUP GYM's human-approved AI operations system for LINE, CRM, daily operations, and SNS draft generation.
 
-Phase 1 does not publish or schedule posts. It generates three daily ideas, expands them into platform drafts, runs safety checks, sends or previews LINE approval messages, and saves approved drafts.
+It is designed to help the gym move faster while keeping the final decision with a human.
+Phase 1 does not publish or schedule posts. It generates ideas and drafts, runs safety checks, handles LINE/CRM operations, and saves approved drafts.
 
 The canonical handoff/spec is:
 
 ```text
 /Users/jin/Desktop/OPENQLOW HelMES/openqlow/OPENQLOW_HANDOFF.md
 ```
+
+## What this repo protects
+
+- Human approval stays required for customer-facing actions.
+- Secrets and personal data must not be committed.
+- Business facts must come from canonical source files, not from memory.
+- Generated drafts are drafts, not automatic publication.
+
+## Repository quality checklist
+
+| Area | Current standard |
+| --- | --- |
+| CI | GitHub Actions runs grouped tests, typecheck, and AI OS validation on `main` and PRs. |
+| Safety | `scripts/validate-ai-os.sh` and safety tests guard secrets, canon drift, and forbidden actions. |
+| Operations | VPS deploy uses `npm run deploy`; LINE webhook runs at `/openqlow/webhook`. |
+| Contribution | See `CONTRIBUTING.md` before changing code. |
+| Security | See `SECURITY.md`; never post secrets in issues, PRs, Obsidian, or logs. |
 
 ## Commands
 

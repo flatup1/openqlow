@@ -38,7 +38,7 @@
     "test:fallback": "tsx src/shared/fallback_reply.test.ts",
     "test:aika-receptionist": "tsx src/aika/receptionist.test.ts",
     "test:date": "tsx src/utils/date.test.ts",
-    "test:uizin-clipper": "cd tools/uizin-clipper && python3 -m unittest discover -s tests -t .",
+    "test:uizin-clipper": "bash scripts/test-uizin-clipper.sh",
     "test:draft-date": "tsx src/utils/draft_date.test.ts",
     "test:safety": "tsx src/safety/check.test.ts",
     "test:response-quality": "tsx src/safety/response_quality.test.ts",
@@ -127,7 +127,7 @@
     "test:brand-growth": "tsx src/sources/integration_knowledge.test.ts && tsx src/brand_growth/integration_pipeline.test.ts && tsx src/sources/knowledge_source_verifier.test.ts && tsx src/brand_growth/router/router.test.ts && tsx src/brand_growth/knowledge/registry.test.ts && tsx src/brand_growth/director/director.test.ts && tsx src/brand_growth/prompts/prompts.test.ts && npm run test:brand-growth-phase4",
     "test:brand-growth-phase4": "tsx src/brand_growth/quality/quality.test.ts && tsx src/brand_growth/storage/storage.test.ts && tsx src/brand_growth/growth/growth.test.ts && tsx src/brand_growth/integration_phase4.test.ts",
     "test:run-tests": "node scripts/run-tests.test.mjs",
-    "test": "node scripts/run-tests.mjs",
+    "test": "node scripts/run-tests.mjs && npm run test:weekly-organize && npm run test:deploy-vps",
     "test:list": "node scripts/run-tests.mjs --list",
     "test:group:core": "node scripts/run-tests.mjs --group=core",
     "test:group:aika": "node scripts/run-tests.mjs --group=aika",
@@ -140,7 +140,10 @@
     "test:withdrawal": "tsx src/crm/withdrawal.test.ts",
     "test:withdrawal-store": "tsx src/crm/withdrawal_store.test.ts",
     "test:aika-withdrawal": "tsx port/aika/withdrawal.test.ts",
-    "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts"
+    "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts",
+    "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts",
+    "deploy": "bash deploy/scripts/deploy-vps.sh",
+    "test:deploy-vps": "node scripts/deploy-vps.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
