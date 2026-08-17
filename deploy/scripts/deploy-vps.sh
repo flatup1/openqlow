@@ -46,22 +46,46 @@ else
   git pull --rebase --autostash origin main
 fi
 
+# どのコードを反映しようとしているのかを必ず表示する。
+# 「デプロイしたのに直っていない」の原因のほとんどは、古いコードを送っていること。
+DEPLOY_SHA="$(git rev-parse --short HEAD)"
+DEPLOY_SUBJECT="$(git log -1 --pretty=%s)"
+ORIGIN_SHA="$(git rev-parse --short origin/main 2>/dev/null || echo "unknown")"
+echo ""
+echo "反映するコード : ${DEPLOY_SHA}  ${DEPLOY_SUBJECT}"
+echo "GitHubのmain   : ${ORIGIN_SHA}"
+if [[ "$DEPLOY_SHA" != "$ORIGIN_SHA" ]]; then
+  echo "⚠️ 手元のコードが GitHub の main と違います。最新を反映するなら:" >&2
+  echo "   git fetch origin && git reset --hard origin/main && npm run deploy -- --skip-pull" >&2
+fi
+
 step "2/4 VPS へ同期"
 bash "${SCRIPT_DIR}/sync-to-vps.sh"
 
 step "3/4 VPS でビルドと再起動"
+# VPS には .git を送っていないため、反映したコードの印をファイルとして置く。
+# これが「いま本番で動いているコード」の唯一の手がかりになる。
 ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" bash -se <<REMOTE
 set -euo pipefail
 cd "${REMOTE_DIR}"
 npm ci
 npm run build
+printf '%s %s\n' "${DEPLOY_SHA}" "\$(date -Is)" > "${REMOTE_DIR}deployed-version.txt"
 systemctl restart ${SERVICE}
 REMOTE
 
 step "4/4 起動の確認"
 # is-active は起動していれば active を返す。失敗時は直近ログを出して落とす。
 if ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "systemctl is-active --quiet ${SERVICE}"; then
+  # 本番に置いた印を読み返し、送ったはずのコードと一致するか確かめる。
+  LIVE_VERSION="$(ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "cat ${REMOTE_DIR}deployed-version.txt 2>/dev/null || echo unknown")"
+  LIVE_SHA="${LIVE_VERSION%% *}"
   echo "OK: ${SERVICE} は動いています"
+  echo "本番で動いているコード: ${LIVE_VERSION}"
+  if [[ "$LIVE_SHA" != "$DEPLOY_SHA" ]]; then
+    echo "⚠️ 反映したはずのコード(${DEPLOY_SHA})と本番(${LIVE_SHA})が一致しません。" >&2
+    exit 1
+  fi
 else
   echo "NG: ${SERVICE} が起動していません。直近のログ:" >&2
   ssh -i "${SSH_KEY}" "${SSH_USER}@${SSH_HOST}" "journalctl -u ${SERVICE} -n 30 --no-pager" >&2
