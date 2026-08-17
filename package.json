@@ -90,6 +90,7 @@
     "test:inquiry-reply": "tsx src/generators/inquiry_reply.test.ts",
     "test:reply-gate": "tsx src/generators/reply_gate.test.ts",
     "test:aika-port": "tsx port/aika/response_quality.test.ts",
+    "test:aika-canon-sync": "tsx port/aika/flatup_canon.test.ts",
     "test:aika-guardian-consent": "tsx port/aika/guardian_consent.test.ts",
     "test:aika-date-guard": "tsx port/aika/date_guard.test.ts",
     "test:trial-followup": "tsx src/generators/trial_followup.test.ts",
