@@ -81,6 +81,10 @@
     "test:line-webhook-auth": "tsx src/line_bot/webhook_auth.test.ts",
     "test:line-webhook-security": "tsx src/line_bot/webhook_security.test.ts",
     "test:line-webhook-events": "tsx src/line_bot/webhook_events.test.ts",
+    "test:brand-growth-adapter": "tsx src/line_bot/brand_growth_adapter.test.ts",
+    "test:reply-format": "tsx src/line_bot/reply_format.test.ts",
+    "test:webhook-integration": "tsx src/line_bot/webhook_integration.test.ts",
+    "test:edge-cases": "tsx src/line_bot/edge_cases.test.ts",
     "test:state": "tsx src/state/file_store.test.ts",
     "test:canon": "tsx src/sources/canon_map.test.ts",
     "test:inquiry-reply": "tsx src/generators/inquiry_reply.test.ts",
@@ -147,7 +151,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
-    "tsx": "^4.19.4",
+    "tsx": "^4.23.12",
     "typescript": "^5.8.3"
   },
   "dependencies": {}
