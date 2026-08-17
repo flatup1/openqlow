@@ -138,6 +138,13 @@ function checkConsent(input: CreativeInput): PreflightCheck {
   if (missing.length > 0) {
     return { name: "consent", outcome: "fail", reason: `person_consent_missing:${missing.length}` };
   }
+  // 「不明」は「同意あり」ではない。人物を生成へ渡す前に、人が確かめる。
+  // ここを pass にすると、確認していない人物の顔が Provider へ流れてしまう。
+  const unknown = people.filter(asset => asset.consent_status === "unknown");
+  if (unknown.length > 0) {
+    return { name: "consent", outcome: "unknown", reason: `person_consent_unknown:${unknown.length}` };
+  }
+  // 残るのは confirmed と not_required だけ。
   return { name: "consent", outcome: "pass", reason: null };
 }
 
@@ -275,8 +282,11 @@ export function runPreflight(params: PreflightParams): PreflightResult {
     blockers.push(`knowledge:${params.knowledge_block_reason ?? "blocked"}`);
   }
 
-  // 判断のつかない人物が複数いる、といった Router 側の確認事項も引き継ぐ。
-  const clarificationRequired = decision.clarification_required || blockers.some(b => b.startsWith("consent:"));
+  // 同意が「不明」でも人へ回す。fail だけを確認対象にすると、
+  // 未確認のまま黙って止まっている状態が誰にも届かない。
+  const consentCheck = ordered.find(check => check.name === "consent");
+  const consentNeedsHuman = consentCheck?.outcome === "fail" || consentCheck?.outcome === "unknown";
+  const clarificationRequired = decision.clarification_required || consentNeedsHuman;
 
   const unverified = ordered.some(check => check.outcome === "unknown");
   const passed = blockers.length === 0 && !unverified;

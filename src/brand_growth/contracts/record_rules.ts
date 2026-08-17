@@ -11,6 +11,7 @@
 // I/O も時刻取得もしない。時刻は必ず呼び出し側から受け取る（同じ入力なら同じ結果）。
 
 import { scanPii } from "../../shared/pii_guard.js";
+import { hasSecret } from "../../shared/secret_guard.js";
 
 /** 記録の作り方が契約に反しているときに投げる。値そのものは載せない。 */
 export class RecordRuleError extends Error {
@@ -80,22 +81,34 @@ export function assertUtcIso8601(field: string, value: unknown): asserts value i
 }
 
 /**
+ * 個人情報をていねいに探す。
+ *
+ * 素の文字列と、区切り記号を空白へ均した文字列の両方を見る。
+ * `ast_090-1234-5678` のように接頭辞へ続けて書かれた連絡先は、
+ * 正本の正規表現だけでは単語境界が立たず見逃されるため。
+ *
+ * ID にも、保存する記録の中身にも、同じ厳しさで当てる。
+ * どちらか片方だけ厳しくすると、緩い側から漏れる。
+ */
+export function scanPiiThorough(text: string): readonly string[] {
+  const flattened = text.replace(/[_:.\/|]+/g, " ");
+  const kinds = new Set<string>();
+  for (const finding of [...scanPii(text), ...scanPii(flattened)]) kinds.add(finding.kind);
+  return [...kinds];
+}
+
+/**
  * ID として使える文字列か。
  * 空でないこと、そして氏名の代わりに電話番号やメールを入れていないことを見る。
- *
- * ID は `req_` や `evt_` のような接頭辞を付ける習慣があるため、
- * 区切り記号を空白へ均してからも調べる。
- * `evt_090-1234-5678` のように、接頭辞に続けて書かれた連絡先を見逃さないため。
  */
 export function assertSafeId(field: string, value: unknown): asserts value is string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new RecordRuleError("missing_id", `${field} must be a non-empty string`);
   }
-  const separatorsFlattened = value.replace(/[_:.\/|]+/g, " ");
-  const found = [...scanPii(value), ...scanPii(separatorsFlattened)];
+  const found = scanPiiThorough(value);
   if (found.length > 0) {
     // 検出した中身は出さない。種類だけを伝える。
-    throw new RecordRuleError("pii_in_id", `${field} must not contain personal data (${found.map(f => f.kind).join(",")})`);
+    throw new RecordRuleError("pii_in_id", `${field} must not contain personal data (${found.join(",")})`);
   }
 }
 
@@ -103,6 +116,32 @@ export function assertSafeId(field: string, value: unknown): asserts value is st
 export function assertNonEmpty(field: string, value: unknown): asserts value is string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new RecordRuleError("missing_field", `${field} must be a non-empty string`);
+  }
+}
+
+/**
+ * 記録へ入れる自由文の検査。秘密情報と個人情報を拒む。
+ * 値そのものは例外メッセージに載せない（種類だけ）。
+ */
+export function assertCleanText(field: string, text: string): void {
+  if (hasSecret(text)) {
+    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
+  }
+  const pii = scanPiiThorough(text);
+  if (pii.length > 0) {
+    throw new RecordRuleError("pii_in_record", `${field} must not contain personal data (${pii.join(",")})`);
+  }
+}
+
+/** 文字列の配列をまとめて検査する（ID の並び・タグの並びなど）。 */
+export function assertCleanTexts(field: string, values: readonly string[]): void {
+  values.forEach((value, index) => assertCleanText(`${field}[${index}]`, value));
+}
+
+/** 0 以上の有限な秒数か。負の尺や NaN を弾く。 */
+export function assertNonNegativeSeconds(field: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new RecordRuleError("invalid_duration", `${field} must be a finite number of 0 or more`);
   }
 }
 

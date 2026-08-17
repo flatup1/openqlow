@@ -30,9 +30,20 @@ function assertMoney(field: string, money: Money): void {
   }
 }
 
-/** 使えた本数として数えてよい試行か。人が見た判定だけを数える。 */
+/**
+ * 使えた本数として数えてよい試行か。
+ *
+ * 3つすべてを満たす必要がある。
+ *   1. 生成が成功している（失敗・中断した試行に成果物は無い）
+ *   2. 人が見て usable と判定した
+ *   3. 判定したのが human か hybrid（automated は数えない / SCHEMA_CATALOG §20）
+ *
+ * 1 を落とすと、失敗した試行が「使えた1本」に化けて、
+ * 1本あたりの費用が実際より安く見えてしまう。
+ */
 function countsAsUsable(attempt: AttemptCostRecord): boolean {
   return (
+    attempt.status === "succeeded" &&
     attempt.usability === "usable" &&
     (attempt.assessed_by === "human" || attempt.assessed_by === "hybrid")
   );
@@ -61,11 +72,20 @@ export function summarizeCost(params: SummarizeCostParams): CostSummary {
   const rejectedCount = attempts.filter(a => a.usability === "rejected").length;
   const usableCount = attempts.filter(countsAsUsable).length;
 
+  // 「失敗したのに usable」という食い違いは、黙って捨てずに知らせる。
+  const inconsistent = attempts.filter(
+    a => a.usability === "usable" && a.status !== "succeeded",
+  ).length;
+
   const withCost = attempts.filter(a => a.provider_cost !== null);
   for (const attempt of withCost) assertMoney(`attempt(${attempt.attempt_id}).provider_cost`, attempt.provider_cost as Money);
 
   const currencies = new Set(withCost.map(a => (a.provider_cost as Money).currency));
   const healthWarnings: string[] = [];
+
+  if (inconsistent > 0) {
+    healthWarnings.push(`usable_but_not_succeeded:${inconsistent}`);
+  }
 
   // 通貨が混ざっていたら足さない。合計してから割ると意味の無い数字になる。
   if (currencies.size > 1) {

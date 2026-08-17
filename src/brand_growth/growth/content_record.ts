@@ -24,12 +24,16 @@ import type {
 import { CONTENT_SCHEMA_VERSION, PUBLICATION_SCHEMA_VERSION } from "../contracts/growth.js";
 import type { VersionBundle } from "../contracts/version_bundle.js";
 import {
+  assertCleanText,
+  assertCleanTexts,
   assertNonEmpty,
+  assertNonNegativeSeconds,
   assertSafeId,
   assertUtcIso8601,
   deepFreeze,
   RecordRuleError,
 } from "../contracts/record_rules.js";
+import type { CostSummary } from "../contracts/growth.js";
 import { summarizeCost } from "./cost.js";
 
 /** 一生の進み方。飛ばしてよいが、戻ってはいけない。 */
@@ -47,6 +51,42 @@ const TERMINAL_STATUSES: readonly ContentLifecycleStatus[] = Object.freeze([
   "rejected",
   "archived",
 ] as const);
+
+/**
+ * 状態と中身の食い違いを拾う。
+ *
+ * 台帳を作るときも、状態を進めるときも、同じ関数で数え直す。
+ * 片方だけで計算すると、状態を進めた記録の警告が空になり、
+ * 「published なのに配信面が無い」といった矛盾が見えなくなる。
+ */
+function statusWarnings(params: {
+  readonly status: ContentLifecycleStatus;
+  readonly platforms: readonly string[];
+  readonly cost: CostSummary;
+  readonly attempt_count: number;
+  readonly experiment_id: string | null;
+  readonly hook: string | null;
+}): readonly string[] {
+  const warnings: string[] = [];
+
+  // 費用側の赤信号は、台帳にも見えるようにしておく。
+  for (const warning of params.cost.health_warnings) warnings.push(`cost:${warning}`);
+
+  if ((params.status === "published" || params.status === "measured") && params.platforms.length === 0) {
+    warnings.push("published_without_platform");
+  }
+  if (params.status === "measured" && params.cost.usable_count === 0) {
+    warnings.push("measured_without_usable_output");
+  }
+  if (params.status === "generated" && params.attempt_count === 0) {
+    warnings.push("generated_without_attempts");
+  }
+  // hook が null でも「記録されていない」ことに変わりはない。
+  if (params.experiment_id !== null && params.hook === null) {
+    warnings.push("experiment_without_recorded_hook");
+  }
+  return warnings;
+}
 
 export interface BuildContentRecordParams {
   readonly content_id: string;
@@ -91,44 +131,54 @@ export function buildContentRecord(params: BuildContentRecordParams): ContentRec
     assertSafeId("experiment_id", params.experiment_id);
   }
 
+  const masterAssets = params.master_asset_ids ?? [];
+  const variantAssets = params.variant_asset_ids ?? [];
+  const sourceAssets = params.source_asset_ids ?? [];
+  const platforms = params.platforms ?? [];
+
+  // 並びの中身も、単体の ID と同じ厳しさで見る。
+  // ここを緩めると、配列側から個人情報が記録へ入り込む。
+  assertCleanTexts("master_asset_ids", masterAssets);
+  assertCleanTexts("variant_asset_ids", variantAssets);
+  assertCleanTexts("source_asset_ids", sourceAssets);
+  assertCleanTexts("platforms", platforms);
+
+  for (const [field, value] of [
+    ["emotional_hypothesis", params.emotional_hypothesis],
+    ["hook", params.hook],
+    ["story_type", params.story_type],
+    ["hero_moment", params.hero_moment],
+  ] as const) {
+    if (value !== undefined && value !== null) assertCleanText(field, value);
+  }
+
   const attempts = params.attempts ?? [];
   const cost = summarizeCost({ attempts, fallback_currency: params.fallback_currency ?? null });
-
-  const platforms = params.platforms ?? [];
   const status = params.lifecycle_status;
-  const warnings: string[] = [];
 
-  // 費用側の赤信号は、台帳にも見えるようにしておく。
-  for (const warning of cost.health_warnings) warnings.push(`cost:${warning}`);
-
-  // 状態と中身の食い違いを、隠さずに残す。
-  if ((status === "published" || status === "measured") && platforms.length === 0) {
-    warnings.push("published_without_platform");
-  }
-  if (status === "measured" && cost.usable_count === 0) {
-    warnings.push("measured_without_usable_output");
-  }
-  if (status === "generated" && attempts.length === 0) {
-    warnings.push("generated_without_attempts");
-  }
-  if (params.experiment_id !== undefined && params.experiment_id !== null && params.hook === undefined) {
-    warnings.push("experiment_without_recorded_hook");
-  }
+  const warnings = statusWarnings({
+    status,
+    platforms,
+    cost,
+    attempt_count: attempts.length,
+    experiment_id: params.experiment_id ?? null,
+    hook: params.hook ?? null,
+  });
 
   return deepFreeze({
     schema_version: CONTENT_SCHEMA_VERSION,
     content_id: params.content_id,
     request_id: params.request_id,
     brief_id: params.brief_id ?? null,
-    master_asset_ids: params.master_asset_ids ?? [],
-    variant_asset_ids: params.variant_asset_ids ?? [],
+    master_asset_ids: masterAssets,
+    variant_asset_ids: variantAssets,
     target: params.target,
     objective: params.objective,
     emotional_hypothesis: params.emotional_hypothesis ?? null,
     hook: params.hook ?? null,
     story_type: params.story_type ?? null,
     hero_moment: params.hero_moment ?? null,
-    source_asset_ids: params.source_asset_ids ?? [],
+    source_asset_ids: sourceAssets,
     platforms,
     lifecycle_status: status,
     experiment_id: params.experiment_id ?? null,
@@ -158,23 +208,37 @@ export function advanceLifecycle(
       `content is already ${current} and cannot move to ${next}`,
     );
   }
-  // rejected / archived へはいつでも行ける。
-  if (TERMINAL_STATUSES.includes(next)) {
-    return deepFreeze({ ...record, lifecycle_status: next }) as ContentRecord;
+
+  if (!TERMINAL_STATUSES.includes(next)) {
+    const from = LIFECYCLE_ORDER.indexOf(current);
+    const to = LIFECYCLE_ORDER.indexOf(next);
+    if (from === -1 || to === -1) {
+      throw new RecordRuleError("unknown_lifecycle_status", `unknown lifecycle transition ${current} → ${next}`);
+    }
+    if (to < from) {
+      throw new RecordRuleError(
+        "lifecycle_cannot_go_backwards",
+        `lifecycle cannot move backwards: ${current} → ${next}`,
+      );
+    }
   }
 
-  const from = LIFECYCLE_ORDER.indexOf(current);
-  const to = LIFECYCLE_ORDER.indexOf(next);
-  if (from === -1 || to === -1) {
-    throw new RecordRuleError("unknown_lifecycle_status", `unknown lifecycle transition ${current} → ${next}`);
-  }
-  if (to < from) {
-    throw new RecordRuleError(
-      "lifecycle_cannot_go_backwards",
-      `lifecycle cannot move backwards: ${current} → ${next}`,
-    );
-  }
-  return deepFreeze({ ...record, lifecycle_status: next }) as ContentRecord;
+  // 状態が変われば、食い違いの有無も変わる。必ず数え直す。
+  // 数え直さないと、drafted から measured へ飛ばした記録の警告が空になり、
+  // 「配信面が無いまま measured」「使えた本数0のまま measured」を見逃す。
+  return deepFreeze({
+    ...record,
+    lifecycle_status: next,
+    warnings: statusWarnings({
+      status: next,
+      platforms: record.platforms,
+      cost: record.cost_summary,
+      // 試行の件数は台帳が集計済みの値から読む。
+      attempt_count: record.cost_summary.generation_count,
+      experiment_id: record.experiment_id,
+      hook: record.hook,
+    }),
+  }) as ContentRecord;
 }
 
 export interface RecordPublicationParams {
@@ -207,6 +271,26 @@ export function recordPublication(params: RecordPublicationParams): PublicationR
   assertSafeId("publication_id", params.publication_id);
   assertSafeId("content_id", params.content_id);
   assertNonEmpty("platform", params.platform);
+  assertCleanText("platform", params.platform);
+
+  if (params.approval_id !== undefined && params.approval_id !== null) {
+    assertSafeId("approval_id", params.approval_id);
+  }
+  if (params.variant_asset_id !== undefined && params.variant_asset_id !== null) {
+    assertSafeId("variant_asset_id", params.variant_asset_id);
+  }
+  assertCleanTexts("attribution_tags", params.attribution_tags ?? []);
+  for (const [field, value] of [
+    ["platform_content_reference", params.platform_content_reference],
+    ["hook_variant", params.hook_variant],
+    ["cta_variant", params.cta_variant],
+    ["aspect_ratio", params.aspect_ratio],
+  ] as const) {
+    if (value !== undefined && value !== null) assertCleanText(field, value);
+  }
+  if (params.duration_seconds !== undefined && params.duration_seconds !== null) {
+    assertNonNegativeSeconds("duration_seconds", params.duration_seconds);
+  }
 
   const reference = params.platform_content_reference ?? null;
   const postedAt = params.posted_at ?? null;
@@ -225,6 +309,21 @@ export function recordPublication(params: RecordPublicationParams): PublicationR
       throw new RecordRuleError("posted_without_time", "posted requires posted_at");
     }
     assertUtcIso8601("posted_at", postedAt);
+  } else if (params.status === "removed") {
+    // 取り下げても「出した事実」は消さない。posted_at を持っていてよい。
+    // ただし日時があるなら証跡もそろっているべき（出したのなら証跡があったはず）。
+    if (postedAt !== null) {
+      assertUtcIso8601("posted_at", postedAt);
+      if (reference === null || reference.trim() === "") {
+        throw new RecordRuleError(
+          "removed_without_evidence",
+          "removed with posted_at requires platform_content_reference",
+        );
+      }
+    } else {
+      // 出す前に取り下げた場合。出した記録が無いことを印として残す。
+      warnings.push("removed_without_posted_record");
+    }
   } else {
     // 出していないのに出した日時が入っているのは、取り違えのしるし。
     if (postedAt !== null) {

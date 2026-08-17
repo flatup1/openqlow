@@ -273,6 +273,54 @@ const BASE = pipeline(WOMEN_I2V);
   );
 }
 
+// --- 回帰: 大人でも同意が「不明」なら合格にしない（fail closed）----------------------
+//
+// 見つかった不具合: consent_status が "missing" のときだけ fail にしていたため、
+// "unknown"（未確認）の大人が pass になり、provider_request_allowed=true になっていた。
+// 「不明」は「同意あり」ではない。
+{
+  const unknownConsent = input("p4_unknown_consent", "この写真を動かして。", [
+    asset({
+      asset_id: "ast_fx_unknown",
+      source_type: "member_photo",
+      contains_person: true,
+      consent_status: "unknown",
+    }),
+  ]);
+  const decision = route(unknownConsent);
+  const result = runPreflight({ input: unknownConsent, decision, prompt_ir: null });
+
+  const consent = result.checks.find(c => c.name === "consent");
+  assert(consent?.outcome !== "pass", `unknown consent must never pass: ${consent?.outcome}`);
+  assert(consent?.outcome === "unknown", `unknown consent stays unknown: ${consent?.outcome}`);
+  assert(
+    (consent?.reason ?? "").startsWith("person_consent_unknown"),
+    `reason must name the cause: ${consent?.reason}`,
+  );
+  assert(!result.passed, "unverified consent must not pass preflight");
+  assert(!result.provider_request_allowed, "unverified consent must not reach a provider");
+  assert(result.clarification_required, "unverified consent must be raised to a human");
+}
+
+// --- confirmed と not_required は通る（過剰に止めない）-------------------------------
+{
+  for (const status of ["confirmed", "not_required"] as const) {
+    const ok = input(`p4_consent_${status}`, "この写真を動かして。", [
+      asset({
+        asset_id: `ast_fx_${status}`,
+        source_type: "member_photo",
+        contains_person: true,
+        consent_status: status,
+        consent_reference: status === "confirmed" ? "fixture-consent" : null,
+      }),
+    ]);
+    const decision = route(ok);
+    const result = runPreflight({ input: ok, decision, prompt_ir: null });
+    const consent = result.checks.find(c => c.name === "consent");
+    assert(consent?.outcome === "pass", `${status} should pass consent: ${consent?.outcome}`);
+  }
+}
+
 // --- 人物がいなければ consent は「関係なし」 -----------------------------------------
 {
   const noPerson = input("p4_noperson", "館内の設備を見せたい。", [

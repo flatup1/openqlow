@@ -344,6 +344,29 @@ try {
     assert(!existsSync(path.join(root, "pii_guarded.jsonl")), "no file is created for rejected records");
   }
 
+  // --- 回帰: 区切り記号に続く個人情報も、ディスクへ書かせない ---
+  //
+  // 見つかった不具合: 書き込み前の検査が素の文字列だけを見ていたため、
+  // "ast_090-1234-5678" のように接頭辞へ続く電話番号は単語境界が立たず、
+  // そのまま JSONL へ書かれていた（実ファイルで確認済み）。
+  {
+    const cases = [
+      ["ast_", "090", "-", "1234", "-", "5678"].join(""),
+      ["cnt_", "U", "a".repeat(32)].join(""),
+      ["ref:", "090", "-", "1234", "-", "5678"].join(""),
+      ["a/", "090", "-", "1234", "-", "5678"].join(""),
+    ];
+
+    for (const value of cases) {
+      await throwsAsync(
+        () => appendEvent(root, "pii_flat", event("evt_pii_flat", { asset_id: value })),
+        "pii_in_record",
+        `personal data after a separator (${value.slice(0, 4)}…)`,
+      );
+    }
+    assert(!existsSync(path.join(root, "pii_flat.jsonl")), "no file is created for rejected records");
+  }
+
   // --- 反証: stream 名でディレクトリを抜け出せない ---
   {
     for (const bad of ["../escape", "/etc/passwd", "Quality", "quality.jsonl", "", "a b"]) {

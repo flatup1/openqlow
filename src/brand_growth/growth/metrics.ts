@@ -107,10 +107,12 @@ export function importMetricSnapshot(params: ImportSnapshotParams): MetricSnapsh
   }
 
   const manual = params.manual_entry ?? null;
-  if (params.source === "manual") {
-    if (manual === null) {
-      throw new RecordRuleError("missing_manual_entry", "manual source requires manual_entry (who, when, evidence)");
-    }
+  if (params.source === "manual" && manual === null) {
+    throw new RecordRuleError("missing_manual_entry", "manual source requires manual_entry (who, when, evidence)");
+  }
+  // manual_entry は source の種類に関わらず保存される。
+  // だから検査も source では分けない。csv_import に付けた入力者情報も同じ厳しさで見る。
+  if (manual !== null) {
     assertNonEmpty("manual_entry.entered_by", manual.entered_by);
     assertUtcIso8601("manual_entry.entered_at", manual.entered_at);
     assertNonEmpty("manual_entry.evidence_reference", manual.evidence_reference);
@@ -284,7 +286,10 @@ export function explainOutcome(view: ContentOutcomeView): string {
     lines.push("実測（SNS 手入力）: まだありません");
   } else {
     const rate = view.measured.snapshot.values.completion_rate;
-    lines.push(`実測（SNS 手入力）: 完視聴率 ${rate === null ? "不明" : `${rate * 100}%`}`);
+    // 0.07 が 7.000000000000001% と出ないように、小数第1位で丸めて見せる。
+    // 保存されている値は丸めない。ここは表示だけ。
+    const shown = rate === null ? "不明" : `${Math.round(rate * 1000) / 10}%`;
+    lines.push(`実測（SNS 手入力）: 完視聴率 ${shown}`);
   }
   lines.push("この2つは平均しません。別々の意味の数字です。");
   return lines.join("\n");

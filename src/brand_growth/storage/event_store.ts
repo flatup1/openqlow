@@ -22,8 +22,8 @@ import {
   assertSafeId,
   assertUtcIso8601,
   deepFreeze,
+  scanPiiThorough,
 } from "../contracts/record_rules.js";
-import { scanPii } from "../../shared/pii_guard.js";
 import { scanText as scanSecrets } from "../../shared/secret_guard.js";
 
 export const EVENT_SCHEMA_VERSION = "brand_growth.event.4.0.0";
@@ -104,6 +104,10 @@ function streamFile(root: string, stream: string): string {
 /**
  * 書く前の門番。
  * 鍵や個人情報が1つでも見つかったら、ファイルには一切触れずに止める。
+ *
+ * 個人情報は scanPiiThorough で見る。素の文字列だけを見ると
+ * `"ast_090-1234-5678"` のように区切り記号へ続けて書かれた連絡先を
+ * 単語境界の都合で見逃し、そのままディスクへ書いてしまう。
  */
 function assertStorable(line: string): void {
   const secrets = scanSecrets(line);
@@ -111,9 +115,9 @@ function assertStorable(line: string): void {
     // 値は出さない。種類だけを伝える。
     throw new StorageError("secret_in_record", `record contains credentials (${secrets.map(f => f.kind).join(",")})`);
   }
-  const pii = scanPii(line);
+  const pii = scanPiiThorough(line);
   if (pii.length > 0) {
-    throw new StorageError("pii_in_record", `record contains personal data (${pii.map(f => f.kind).join(",")})`);
+    throw new StorageError("pii_in_record", `record contains personal data (${pii.join(",")})`);
   }
 }
 

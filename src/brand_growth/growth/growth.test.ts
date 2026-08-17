@@ -852,4 +852,184 @@ function snapshot(id: string, window: "24h" | "7d", value: number | null): Metri
   assert(Object.isFrozen(summary), "cost summary is frozen");
 }
 
+// =====================================================================================
+// 回帰テスト: コードレビューで見つかった不具合が戻らないようにする
+//
+// どれも「テストが通っているのに壊れていた」箇所。
+// 既存のテストが1つも捕まえられなかったので、ここで固定する。
+// =====================================================================================
+
+// --- #8 失敗した試行を「使えた1本」に数えない ---------------------------------------
+{
+  const attempts: AttemptCostRecord[] = [
+    attempt("gen_f1", { status: "failed", usability: "usable", provider_cost: { currency: "JPY", amount_minor: 300 } }),
+    attempt("gen_f2", { status: "cancelled", usability: "usable", provider_cost: { currency: "JPY", amount_minor: 300 } }),
+  ];
+  const summary = summarizeCost({ attempts });
+
+  assert(summary.usable_count === 0, `failed/cancelled attempts must not count as usable: ${summary.usable_count}`);
+  assert(summary.effective_cost_per_usable === null, "no usable output means no per-usable cost");
+  assert(summary.effective_cost_reason === "no_usable_output", `reason: ${summary.effective_cost_reason}`);
+  assert(
+    summary.health_warnings.some(w => w.startsWith("usable_but_not_succeeded:")),
+    `the contradiction must be surfaced: ${summary.health_warnings.join(",")}`,
+  );
+
+  const mixed = summarizeCost({
+    attempts: [
+      attempt("gen_ok", { status: "succeeded", usability: "usable", provider_cost: { currency: "JPY", amount_minor: 300 } }),
+      attempt("gen_bad", { status: "failed", usability: "usable", provider_cost: { currency: "JPY", amount_minor: 300 } }),
+    ],
+  });
+  assert(mixed.usable_count === 1, `only the succeeded one counts: ${mixed.usable_count}`);
+  assert(mixed.effective_cost_per_usable?.amount_minor === 600, `600 / 1 = 600: ${mixed.effective_cost_per_usable?.amount_minor}`);
+}
+
+// --- #2 manual_entry は source の種類に関わらず検査する ------------------------------
+{
+  throws(
+    () =>
+      importMetricSnapshot({
+        metric_snapshot_id: "met_reg_tz",
+        publication_id: "pub_reg",
+        captured_at: AT,
+        window: "24h",
+        source: "csv_import",
+        manual_entry: {
+          entered_by: "owner",
+          entered_at: "2026-08-16T09:00:00+09:00",
+          evidence_reference: "csv-export",
+          evidence_note: null,
+        },
+      }),
+    "invalid_timestamp",
+    "non-UTC entered_at on a csv_import snapshot",
+  );
+
+  throws(
+    () =>
+      importMetricSnapshot({
+        metric_snapshot_id: "met_reg_pii",
+        publication_id: "pub_reg",
+        captured_at: AT,
+        window: "24h",
+        source: "platform_api",
+        manual_entry: {
+          entered_by: ["owner", " ", "090", "-", "1234", "-", "5678"].join(""),
+          entered_at: AT,
+          evidence_reference: "api-export",
+          evidence_note: null,
+        },
+      }),
+    "pii_in_record",
+    "personal data in entered_by on a platform_api snapshot",
+  );
+}
+
+// --- #13 表示のときだけ丸める（保存値は丸めない）------------------------------------
+{
+  const snap = importMetricSnapshot({
+    metric_snapshot_id: "met_reg_round",
+    publication_id: "pub_reg",
+    captured_at: AT,
+    window: "24h",
+    source: "csv_import",
+    values: { completion_rate: 0.07 },
+  });
+  const view = buildOutcomeView({ content_id: "cnt_reg_round", measured: snap });
+  const text = explainOutcome(view);
+
+  assert(!text.includes("7.000000000000001"), `floating point noise must not be shown: ${text}`);
+  assert(text.includes("7%"), `the rounded value is shown: ${text}`);
+  assert(snap.values.completion_rate === 0.07, "the stored value stays exact");
+}
+
+// --- #6 設計が成立していない実験は、数字がそろっても比べない ------------------------
+{
+  const invalid = designExperiment({
+    experiment_id: "exp_reg_invalid",
+    hypothesis: "同上",
+    target: "women_beginners",
+    primary_metric: "three_second_views",
+    control: { content_id: "cnt_reg_i1", variables: { hook: "same" } },
+    treatment: { content_id: "cnt_reg_i2", variables: { hook: "same" } },
+    start_at: AT,
+    end_condition: "同上",
+  });
+  assert(invalid.design === "invalid", "identical arms are invalid");
+
+  const measured = recordExperimentResult({
+    experiment: invalid,
+    control_snapshot: snapshot("reg_i_a", "7d", 100),
+    treatment_snapshot: snapshot("reg_i_b", "7d", 200),
+  });
+  assert(measured.result?.comparable === false, "an invalid design is never comparable");
+  assert(measured.result?.direction === "unknown", `direction must stay unknown: ${measured.result?.direction}`);
+  assert(measured.learning_candidate_allowed === false, "an invalid design cannot feed learning");
+  assert(
+    measured.warnings.some(w => w === "invalid_design:not_comparable"),
+    `the reason must be recorded: ${measured.warnings.join(",")}`,
+  );
+  assert(
+    !(measured.result?.confidence_note ?? "").includes("複数"),
+    `must not claim multiple variables: ${measured.result?.confidence_note}`,
+  );
+}
+
+// --- #7 同じ記録を両側に渡せない ----------------------------------------------------
+{
+  const same = snapshot("reg_same", "7d", 100);
+  throws(
+    () => recordExperimentResult({ experiment: AT021, control_snapshot: same, treatment_snapshot: same }),
+    "same_snapshot_for_both_arms",
+    "the same snapshot on both arms",
+  );
+}
+
+// --- #12 測り終わった実験へ二重に書き込めない ---------------------------------------
+{
+  const once = recordExperimentResult({
+    experiment: AT021,
+    control_snapshot: snapshot("reg_d_a", "7d", 100),
+    treatment_snapshot: snapshot("reg_d_b", "7d", 140),
+  });
+  assert(once.status === "measured", "recorded once");
+
+  throws(
+    () =>
+      recordExperimentResult({
+        experiment: once,
+        control_snapshot: snapshot("reg_d_c", "7d", 100),
+        treatment_snapshot: snapshot("reg_d_d", "7d", 140),
+      }),
+    "experiment_already_recorded",
+    "recording over a measured experiment",
+  );
+
+  const mismatched = recordExperimentResult({
+    experiment: AT022,
+    control_snapshot: snapshot("reg_d_e", "24h", 100),
+    treatment_snapshot: snapshot("reg_d_f", "7d", 140),
+  });
+  assert(
+    new Set(mismatched.warnings).size === mismatched.warnings.length,
+    `warnings must not duplicate: ${mismatched.warnings.join(",")}`,
+  );
+  assert(
+    new Set(mismatched.limitations).size === mismatched.limitations.length,
+    "limitations must not duplicate",
+  );
+}
+
+// --- #11 取得期間が違うときは、どちらの窓かを両方書く -------------------------------
+{
+  const mismatched = recordExperimentResult({
+    experiment: AT021,
+    control_snapshot: snapshot("reg_w_a", "24h", 100),
+    treatment_snapshot: snapshot("reg_w_b", "7d", 400),
+  });
+  const definition = mismatched.result?.metric_definition ?? "";
+  assert(definition.includes("24h") && definition.includes("7d"), `both windows must be labelled: ${definition}`);
+}
+
 console.log("brand_growth growth (phase 4) tests passed");

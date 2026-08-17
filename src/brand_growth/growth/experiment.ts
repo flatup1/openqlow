@@ -184,8 +184,29 @@ export function recordExperimentResult(params: RecordResultParams): Experiment {
   const { experiment, control_snapshot: control, treatment_snapshot: treatment } = params;
   const metric = experiment.primary_metric;
 
+  // 測り終わったものへ二重に書き込ませない。訂正したいときは新しい記録を作る。
+  if (experiment.status === "measured" || experiment.status === "abandoned") {
+    throw new RecordRuleError(
+      "experiment_already_recorded",
+      `experiment is already ${experiment.status}; create a new record instead of overwriting`,
+    );
+  }
+
+  // 同じ記録を2回渡していないか。両側が同じなら、それは比較ではない。
+  if (control.metric_snapshot_id === treatment.metric_snapshot_id) {
+    throw new RecordRuleError(
+      "same_snapshot_for_both_arms",
+      "control and treatment must be different metric snapshots",
+    );
+  }
+
   const warnings = [...experiment.warnings];
   const limitations = [...experiment.limitations];
+
+  // 同じ投稿の数字を両側に置いていたら、対応がずれている可能性が高い。
+  if (control.publication_id === treatment.publication_id) {
+    warnings.push("same_publication_for_both_arms");
+  }
 
   const sameWindow =
     control.window === treatment.window &&
@@ -198,7 +219,14 @@ export function recordExperimentResult(params: RecordResultParams): Experiment {
   let direction: ExperimentDirection = "unknown";
   let confidenceNote: string;
 
-  if (!sameWindow) {
+  // 設計そのものが成立していないなら、数字がそろっていても比べない。
+  // ここを見落とすと、同一案どうしの比較が direction=up として記録されてしまう。
+  if (experiment.design === "invalid") {
+    comparable = false;
+    warnings.push("invalid_design:not_comparable");
+    limitations.push("比較として成立していない設計です。結果は参考にしません。");
+    confidenceNote = "設計が成立していないため比較不可。";
+  } else if (!sameWindow) {
     comparable = false;
     warnings.push(`window_mismatch:${control.window}_vs_${treatment.window}`);
     limitations.push("取得期間が違う数字なので、そのまま比べません。");
@@ -218,8 +246,13 @@ export function recordExperimentResult(params: RecordResultParams): Experiment {
         : "違いが複数あるため、原因は特定できません（探索のみ）。";
   }
 
+  // 取得期間が違うときは、片方だけの窓を書かない（どちらの値の窓か分からなくなる）。
+  const windowLabel = sameWindow
+    ? `window=${control.window}`
+    : `control_window=${control.window}, treatment_window=${treatment.window}`;
+
   const result: ExperimentResult = {
-    metric_definition: `${metric} (window=${control.window})`,
+    metric_definition: `${metric} (${windowLabel})`,
     control_value: controlValue,
     treatment_value: treatmentValue,
     direction,
@@ -235,8 +268,9 @@ export function recordExperimentResult(params: RecordResultParams): Experiment {
     // 比べられなかったなら、学びの候補にもしない。
     learning_candidate_allowed: experiment.learning_candidate_allowed && comparable,
     validated_learning_allowed: false,
-    limitations,
-    warnings,
+    // 同じ注意書きを二重に並べない。
+    limitations: [...new Set(limitations)],
+    warnings: [...new Set(warnings)],
     next_action: comparable
       ? "同じ設計でもう一度試し、独立した再現があるかを見る（昇格は Phase 5 とオーナー承認）。"
       : "比較の前提をそろえてから測り直す。",

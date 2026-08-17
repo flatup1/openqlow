@@ -401,4 +401,201 @@ try {
   // ここで止まるので、費用も実測もそもそも発生しない。
 }
 
+// =====================================================================================
+// 回帰テスト: 台帳と投稿記録の不具合が戻らないようにする
+// =====================================================================================
+
+// --- #5 状態を進めたら、食い違いの警告も数え直す ------------------------------------
+{
+  const drafted = buildContentRecord({
+    content_id: "cnt_reg_life",
+    request_id: "req_reg_life",
+    target: "women_beginners",
+    objective: "trial",
+    lifecycle_status: "drafted",
+    created_at: T0,
+  });
+  assert(drafted.warnings.length === 0, `drafted はまだ食い違わない: ${drafted.warnings.join(",")}`);
+
+  const jumped = advanceLifecycle(drafted, "measured");
+  assert(jumped.lifecycle_status === "measured", "状態は進む");
+  assert(
+    jumped.warnings.includes("published_without_platform"),
+    `配信面なしの measured を見逃さない: ${jumped.warnings.join(",")}`,
+  );
+  assert(
+    jumped.warnings.includes("measured_without_usable_output"),
+    `使えた本数0の measured を見逃さない: ${jumped.warnings.join(",")}`,
+  );
+
+  const healthy = advanceLifecycle(content, "archived");
+  assert(healthy.lifecycle_status === "archived", "終わりの状態へは進める");
+  assert(
+    !healthy.warnings.includes("published_without_platform"),
+    `そろっている記録に余計な警告を付けない: ${healthy.warnings.join(",")}`,
+  );
+}
+
+// --- #10 hook が null でも「記録されていない」として警告する ------------------------
+{
+  const withNullHook = buildContentRecord({
+    content_id: "cnt_reg_hook",
+    request_id: "req_reg_hook",
+    target: "women_beginners",
+    objective: "trial",
+    lifecycle_status: "assessed",
+    created_at: T0,
+    experiment_id: "exp_reg_hook",
+    hook: null,
+  });
+  assert(
+    withNullHook.warnings.includes("experiment_without_recorded_hook"),
+    `hook: null も未記録として扱う: ${withNullHook.warnings.join(",")}`,
+  );
+
+  const withHook = buildContentRecord({
+    content_id: "cnt_reg_hook2",
+    request_id: "req_reg_hook2",
+    target: "women_beginners",
+    objective: "trial",
+    lifecycle_status: "assessed",
+    created_at: T0,
+    experiment_id: "exp_reg_hook",
+    hook: "hook_question",
+  });
+  assert(
+    !withHook.warnings.includes("experiment_without_recorded_hook"),
+    "hook があれば警告しない",
+  );
+}
+
+// --- #9 並びの中身にも個人情報を入れさせない ----------------------------------------
+{
+  const phone = ["090", "-", "1234", "-", "5678"].join("");
+  const email = ["member", "@", "example", ".com"].join("");
+
+  throws(
+    () =>
+      buildContentRecord({
+        content_id: "cnt_reg_arr",
+        request_id: "req_reg_arr",
+        target: "women_beginners",
+        objective: "trial",
+        lifecycle_status: "drafted",
+        created_at: T0,
+        master_asset_ids: [`ast_${phone}`],
+      }),
+    "pii_in_record",
+    "個人情報が入った master_asset_ids",
+  );
+
+  throws(
+    () =>
+      buildContentRecord({
+        content_id: "cnt_reg_arr2",
+        request_id: "req_reg_arr2",
+        target: "women_beginners",
+        objective: "trial",
+        lifecycle_status: "drafted",
+        created_at: T0,
+        platforms: [email],
+      }),
+    "pii_in_record",
+    "個人情報が入った platforms",
+  );
+
+  throws(
+    () =>
+      buildContentRecord({
+        content_id: "cnt_reg_arr3",
+        request_id: "req_reg_arr3",
+        target: "women_beginners",
+        objective: "trial",
+        lifecycle_status: "drafted",
+        created_at: T0,
+        hook: `連絡先は ${email}`,
+      }),
+    "pii_in_record",
+    "個人情報が入った hook",
+  );
+
+  throws(
+    () =>
+      recordPublication({
+        publication_id: "pub_reg_tags",
+        content_id: "cnt_reg_ok",
+        platform: "instagram_reel",
+        status: "draft_saved",
+        attribution_tags: [`tag_${phone}`],
+      }),
+    "pii_in_record",
+    "個人情報が入った attribution_tags",
+  );
+}
+
+// --- #14 尺に負の値や NaN を入れさせない --------------------------------------------
+{
+  for (const bad of [-5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    throws(
+      () =>
+        recordPublication({
+          publication_id: "pub_reg_dur",
+          content_id: "cnt_reg_ok",
+          platform: "instagram_reel",
+          status: "draft_saved",
+          duration_seconds: bad,
+        }),
+      "invalid_duration",
+      `使えない尺 ${String(bad)}`,
+    );
+  }
+  const ok = recordPublication({
+    publication_id: "pub_reg_dur_ok",
+    content_id: "cnt_reg_ok",
+    platform: "instagram_reel",
+    status: "draft_saved",
+    duration_seconds: 15.5,
+  });
+  assert(ok.duration_seconds === 15.5, "小数の尺は保持する");
+}
+
+// --- #4 取り下げた投稿は「出した記録」を失わない ------------------------------------
+{
+  const removed = recordPublication({
+    publication_id: "pub_reg_removed",
+    content_id: "cnt_reg_ok",
+    platform: "instagram_reel",
+    status: "removed",
+    platform_content_reference: "fixture-post-ref",
+    posted_at: T2,
+  });
+  assert(removed.posted_at === T2, "出した日時は消さない");
+  assert(removed.platform_content_reference === "fixture-post-ref", "証跡も残す");
+  assert(!isAwaitingMetrics(removed), "取り下げた投稿の新しい数字は待たない");
+
+  const neverPosted = recordPublication({
+    publication_id: "pub_reg_removed2",
+    content_id: "cnt_reg_ok",
+    platform: "instagram_reel",
+    status: "removed",
+  });
+  assert(
+    neverPosted.warnings.includes("removed_without_posted_record"),
+    `出す前の取り下げは印を残す: ${neverPosted.warnings.join(",")}`,
+  );
+
+  throws(
+    () =>
+      recordPublication({
+        publication_id: "pub_reg_removed3",
+        content_id: "cnt_reg_ok",
+        platform: "instagram_reel",
+        status: "removed",
+        posted_at: T2,
+      }),
+    "removed_without_evidence",
+    "証跡なしで posted_at を持つ removed",
+  );
+}
+
 console.log("brand_growth integration (phase 4) tests passed");
