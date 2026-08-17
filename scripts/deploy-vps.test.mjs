@@ -16,6 +16,12 @@ assert.match(script, /npm ci/, "依存をインストールする");
 assert.match(script, /npm run build/, "ビルドする");
 assert.match(script, /systemctl restart/, "webhookを再起動する");
 
+// どのコードを反映するか / 本番で何が動いているかを必ず表示する
+assert.match(script, /反映するコード/, "反映するコミットを表示する");
+assert.match(script, /本番で動いているコード/, "本番のコミットを表示する");
+assert.match(script, /deployed-version\.txt/, "本番にバージョンの印を置いて読み返す");
+assert.match(script, /LIVE_SHA.*!=.*DEPLOY_SHA|\$LIVE_SHA" != "\$DEPLOY_SHA/, "一致しなければ知らせる");
+
 // 起動確認をして、ダメなら落とす
 assert.match(script, /systemctl is-active/, "起動したか確認する");
 assert.match(script, /journalctl -u/, "失敗時はログを出す");
