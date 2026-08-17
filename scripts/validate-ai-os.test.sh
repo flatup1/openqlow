@@ -43,6 +43,12 @@ trap cleanup EXIT
 # 追跡ファイルだけを複製した検査用リポジトリを作る。
 # git init が必要: 安全フックは `git rev-parse --show-toplevel` で root を解決するため、
 # 非gitディレクトリだとフック検査が別要因で落ち、負のテストが空振りになる。
+#
+# gc.auto=0 / maintenance.auto=false は必須。既定のgitは commit の後に自動メンテナンスを
+# **バックグラウンドで**走らせる。その裏プロセスが .git/objects へ書いている最中に
+# 次のケースの `rm -rf` が走ると、CIで
+# `rm: cannot remove '.../case/.git/objects': Directory not empty` として落ちる。
+# 使い捨ての検査用リポジトリにメンテナンスは不要なので、最初から起動させない。
 build_sandbox() {
   local work="$1"
   rm -rf "$work"
@@ -50,7 +56,11 @@ build_sandbox() {
   ( cd "$ROOT_DIR" && git ls-files -z ) \
     | ( cd "$ROOT_DIR" && tar --null -T - -cf - ) \
     | ( cd "$work" && tar -xf - )
-  ( cd "$work" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm fixture )
+  ( cd "$work" \
+      && git init -q \
+      && git -c gc.auto=0 -c maintenance.auto=false add -A \
+      && git -c gc.auto=0 -c maintenance.auto=false \
+             -c user.email=t@t -c user.name=t commit -qm fixture )
 }
 
 # 最重要: 無改変の複製が「通る」ことを先に確認する。
