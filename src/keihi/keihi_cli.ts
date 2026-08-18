@@ -1,11 +1,11 @@
-// 経費CLI — レシート管理・確定申告の集計・省エネ補助金の申請資料
+// 経費CLI — レシート管理・確定申告の集計・補助金の申請準備
 //
 //   npm run keihi -- add "8/3 コメリ 12800 エアコン工事"
-//   npm run keihi -- month
 //   npm run keihi -- check
+//   npm run keihi -- year 2026
 //   npm run keihi -- csv --year 2026
-//   npm run keihi -- subsidy --ac 1800:1200:2
-//   npm run keihi -- plan
+//   npm run keihi -- grant           千葉市エネルギー高騰支援金（一律11万円）
+//   npm run keihi -- jizokuka        小規模事業者持続化補助金（補助率2/3・上限50万円）
 //
 // 送信も提出もしない。出るのは下書きと集計だけで、申告と申請は人間が行う。
 
@@ -35,6 +35,17 @@ import {
   toJournalCsv,
 } from "./report.js";
 import { openExpenseStore } from "./store.js";
+import {
+  DOCUMENTS_SOLE_PROPRIETOR,
+  JIZOKUKA_R20,
+  PLAN_STEPS as JIZOKUKA_PLAN_STEPS,
+  buildApplicationPack as buildJizokukaPack,
+  calcJizokuka,
+  limitOf,
+  rateOf,
+  requiredCostFor,
+  type CalcOptions,
+} from "./jizokuka.js";
 import {
   CHIBA_ENERGY_GRANT,
   PRECHECK_ITEMS,
@@ -153,6 +164,13 @@ function printHelp(): void {
                                              要件を満たす月を自動で探し、申請メモを書き出す
   plan                                       締切から逆算した準備スケジュール
   program                                    支援金の要件・締切・問い合わせ先を表示
+
+■ 小規模事業者持続化補助金（第20回・補助率2/3・上限50万円・締切12/15）
+  jizokuka [--deficit] [--invoice] [--wage]  区分別に補助額を計算し、申請メモを書き出す
+    --deficit  赤字事業者（補助率3/4）
+    --invoice  インボイス特例（上限+50万円）
+    --wage     賃金引上げ特例（上限+150万円）
+  jizokuka-plan                              締切から逆算した準備スケジュールと提出書類
 
 ■ その他
   accounts                                   使える勘定科目の一覧
@@ -408,6 +426,76 @@ async function main(argv: string[]): Promise<number> {
       const file = await writeOutput(`${program.deadline}_エネルギー支援金_申請メモ.md`, pack);
       console.log(`\n申請メモの下書きを書き出しました。\n  ${file}`);
       console.log(`※ 要件・書類の最終確認は公式の「申請の手引き」で行ってください。\n  ${program.reference}`);
+      return 0;
+    }
+
+    case "jizokuka": {
+      const program = JIZOKUKA_R20;
+      const options: CalcOptions = {
+        deficit: "deficit" in flags,
+        invoice: "invoice" in flags,
+        wage: "wage" in flags,
+      };
+      const all = await store.getAll();
+      const result = calcJizokuka(all, program, options);
+      const rate = rateOf(program, options);
+      const limit = limitOf(program, options);
+
+      console.log(`\u25a0 ${program.name}（${program.round}）`);
+      console.log(`  補助率  : ${rate[0]}/${rate[1]}${options.deficit ? "（赤字事業者）" : ""}`);
+      console.log(`  補助上限: ${YEN.format(limit)}円`);
+      console.log(`  申請受付: ${program.openFrom} 〜 ${program.deadline} 17:00`);
+      console.log(`  様式4締切: ${program.supportPlanDeadline}（成田商工会議所が発行）`);
+      console.log(`  上限を取るのに必要な対象経費: ${YEN.format(requiredCostFor(limit, rate))}円\n`);
+
+      if (result.lines.length === 0) {
+        console.log("  補助対象になりそうな支出がまだ登録されていません。");
+        console.log('  例: npm run keihi -- add "11/10 ○○社 600000 トレーニング機器一式"');
+      } else {
+        console.log("\u25a0 区分別（経費帳からの推定）");
+        for (const line of result.lines) {
+          const capped = line.capped ? ` ← 区分上限${YEN.format(line.rule.subsidyLimit!)}円で頭打ち` : "";
+          console.log(`  ${line.category.padEnd(9, "　")} 経費 ${YEN.format(line.cost).padStart(9)}円 → 補助 ${YEN.format(line.subsidy).padStart(8)}円${capped}`);
+        }
+        console.log(`  ${"合計".padEnd(9, "　")} 経費 ${YEN.format(result.totalCost).padStart(9)}円 → 補助 ${YEN.format(result.subsidy).padStart(8)}円`);
+      }
+
+      console.log("");
+      if (result.soloViolation) {
+        console.log("  \u{1f6ab} このままでは申請できません。広報費・ウェブサイト関連費だけの構成です。");
+        console.log("     機械装置等費や展示会等出展費と組み合わせてください（第20回からの変更点）。");
+      } else if (result.shortfallCost > 0) {
+        console.log(`  上限まであと ${YEN.format(result.shortfallCost)}円 の対象経費が必要です。`);
+      } else {
+        console.log(`  \u2705 上限に到達しています。交付申請額は ${YEN.format(result.subsidy)}円。`);
+      }
+
+      const pack = buildJizokukaPack({
+        program,
+        expenses: all,
+        options,
+        applicant: flags.applicant,
+        address: flags.address,
+        today: jstToday(),
+      });
+      const file = await writeOutput(`${program.deadline}_持続化補助金_申請メモ.md`, pack);
+      console.log(`\n申請メモの下書きを書き出しました。\n  ${file}`);
+      console.log(`※ 金額・区分・上限は公表情報からの整理です。公募要領で検算してください。\n  ${program.reference}`);
+      return 0;
+    }
+
+    case "jizokuka-plan": {
+      const program = JIZOKUKA_R20;
+      const today = jstToday();
+      console.log(`\u25a0 ${program.name}（${program.round}）\n  申請締切: ${program.deadline}（今日: ${today}）\n`);
+      for (const step of JIZOKUKA_PLAN_STEPS) {
+        const date = shiftDate(program.deadline, step.offset);
+        const mark = date < today ? "済/期限切れ" : "  ";
+        console.log(`  ${date} ${mark} ${step.title}`);
+        console.log(`             ${step.detail}`);
+      }
+      console.log(`\n\u25a0 提出書類（個人事業主）`);
+      for (const doc of DOCUMENTS_SOLE_PROPRIETOR) console.log(`  \u25a1 ${doc.name} — ${doc.hint}`);
       return 0;
     }
 
