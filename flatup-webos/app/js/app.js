@@ -63,8 +63,9 @@ window.FLATUP = window.FLATUP || {};
     var hero = el("div", { class: "hero" }, [
       photo,
       el("div", { class: "hero-overlay" }),
+      // 「世界一初心者にやさしい格闘技ジム」は現在の写真に焼き込み済みのため、
+      // 重ねるコピーは1行だけにする（写真を文字なし版に替えたら eyebrow を戻してよい）
       el("div", { class: "hero-copy" }, [
-        el("span", { class: "hero-eyebrow", text: "世界一初心者にやさしい格闘技ジム" }),
         el("span", { class: "hero-title", text: "はじめの一歩を、安心から。" })
       ])
     ]);
