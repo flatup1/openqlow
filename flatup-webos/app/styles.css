@@ -1,0 +1,172 @@
+/* FLAT UP WebOS — Gentle Adventure（モバイルファースト）
+ * 優しさ > 未来感 > 派手さ。黒赤の格闘技配色は使わない。
+ */
+:root {
+  --bg: #fbfbf7;
+  --panel: #ffffff;
+  --ink: #232526;
+  --muted: #5c6560;
+  --green: #6fae7d;
+  --green-d: #4f8a5f;
+  --pink: #ff5fa2;
+  --yellow: #ffd23f;
+  --line: #06c755;
+  --border: #e4e7df;
+  --radius: 20px;
+  --maxw: 560px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12140f; --panel: #1b1e18; --ink: #f3f5ee; --muted: #a8b0a4; --border: #2c3128;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  line-height: 1.8;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+header.site {
+  padding: 14px 20px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+header.site .dot { color: var(--green); }
+
+main#app {
+  flex: 1;
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 8px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* 画面の切り替え（柔らかいトランジション） */
+.screen { animation: rise .45s ease both; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screen { animation: none; }
+}
+
+h1.q {
+  font-size: 24px;
+  line-height: 1.6;
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+p.welcome-lead {
+  font-size: 20px;
+  line-height: 2;
+  margin: 0 0 28px;
+}
+p.note {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 24px;
+}
+
+/* 現在位置（長さを意識させすぎない小さな点） */
+.dots { display: flex; gap: 6px; margin: 0 0 18px; }
+.dots span {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border);
+}
+.dots span.on { background: var(--green); }
+
+/* 選択肢: 大きなボタン。親指1本・1タップ */
+.options { display: flex; flex-direction: column; gap: 12px; margin: 0 0 20px; }
+button.opt, a.cta, button.cta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 16px 18px;
+  min-height: 56px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform .12s ease, border-color .12s ease;
+}
+button.opt:hover { border-color: var(--green); }
+button.opt:active { transform: scale(.98); }
+button.opt:focus-visible, a.cta:focus-visible, button.cta:focus-visible,
+button.ghost:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* CTA */
+a.cta.primary {
+  background: var(--line);
+  border-color: var(--line);
+  color: #fff;
+}
+a.cta.secondary { border-color: var(--green); color: var(--green-d); }
+@media (prefers-color-scheme: dark) {
+  a.cta.secondary { color: var(--green); }
+}
+
+/* 戻る・スキップ（控えめに） */
+.subactions { display: flex; justify-content: space-between; gap: 12px; }
+button.ghost {
+  font: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 12px 8px;
+  min-height: 44px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* 結果画面 */
+.result h1.q { color: var(--green-d); }
+@media (prefers-color-scheme: dark) { .result h1.q { color: var(--green); } }
+.result ul.hints { padding: 0 0 0 2px; margin: 0 0 20px; list-style: none; }
+.result ul.hints li { margin: 0 0 10px; padding-left: 1.4em; position: relative; }
+.result ul.hints li::before { content: "🌱"; position: absolute; left: 0; }
+.result .reassurance {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+
+footer.site {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 16px 20px 28px;
+}
+
+@media (min-width: 720px) {
+  h1.q { font-size: 28px; }
+  p.welcome-lead { font-size: 22px; }
+}
