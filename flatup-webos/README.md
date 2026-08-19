@@ -108,4 +108,5 @@ XServerへはそのまま `app/` の中身をアップロードすれば動き�
 | [docs/ANALYTICS.md](docs/ANALYTICS.md) | KPIとイベント設計 |
 | [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) | 個人情報・secrets・承認境界 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Phase 0〜4の詳細 |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Phase 1公開手順（XServer）と公開後チェックリスト |
 | [references/README.md](references/README.md) | 参考サイトの扱い方 |
