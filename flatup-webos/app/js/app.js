@@ -181,6 +181,19 @@ window.FLATUP = window.FLATUP || {};
     ctas.appendChild(primary);
     wrap.appendChild(ctas);
 
+    // LINE引き継ぎ: 回答をVPSへ預け、成功したらCTAを「コード入力済みリンク」へ差し替える。
+    // 失敗しても従来リンクのまま（体験は劣化しない）。
+    var handoffNote = el("p", { class: "note handoff-note" });
+    wrap.appendChild(handoffNote);
+    FLATUP.concierge.submitJourney(j).then(function (journeyId) {
+      if (!journeyId) return;
+      primary.setAttribute("href", FLATUP.concierge.buildLineHandoffUrl(journeyId));
+      handoffNote.textContent =
+        "ボタンを押すとLINEが開き、引き継ぎコード（" + journeyId + "）が入力済みになります。" +
+        "そのまま送信するだけで回答内容が伝わり、同じ質問はされません。";
+      FLATUP.track("journey_created", { audience: audience });
+    });
+
     var sub = el("div", { class: "subactions" });
     var backBtn = el("button", { class: "ghost", type: "button", text: "← 戻る" });
     backBtn.addEventListener("click", goBack);

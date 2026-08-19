@@ -8,6 +8,16 @@ const ROOT = path0.join(__dirname, '..', 'app');
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
 
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith('/journey')) { // WebOS→VPS引き継ぎのローカル模擬
+    let b = ''; req.on('data', c => b += c);
+    req.on('end', () => {
+      const answers = (JSON.parse(b || '{}').answers) || {};
+      const ok = typeof answers.audience === 'string';
+      res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok: true, journey_id: 'J-abcdefabcdef' } : { ok: false }));
+    });
+    return;
+  }
   const p = path.join(ROOT, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
   fs.readFile(p, (err, data) => {
     if (err) { res.writeHead(404); return res.end('nf'); }
@@ -26,6 +36,8 @@ async function clickByText(page, text) {
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); // iPhone size
   await context.route('**lin.ee**', r => r.abort()); // 外部LINEへは実際に飛ばさない
+  await context.route('**line.me**', r => r.abort());
+  await context.addInitScript(() => { window.FLATUP_JOURNEY_ENDPOINT = 'http://localhost:8931/journey'; });
   const page = await context.newPage();
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -56,8 +68,14 @@ async function clickByText(page, text) {
   if (!result.includes('大丈夫。最初はみんな初心者です')) throw new Error('final nudge missing');
   const ctaCount = await page.locator('a.cta').count();
   if (ctaCount !== 1) throw new Error('CTA must be exactly 1, got ' + ctaCount);
+  await page.waitForTimeout(600); // journey送信の完了を待つ
   const href = await page.getAttribute('a.cta.primary', 'href');
-  if (href !== 'https://lin.ee/cTSDajPz') throw new Error('CTA link wrong: ' + href);
+  if (!href.includes('line.me/R/oaMessage') || !href.includes('J-abcdefabcdef')) throw new Error('handoff CTA link wrong: ' + href);
+  if (/female|diet|first|weekday/.test(href)) throw new Error('answers leaked into URL');
+  const noteText = await page.textContent('body');
+  if (!noteText.includes('引き継ぎコード')) throw new Error('handoff note missing');
+  const hasJourneyEvent = await page.evaluate(() => window.dataLayer.some(e => e.event === 'journey_created'));
+  if (!hasJourneyEvent) throw new Error('journey_created event missing');
   // CTAクリック → 新規タブ(popup)が開き、計測イベントが発火すること
   const popupPromise = page.waitForEvent('popup', { timeout: 5000 });
   await page.locator('a.cta.primary').click();
