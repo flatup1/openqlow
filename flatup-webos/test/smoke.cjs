@@ -24,7 +24,9 @@ async function clickByText(page, text) {
 (async () => {
   await new Promise(r => server.listen(8931, r));
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } }); // iPhone size
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); // iPhone size
+  await context.route('**lin.ee**', r => r.abort()); // 外部LINEへは実際に飛ばさない
+  const page = await context.newPage();
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
@@ -50,9 +52,17 @@ async function clickByText(page, text) {
   if (!result.includes('こんな始め方が合いそうです')) throw new Error('result missing');
   if (!result.includes('キックボクシングは全身運動')) throw new Error('diet snippet missing');
   if (!result.includes('完全に初めてからのスタート')) throw new Error('first snippet missing');
-  if (!result.includes('体験を予約する')) throw new Error('booking CTA missing');
+  if (!result.includes('まずは気軽に相談・体験してみる')) throw new Error('unified CTA missing');
+  const ctaCount = await page.locator('a.cta').count();
+  if (ctaCount !== 1) throw new Error('CTA must be exactly 1, got ' + ctaCount);
   const href = await page.getAttribute('a.cta.primary', 'href');
   if (href !== 'https://lin.ee/cTSDajPz') throw new Error('CTA link wrong: ' + href);
+  // CTAクリック → 新規タブ(popup)が開き、計測イベントが発火すること
+  const popupPromise = page.waitForEvent('popup', { timeout: 5000 });
+  await page.locator('a.cta.primary').click();
+  await popupPromise;
+  const clicked = await page.evaluate(() => window.dataLayer.some(e => e.event === 'booking_clicked'));
+  if (!clicked) throw new Error('booking_clicked event missing');
   // イベント計測確認
   const events = await page.evaluate(() => window.dataLayer.map(e => e.event));
   const need = ['webos_started', 'audience_selected', 'question_skipped', 'goal_selected', 'experience_selected', 'availability_selected', 'personalized_view'];
@@ -75,7 +85,9 @@ async function clickByText(page, text) {
   await clickByText(page, 'まだ決めていない');
   const consult = await page.textContent('body');
   if (!consult.includes('まだ決めなくて、大丈夫です')) throw new Error('consult headline missing');
-  if (!consult.includes('まず話を聞いてみる')) throw new Error('consult CTA missing');
+  if (!consult.includes('まずは気軽に、話を聞いてみる')) throw new Error('consult CTA missing');
+  const consultCtaCount = await page.locator('a.cta').count();
+  if (consultCtaCount !== 1) throw new Error('consult CTA must be exactly 1, got ' + consultCtaCount);
 
   await page.screenshot({ path: path0.join(__dirname, 'result_mobile.png'), fullPage: true });
 

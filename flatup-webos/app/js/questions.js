@@ -166,9 +166,11 @@ FLATUP.RESULT_CONTENT = {
   reassurance: "体験は初回500円。道具の貸出があるので、動きやすい服だけで大丈夫です。"
 };
 
-/* CTA（正本リンク） */
+/* CTA（正本リンク）
+ * 結果画面のCTAは1つだけ。予約を強要せず、相談も体験予約も包含する優しい表現にする。
+ */
 FLATUP.CTA = {
   lineUrl: "https://lin.ee/cTSDajPz",
-  bookingLabel: "LINEで体験を予約する（初回500円）",
-  consultLabel: "LINEで、まず話を聞いてみる（予約じゃなくてOK）"
+  bookingLabel: "まずは気軽に相談・体験してみる（初回500円）",
+  consultLabel: "まずは気軽に、話を聞いてみる（予約じゃなくてOK）"
 };

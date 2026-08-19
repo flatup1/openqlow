@@ -135,6 +135,7 @@ window.FLATUP = window.FLATUP || {};
 
     wrap.appendChild(el("div", { class: "reassurance", text: c.reassurance }));
 
+    // CTAは1つだけ（迷わせない）。遷移先は同じLINEのため統合済み。
     var ctas = el("div", { class: "options" });
     var isConsult = audience === "consult";
     var primary = el("a", {
@@ -148,20 +149,6 @@ window.FLATUP = window.FLATUP || {};
       FLATUP.track(isConsult ? "line_clicked" : "booking_clicked", { audience: audience });
     });
     ctas.appendChild(primary);
-
-    // AI相談（Phase 1はLINEへの優しい橋渡し）
-    var chat = el("a", {
-      class: "cta secondary",
-      href: FLATUP.CTA.lineUrl,
-      target: "_blank",
-      rel: "noopener",
-      text: "先に質問してみる（相談だけでもOK）"
-    });
-    chat.addEventListener("click", function () {
-      FLATUP.concierge.open(j);
-      FLATUP.track("line_clicked", { audience: audience, from: "concierge" });
-    });
-    ctas.appendChild(chat);
     wrap.appendChild(ctas);
 
     var sub = el("div", { class: "subactions" });
