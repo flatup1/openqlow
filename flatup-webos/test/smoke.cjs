@@ -18,7 +18,7 @@ const server = http.createServer((req, res) => {
 
 async function clickByText(page, text) {
   await page.locator('button, a').filter({ hasText: text }).first().click();
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(380);
 }
 
 (async () => {
@@ -49,10 +49,11 @@ async function clickByText(page, text) {
   await clickByText(page, '完全に初めて');
   await clickByText(page, '平日の夜');
   const result = await page.textContent('body');
-  if (!result.includes('こんな始め方が合いそうです')) throw new Error('result missing');
+  if (!result.includes('こんな一歩から')) throw new Error('result missing');
   if (!result.includes('キックボクシングは全身運動')) throw new Error('diet snippet missing');
   if (!result.includes('完全に初めてからのスタート')) throw new Error('first snippet missing');
   if (!result.includes('まずは気軽に相談・体験してみる')) throw new Error('unified CTA missing');
+  if (!result.includes('大丈夫。最初はみんな初心者です')) throw new Error('final nudge missing');
   const ctaCount = await page.locator('a.cta').count();
   if (ctaCount !== 1) throw new Error('CTA must be exactly 1, got ' + ctaCount);
   const href = await page.getAttribute('a.cta.primary', 'href');
@@ -76,7 +77,7 @@ async function clickByText(page, text) {
   await clickByText(page, '小学校低学年');
   await clickByText(page, '自信をつけてほしい');
   const kidsResult = await page.textContent('body');
-  if (!kidsResult.includes('お子さまには')) throw new Error('kids headline missing');
+  if (!kidsResult.includes('お子さまなら')) throw new Error('kids headline missing');
   if (!kidsResult.includes('自信につながります')) throw new Error('kids snippet missing');
 
   // ---- 相談ルート ----
