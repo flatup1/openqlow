@@ -67,6 +67,23 @@
 - ユーザーへは**固定文面のreplyのみ**。顧客への能動pushはしない（openQLOWの原則どおり）。
 - 回答値（female / diet 等）は**URLにもanalyticsにも出さない**。
 
+### 今回この引き継ぎと一緒に足した安全網
+
+`src/shared/webos_canon_sync.test.ts`（`npm run test:webos-canon-sync`）を追加した。
+
+WebOSは `.html` / `.js` のため、既存の `no-hardcoded-canon.test.ts`（`src/` と `port/` の `.ts` だけを見る）
+の**外側**にあり、どの機械チェックにも掛かっていなかった。AIKAで起きた「レディース14:00」ズレと
+同じ事故がWeb側で起きる余地が残っていたので、そこを塞いだ。
+
+落ちる条件（4つ）:
+
+1. WebOSに体験料金以外の金額（会費・入会金・回数券など）が書かれたとき
+2. 体験料金が正本 `FLATUP_CANON.trialFirst` と違う額になったとき（**正本を変えると自動で落ちる**）
+3. 住所・キッズ/レディースの時間など、正本の具体値がWebOSへ複製されたとき
+4. 正本と違うLINE URLがWebOSに入ったとき
+
+CIの `core` グループで自動実行される。人間が見張る必要はない。
+
 ---
 
 ## §3 いま止まっている場所（次のAIはここから）
@@ -178,6 +195,8 @@ curl -s -X POST https://aika.flatupnarita.jp/journey -H 'content-type: applicati
 | PR #101 のCI（`typecheck and validate` ＋ `test` 6ジョブ） | ✅ 全部 success（2026-08-19 10:16 UTC） |
 | `mergeable_state` | `clean`（コンフリクトなし）／ただし **draft** |
 | `./scripts/validate-ai-os.sh` | ✅ `AI OS validation passed` |
+| `node scripts/run-tests.mjs --group=core`（新テスト込み22本） | ✅ 成功22件 / 失敗0件 |
+| `npm run typecheck` | ✅ エラーなし |
 | `node flatup-webos/test/smoke.cjs` | ⚠️ ローカルでは `playwright` 未インストールだと動かない。先に `npm install` が必要（CIでは実行済み・合格） |
 
 ---
