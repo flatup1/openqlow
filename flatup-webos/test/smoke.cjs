@@ -34,7 +34,7 @@ async function clickByText(page, text) {
   // ---- 成人ルート ----
   await page.goto('http://localhost:8931/');
   if (!(await page.textContent('body')).includes('強い人だけの場所ではありません')) throw new Error('welcome missing');
-  await clickByText(page, '冒険を始める');
+  await clickByText(page, '自分に合う始め方を見つける');
   if (!(await page.textContent('h1')).includes('誰のために')) throw new Error('Q1 missing');
   await clickByText(page, '自分が通ってみたい');
   if (!(await page.textContent('h1')).includes('あなたについて')) throw new Error('gender Q missing');
@@ -70,7 +70,7 @@ async function clickByText(page, text) {
 
   // ---- キッズルート ----
   await clickByText(page, '最初からやり直す');
-  await clickByText(page, '冒険を始める');
+  await clickByText(page, '自分に合う始め方を見つける');
   await clickByText(page, '子どもを通わせたい');
   if (!(await page.textContent('h1')).includes('お子さまの年代')) throw new Error('kids Q missing');
   await clickByText(page, '小学校低学年');
@@ -81,7 +81,7 @@ async function clickByText(page, text) {
 
   // ---- 相談ルート ----
   await clickByText(page, '最初からやり直す');
-  await clickByText(page, '冒険を始める');
+  await clickByText(page, '自分に合う始め方を見つける');
   await clickByText(page, 'まだ決めていない');
   const consult = await page.textContent('body');
   if (!consult.includes('まだ決めなくて、大丈夫です')) throw new Error('consult headline missing');

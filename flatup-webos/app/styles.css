@@ -82,6 +82,17 @@ p.note {
   margin: 0 0 24px;
 }
 
+/* ようこそ画面の写真（無くてもレイアウトが崩れない） */
+img.welcome-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius);
+  margin: 0 0 24px;
+}
+
 /* 現在位置（長さを意識させすぎない小さな点） */
 .dots { display: flex; gap: 6px; margin: 0 0 18px; }
 .dots span {

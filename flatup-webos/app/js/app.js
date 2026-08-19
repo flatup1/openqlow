@@ -56,13 +56,24 @@ window.FLATUP = window.FLATUP || {};
       "ようこそ。<br><br>ここは、<br>強い人だけの場所ではありません。<br><br>" +
       "あなたに合った道を、<br>一緒に探します。";
 
-    var start = el("button", { class: "cta opt", type: "button", text: "冒険を始める" });
+    // ジムの雰囲気が伝わる写真。ファイルが無くてもレイアウトは壊れない。
+    var photo = el("img", {
+      class: "welcome-photo",
+      src: "hero.jpg",
+      alt: "FLAT UP GYMのキッズクラス。子どもたちが笑顔でグローブタッチをしている様子",
+      width: "1600", height: "900"
+    });
+    photo.addEventListener("error", function () { photo.style.display = "none"; });
+
+    var start = el("button", { class: "cta opt", type: "button", text: "自分に合う始め方を見つける" });
     start.addEventListener("click", function () {
       FLATUP.track("webos_started", {});
       go(FLATUP.FLOW_START);
     });
 
-    show(el("div", {}, [lead, el("div", { class: "options" }, [start])]));
+    var note = el("p", { class: "note", text: "かんたんな質問に、タップで答えるだけ。30秒ほどで終わります。" });
+
+    show(el("div", {}, [lead, photo, el("div", { class: "options" }, [start]), note]));
   }
 
   /* ---------- 画面: 質問 ---------- */
