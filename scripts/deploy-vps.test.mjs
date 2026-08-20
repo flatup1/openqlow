@@ -51,6 +51,21 @@ for (const keep of ["state/", "drafts/", "logs/", ".env"]) {
   assert.ok(sync.includes(`--exclude '${keep}'`), `${keep} の除外を消さない`);
 }
 
+// 映像・アニメ素材を本番へ送らない（16GB を送って反映が数時間かかる事故の再発防止）
+for (const heavy of [
+  "brand-film-ep*/",
+  "brand-film-series/",
+  "animation-studio/",
+  "gymstorys/",
+  "girl-power-op/",
+  "flatup-lp/",
+  "flatup-webos/",
+  "*.mp4",
+  "*.mov",
+]) {
+  assert.ok(sync.includes(`--exclude '${heavy}'`), `${heavy} を本番へ送らない`);
+}
+
 // rsync の軽微な警告(23/24)では止まらず、それ以外は異常終了する
 assert.match(sync, /23\|24\)/, "23/24 は警告として扱う");
 assert.match(sync, /exit "\$rsync_status"/, "その他の失敗はそのまま落とす");
