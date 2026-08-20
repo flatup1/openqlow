@@ -62,9 +62,15 @@ for (const heavy of [
   "flatup-webos/",
   "*.mp4",
   "*.mov",
+  "*.webm",
+  "*.mkv",
+  "tools/",
 ]) {
   assert.ok(sync.includes(`--exclude '${heavy}'`), `${heavy} を本番へ送らない`);
 }
+
+// 進捗を表示する（無言だとフリーズと区別がつかない）
+assert.match(sync, /rsync -avz/, "rsync は -v で何を送っているか見せる");
 
 // rsync の軽微な警告(23/24)では止まらず、それ以外は異常終了する
 assert.match(sync, /23\|24\)/, "23/24 は警告として扱う");

@@ -37,6 +37,10 @@ RSYNC_EXCLUDES=(
   --exclude 'girl-power-op/'
   --exclude 'flatup-lp/'
   --exclude 'flatup-webos/'
+  # uizin-clipper は Mac 専用の Python 道具。ダウンロードした大会動画が
+  # 16GB たまっていて、これが同期の止まる最大の原因だった。VPS は Node の
+  # webhook しか動かさないため、tools/ は丸ごと不要。
+  --exclude 'tools/'
   # 上のフォルダ以外に置かれた大きなファイルも念のため止める
   --exclude '*.mp4'
   --exclude '*.mov'
@@ -44,6 +48,10 @@ RSYNC_EXCLUDES=(
   --exclude '*.wav'
   --exclude '*.psd'
   --exclude '*.zip'
+  --exclude '*.webm'
+  --exclude '*.mkv'
+  --exclude '*.ts.part'
+  --exclude '*.part'
 )
 
 echo "[sync-to-vps] source: $PROJECT_ROOT"
@@ -54,7 +62,9 @@ echo "[sync-to-vps] excludes: ${RSYNC_EXCLUDES[*]}"
 # 「転送中にファイルが消えた」といった軽微な警告。転送自体は完了しているので、
 # ここで止めずに警告として流す。それ以外の失敗はそのまま異常終了させる。
 rsync_status=0
-rsync -az --delete "${RSYNC_EXCLUDES[@]}" \
+# -v: 何を送っているかを表示する。無言だと「フリーズした」と区別がつかず、
+# 実際に16GBを送り続けていることに気づけなかった。
+rsync -avz --delete "${RSYNC_EXCLUDES[@]}" \
   -e "ssh -i ${SSH_KEY}" \
   "$PROJECT_ROOT" \
   "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}" || rsync_status=$?
