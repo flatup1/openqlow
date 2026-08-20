@@ -9,8 +9,9 @@
 ## §0 30秒サマリー（結論ファースト）
 
 - **コードは全部書き終わっている。テストもCI（7ジョブ）も全部グリーン。**
-- 止まっているのは **人間（JIN）の承認と、公開作業（XServer / VPS）だけ**。
-- 次の一手は3つ。**① PR #101 をレビュー→マージ ② XServerへ `app/` を上げる ③ VPSへ `git pull` して再起動**。
+- **PR #101 はオーナー承認のうえ 2026-08-19 に main へマージ済み**（squash: `caa0b5d`）。
+- 残っているのは **公開作業（XServer / VPS）だけ**。
+- 次の一手は2つ。**① XServerへ `app/` を上げる ② VPSへ `git pull` して再起動**。
 - AIが勝手にやってはいけないこと：マージ、公開、本番反映、顧客への送信。**全部JINの承認後**。
 
 ---
@@ -37,8 +38,8 @@
 | 場所 | 状態 |
 |---|---|
 | `flatup-webos/`（Phase 0思想＋Phase 1 MVP） | ✅ main にマージ済み（PR #100） |
-| ようこそ画面の文言・写真枠・UIの「心」・キャッシュ対策 | 🟡 PR #101（**draft・未マージ**） |
-| WebOS→LINE 引き継ぎ（journey_id）v1 | 🟡 PR #101 に同梱（**未マージ・未反映**） |
+| ようこそ画面の文言・写真枠・UIの「心」・キャッシュ対策 | ✅ main にマージ済み（PR #101 / `caa0b5d`） |
+| WebOS→LINE 引き継ぎ（journey_id）v1 | ✅ main にマージ済み（PR #101）／⛔ **VPSへは未反映** |
 | XServer への公開 | ⛔ 未実施（JINの作業） |
 | VPS への反映 | ⛔ 未実施（JINのMacからのみ可能） |
 | GA4 / GTM 接続 | ⛔ 未実施（IDはJIN管理・**リポジトリに入れない**） |
@@ -92,7 +93,7 @@ CIの `core` グループで自動実行される。人間が見張る必要は�
 
 | 順 | やること | 誰が | 目安 |
 |---|---|---|---|
-| 1 | PR #101 を読んで問題なければ **Ready for review → マージ** | JIN | 5分 |
+| 1 | ~~PR #101 をマージ~~ | JIN | ✅ 完了（2026-08-19） |
 | 2 | `flatup-webos/app/` の中身をXServerへアップロード（§4-A） | JIN | 10分 |
 | 3 | VPSへ反映して `/journey` を疎通確認（§4-B） | JIN | 10分 |
 | 4 | iPhone実機で1周チェック（§4-C） | JIN | 5分 |
@@ -109,7 +110,7 @@ CIの `core` グループで自動実行される。人間が見張る必要は�
 
 ### §4-A XServer（WebOSの公開）
 
-1. PR #101 をマージして、mainの `flatup-webos/app/` を手元に用意する。
+1. mainの最新（PR #101 マージ済み）の `flatup-webos/app/` を手元に用意する。
 2. XServerのファイルマネージャーで**新しいサブディレクトリ**を作る（例 `public_html/webos/`）。
    **既存サイトのファイルは触らない・上書きしない・消さない。**
 3. `app/` の中身（`index.html` / `styles.css` / `js/` / `hero.jpg`）をアップロード。
@@ -180,7 +181,7 @@ curl -s -X POST https://aika.flatupnarita.jp/journey -H 'content-type: applicati
 
 | # | 内容 |
 |---|---|
-| 1 | PR #101 をマージしてよいか（ようこそ画面の文言・配色・引き継ぎ機能） |
+| 1 | ~~PR #101 をマージしてよいか~~ → ✅ 承認・マージ済み（2026-08-19） |
 | 2 | WebOSを置く公開URL（`/webos/` でよいか、独立ドメインにするか） |
 | 3 | `hero.jpg` に使う本物の写真（文言を焼き込むか、Web側で重ねるか） |
 | 4 | GTM/GA4 を接続するか（接続しない間、計測はブラウザ内に貯まるだけでサーバー送信ゼロ） |
@@ -193,7 +194,7 @@ curl -s -X POST https://aika.flatupnarita.jp/journey -H 'content-type: applicati
 | 項目 | 結果 |
 |---|---|
 | PR #101 のCI（`typecheck and validate` ＋ `test` 6ジョブ） | ✅ 全部 success（2026-08-19 10:16 UTC） |
-| `mergeable_state` | `clean`（コンフリクトなし）／ただし **draft** |
+| マージ | ✅ 2026-08-19 に squash マージ（`caa0b5d`） |
 | `./scripts/validate-ai-os.sh` | ✅ `AI OS validation passed` |
 | `node scripts/run-tests.mjs --group=core`（新テスト込み22本） | ✅ 成功22件 / 失敗0件 |
 | `npm run typecheck` | ✅ エラーなし |
@@ -205,7 +206,7 @@ curl -s -X POST https://aika.flatupnarita.jp/journey -H 'content-type: applicati
 
 | PR | 内容 | 状態 |
 |---|---|---|
-| #101 | flatup-webos ようこそ画面＋LINE引き継ぎ | draft・CI緑・**マージ待ち（今回の本命）** |
+| #101 | flatup-webos ようこそ画面＋LINE引き継ぎ | ✅ **マージ済み（2026-08-19）** |
 | #99 | FLAT UP GYM モバイルHPの方向性4案（design） | draft・JINの方向性選択待ち |
 | #85 | Phase 4 — Quality Guardian and Growth Metadata | draft・長期停滞 |
 | #94 | `@types/node` 22.19.19 → 26.2.0（dependabot） | メジャー更新。要確認 |
