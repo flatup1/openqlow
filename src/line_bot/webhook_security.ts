@@ -8,7 +8,8 @@ type SafeLineAction =
   | "push_sending"
   | "push_failed"
   | "reply_failed"
-  | "processing_failed";
+  | "processing_failed"
+  | "journey_create_failed";
 
 const SAFE_LINE_LOGS: Record<SafeLineAction, string> = {
   text_received: "[LINE] authorized text message received",
@@ -19,6 +20,7 @@ const SAFE_LINE_LOGS: Record<SafeLineAction, string> = {
   push_failed: "[LINE] push failed",
   reply_failed: "[LINE] reply failed",
   processing_failed: "[webhook] processing failed",
+  journey_create_failed: "[LINE] webos journey create failed",
 };
 
 export function safeLineLog(action: SafeLineAction): string {
