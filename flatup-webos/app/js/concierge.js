@@ -10,6 +10,7 @@ window.FLATUP = window.FLATUP || {};
 (function () {
   var LINE_OA_ID = "@jfl00540"; // FLAT UP GYM 公式LINE
   var PROD_JOURNEY_ENDPOINT = "https://aika.flatupnarita.jp/journey";
+  var pending = null; // 直前に送った回答と、その通信（同じ回答の二重送信を防ぐ）
 
   // 本番ドメインでのみVPSへ送る。ローカル確認・テストでは window.FLATUP_JOURNEY_ENDPOINT で差し替え可。
   function journeyEndpoint() {
@@ -42,9 +43,12 @@ window.FLATUP = window.FLATUP || {};
       var endpoint = journeyEndpoint();
       if (!endpoint || typeof fetch !== "function") return Promise.resolve(null);
       var ctx = this.buildContext(journey);
+      // 「← 戻る」で結果画面を開き直しても、同じ回答なら二重にコードを作らない。
+      var fingerprint = JSON.stringify(ctx);
+      if (pending && pending.fingerprint === fingerprint) return pending.promise;
       var controller = typeof AbortController === "function" ? new AbortController() : null;
       var timer = controller ? setTimeout(function () { controller.abort(); }, 3000) : null;
-      return fetch(endpoint, {
+      var request = fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ answers: ctx }),
@@ -59,6 +63,8 @@ window.FLATUP = window.FLATUP || {};
           if (timer) clearTimeout(timer);
           return null;
         });
+      pending = { fingerprint: fingerprint, promise: request };
+      return request;
     },
 
     // journey_id があれば「コード入力済みでトークが開く」公式リンク。無ければ従来の友だち追加。

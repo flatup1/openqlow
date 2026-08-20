@@ -33,6 +33,7 @@
     "test:shared-canon": "tsx src/shared/canon.test.ts",
     "test:no-hardcoded-canon": "tsx src/shared/no-hardcoded-canon.test.ts",
     "test:webos-canon-sync": "tsx src/shared/webos_canon_sync.test.ts",
+    "test:webos-flow": "node flatup-webos/test/flow.test.cjs",
     "test:secret-guard": "tsx src/shared/secret_guard.test.ts",
     "test:pii-guard": "tsx src/shared/pii_guard.test.ts",
     "test:loop": "tsx src/loop/loop.test.ts",

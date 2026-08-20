@@ -7,6 +7,11 @@ window.FLATUP = window.FLATUP || {};
 (function () {
   window.dataLayer = window.dataLayer || [];
   var events = [];
+  var debugEnabled = (function () {
+    try {
+      return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:";
+    } catch (e) { return false; }
+  })();
 
   FLATUP.track = function (eventName, payload) {
     var record = {
@@ -16,7 +21,10 @@ window.FLATUP = window.FLATUP || {};
     };
     events.push(record);
     window.dataLayer.push(record);
-    if (window.console && console.debug) console.debug("[flatup-webos]", eventName, payload || {});
+    // ローカル確認中だけログを出す。公開先のコンソールは静かに保つ。
+    if (debugEnabled && window.console && console.debug) {
+      console.debug("[flatup-webos]", eventName, payload || {});
+    }
   };
 
   FLATUP.getEvents = function () { return events.slice(); };

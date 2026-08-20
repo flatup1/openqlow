@@ -39,7 +39,12 @@ window.FLATUP = window.FLATUP || {};
     get: function () { return journey; },
 
     // 回答を記録する。questions.js の id に応じてプロフィールへも反映。
+    // 「← 戻る」で同じ質問に戻って選び直した場合は、古い回答を残さず置き換える。
+    // （残すと結果画面に、選び直す前の一言が混ざって出てしまう）
     answer: function (questionId, value) {
+      journey.answers = journey.answers.filter(function (a) {
+        return a.questionId !== questionId;
+      });
       journey.answers.push({ questionId: questionId, value: value });
       if (questionId === "audience")     journey.audience = value;
       if (questionId === "gender")       journey.gender = value;
@@ -48,7 +53,7 @@ window.FLATUP = window.FLATUP || {};
       if (questionId === "availability") journey.availability = [value];
       if (questionId === "kids_age")     journey.kidsAge = value;
       if (questionId === "kids_hope")    journey.kidsHope = [value];
-      journey.currentStep += 1;
+      journey.currentStep = journey.answers.length;
       save(journey);
     },
 
