@@ -51,18 +51,38 @@ window.FLATUP = window.FLATUP || {};
 
   function renderWelcome() {
     FLATUP.state.pushScreen("welcome");
-    var lead = el("p", { class: "welcome-lead" });
-    lead.innerHTML =
-      "ようこそ。<br><br>ここは、<br>強い人だけの場所ではありません。<br><br>" +
-      "あなたに合った道を、<br>一緒に探します。";
 
-    var start = el("button", { class: "cta opt", type: "button", text: "冒険を始める" });
+    // hero.jpg が主役。写真の上に短いコピーを重ねる。
+    // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
+    var photo = el("img", {
+      class: "welcome-photo",
+      src: "hero.jpg",
+      alt: "FLAT UP GYMのキッズクラス。子どもたちが笑顔でグローブタッチをしている様子",
+      width: "1600", height: "1200", decoding: "async"
+    });
+    var hero = el("div", { class: "hero" }, [
+      photo,
+      el("div", { class: "hero-overlay" }),
+      // 「世界一初心者にやさしい格闘技ジム」は現在の写真に焼き込み済みのため、
+      // 重ねるコピーは1行だけにする（写真を文字なし版に替えたら eyebrow を戻してよい）
+      el("div", { class: "hero-copy" }, [
+        el("span", { class: "hero-title", text: "はじめの一歩を、安心から。" })
+      ])
+    ]);
+    photo.addEventListener("error", function () { hero.style.display = "none"; });
+
+    var lead = el("p", { class: "welcome-lead" });
+    lead.innerHTML = "ここは、強い人だけの場所ではありません。<br>あなたに合った道を、一緒に探します。";
+
+    var start = el("button", { class: "cta start opt", type: "button", text: "自分に合う始め方を見つける" });
     start.addEventListener("click", function () {
       FLATUP.track("webos_started", {});
       go(FLATUP.FLOW_START);
     });
 
-    show(el("div", {}, [lead, el("div", { class: "options" }, [start])]));
+    var note = el("p", { class: "note", text: "かんたんな質問に、タップで答えるだけ。30秒ほどで終わります。" });
+
+    show(el("div", {}, [hero, lead, el("div", { class: "options" }, [start]), note]));
   }
 
   /* ---------- 画面: 質問 ---------- */
@@ -79,12 +99,19 @@ window.FLATUP = window.FLATUP || {};
     if (q.note) children.push(el("p", { class: "note", text: q.note }));
 
     var opts = el("div", { class: "options" });
+    var answered = false; // 二重タップ防止
     q.options.forEach(function (opt) {
       var b = el("button", { class: "opt", type: "button", text: opt.label });
       b.addEventListener("click", function () {
-        FLATUP.state.answer(q.id, opt.value);
-        FLATUP.trackAnswer(q.id, opt.value);
-        go(opt.next || q.next || "result");
+        if (answered) return;
+        answered = true;
+        b.classList.add("chosen"); // 選んだことが伝わる小さな返事
+        var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+        setTimeout(function () {
+          FLATUP.state.answer(q.id, opt.value);
+          FLATUP.trackAnswer(q.id, opt.value);
+          go(opt.next || q.next || "result");
+        }, reduce ? 0 : 160);
       });
       opts.appendChild(b);
     });
@@ -135,6 +162,9 @@ window.FLATUP = window.FLATUP || {};
 
     wrap.appendChild(el("div", { class: "reassurance", text: c.reassurance }));
 
+    // CTA直前の「最後の安心」（押し売りではなく、不安をひとつ外す一言）
+    wrap.appendChild(el("p", { class: "final-nudge", text: "大丈夫。最初はみんな初心者です。" }));
+
     // CTAは1つだけ（迷わせない）。遷移先は同じLINEのため統合済み。
     var ctas = el("div", { class: "options" });
     var isConsult = audience === "consult";
@@ -150,6 +180,19 @@ window.FLATUP = window.FLATUP || {};
     });
     ctas.appendChild(primary);
     wrap.appendChild(ctas);
+
+    // LINE引き継ぎ: 回答をVPSへ預け、成功したらCTAを「コード入力済みリンク」へ差し替える。
+    // 失敗しても従来リンクのまま（体験は劣化しない）。
+    var handoffNote = el("p", { class: "note handoff-note" });
+    wrap.appendChild(handoffNote);
+    FLATUP.concierge.submitJourney(j).then(function (journeyId) {
+      if (!journeyId) return;
+      primary.setAttribute("href", FLATUP.concierge.buildLineHandoffUrl(journeyId));
+      handoffNote.textContent =
+        "ボタンを押すとLINEが開き、引き継ぎコード（" + journeyId + "）が入力済みになります。" +
+        "そのまま送信するだけで回答内容が伝わり、同じ質問はされません。";
+      FLATUP.track("journey_created", { audience: audience });
+    });
 
     var sub = el("div", { class: "subactions" });
     var backBtn = el("button", { class: "ghost", type: "button", text: "← 戻る" });

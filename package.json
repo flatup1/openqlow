@@ -79,6 +79,7 @@
     "test:line-logging": "tsx src/line_bot/logging.test.ts",
     "test:line-notifier": "tsx src/line_bot/notifier.test.ts",
     "test:line-crm-intake": "tsx src/line_bot/crm_intake.test.ts",
+    "test:line-journey-intake": "tsx src/line_bot/journey_intake.test.ts",
     "test:line-webhook-auth": "tsx src/line_bot/webhook_auth.test.ts",
     "test:line-webhook-security": "tsx src/line_bot/webhook_security.test.ts",
     "test:line-webhook-events": "tsx src/line_bot/webhook_events.test.ts",
