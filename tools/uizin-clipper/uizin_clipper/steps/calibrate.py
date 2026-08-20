@@ -13,19 +13,71 @@ from ..timecode import format_timecode
 from .score import crop_filter
 
 
-def extract_full_frame(video: Path, at_sec: float, output: Path) -> Path:
-    """指定時刻の1枚をそのまま書き出す（ROIの座標を目で決めるため）。"""
+FONT_CANDIDATES = (
+    "/System/Library/Fonts/Supplemental/Arial.ttf",       # macOS
+    "/System/Library/Fonts/Helvetica.ttc",                # macOS（古い版）
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",    # Linux
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+)
+
+
+def find_font() -> str | None:
+    """目盛りの数字に使えるフォントを1つ探す。無ければ None。"""
+    for path in FONT_CANDIDATES:
+        if Path(path).exists():
+            return path
+    return None
+
+
+def grid_filter(step: int = 100, major: int = 500, width: int = 1920, height: int = 1080) -> str:
+    """座標の目盛りを描く ffmpeg フィルタを組み立てる（純ロジック）。
+
+    ★なぜ要るか
+      ROI の座標は、縮小された画面写真から目分量で当てると外します。
+      実際に外しました（第13回大会で一致度 0.20〜0.63、26試合中5試合しか出ず）。
+      **画像そのものに目盛りを焼き込めば、読み取るだけで済みます。**
+
+    細い線が `step` ごと、太い線が `major` ごと。数字は `major` ごとに入れます。
+    """
+    if step <= 0 or major <= 0:
+        raise ValueError("目盛りの間隔は正の数にしてください")
+
+    parts = [
+        f"drawgrid=width={step}:height={step}:thickness=1:color=red@0.35",
+        f"drawgrid=width={major}:height={major}:thickness=2:color=yellow@0.85",
+    ]
+
+    font = find_font()
+    if font:
+        for x in range(major, width, major):
+            parts.append(
+                f"drawtext=fontfile={font}:text='x={x}':fontcolor=yellow:fontsize=28:"
+                f"box=1:boxcolor=black@0.7:boxborderw=4:x={x + 6}:y=8"
+            )
+        for y in range(major, height, major):
+            parts.append(
+                f"drawtext=fontfile={font}:text='y={y}':fontcolor=yellow:fontsize=28:"
+                f"box=1:boxcolor=black@0.7:boxborderw=4:x=8:y={y + 6}"
+            )
+    return ",".join(parts)
+
+
+def extract_full_frame(video: Path, at_sec: float, output: Path, *, grid: bool = False) -> Path:
+    """指定時刻の1枚をそのまま書き出す（ROIの座標を目で決めるため）。
+
+    `grid=True` で座標の目盛りを焼き込む。★目分量で当てるより確実です。
+    """
     output.parent.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            "ffmpeg", "-v", "error", "-nostdin", "-y",
-            "-ss", f"{at_sec:.3f}",
-            "-i", str(video),
-            "-frames:v", "1",
-            str(output),
-        ],
-        quiet=True,
-    )
+    argv = [
+        "ffmpeg", "-v", "error", "-nostdin", "-y",
+        "-ss", f"{at_sec:.3f}",
+        "-i", str(video),
+        "-frames:v", "1",
+    ]
+    if grid:
+        argv += ["-vf", grid_filter()]
+    argv.append(str(output))
+    run(argv, quiet=True)
     return output
 
 
