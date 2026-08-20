@@ -32,6 +32,7 @@
     "test:config": "tsx src/config.test.ts",
     "test:shared-canon": "tsx src/shared/canon.test.ts",
     "test:no-hardcoded-canon": "tsx src/shared/no-hardcoded-canon.test.ts",
+    "test:consent-wording": "tsx port/aika/consent_wording_guard.test.ts",
     "test:secret-guard": "tsx src/shared/secret_guard.test.ts",
     "test:pii-guard": "tsx src/shared/pii_guard.test.ts",
     "test:loop": "tsx src/loop/loop.test.ts",
