@@ -105,6 +105,7 @@
     "test:crm-queries": "tsx src/crm/queries.test.ts",
     "test:crm-store": "tsx src/crm/store.test.ts",
     "test:crm-guardian-consent": "tsx src/crm/guardian_consent.test.ts",
+    "test:consent-terms-sync": "tsx src/crm/consent_terms_sync.test.ts",
     "test:crm-daily-report": "tsx src/crm/daily_report.test.ts",
     "test:crm-self-repair": "tsx src/crm/self_repair.test.ts",
     "test:vault-register": "tsx src/adapters/vault_register.test.ts",
