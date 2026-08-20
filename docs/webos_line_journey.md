@@ -22,13 +22,23 @@ WebOS回答完了 ─ POST /journey ─▶ VPS: data/journeys.json に保存（�
 
 ## VPSへの反映手順（Jin）
 
+**Macで1コマンド。** VPSに入って `git pull` してはいけない（VPSの `/opt/openqlow` は
+rsyncで配られる場所で、`.git` は送っていない。VPS上の git は古いまま止まっている）。
+
 ```bash
-cd /opt/openqlow
-git pull
-npm install --omit=dev   # 依存追加はなし（念のため）
-npm run build
-sudo systemctl restart openqlow-webhook
-curl -s https://aika.flatupnarita.jp/openqlow/health   # {"ok":true,...} を確認
+cd ~/openqlow
+git switch main && git pull --ff-only origin main
+npm run deploy
+```
+
+`npm run deploy` が中で全部やる（GitHub取り込み → VPSへ同期 → `npm ci` → build →
+webhook再起動 → 起動確認）。最後に出る「本番で動いているコード」が、送ったコミットと
+同じであることを必ず確認する。
+
+確認（VPSの中から。公開URLはAIKAが応答するため404になる）:
+
+```bash
+ssh -i ~/.ssh/openqlow_vps root@162.43.41.182 'curl -s http://127.0.0.1:8787/openqlow/health'
 ```
 
 nginx（またはトンネル）に `/journey` の中継が無い場合は1ブロック追加:
