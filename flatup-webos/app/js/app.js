@@ -20,13 +20,34 @@ window.FLATUP = window.FLATUP || {};
     return node;
   }
 
-  function show(screenNode) {
+  /* ブラウザ（スマホ）の戻るボタンで、前の質問へ戻れるようにする。
+   * 画面ごとに履歴を1つ積み、popstate で描画する。
+   * file:// で開いた時など pushState が使えない環境では、静かに無効化する。 */
+  var historyEnabled = false;
+  var restoring = false; // popstate 由来の描画中は履歴を積まない
+  try {
+    if (window.history && typeof history.pushState === "function" && location.protocol !== "file:") {
+      history.replaceState({ flatup: "welcome" }, "");
+      historyEnabled = true;
+    }
+  } catch (e) { historyEnabled = false; }
+
+  function syncHistory(screenId, mode) {
+    if (!historyEnabled || restoring) return;
+    try {
+      if (mode === "replace") history.replaceState({ flatup: screenId }, "");
+      else history.pushState({ flatup: screenId }, "");
+    } catch (e) { /* 履歴が使えなくても画面は動く */ }
+  }
+
+  function show(screenNode, screenId, mode) {
     root.textContent = "";
     screenNode.classList.add("screen");
     root.appendChild(screenNode);
     var h = screenNode.querySelector("h1");
     if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
     window.scrollTo(0, 0);
+    syncHistory(screenId, mode);
   }
 
   // ルート内の現在位置（小さな点）。長さを意識させすぎない。
@@ -49,7 +70,7 @@ window.FLATUP = window.FLATUP || {};
 
   /* ---------- 画面: ようこそ ---------- */
 
-  function renderWelcome() {
+  function renderWelcome(welcomeMode) {
     FLATUP.state.pushScreen("welcome");
 
     // hero.jpg が主役。写真の上に短いコピーを重ねる。
@@ -66,7 +87,7 @@ window.FLATUP = window.FLATUP || {};
       // 「世界一初心者にやさしい格闘技ジム」は現在の写真に焼き込み済みのため、
       // 重ねるコピーは1行だけにする（写真を文字なし版に替えたら eyebrow を戻してよい）
       el("div", { class: "hero-copy" }, [
-        el("span", { class: "hero-title", text: "はじめの一歩を、安心から。" })
+        el("h1", { class: "hero-title", text: "はじめの一歩を、安心から。" })
       ])
     ]);
     photo.addEventListener("error", function () { hero.style.display = "none"; });
@@ -82,7 +103,7 @@ window.FLATUP = window.FLATUP || {};
 
     var note = el("p", { class: "note", text: "かんたんな質問に、タップで答えるだけ。30秒ほどで終わります。" });
 
-    show(el("div", {}, [hero, lead, el("div", { class: "options" }, [start]), note]));
+    show(el("div", {}, [hero, lead, el("div", { class: "options" }, [start]), note]), "welcome", welcomeMode);
   }
 
   /* ---------- 画面: 質問 ---------- */
@@ -131,7 +152,7 @@ window.FLATUP = window.FLATUP || {};
     }
     children.push(sub);
 
-    show(el("div", {}, children));
+    show(el("div", {}, children), id);
   }
 
   /* ---------- 画面: 専用の結果 ---------- */
@@ -200,13 +221,13 @@ window.FLATUP = window.FLATUP || {};
     var restart = el("button", { class: "ghost", type: "button", text: "最初からやり直す" });
     restart.addEventListener("click", function () {
       FLATUP.state.reset();
-      renderWelcome();
+      renderWelcome("replace");
     });
     sub.appendChild(backBtn);
     sub.appendChild(restart);
     wrap.appendChild(sub);
 
-    show(wrap);
+    show(wrap, "result");
   }
 
   /* ---------- 遷移 ---------- */
@@ -218,6 +239,9 @@ window.FLATUP = window.FLATUP || {};
   }
 
   function goBack() {
+    // ブラウザ履歴が使えるときは history.back() に任せる（popstate が描画する）。
+    // 画面内の「← 戻る」とスマホの戻るボタンで、同じ動きになる。
+    if (historyEnabled) { history.back(); return; }
     var prev = FLATUP.state.back(); // 現在の画面を履歴から外し、前の画面IDを得る
     if (!prev) return renderWelcome();
     // pushScreen で再登録されるため、前の画面も履歴から一度外す
@@ -225,7 +249,21 @@ window.FLATUP = window.FLATUP || {};
     go(prev);
   }
 
+  // スマホの戻るボタン。ブラウザ側はすでに1つ戻っているので、履歴は積み直さない。
+  if (historyEnabled) {
+    window.addEventListener("popstate", function (e) {
+      var target = (e && e.state && e.state.flatup) || "welcome";
+      restoring = true;
+      try {
+        FLATUP.state.back(); // いま表示している画面を内部履歴から外す
+        go(target);
+      } finally {
+        restoring = false;
+      }
+    });
+  }
+
   /* ---------- 起動 ---------- */
   FLATUP.state.reset(); // Phase 1: リロードで最初から（途中復帰はPhase 2で検討）
-  renderWelcome();
+  renderWelcome("replace");
 })();

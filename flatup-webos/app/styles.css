@@ -34,6 +34,10 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* iPhoneで勢いよくスクロールした時、上下にはみ出す部分が白く光らないようにする。
+   （body の背景は画面に固定しているため、html 側にも同じ色を敷いておく） */
+html { background: var(--bg); }
+:root { color-scheme: light dark; }
 body {
   /* 温かいアイボリーの空気に、ピンクとグリーンの淡い光 */
   background:
@@ -125,6 +129,10 @@ img.welcome-photo {
   line-height: 1.5;
   margin: 0;
 }
+
+/* 画面が切り替わるたび、見出しへフォーカスを移して読み上げの位置を合わせている。
+   その時に黒い枠が出ないようにする（キーボード操作の :focus-visible は残す）。 */
+[tabindex="-1"]:focus { outline: none; }
 
 h1.q {
   font-size: 24px;
@@ -261,6 +269,19 @@ footer.site {
   color: var(--muted);
   font-size: 12px;
   padding: 16px 20px 28px;
+}
+/* 途中でやめた人にも、静かに相談先だけは残しておく（主役のCTAとは競合させない） */
+footer.site a.footer-line {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+}
+footer.site a.footer-line:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
 }
 
 @media (min-width: 720px) {
