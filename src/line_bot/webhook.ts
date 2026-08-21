@@ -7,6 +7,8 @@ import { executeBrandGrowthRouting } from "./brand_growth_adapter.js";
 import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
+import { isMemberAutoReplyEnabled, sealMemberReply } from "./member_reply_gate.js";
+import { pseudonymize } from "./pseudonymize.js";
 import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
 import { createJourneyFromWebos, executeLineJourneyLink } from "./journey_intake.js";
 import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
@@ -99,8 +101,10 @@ async function logBrandGrowthRouting(input: {
     const timestamp = new Date().toISOString();
     const logMessage = [
       `【Brand Growth Routing】${timestamp}`,
-      `User: ${input.lineUserId}`,
-      `Input: ${input.text.substring(0, 50)}...`,
+      // LINE userId と本文そのものはログに残さない（AGENTS.md / 指示書§26）。
+      // 追跡に必要な「同一人物かどうか」は、復元できない短いハッシュで足りる。
+      `User: ${pseudonymize(input.lineUserId)}`,
+      `Length: ${input.text.length}`,
       `Target: ${input.target || "skipped"}`,
       `Objective: ${input.objective || "N/A"}`,
       `Intent: ${input.intent || "N/A"}`,
@@ -249,13 +253,16 @@ const server = http.createServer(async (req, res) => {
         // 会員（承認者以外）のメッセージは退会相談と創作依頼の受付に使う。
         // executeApprovalText には絶対に渡さない（承認・push コマンドを踏ませないため）。
         if (!ev.isApprover) {
+          // 会員へ返信してよいかは member_reply_gate が唯一の判断者。
+          // 各ハンドラが replyToSender: true を返しても、関門が閉じていれば送らない。
+          const memberReplyAllowed = isMemberAutoReplyEnabled();
           const withdrawal = await executeLineWithdrawalIntake({
             text: ev.text ?? "",
             lineUserId: ev.userId,
             messageId: ev.messageId,
           });
           if (withdrawal.handled) {
-            results.push(withdrawal);
+            results.push(sealMemberReply(withdrawal, memberReplyAllowed));
           } else {
             const brandGrowth = await executeBrandGrowthRouting({
               text: ev.text ?? "",
@@ -271,9 +278,16 @@ const server = http.createServer(async (req, res) => {
                 objective: typeof brandGrowth.objective === "string" ? brandGrowth.objective : undefined,
                 intent: typeof brandGrowth.intent === "string" ? brandGrowth.intent : undefined,
               });
-              results.push(brandGrowth as unknown as Record<string, unknown>);
+              results.push(
+                sealMemberReply(brandGrowth as unknown as Record<string, unknown>, memberReplyAllowed),
+              );
             } else {
-              results.push({ ok: true, action: "ignored", message: "non_approver_message_ignored" });
+              results.push({
+                ok: true,
+                action: "ignored",
+                message: "non_approver_message_ignored",
+                replyToSender: false,
+              });
             }
           }
           continue;

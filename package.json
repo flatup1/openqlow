@@ -152,7 +152,8 @@
     "deploy": "bash deploy/scripts/deploy-vps.sh",
     "check": "bash deploy/scripts/check-prod.sh",
     "test:deploy-vps": "node scripts/deploy-vps.test.mjs",
-    "test:check-prod": "node scripts/check-prod.test.mjs"
+    "test:check-prod": "node scripts/check-prod.test.mjs",
+    "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
