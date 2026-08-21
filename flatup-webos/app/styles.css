@@ -85,7 +85,7 @@ main#app {
   .screen { animation: none; }
 }
 
-/* ===== Welcome: hero.jpg が主役 ===== */
+/* ===== Welcome: FLAT UP GYMで撮影した実写が主役 ===== */
 .hero {
   position: relative;
   border-radius: var(--radius);
@@ -99,8 +99,7 @@ img.welcome-photo {
   height: auto;
   aspect-ratio: 4 / 3;
   object-fit: cover;
-  /* 人物の顔・表情が切れないよう、やや上寄せ。写真に合わせて微調整可 */
-  object-position: 50% 38%;
+  object-position: center;
 }
 .hero-overlay {
   position: absolute;
@@ -124,10 +123,12 @@ img.welcome-photo {
 }
 .hero-title {
   display: block;
-  font-size: 23px;
+  /* 小さめのiPhoneでも句点だけ次の行へ落ちないサイズにする */
+  font-size: clamp(18px, 5.4vw, 23px);
   font-weight: 700;
   line-height: 1.5;
   margin: 0;
+  white-space: nowrap;
 }
 
 /* 画面が切り替わるたび、見出しへフォーカスを移して読み上げの位置を合わせている。
