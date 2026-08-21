@@ -170,7 +170,55 @@ for (const s of snippets) {
   }
 }
 
-// --- 5. 実際にLINEへ出るカード文面が100点か ------------------------------------
+// --- 5. 文言の版が3か所で揃っているか ------------------------------------------
+//
+// 文言の版（CONSENT_TERMS_VERSION）は「どの文言に同意したか」を後から特定する鍵。
+// ところが同じ版番号が3か所に散らばっている。
+//
+//   1. src/crm/guardian_consent.ts   … 同意記録に焼き込まれる版（台帳の正）
+//   2. port/aika/guardian_consent.ts … LINEカードを組み立てる側の版
+//   3. 紙の同意書（HTML）             … 印刷した用紙がどの文言か見分けるための版
+//
+// 1つだけ上げて他を忘れると、記録の版と実際に見せた文言がズレる。
+// 紙に至っては、引き出しの中の古い用紙と新しい用紙が見分けられなくなる。
+// 人間の注意力に頼らず、ここで機械的に揃っていることを確かめる。
+//
+// import ではなくテキストとして読むのは、port/aika を依存ゼロに保つため。
+
+function readVersion(rel: string, re: RegExp): string {
+  const raw = readFileSync(path.join(repoRoot, rel), "utf8");
+  const m = raw.match(re);
+  assert(m, `${rel} から文言の版を読み取れませんでした`);
+  return m![1];
+}
+
+const versionCrm = readVersion(
+  "src/crm/guardian_consent.ts",
+  /CONSENT_TERMS_VERSION\s*=\s*"([^"]+)"/,
+);
+const versionAika = readVersion(
+  "port/aika/guardian_consent.ts",
+  /CONSENT_TERMS_VERSION\s*=\s*"([^"]+)"/,
+);
+const versionPaper = readVersion(
+  "docs/templates/未成年者入会_保護者同意書.html",
+  /文言版\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/,
+);
+
+if (versionAika !== versionCrm) {
+  violations.push(
+    `[文言の版ズレ] port/aika=${versionAika} と src/crm=${versionCrm} が違う。` +
+      `記録される版と実際に見せる文言がズレる。両方を同じ値にすること`,
+  );
+}
+if (versionPaper !== versionCrm) {
+  violations.push(
+    `[文言の版ズレ] 紙の同意書=${versionPaper} と src/crm=${versionCrm} が違う。` +
+      `文言を変えたら紙の「文言版」も更新し、古い用紙は差し替えること`,
+  );
+}
+
+// --- 6. 実際にLINEへ出るカード文面が100点か ------------------------------------
 //
 // docs の文面ではなく、コードが組み立てる本物の文面を採点する。
 // ここが落ちたら、お客様に送る前に気づける。
