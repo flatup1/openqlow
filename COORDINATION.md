@@ -130,14 +130,15 @@
 
 | 項目 | 値 |
 |---|---|
-| openQLOW VPS | 162.43.41.182（openqlow-vps / Ubuntu 24.04） |
+| openQLOW VPS | `162.43.41.182`（`line.flatupnarita.jp` / オーナー側自動化） |
 | openQLOW VPS パス | `/opt/openqlow`, `/opt/flatup-ai-os` |
-| AIKA VPS | 162.43.90.71（別マシン） |
+| AIKA VPS | `162.43.90.71`（`aika.flatupnarita.jp` / 顧客向けAIKA・WebOS→LINE） |
+| WebOS journey本番 | `https://aika.flatupnarita.jp/journey`（AIKA Python実装のみ） |
 | デプロイ方式 | rsync / scp（git管理なし） |
-| GitHub | flatup1/openqlow, flatup1/flatup-ai-os |
+| GitHub | openQLOW=`flatup1/openqlow`、AIKA=`flatup1/flatup` |
 | 主要 systemd unit | openqlow-webhook, openqlow-monitor.timer, openqlow-daily.timer, openqlow-morning.timer, cloudflared-openqlow |
 | LINE openQLOW | @817nsdhr |
-| LINE AIKA | @jfl0054o |
+| LINE AIKA | @jfl0054o（末尾は英字o） |
 
 ---
 

@@ -73,19 +73,22 @@ window.FLATUP = window.FLATUP || {};
   function renderWelcome(welcomeMode) {
     FLATUP.state.pushScreen("welcome");
 
-    // 写真内の文字も、読み上げ・検索では見出しとして伝わるようにする。
-    var heading = el("h1", { class: "sr-only", text: "はじめの一歩を、安心から。" });
-
-    // hero.jpg が主役。現在の写真にはコピーが焼き込み済みなので、
-    // サイト側では文字や暗いグラデーションを重ねない。
+    // FLAT UP GYMで撮影した実写が主役。写真の上に短いコピーを重ねる。
     // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
     var photo = el("img", {
       class: "welcome-photo",
-      src: "hero.jpg",
-      alt: "FLAT UP GYMのキッズクラス。子どもたちが笑顔でグローブタッチをしている様子",
-      width: "1280", height: "720", decoding: "async", fetchpriority: "high"
+      src: "hero.jpg?v=10",
+      alt: "FLAT UP GYMで、先生が小さなお子さんのミット練習を優しく見守っている様子",
+      width: "800", height: "600", decoding: "async"
     });
-    var hero = el("div", { class: "hero" }, [photo]);
+    var hero = el("div", { class: "hero" }, [
+      photo,
+      el("div", { class: "hero-overlay" }),
+      el("div", { class: "hero-copy" }, [
+        el("span", { class: "hero-eyebrow", text: "世界一、初心者にやさしい格闘技ジム" }),
+        el("h1", { class: "hero-title", text: "はじめの一歩を、安心から。" })
+      ])
+    ]);
     photo.addEventListener("error", function () { hero.style.display = "none"; });
 
     var lead = el("p", { class: "welcome-lead" });

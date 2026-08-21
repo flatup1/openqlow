@@ -96,7 +96,7 @@ main#app {
   .screen { animation: none; }
 }
 
-/* ===== Welcome: hero.jpg が主役 ===== */
+/* ===== Welcome: FLAT UP GYMで撮影した実写が主役 ===== */
 .hero {
   position: relative;
   border-radius: var(--radius);
@@ -108,7 +108,38 @@ img.welcome-photo {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: center;
+}
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(20, 26, 20, 0) 42%, rgba(20, 26, 20, .62) 100%);
+  pointer-events: none;
+}
+.hero-copy {
+  position: absolute;
+  left: 18px; right: 18px; bottom: 14px;
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, .35);
+}
+.hero-eyebrow {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  opacity: .92;
+  margin: 0 0 4px;
+}
+.hero-title {
+  display: block;
+  /* 小さめのiPhoneでも句点だけ次の行へ落ちないサイズにする */
+  font-size: clamp(18px, 5.4vw, 23px);
+  font-weight: 700;
+  line-height: 1.5;
+  margin: 0;
+  white-space: nowrap;
 }
 
 /* 画面が切り替わるたび、見出しへフォーカスを移して読み上げの位置を合わせている。
