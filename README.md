@@ -5,6 +5,7 @@
 地図: この箱はFLATUP AIの頭脳・安全網・正本です。
 地図: 事実の正本は `openqlow/src/shared/canon.ts` です。
 地図: 触る前に `src/shared/canon.ts` と `src/aika/receptionist.ts` を読みます。
+地図: 全体像を1枚で見るなら [`docs/SYSTEM_BLUEPRINT.md`](docs/SYSTEM_BLUEPRINT.md)（プロジェクト一覧・構成図・実装済み機能・課題）。
 
 OPENQLOW is FLATUP GYM's human-approved AI operations system for LINE, CRM, daily operations, and SNS draft generation.
 
