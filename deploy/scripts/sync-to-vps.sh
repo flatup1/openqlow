@@ -9,6 +9,13 @@ SSH_KEY="${OPENQLOW_VPS_KEY:-$HOME/.ssh/openqlow_vps}"
 SSH_USER="${OPENQLOW_VPS_USER:-root}"
 SSH_HOST="${OPENQLOW_VPS_HOST:-162.43.41.182}"
 REMOTE_DIR="${OPENQLOW_VPS_REMOTE:-/opt/openqlow/}"
+AIKA_RESERVED_HOST="162.43.90.71"
+
+if [[ "$SSH_HOST" == "$AIKA_RESERVED_HOST" || "$SSH_HOST" == "aika.flatupnarita.jp" ]]; then
+  echo "停止: openQLOWの同期先にAIKA VPSは指定できません。" >&2
+  echo "openQLOWの正しい同期先は 162.43.41.182 です。" >&2
+  exit 2
+fi
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)/"
 
@@ -27,6 +34,31 @@ RSYNC_EXCLUDES=(
   # --delete がディレクトリを消せず rsync が終了コード23で落ちる原因にもなる。
   --exclude '.npm/'
   --exclude '.DS_Store'
+  # 映像・アニメ素材は VPS では一切使わない（LINEのプログラムからの参照はゼロ）。
+  # Mac のレンダリング結果まで送ると16GB超になり、反映に数時間かかっていた。
+  # 除外したものは VPS 側に残る（--delete は除外パスを消さない）。
+  --exclude 'brand-film-ep*/'
+  --exclude 'brand-film-series/'
+  --exclude 'animation-studio/'
+  --exclude 'gymstorys/'
+  --exclude 'girl-power-op/'
+  --exclude 'flatup-lp/'
+  --exclude 'flatup-webos/'
+  # uizin-clipper は Mac 専用の Python 道具。ダウンロードした大会動画が
+  # 16GB たまっていて、これが同期の止まる最大の原因だった。VPS は Node の
+  # webhook しか動かさないため、tools/ は丸ごと不要。
+  --exclude 'tools/'
+  # 上のフォルダ以外に置かれた大きなファイルも念のため止める
+  --exclude '*.mp4'
+  --exclude '*.mov'
+  --exclude '*.m4v'
+  --exclude '*.wav'
+  --exclude '*.psd'
+  --exclude '*.zip'
+  --exclude '*.webm'
+  --exclude '*.mkv'
+  --exclude '*.ts.part'
+  --exclude '*.part'
 )
 
 echo "[sync-to-vps] source: $PROJECT_ROOT"
@@ -37,7 +69,9 @@ echo "[sync-to-vps] excludes: ${RSYNC_EXCLUDES[*]}"
 # 「転送中にファイルが消えた」といった軽微な警告。転送自体は完了しているので、
 # ここで止めずに警告として流す。それ以外の失敗はそのまま異常終了させる。
 rsync_status=0
-rsync -az --delete "${RSYNC_EXCLUDES[@]}" \
+# -v: 何を送っているかを表示する。無言だと「フリーズした」と区別がつかず、
+# 実際に16GBを送り続けていることに気づけなかった。
+rsync -avz --delete "${RSYNC_EXCLUDES[@]}" \
   -e "ssh -i ${SSH_KEY}" \
   "$PROJECT_ROOT" \
   "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}" || rsync_status=$?

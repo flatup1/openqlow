@@ -32,6 +32,8 @@
     "test:config": "tsx src/config.test.ts",
     "test:shared-canon": "tsx src/shared/canon.test.ts",
     "test:no-hardcoded-canon": "tsx src/shared/no-hardcoded-canon.test.ts",
+    "test:webos-canon-sync": "tsx src/shared/webos_canon_sync.test.ts",
+    "test:webos-flow": "node flatup-webos/test/flow.test.cjs",
     "test:secret-guard": "tsx src/shared/secret_guard.test.ts",
     "test:pii-guard": "tsx src/shared/pii_guard.test.ts",
     "test:loop": "tsx src/loop/loop.test.ts",
@@ -78,6 +80,7 @@
     "test:line-logging": "tsx src/line_bot/logging.test.ts",
     "test:line-notifier": "tsx src/line_bot/notifier.test.ts",
     "test:line-crm-intake": "tsx src/line_bot/crm_intake.test.ts",
+    "test:line-journey-intake": "tsx src/line_bot/journey_intake.test.ts",
     "test:line-webhook-auth": "tsx src/line_bot/webhook_auth.test.ts",
     "test:line-webhook-security": "tsx src/line_bot/webhook_security.test.ts",
     "test:line-webhook-events": "tsx src/line_bot/webhook_events.test.ts",
@@ -90,6 +93,7 @@
     "test:inquiry-reply": "tsx src/generators/inquiry_reply.test.ts",
     "test:reply-gate": "tsx src/generators/reply_gate.test.ts",
     "test:aika-port": "tsx port/aika/response_quality.test.ts",
+    "test:aika-canon-sync": "tsx port/aika/flatup_canon.test.ts",
     "test:aika-guardian-consent": "tsx port/aika/guardian_consent.test.ts",
     "test:aika-date-guard": "tsx port/aika/date_guard.test.ts",
     "test:trial-followup": "tsx src/generators/trial_followup.test.ts",
@@ -147,7 +151,9 @@
     "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts",
     "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts",
     "deploy": "bash deploy/scripts/deploy-vps.sh",
-    "test:deploy-vps": "node scripts/deploy-vps.test.mjs"
+    "test:deploy-vps": "node scripts/deploy-vps.test.mjs",
+    "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts",
+    "test:vps-role-guard": "node scripts/vps-role-guard.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
