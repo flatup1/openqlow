@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-08-16
+最終更新: 2026-08-21
 
 ---
 
@@ -47,7 +47,7 @@
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
 | `openqlow/docs/flatup-ai-os/` | Codex（設計） | open | 2026-08-14 |
-| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 1〜3 pushed / Design Pack integration in progress | 2026-08-16 |
+| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 1〜3 mainへマージ済み / Phase 4 は PR #85 レビュー待ち | 2026-08-21 |
 | `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
@@ -55,6 +55,21 @@
 | `openqlow/scripts/*ai-os*` | Codex | open | 2026-07-18 |
 | `openqlow/tools/uizin-clipper/` | Claude | open | 2026-08-07 |
 | `openqlow/docs/` | 共有 | open | - |
+
+**2026-08-21 追記: 表に無かった実在ディレクトリ**（実態の記録。担当の最終確定はJIN承認）
+
+| 領域 | 担当AI | ステータス | 備考 |
+|---|---|---|---|
+| `openqlow/src/shared/` | 共有 | **要注意** | 事実の唯一の正本 `canon.ts` と共通ゲート。変更は必ずJIN確認 |
+| `openqlow/src/aika/` | 共有 | open | AIKA本体との合体点（`receptionist.ts`） |
+| `openqlow/src/loop/` | 共有 | open | 自己改善ループ |
+| `openqlow/src/keihi/` | 共有 | open | 経費・確定申告・補助金 |
+| `openqlow/src/utils/` | 共有 | open | 日付・パス・slug |
+| `openqlow/port/aika/` | 共有 | open | AIKA本番への配布キット。`flatup_canon.ts` は正本の複製（同期テストあり） |
+| `openqlow/flatup-webos/` | Claude | open | Phase 1 MVP完成・未公開 |
+| `openqlow/knowledge/` | 共有 | open | 第二の脳（wiki / sources） |
+| `openqlow/animation-studio/` | 共有 | open | 独立npmプロジェクト。2026-08-21 にCIへ追加 |
+| `openqlow/girl-power-op/`, `brand-film-*/`, `gymstorys/` | 共有 | 検証対象外 | 映像企画・試作。CIは走らない |
 | `openqlow/docs/superpowers/specs/` | 共有 | open | 2026-06-12 |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
 | `flatup-ai-os/src/ai/` | Codex | open | 2026-06-06 |
@@ -103,7 +118,8 @@
   - 集客AI司令塔「サイト改善チェック」 `src/generators/site_audit.ts`（入力テキスト評価・ネットワーク取得なし）
   - 見込み客CRM `src/crm/`（台帳・追客抽出・日報・自己修復ログ・intake）
   - LINE接続口 `src/crm/line_intake.ts`（webhook配線はCodexへハンドオフ → `docs/HANDOFF_2026-06-11_claude→codex.md`）
-- Brand Growth 領域 `src/brand_growth/`（Phase 1: 純関数Routerのみ。外部I/O・課金・公開なし。AIKA / canon / safety / line_bot / publish / scheduler / loop / animation / deploy は読み取りもせず変更しない）
+- Brand Growth 領域 `src/brand_growth/`（Phase 1〜3。モジュール自体は純関数のみで外部I/O・課金・公開なし。AIKA / canon / safety / line_bot / publish / scheduler / loop / animation / deploy は変更しない）
+  - 2026-08-21 追記: `src/line_bot/brand_growth_adapter.ts`（Codex領域）経由で**本番のLINE Webhookから呼ばれている**。会員への返信可否は `src/line_bot/member_reply_gate.ts` が唯一の判断者で既定は「送らない」
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）
@@ -122,7 +138,8 @@
 - Claude Code: 承認された設計に従う `src/brand_growth/` の段階実装とテスト
 - JIN: ブランド、料金、規約、安全、主要KPI、Provider有効化、本番変更の最終承認
 - 既存AIKA、canon、承認、LINE、公開、デプロイの責務は変更しない。Brand Growth側から重複実装しない。
-- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Design Packを同branchへdocs-only commitで統合するが、本番には未統合で、外部接続と本番変更は未着手。
+- Phase 1 Router / Phase 2 Knowledge Registry / Phase 3 Director・Prompt IR は **mainへマージ済み**。Phase 4（Quality Guardian）は PR #85 でレビュー待ち。
+- **本番Runtimeへは統合済み**（2026-08-21 現在）。ただし Provider（外部AI）接続・自動投稿・課金は依然として未実装で、有効化はJIN承認が必要。
 
 ---
 
