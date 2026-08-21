@@ -31,6 +31,8 @@ assert.match(script, /exit 1/, "起動失敗時は異常終了する");
 assert.doesNotMatch(script, /--force|force-with-lease/, "force push はしない");
 assert.doesNotMatch(script, /rm -rf \//, "危険な削除はしない");
 assert.doesNotMatch(script, /StrictHostKeyChecking=no/, "ホスト鍵チェックを無効化しない");
+assert.match(script, /AIKA_RESERVED_HOST="162\.43\.90\.71"/, "AIKA VPSへの誤配備を防ぐ");
+assert.match(script, /openQLOWをAIKA VPSへ配備することはできません/, "誤配備時は理由を表示する");
 
 // 秘密情報を埋め込んでいない
 assert.doesNotMatch(script, /LINE_CHANNEL_ACCESS_TOKEN=[A-Za-z0-9+/]{10,}/, "トークンを直書きしない");
@@ -50,6 +52,28 @@ assert.match(sync, /--exclude '\.DS_Store'/, ".DS_Store を除外する");
 for (const keep of ["state/", "drafts/", "logs/", ".env"]) {
   assert.ok(sync.includes(`--exclude '${keep}'`), `${keep} の除外を消さない`);
 }
+
+// 映像・アニメ素材を本番へ送らない（16GB を送って反映が数時間かかる事故の再発防止）
+for (const heavy of [
+  "brand-film-ep*/",
+  "brand-film-series/",
+  "animation-studio/",
+  "gymstorys/",
+  "girl-power-op/",
+  "flatup-lp/",
+  "flatup-webos/",
+  "*.mp4",
+  "*.mov",
+  "*.webm",
+  "*.mkv",
+  "tools/",
+]) {
+  assert.ok(sync.includes(`--exclude '${heavy}'`), `${heavy} を本番へ送らない`);
+}
+
+// 進捗を表示する（無言だとフリーズと区別がつかない）
+assert.match(sync, /rsync -avz/, "rsync は -v で何を送っているか見せる");
+assert.match(sync, /AIKA_RESERVED_HOST="162\.43\.90\.71"/, "単独同期でもAIKA VPSを拒否する");
 
 // rsync の軽微な警告(23/24)では止まらず、それ以外は異常終了する
 assert.match(sync, /23\|24\)/, "23/24 は警告として扱う");
