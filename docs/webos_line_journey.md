@@ -35,6 +35,25 @@ npm run deploy
 webhook再起動 → 起動確認）。最後に出る「本番で動いているコード」が、送ったコミットと
 同じであることを必ず確認する。
 
+## 「本当にできてる？」を確かめる（Jin）
+
+反映が終わったか不安なときは、**見るだけ・何も変えない**健康診断を1コマンドで回す。
+
+```bash
+npm run check
+```
+
+4つを順に見て、ダメなものだけ「次の一手」を出す。
+
+| 見るもの | 合格 | 不合格のとき |
+| --- | --- | --- |
+| 本番のコード（`deployed-version.txt`） | GitHubのmainと同じSHA | `npm run deploy` |
+| LINE自動応答（`openqlow-webhook`） | `active` | `journalctl` でログ確認 |
+| 引き継ぎコードの受け口 `/journey` | **405**（POST専用の正しい反応） | 未反映 or nginx未設定 |
+| WebOSページ `/webos/` | 200 かつ `?v=` が手元と同じ | XServerへ上げ直す |
+
+鍵の無い端末で公開側だけ見たいときは `npm run check -- --public`。
+
 確認（VPSの中から。公開URLはAIKAが応答するため404になる）:
 
 ```bash

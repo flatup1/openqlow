@@ -342,10 +342,21 @@ async function testIndexHtml() {
   assert(versions.length >= 6, "JS・CSSにキャッシュ対策のバージョンが付いている");
   assert(new Set(versions).size === 1, "バージョン番号がすべて同じ（上げ忘れがない）");
 
-  for (const tag of ["og:title", "og:description", "og:image", "og:type"]) {
+  for (const tag of ["og:title", "og:description", "og:image", "og:type", "og:url"]) {
     assert(html.includes(`property="${tag}"`), `シェア用の ${tag} がある`);
   }
   assert(html.includes('name="twitter:card"'), "Twitter/Xカードの指定がある");
+
+  // og:image と og:url は絶対URLでないと LINE・SNS のカードが出ない。
+  // 相対パス（hero.jpg）に戻ってしまう事故をここで止める。
+  for (const tag of ["og:image", "og:url"]) {
+    const value = html.match(new RegExp(`property="${tag}" content="([^"]+)"`))?.[1] ?? "";
+    assert(value.startsWith("https://"), `${tag} は絶対URLである（今: ${value || "なし"}）`);
+  }
+  assert(
+    /<link rel="canonical" href="https:\/\/[^"]+">/.test(html),
+    "canonical で正しいURLを1つに決めている",
+  );
   assert(html.includes('lang="ja"'), "日本語ページとして宣言している");
   assert(/<title>[^<]+<\/title>/.test(html), "タイトルがある");
 
