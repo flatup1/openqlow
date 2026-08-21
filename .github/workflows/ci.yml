@@ -45,6 +45,35 @@ jobs:
       - name: Run tests
         run: npm run test:group:${{ matrix.group }}
 
+  # animation-studio は独立した npm プロジェクト（React + Express）で、
+  # ルートの依存ゼロ方針とは別世界。ルートの test を重くしないよう別ジョブにする。
+  # ここに入れる前は 1,700行超が誰にも検証されていなかった（SYSTEM_BLUEPRINT §12 C-3）。
+  animation-studio:
+    name: test (animation-studio)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: animation-studio/package-lock.json
+
+      - name: Install dependencies
+        working-directory: animation-studio
+        run: npm ci
+
+      # APIキー無しのデモモードで走る。外部へ課金・送信しない。
+      - name: Run tests
+        working-directory: animation-studio
+        run: npm test
+
+      - name: Typecheck
+        working-directory: animation-studio
+        run: npm run typecheck
+
   validate:
     name: typecheck and validate
     runs-on: ubuntu-latest

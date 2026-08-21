@@ -144,7 +144,8 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 - 料金・日時・予約・退会・休会・安全に関する回答は、正本確認後も送信前に人間確認を入れる。
 - Skillsの正本は `docs/ai-os/skills-source/`。CodexとClaude Codeの配置は同期スクリプトで検証する。
 - 削除、外部送信、公開、課金、本番変更、commit、push、PR作成は `docs/ai-os/canon/approval_matrix.md` に従う。
-- `src/brand_growth/` は Brand Growth 領域（Claude Code 担当、設計は FLATUP GYM AI OS Design Pack v1.0）。純関数のみで、外部API・課金・公開・本番接続を持たない。AIKA、`src/shared/canon.ts`、`src/safety/`、LINE、publish、scheduler、loop、animation、deploy を変更・重複実装しない。事実が必要なときは canon への型付きセレクタ経由にし、料金・住所・時間を直書きしない。
+- `src/brand_growth/` は Brand Growth 領域（Claude Code 担当、設計は FLATUP GYM AI OS Design Pack v1.0）。**モジュール自体は純関数のみ**で、外部API・課金・公開・本番接続を持たない。AIKA、`src/shared/canon.ts`、`src/safety/`、LINE、publish、scheduler、loop、animation、deploy を変更・重複実装しない。事実が必要なときは canon への型付きセレクタ経由にし、料金・住所・時間を直書きしない。
+- ただし **`src/line_bot/brand_growth_adapter.ts` 経由で本番のLINE Webhookから呼ばれている**（PR #89 / `43d9736` でmainへ統合済み）。会員へ返信が届くかどうかは `src/line_bot/member_reply_gate.ts` が唯一の判断者で、既定は「送らない」（PR #108 / `83ed512`）。brand_growth を変更するときは、この経路を通じて会員に影響し得ることを前提にする。
 - 変更後は `./scripts/validate-ai-os.sh` と関連する既存テストを実行する。
 - 完了報告は「作成・変更・保持・検証・未実装・人間確認・Git状態」の順にする。
 
@@ -153,7 +154,8 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 - 映像制作、感情設計、Prompt、Growth Engineの設計正本は `docs/flatup-ai-os/README.md`。
 - この領域は **Codexが設計、Claude Codeが実装、JINが最終承認** を担当する。
 - 実装を始める前に `docs/flatup-ai-os/CLAUDE_CODE_IMPLEMENTATION_SPEC.md` と `docs/flatup-ai-os/CONFLICT_MATRIX.md` を読む。
-- 実装先は `src/brand_growth/`。branch `claude/flatup-gym-ai-os-phase1-15lytr`でPhase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。同branchへDesign Packをdocs-only commitで統合するが、本番Runtimeには未統合。
+- 実装先は `src/brand_growth/`。Phase 1 Router / Phase 2 Knowledge Registry / Phase 3 Director・Prompt IR は **mainへマージ済み**。Phase 4（Quality Guardian）は PR #85 でレビュー待ち。
+- **本番Runtimeへは統合済み**（2026-08-21 現在）。`src/line_bot/brand_growth_adapter.ts` がLINE Webhookから呼び、`member_reply_gate` が会員への返信可否を決める。Provider（外部AI）接続と自動投稿は依然として未実装で、そこはJIN承認が必要。
 - AIKA人格、`src/shared/canon.ts`、既存の安全・承認・LINE・公開・デプロイ機能は再実装せず、既存正本を参照または再利用する。
 - 旧 `flatup-ai-os`、Animation OS、Vault、AIKA本番は参照元であり、Design Packの実装先にしない。
 - 料金、住所、時間、クラス等の事実をDesign Packへ複製しない。矛盾時は既存の事実正本と承認ルールを優先する。

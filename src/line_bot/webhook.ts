@@ -8,7 +8,7 @@ import { executeLineCrmIntake } from "./crm_intake.js";
 import { formatWebhookReply, replyLineMessage } from "./reply.js";
 import { verifyLineSignature } from "./webhook_auth.js";
 import { isMemberAutoReplyEnabled, sealMemberReply } from "./member_reply_gate.js";
-import { pseudonymize } from "./pseudonymize.js";
+import { logRoutingEvent } from "./routing_log.js";
 import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
 import { createJourneyFromWebos, executeLineJourneyLink } from "./journey_intake.js";
 import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
@@ -18,7 +18,6 @@ import {
   publicWebhookError,
   safeLineLog,
 } from "./webhook_security.js";
-import { logError as writeSelfRepairLog } from "../crm/self_repair.js";
 
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
@@ -98,20 +97,25 @@ async function logBrandGrowthRouting(input: {
 }): Promise<void> {
   try {
     const dataDir = process.env.OPENQLOW_DATA_DIR || path.join(process.cwd(), "data");
-    const timestamp = new Date().toISOString();
-    const logMessage = [
-      `【Brand Growth Routing】${timestamp}`,
-      // LINE userId と本文そのものはログに残さない（AGENTS.md / 指示書§26）。
-      // 追跡に必要な「同一人物かどうか」は、復元できない短いハッシュで足りる。
-      `User: ${pseudonymize(input.lineUserId)}`,
-      `Length: ${input.text.length}`,
-      `Target: ${input.target || "skipped"}`,
-      `Objective: ${input.objective || "N/A"}`,
-      `Intent: ${input.intent || "N/A"}`,
-    ].join("\n");
-    await writeSelfRepairLog("line_webhook_error", logMessage, "brand_growth_routing", dataDir);
-  } catch (error) {
-    console.error("Failed to log brand growth routing:", error);
+    // 正常なルーティングは「エラー」ではない。self_repair（障害の記録）へは書かず、
+    // 運用ログ logs/routing/ へ残す。本物の障害が正常記録に埋もれないようにするため。
+    // userId の仮名化と本文の非保存は logRoutingEvent の中で必ず行われる。
+    await logRoutingEvent(
+      {
+        event: "brand_growth_routing",
+        lineUserId: input.lineUserId,
+        text: input.text,
+        details: {
+          target: input.target,
+          objective: input.objective,
+          intent: input.intent,
+        },
+      },
+      dataDir,
+    );
+  } catch {
+    // ログの失敗で受信処理を止めない。詳細は外へ出さない（webhook_security の方針）。
+    console.error(safeLineLog("routing_log_failed"));
   }
 }
 
