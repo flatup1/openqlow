@@ -11,7 +11,7 @@
 // I/O も時刻取得もしない。時刻は必ず呼び出し側から受け取る（同じ入力なら同じ結果）。
 
 import { scanPii } from "../../shared/pii_guard.js";
-import { hasSecret } from "../../shared/secret_guard.js";
+import { scanText as scanSecrets } from "../../shared/secret_guard.js";
 
 /** 記録の作り方が契約に反しているときに投げる。値そのものは載せない。 */
 export class RecordRuleError extends Error {
@@ -91,9 +91,40 @@ export function assertUtcIso8601(field: string, value: unknown): asserts value i
  * どちらか片方だけ厳しくすると、緩い側から漏れる。
  */
 export function scanPiiThorough(text: string): readonly string[] {
-  const flattened = text.replace(/[_:.\/|]+/g, " ");
+  const normalized = text.normalize("NFKC");
   const kinds = new Set<string>();
-  for (const finding of [...scanPii(text), ...scanPii(flattened)]) kinds.add(finding.kind);
+  for (const candidate of boundaryVariants(normalized)) {
+    for (const finding of scanPii(candidate)) kinds.add(finding.kind);
+  }
+  return [...kinds];
+}
+
+/**
+ * 単語境界を隠す区切りを、1か所ずつ空白へ置き換えた検査候補を作る。
+ *
+ * 全区切りを一度に消すだけでは、`ref_ghp_...` のように秘密本体も
+ * `_` を含む形式を壊してしまい、正本 scanner が検出できなくなる。
+ */
+function* boundaryVariants(text: string): Generator<string> {
+  yield text;
+  for (let index = 0; index < text.length; index += 1) {
+    if (!"_:.\/|".includes(text[index] ?? "")) continue;
+    yield `${text.slice(0, index)} ${text.slice(index + 1)}`;
+  }
+}
+
+/**
+ * 秘密情報を、区切り記号に続く表記も含めて探す。
+ *
+ * 検出パターンは shared/secret_guard.ts を正本とし、ここでは
+ * NFKC正規化と区切り文字の平準化だけを担当する。
+ */
+export function scanSecretThorough(text: string): readonly string[] {
+  const normalized = text.normalize("NFKC");
+  const kinds = new Set<string>();
+  for (const candidate of boundaryVariants(normalized)) {
+    for (const finding of scanSecrets(candidate)) kinds.add(finding.kind);
+  }
   return [...kinds];
 }
 
@@ -124,8 +155,12 @@ export function assertNonEmpty(field: string, value: unknown): asserts value is 
  * 値そのものは例外メッセージに載せない（種類だけ）。
  */
 export function assertCleanText(field: string, text: string): void {
-  if (hasSecret(text)) {
-    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
+  const secrets = scanSecretThorough(text);
+  if (secrets.length > 0) {
+    throw new RecordRuleError(
+      "secret_in_record",
+      `${field} must not contain credentials (${secrets.join(",")})`,
+    );
   }
   const pii = scanPiiThorough(text);
   if (pii.length > 0) {

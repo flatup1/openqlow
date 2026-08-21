@@ -407,6 +407,26 @@ const AT019_SNAPSHOT: MetricSnapshot = importMetricSnapshot({
     "personal data in evidence",
   );
 
+  const prefixedPhone = ["owner_", "090", "-", "1234", "-", "5678"].join("");
+  throws(
+    () =>
+      importMetricSnapshot({
+        metric_snapshot_id: "met_pii_prefixed",
+        publication_id: "pub_x",
+        captured_at: AT,
+        window: "24h",
+        source: "manual",
+        manual_entry: {
+          entered_by: prefixedPhone,
+          entered_at: AT,
+          evidence_reference: "fixture-evidence",
+          evidence_note: null,
+        },
+      }),
+    "pii_in_record",
+    "prefixed personal data in manual entry",
+  );
+
   throws(
     () =>
       importMetricSnapshot({
@@ -520,6 +540,23 @@ const AT019_SNAPSHOT: MetricSnapshot = importMetricSnapshot({
     "invalid_score",
     "predicted score above 100",
   );
+}
+
+// --- 反証: confidenceは0〜1の有限数だけ ----------------------------------------
+{
+  for (const confidence of [Number.NaN, Number.POSITIVE_INFINITY, -0.1, 1.1]) {
+    throws(
+      () =>
+        recordPredictedScore({
+          content_id: "cnt_bad_confidence",
+          model_or_rule_version: "director-3.0.0",
+          scored_at: AT,
+          confidence,
+        }),
+      "invalid_confidence",
+      `invalid confidence ${String(confidence)}`,
+    );
+  }
 }
 
 // --- 反証: 片側しか無いときは「無い」と言う（0 で埋めない）---------------------------
@@ -1030,6 +1067,23 @@ function snapshot(id: string, window: "24h" | "7d", value: number | null): Metri
   });
   const definition = mismatched.result?.metric_definition ?? "";
   assert(definition.includes("24h") && definition.includes("7d"), `both windows must be labelled: ${definition}`);
+}
+
+// --- 反証: flat_toleranceは0以上の有限数だけ -------------------------------
+{
+  for (const flatTolerance of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    throws(
+      () =>
+        recordExperimentResult({
+          experiment: AT021,
+          control_snapshot: snapshot("reg_tol_a", "7d", 100),
+          treatment_snapshot: snapshot("reg_tol_b", "7d", 101),
+          flat_tolerance: flatTolerance,
+        }),
+      "invalid_tolerance",
+      `invalid flat_tolerance ${String(flatTolerance)}`,
+    );
+  }
 }
 
 console.log("brand_growth growth (phase 4) tests passed");

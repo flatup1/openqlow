@@ -23,8 +23,8 @@ import {
   assertUtcIso8601,
   deepFreeze,
   scanPiiThorough,
+  scanSecretThorough,
 } from "../contracts/record_rules.js";
-import { scanText as scanSecrets } from "../../shared/secret_guard.js";
 
 export const EVENT_SCHEMA_VERSION = "brand_growth.event.4.0.0";
 
@@ -110,10 +110,10 @@ function streamFile(root: string, stream: string): string {
  * 単語境界の都合で見逃し、そのままディスクへ書いてしまう。
  */
 function assertStorable(line: string): void {
-  const secrets = scanSecrets(line);
+  const secrets = scanSecretThorough(line);
   if (secrets.length > 0) {
     // 値は出さない。種類だけを伝える。
-    throw new StorageError("secret_in_record", `record contains credentials (${secrets.map(f => f.kind).join(",")})`);
+    throw new StorageError("secret_in_record", `record contains credentials (${secrets.join(",")})`);
   }
   const pii = scanPiiThorough(line);
   if (pii.length > 0) {

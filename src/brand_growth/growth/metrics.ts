@@ -33,24 +33,13 @@ import {
   RATE_METRIC_NAMES,
 } from "../contracts/growth.js";
 import {
+  assertCleanText,
   assertNonEmpty,
   assertSafeId,
   assertUtcIso8601,
   deepFreeze,
   RecordRuleError,
 } from "../contracts/record_rules.js";
-import { scanPii } from "../../shared/pii_guard.js";
-import { hasSecret } from "../../shared/secret_guard.js";
-
-function assertCleanText(field: string, text: string): void {
-  if (hasSecret(text)) {
-    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
-  }
-  const pii = scanPii(text);
-  if (pii.length > 0) {
-    throw new RecordRuleError("pii_in_record", `${field} must not contain personal data (${pii.map(f => f.kind).join(",")})`);
-  }
-}
 
 function validateMetricValue(name: MetricFieldName, value: number): number {
   if (!Number.isFinite(value)) {
@@ -187,6 +176,11 @@ export function recordPredictedScore(params: PredictedScoreParams): PredictedEmo
   assertNonEmpty("model_or_rule_version", params.model_or_rule_version);
   assertUtcIso8601("scored_at", params.scored_at);
 
+  const confidence = params.confidence ?? null;
+  if (confidence !== null && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) {
+    throw new RecordRuleError("invalid_confidence", "confidence must be a finite number between 0 and 1 or null");
+  }
+
   const total = params.total_100 ?? null;
   if (total !== null && (!Number.isFinite(total) || total < 0 || total > 100)) {
     throw new RecordRuleError("invalid_score", "total_100 must be between 0 and 100 or null");
@@ -212,7 +206,7 @@ export function recordPredictedScore(params: PredictedScoreParams): PredictedEmo
     content_id: params.content_id,
     model_or_rule_version: params.model_or_rule_version,
     scored_at: params.scored_at,
-    confidence: params.confidence ?? null,
+    confidence,
     axes,
     total_100: total,
     reasons: params.reasons ?? [],

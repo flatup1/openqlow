@@ -363,6 +363,53 @@ const BASE = pipeline(WOMEN_I2V);
   assert(!JSON.stringify(result).includes(fakeEmail), "personal data must not appear in the result");
 }
 
+// --- 反証: 区切り記号の直後に隠したPII / secretも止める -------------------
+{
+  const prefixedPhone = ["ref_", "090", "-", "1234", "-", "5678"].join("");
+  const leaky = input("p4_pii_prefixed", `女性向け。この写真をリールに。${prefixedPhone}`, [CONSENTED_ADULT]);
+  const built = pipeline(leaky);
+  const result = runPreflight({ input: leaky, decision: built.decision, prompt_ir: built.ir });
+
+  assert(!result.passed, "prefixed personal data must fail preflight");
+  assert(!result.provider_request_allowed, "prefixed personal data must never reach a provider");
+  assert(
+    result.blockers.some(b => b.startsWith("secret_or_pii:pii:phone")),
+    `prefixed phone must be named by kind only: ${result.blockers.join(",")}`,
+  );
+  assert(!JSON.stringify(result).includes(prefixedPhone), "the prefixed phone must not leak into the result");
+}
+
+{
+  const prefixedKey = ["ref_", "sk", "-", "0".repeat(32)].join("");
+  const leaky = input("p4_secret_prefixed", `女性向け。この写真をリールに。${prefixedKey}`, [CONSENTED_ADULT]);
+  const built = pipeline(leaky);
+  const result = runPreflight({ input: leaky, decision: built.decision, prompt_ir: built.ir });
+
+  assert(!result.passed, "prefixed credential must fail preflight");
+  assert(!result.provider_request_allowed, "prefixed credential must never reach a provider");
+  assert(
+    result.blockers.some(b => b.startsWith("secret_or_pii:secret:")),
+    `prefixed credential must be named by kind only: ${result.blockers.join(",")}`,
+  );
+  assert(!JSON.stringify(result).includes(prefixedKey), "the prefixed credential must not leak into the result");
+}
+
+{
+  // GitHub形式は秘密本体にも`_`を含むため、区切りを全部消す実装への反証になる。
+  const prefixedKey = ["ref_", "gh", "p", "_", "0".repeat(30)].join("");
+  const leaky = input("p4_secret_prefixed_internal_separator", `女性向け。${prefixedKey}`, [CONSENTED_ADULT]);
+  const built = pipeline(leaky);
+  const result = runPreflight({ input: leaky, decision: built.decision, prompt_ir: built.ir });
+
+  assert(!result.passed, "prefixed credential containing an internal separator must fail preflight");
+  assert(!result.provider_request_allowed, "the credential must never reach a provider");
+  assert(
+    result.blockers.some(b => b.startsWith("secret_or_pii:secret:github_token")),
+    `GitHub credential must be named by kind only: ${result.blockers.join(",")}`,
+  );
+  assert(!JSON.stringify(result).includes(prefixedKey), "the credential must not leak into the result");
+}
+
 {
   const brutal = input("p4_brand", "流血するくらい激しい試合の動画にして。", [CONSENTED_ADULT]);
   const decision = route(brutal);
@@ -371,6 +418,21 @@ const BASE = pipeline(WOMEN_I2V);
     result.blockers.some(b => b.startsWith("brand:brand_forbidden_expression")),
     `brand violation must block: ${result.blockers.join(",")}`,
   );
+}
+
+// --- 反証: 英語大文字・全角でもブランド禁止語は止める -------------------
+{
+  for (const word of ["BLOOD", "ＨＯＲＲＯＲ"]) {
+    const brutal = input(`p4_brand_case_${word.length}`, `この写真を${word}演出にして。`, [CONSENTED_ADULT]);
+    const built = pipeline(brutal);
+    const result = runPreflight({ input: brutal, decision: built.decision, prompt_ir: built.ir });
+    assert(!result.passed, `${word}: normalized brand violation must fail`);
+    assert(!result.provider_request_allowed, `${word}: brand violation must not reach a provider`);
+    assert(
+      result.blockers.some(b => b.startsWith("brand:brand_forbidden_expression")),
+      `${word}: brand blocker is required: ${result.blockers.join(",")}`,
+    );
+  }
 }
 
 // --- Knowledge が止まっているなら、こちらも止まる -------------------------------------
@@ -636,6 +698,24 @@ const ALL_PASS = Object.fromEntries(
       }),
     "pii_in_record",
     "personal data in notes",
+  );
+}
+
+// --- 反証: post-QAの担当名に隠したPIIも受け付けない -----------------------
+{
+  const prefixedPhone = ["owner_", "090", "-", "1234", "-", "5678"].join("");
+  throws(
+    () =>
+      assessQuality({
+        assessment_id: "qa_pii_prefixed_reviewer",
+        asset_id: "ast_out_prefixed_reviewer",
+        assessed_by: "human",
+        assessed_at: AT,
+        human_reviewer: prefixedPhone,
+        blocking: ALL_PASS,
+      }),
+    "pii_in_record",
+    "prefixed personal data in human_reviewer",
   );
 }
 

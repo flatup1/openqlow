@@ -16,11 +16,9 @@ import { blockedMinorAssets, type AssetRef, type CreativeInput } from "../contra
 import type { RouteDecision } from "../contracts/route_decision.js";
 import type { BlockingCheckName, CheckOutcome } from "../contracts/quality.js";
 import { BLOCKING_CHECK_NAMES } from "../contracts/quality.js";
-import { deepFreeze } from "../contracts/record_rules.js";
+import { deepFreeze, scanPiiThorough, scanSecretThorough } from "../contracts/record_rules.js";
 import type { NegativeCategory, PromptIR } from "../prompts/prompt_ir.js";
 import { isFreeOfStyleNames } from "../prompts/style_name_guard.js";
-import { scanText as scanSecrets } from "../../shared/secret_guard.js";
-import { scanPii } from "../../shared/pii_guard.js";
 
 export const QUALITY_GUARDIAN_VERSION = "4.0.0";
 
@@ -150,20 +148,20 @@ function checkConsent(input: CreativeInput): PreflightCheck {
 
 function checkSecretOrPii(input: CreativeInput, ir: PromptIR | null): PreflightCheck {
   const text = `${input.raw_text}\n${promptText(ir)}`;
-  const secrets = scanSecrets(text);
+  const secrets = scanSecretThorough(text);
   if (secrets.length > 0) {
     // 値は絶対に載せない。種類だけ。
-    return { name: "secret_or_pii", outcome: "fail", reason: `secret:${secrets.map(f => f.kind).join(",")}` };
+    return { name: "secret_or_pii", outcome: "fail", reason: `secret:${secrets.join(",")}` };
   }
-  const pii = scanPii(text);
+  const pii = scanPiiThorough(text);
   if (pii.length > 0) {
-    return { name: "secret_or_pii", outcome: "fail", reason: `pii:${pii.map(f => f.kind).join(",")}` };
+    return { name: "secret_or_pii", outcome: "fail", reason: `pii:${pii.join(",")}` };
   }
   return { name: "secret_or_pii", outcome: "pass", reason: null };
 }
 
 function checkBrand(input: CreativeInput, ir: PromptIR | null): PreflightCheck {
-  const text = `${input.raw_text}\n${promptText(ir)}`;
+  const text = `${input.raw_text}\n${promptText(ir)}`.normalize("NFKC").toLowerCase();
   const hit = BRAND_FORBIDDEN_TERMS.find(term => text.includes(term));
   if (hit !== undefined) {
     return { name: "brand", outcome: "fail", reason: "brand_forbidden_expression" };

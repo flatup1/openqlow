@@ -324,6 +324,38 @@ try {
     assert(!after.includes(fakeKey), "the credential must never reach disk");
   }
 
+  // --- 反証: 区切り記号の直後に隠したsecretもファイル前で止める ---
+  {
+    const prefixedKey = ["ref_", "sk", "-", "0".repeat(32)].join("");
+    const file = path.join(root, "secret_prefixed.jsonl");
+
+    await throwsAsync(
+      () => appendEvent(root, "secret_prefixed", event("evt_secret_prefixed", { reference: prefixedKey })),
+      "secret_in_record",
+      "credential hidden after a separator",
+    );
+
+    assert(!existsSync(file), "a prefixed credential must be rejected before creating the file");
+  }
+
+  {
+    const prefixedKey = ["ref_", "gh", "p", "_", "0".repeat(30)].join("");
+    const file = path.join(root, "secret_prefixed_internal_separator.jsonl");
+
+    await throwsAsync(
+      () =>
+        appendEvent(
+          root,
+          "secret_prefixed_internal_separator",
+          event("evt_secret_prefixed_internal_separator", { reference: prefixedKey }),
+        ),
+      "secret_in_record",
+      "credential with an internal separator hidden after a separator",
+    );
+
+    assert(!existsSync(file), "the credential must be rejected before creating the file");
+  }
+
   // --- 反証: 個人情報も同じく止める ---
   {
     const fakeEmail = ["member", "@", "example", ".com"].join("");

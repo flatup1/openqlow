@@ -25,13 +25,12 @@ import type {
 } from "../contracts/quality.js";
 import { BLOCKING_CHECK_NAMES, QUALITY_SCHEMA_VERSION, SCORED_CHECK_NAMES } from "../contracts/quality.js";
 import {
+  assertCleanText,
   assertSafeId,
   assertUtcIso8601,
   deepFreeze,
   RecordRuleError,
 } from "../contracts/record_rules.js";
-import { scanPii } from "../../shared/pii_guard.js";
-import { hasSecret } from "../../shared/secret_guard.js";
 
 export interface BlockingInput {
   readonly outcome: CheckOutcome;
@@ -79,16 +78,6 @@ function normalizeScored(
     }
     return { name, score: raw, note: null };
   });
-}
-
-function assertCleanText(field: string, text: string): void {
-  if (hasSecret(text)) {
-    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
-  }
-  const pii = scanPii(text);
-  if (pii.length > 0) {
-    throw new RecordRuleError("pii_in_record", `${field} must not contain personal data (${pii.map(f => f.kind).join(",")})`);
-  }
 }
 
 /**

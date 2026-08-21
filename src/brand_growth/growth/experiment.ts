@@ -183,6 +183,14 @@ export interface RecordResultParams {
 export function recordExperimentResult(params: RecordResultParams): Experiment {
   const { experiment, control_snapshot: control, treatment_snapshot: treatment } = params;
   const metric = experiment.primary_metric;
+  const tolerance = params.flat_tolerance ?? 0;
+
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    throw new RecordRuleError(
+      "invalid_tolerance",
+      "flat_tolerance must be a finite number of 0 or more",
+    );
+  }
 
   // 測り終わったものへ二重に書き込ませない。訂正したいときは新しい記録を作る。
   if (experiment.status === "measured" || experiment.status === "abandoned") {
@@ -237,7 +245,6 @@ export function recordExperimentResult(params: RecordResultParams): Experiment {
     limitations.push("主要指標が未取得です。0 として扱わず、比較しません。");
     confidenceNote = "主要指標が未取得のため比較不可。";
   } else {
-    const tolerance = params.flat_tolerance ?? 0;
     const delta = treatmentValue - controlValue;
     direction = Math.abs(delta) <= tolerance ? "flat" : delta > 0 ? "up" : "down";
     confidenceNote =
