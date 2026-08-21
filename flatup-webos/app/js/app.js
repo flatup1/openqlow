@@ -73,23 +73,19 @@ window.FLATUP = window.FLATUP || {};
   function renderWelcome(welcomeMode) {
     FLATUP.state.pushScreen("welcome");
 
-    // hero.jpg が主役。写真の上に短いコピーを重ねる。
+    // 写真内の文字も、読み上げ・検索では見出しとして伝わるようにする。
+    var heading = el("h1", { class: "sr-only", text: "はじめの一歩を、安心から。" });
+
+    // hero.jpg が主役。現在の写真にはコピーが焼き込み済みなので、
+    // サイト側では文字や暗いグラデーションを重ねない。
     // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
     var photo = el("img", {
       class: "welcome-photo",
       src: "hero.jpg",
       alt: "FLAT UP GYMのキッズクラス。子どもたちが笑顔でグローブタッチをしている様子",
-      width: "1600", height: "1200", decoding: "async"
+      width: "1280", height: "720", decoding: "async", fetchpriority: "high"
     });
-    var hero = el("div", { class: "hero" }, [
-      photo,
-      el("div", { class: "hero-overlay" }),
-      // 「世界一初心者にやさしい格闘技ジム」は現在の写真に焼き込み済みのため、
-      // 重ねるコピーは1行だけにする（写真を文字なし版に替えたら eyebrow を戻してよい）
-      el("div", { class: "hero-copy" }, [
-        el("h1", { class: "hero-title", text: "はじめの一歩を、安心から。" })
-      ])
-    ]);
+    var hero = el("div", { class: "hero" }, [photo]);
     photo.addEventListener("error", function () { hero.style.display = "none"; });
 
     var lead = el("p", { class: "welcome-lead" });
@@ -103,7 +99,7 @@ window.FLATUP = window.FLATUP || {};
 
     var note = el("p", { class: "note", text: "かんたんな質問に、タップで答えるだけ。30秒ほどで終わります。" });
 
-    show(el("div", {}, [hero, lead, el("div", { class: "options" }, [start]), note]), "welcome", welcomeMode);
+    show(el("div", {}, [heading, hero, lead, el("div", { class: "options" }, [start]), note]), "welcome", welcomeMode);
   }
 
   /* ---------- 画面: 質問 ---------- */
