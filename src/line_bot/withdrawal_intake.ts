@@ -19,6 +19,7 @@ import {
   detectWithdrawalIntent,
 } from "../crm/withdrawal.js";
 import { openWithdrawalService } from "../crm/withdrawal_store.js";
+import { isMemberAutoReplyEnabled } from "./member_reply_gate.js";
 import { pushLineMessage } from "./notifier.js";
 
 export type LineWithdrawalAction = "withdrawal_intake";
@@ -55,14 +56,11 @@ export interface ExecuteLineWithdrawalIntakeOptions {
 /**
  * 会員への自動返信が有効か。
  *
- * 既定は false（送らない）。`AGENTS.md` の「送信は人間承認後」に合わせ、
- * オーナーが明示的に有効化したときだけ会員へ届く。
- * `OPENQLOW_DRY_RUN=true`（既定）の間は、有効化されていても送らない。
+ * 判定の実体は member_reply_gate.ts（会員へ届くかどうかを決める唯一の関門）。
+ * ここは退会OS向けの別名で、二重管理を避けるため独自の条件を持たない。
  */
 export function isWithdrawalAutoReplyEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.OPENQLOW_WITHDRAWAL_AUTO_REPLY !== "true") return false;
-  // 本番反映の総合スイッチ。DRY_RUN の間は会員へ届かない。
-  return env.OPENQLOW_DRY_RUN === "false";
+  return isMemberAutoReplyEnabled(env);
 }
 
 function defaultDataDir(): string {
