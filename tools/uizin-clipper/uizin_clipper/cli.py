@@ -231,9 +231,13 @@ def cmd_calibrate(args) -> int:
 
     if args.roi is None:
         preview = work_dir / f"frame_{format_timecode(at_sec, with_millis=False).replace(':', '')}.png"
-        calib.extract_full_frame(video, at_sec, preview)
+        calib.extract_full_frame(video, at_sec, preview, grid=not args.no_grid)
         print(f"[calibrate] 1枚だけ書き出しました: {preview}")
-        print("この画像でスコアボードを囲む座標を測り、--roi x,y,幅,高さ を付けて再実行してください。")
+        if args.no_grid:
+            print("この画像でスコアボードを囲む座標を測り、--roi x,y,幅,高さ を付けて再実行してください。")
+        else:
+            print("★座標の目盛りを焼き込んであります（細い赤=100px、太い黄=500px）。")
+            print("  スコアボードの左上と右下の数字を読んで、--roi x,y,幅,高さ を付けて再実行してください。")
         return 0
 
     profile_path = Path(args.profile)
@@ -948,6 +952,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_cal.add_argument("--at", required=True, help="試合中の時刻（例 00:23:10）")
     p_cal.add_argument("--roi", type=parse_roi, help="x,y,幅,高さ（省略すると静止画だけ出す）")
     p_cal.add_argument("--profile", default=str(DEFAULT_PROFILE))
+    p_cal.add_argument(
+        "--no-grid", action="store_true",
+        help="下見の1枚に座標の目盛りを焼き込まない（既定は焼き込む）",
+    )
     p_cal.add_argument("--append", action="store_true", help="基準画像を追加する（複数デザイン対応）")
     p_cal.add_argument("--template-width", type=int, default=160, help="照合用に縮小する幅")
     p_cal.add_argument(
