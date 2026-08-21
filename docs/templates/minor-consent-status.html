@@ -253,7 +253,7 @@
   <section>
     <div>
       <p class="eyebrow">採点</p>
-      <h2>準備は95点、でも稼働は0点</h2>
+      <h2>準備は95点、自動チェックは100点。でも稼働は0点</h2>
     </div>
     <div class="scores">
       <div class="score">
@@ -262,9 +262,9 @@
         <p class="why">コード・文面・紙の同意書がそろった。免責文言の法的確認だけ未了。</p>
       </div>
       <div class="score">
-        <p class="n">90<small>/100</small></p>
+        <p class="n">100<small>/100</small></p>
         <p class="lbl">自動チェック</p>
-        <p class="why">今日、見逃していた穴をひとつ塞いだ。テスト115件すべて成功。</p>
+        <p class="why">見逃していた穴を3つとも塞いだ。テスト115件・CI 7件すべて成功。</p>
       </div>
       <div class="score zero">
         <p class="n">0<small>/100</small></p>
@@ -376,22 +376,40 @@
       </p>
     </div>
     <p class="lede" style="font-size:15px">
-      新しい見張り役は、文面360件を検査します。わざとバグを戻して、
+      新しい見張り役は、文面361件を検査します。わざとバグを戻して、
       ちゃんと見つけられることも確認済みです &mdash; 鳴らない火災報知器では意味がないからです。
     </p>
+
+    <div class="callout" style="border-left-color:var(--todo)">
+      <p class="hd" style="color:var(--todo)">さらに、穴をもう2つ見つけて塞ぎました</p>
+      <p>
+        <strong>穴その1 &mdash; 版番号がズレても誰も気づかない。</strong>
+        「この文章は何月何日版か」を示す番号が、システムの中の<strong>2か所</strong>に別々に書かれていました。
+        片方だけ直すと、記録には「8月6日版に同意」と残るのに、実際に見せた文章は9月版、ということが起こります。
+      </p>
+      <p>
+        <strong>穴その2 &mdash; 紙に版が書いていない。</strong>
+        文章を変えても、引き出しの中の<strong>古い用紙と新しい用紙が見分けられません</strong>。
+        そこで紙の右下に小さく「文言版 2026-08-06」と印刷しました。
+      </p>
+      <p style="font-weight:700;color:var(--ink)">
+        いまは3か所の版が揃っていないとテストが落ちます。上げ忘れは機械が止めます。
+      </p>
+    </div>
   </section>
 
   <!-- 残作業 -->
   <section>
     <div>
       <p class="eyebrow">残りの作業</p>
-      <h2>8つのうち、4つ終わり</h2>
+      <h2>9つのうち、5つ終わり</h2>
     </div>
     <ol class="steps">
       <li class="done"><span class="num">01</span><span class="task">同意を記録する台帳をつくる</span><span class="cost">済 &middot; 0円</span></li>
       <li class="done"><span class="num">02</span><span class="task">LINEに出す文面を決める</span><span class="cost">済 &middot; 0円</span></li>
       <li class="done"><span class="num">03</span><span class="task">紙の同意書の様式をつくる</span><span class="cost">済 &middot; 0円</span></li>
       <li class="done"><span class="num">04</span><span class="task">違約金の書き方を正式ルールに合わせる＋見張り役を追加</span><span class="cost">済 &middot; 0円</span></li>
+      <li class="done"><span class="num">04b</span><span class="task">文言の版を紙にも印字し、版ズレを機械で止める</span><span class="cost">済 &middot; 0円</span></li>
       <li class="next"><span class="num">05</span><span class="task">LINE管理画面に文面を貼る</span><span class="cost">30分 &middot; 0円</span></li>
       <li><span class="num">06</span><span class="task">自分のLINEで通し確認（成人・未成年の両方）</span><span class="cost">10分 &middot; 0円</span></li>
       <li><span class="num">07</span><span class="task">紙を印刷して受付に置く</span><span class="cost">10分 &middot; 印刷代</span></li>
@@ -426,9 +444,9 @@
   </section>
 
   <div class="foot">
-    <p><strong>今日の検証:</strong> テスト115件すべて成功 &middot; 型チェック通過 &middot; AI-OS検証通過 &middot; マージ競合を解消済み</p>
+    <p><strong>今日の検証:</strong> テスト115件すべて成功 &middot; CI 7件すべて成功 &middot; 型チェック通過 &middot; AI-OS検証通過 &middot; マージ競合を解消済み</p>
     <p><strong>まだ承認が要るもの:</strong> LINE管理画面への設定（未実施）／紙の免責文言の法的な妥当性</p>
-    <p><strong>注意:</strong> 文面を変えるときは、必ず版番号 <code>CONSENT_TERMS_VERSION</code> も上げてください。上げないと「どの文言に同意したか」が後から分からなくなります。</p>
+    <p><strong>文言を変えるとき:</strong> 版番号 <code>CONSENT_TERMS_VERSION</code> と紙の「文言版」を必ず一緒に上げてください。忘れるとテストが落ちて教えてくれます &mdash; もう覚えておく必要はありません。</p>
   </div>
 
 </div>
