@@ -34,17 +34,6 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 /* iPhoneで勢いよくスクロールした時、上下にはみ出す部分が白く光らないようにする。
    （body の背景は画面に固定しているため、html 側にも同じ色を敷いておく） */
 html { background: var(--bg); }
@@ -296,15 +285,15 @@ footer.site a.footer-line:focus-visible {
   outline-offset: 2px;
 }
 
-/* iPhone SE相当でも店名を1行に保ち、最初の画面をすっきり見せる。 */
+/* iPhone SE相当では、写真内にも出る長いコピーを省いて店名を1行に保つ。 */
 @media (max-width: 360px) {
   header.site {
     padding-inline: 12px;
-    font-size: 12px;
-    letter-spacing: .045em;
   }
+  header.site .brand-tagline { display: none; }
 }
 
 @media (min-width: 720px) {
   h1.q { font-size: 28px; }
+  .hero-title { font-size: 28px; }
 }

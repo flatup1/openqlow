@@ -77,9 +77,9 @@ window.FLATUP = window.FLATUP || {};
     // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
     var photo = el("img", {
       class: "welcome-photo",
-      src: "hero.jpg?v=10",
+      src: "hero.jpg?v=11",
       alt: "FLAT UP GYMで、先生が小さなお子さんのミット練習を優しく見守っている様子",
-      width: "800", height: "600", decoding: "async"
+      width: "800", height: "600", decoding: "async", fetchpriority: "high"
     });
     var hero = el("div", { class: "hero" }, [
       photo,
@@ -102,7 +102,7 @@ window.FLATUP = window.FLATUP || {};
 
     var note = el("p", { class: "note", text: "かんたんな質問に、タップで答えるだけ。30秒ほどで終わります。" });
 
-    show(el("div", {}, [heading, hero, lead, el("div", { class: "options" }, [start]), note]), "welcome", welcomeMode);
+    show(el("div", {}, [hero, lead, el("div", { class: "options" }, [start]), note]), "welcome", welcomeMode);
   }
 
   /* ---------- 画面: 質問 ---------- */

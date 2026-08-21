@@ -193,7 +193,7 @@ async function testWelcome() {
   assert(app.heading() === "はじめの一歩を、安心から。", "ようこそ画面に見出し（h1）がある");
   assert(app.find("button", "自分に合う始め方を見つける"), "開始ボタンがある");
   assert(app.text().includes("30秒ほどで終わります"), "所要時間の一言がある");
-  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg?v=10", "写真枠がある（v10キャッシュ更新）");
+  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg?v=11", "写真枠がある（v11キャッシュ更新）");
   assert(app.events().length === 0, "画面を見ただけではイベントを送らない");
 }
 
