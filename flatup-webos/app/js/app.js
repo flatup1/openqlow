@@ -77,9 +77,9 @@ window.FLATUP = window.FLATUP || {};
     // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
     var photo = el("img", {
       class: "welcome-photo",
-      src: "hero.jpg?v=10",
+      src: "hero.jpg?v=11",
       alt: "FLAT UP GYMで、先生が小さなお子さんのミット練習を優しく見守っている様子",
-      width: "800", height: "600", decoding: "async"
+      width: "800", height: "600", decoding: "async", fetchpriority: "high"
     });
     var hero = el("div", { class: "hero" }, [
       photo,

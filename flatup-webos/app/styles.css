@@ -285,6 +285,14 @@ footer.site a.footer-line:focus-visible {
   outline-offset: 2px;
 }
 
+/* iPhone SE相当では、写真内にも出る長いコピーを省いて店名を1行に保つ。 */
+@media (max-width: 360px) {
+  header.site {
+    padding-inline: 12px;
+  }
+  header.site .brand-tagline { display: none; }
+}
+
 @media (min-width: 720px) {
   h1.q { font-size: 28px; }
   .hero-title { font-size: 28px; }

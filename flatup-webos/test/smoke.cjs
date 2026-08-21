@@ -6,6 +6,10 @@ const { chromium } = require('playwright');
 const path0 = require('path');
 const ROOT = path0.join(__dirname, '..', 'app');
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
+const DEFAULT_CHROMIUM = '/opt/pw-browsers/chromium';
+const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const BROWSER_EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ||
+  (fs.existsSync(DEFAULT_CHROMIUM) ? DEFAULT_CHROMIUM : MAC_CHROME);
 
 const server = http.createServer((req, res) => {
   if (req.url.startsWith('/journey')) { // WebOS→VPS引き継ぎのローカル模擬
@@ -33,8 +37,8 @@ async function clickByText(page, text) {
 
 (async () => {
   await new Promise(r => server.listen(8931, r));
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); // iPhone size
+  const browser = await chromium.launch({ executablePath: BROWSER_EXECUTABLE });
+  const context = await browser.newContext({ viewport: { width: 320, height: 844 } }); // 小さめのiPhone相当
   await context.route('**lin.ee**', r => r.abort()); // 外部LINEへは実際に飛ばさない
   await context.route('**line.me**', r => r.abort());
   await context.addInitScript(() => { window.FLATUP_JOURNEY_ENDPOINT = 'http://localhost:8931/journey'; });
@@ -46,6 +50,19 @@ async function clickByText(page, text) {
   // ---- 成人ルート ----
   await page.goto('http://localhost:8931/');
   if (!(await page.textContent('body')).includes('強い人だけの場所ではありません')) throw new Error('welcome missing');
+  const welcomeLayout = await page.evaluate(() => {
+    const hero = document.querySelector('.hero').getBoundingClientRect();
+    const heading = document.querySelector('.hero-title').getBoundingClientRect();
+    const header = document.querySelector('header.site');
+    return {
+      hasHorizontalOverflow: document.documentElement.scrollWidth > innerWidth,
+      headerHeight: header.getBoundingClientRect().height,
+      headingInsideHero: heading.left >= hero.left && heading.right <= hero.right,
+    };
+  });
+  if (welcomeLayout.hasHorizontalOverflow) throw new Error('welcome has horizontal overflow');
+  if (welcomeLayout.headerHeight > 56) throw new Error('header wraps on small iPhone');
+  if (!welcomeLayout.headingInsideHero) throw new Error('hero heading overflows photo');
   await clickByText(page, '自分に合う始め方を見つける');
   if (!(await page.textContent('h1')).includes('誰のために')) throw new Error('Q1 missing');
   await clickByText(page, '自分が通ってみたい');
