@@ -147,7 +147,8 @@
     "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts",
     "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts",
     "deploy": "bash deploy/scripts/deploy-vps.sh",
-    "test:deploy-vps": "node scripts/deploy-vps.test.mjs"
+    "test:deploy-vps": "node scripts/deploy-vps.test.mjs",
+    "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
