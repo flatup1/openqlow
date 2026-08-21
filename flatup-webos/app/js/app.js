@@ -78,7 +78,7 @@ window.FLATUP = window.FLATUP || {};
     var photo = el("img", {
       class: "welcome-photo",
       src: "hero.jpg",
-      alt: "FLAT UP GYMで、スタッフが小さなお子さんのミット練習を優しく見守っている様子",
+      alt: "FLAT UP GYMで、先生が小さなお子さんのミット練習を優しく見守っている様子",
       width: "800", height: "600", decoding: "async"
     });
     var hero = el("div", { class: "hero" }, [
