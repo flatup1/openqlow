@@ -8,7 +8,7 @@
 window.FLATUP = window.FLATUP || {};
 
 (function () {
-  var LINE_OA_ID = "@jfl00540"; // FLAT UP GYM 公式LINE
+  var LINE_OA_ID = "@jfl0054o"; // FLAT UP GYM 公式LINE（末尾は英字o）
   var PROD_JOURNEY_ENDPOINT = "https://aika.flatupnarita.jp/journey";
   var pending = null; // 直前に送った回答と、その通信（同じ回答の二重送信を防ぐ）
 

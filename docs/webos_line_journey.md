@@ -12,7 +12,7 @@
 WebOS回答完了 ─ POST /journey ─▶ AIKA VPS: SQLite に保存（カテゴリのみ・PIIなし）
       │                             journey_id（例 J-3f8a12bc9d01）を返す
       ▼
-「LINEで相談」ボタン ─▶ line.me/R/oaMessage/@jfl00540/?J-…（コード入力済みでトークが開く）
+「LINEで相談」ボタン ─▶ line.me/R/oaMessage/@jfl0054o/?J-…（コード入力済みでトークが開く。末尾は英字o）
       ▼
 ユーザーが送信1タップ ─▶ webhook が userId + journey_id を受信して紐づけ
       ├─▶ ユーザーへ固定文面「Webで教えていただいた内容は引き継いでいます…」（replyのみ・pushしない）
