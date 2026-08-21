@@ -138,7 +138,7 @@
 | GitHub | openQLOW=`flatup1/openqlow`、AIKA=`flatup1/flatup` |
 | 主要 systemd unit | openqlow-webhook, openqlow-monitor.timer, openqlow-daily.timer, openqlow-morning.timer, cloudflared-openqlow |
 | LINE openQLOW | @817nsdhr |
-| LINE AIKA | @jfl00540 |
+| LINE AIKA | @jfl0054o（末尾は英字o） |
 
 ---
 

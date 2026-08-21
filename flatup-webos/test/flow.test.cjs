@@ -293,6 +293,7 @@ async function testHandoffSuccess() {
 
   const href = app.cta().getAttribute("href");
   assert(href.startsWith("https://line.me/R/oaMessage/"), "引き継ぎに成功するとCTAが引き継ぎリンクへ変わる");
+  assert(href.includes("%40jfl0054o"), "引き継ぎ先は正しいAIKA公式LINE（末尾は英字o）");
   assert(href.includes("J-3f8a12bc9d01"), "引き継ぎコードがリンクに入る");
   assert(!/female|diet|first|weekday_night/.test(href), "回答の中身はURLに出さない");
   assert(app.text().includes("同じ質問はされません"), "利用者への説明が出る");
