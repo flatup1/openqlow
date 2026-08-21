@@ -79,6 +79,18 @@ python3 -m http.server -d flatup-webos/app  # または Python
 
 XServerへはそのまま `app/` の中身をアップロードすれば動きます。
 
+### 変更したら（2つだけ）
+
+```bash
+npm run test:webos-flow         # フロー自動検証（ブラウザ不要・CIでも毎回走る）
+npm run test:webos-canon-sync   # 料金・LINE URLが正本とズレていないか照合
+```
+
+`app/` のJS・CSSを変えたら、`index.html` の `?v=` の数字を1つ上げる。
+これを忘れると、古いファイルがスマホに残って新しい画面が出ない。
+
+テストの詳細は [test/README.md](test/README.md) を参照。
+
 ## 開発原則（要約）
 
 - 小さく完成させて、大きく育てる（設計→最小実装→テスト→採点→改善→次のPhase）

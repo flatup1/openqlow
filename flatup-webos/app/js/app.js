@@ -20,13 +20,34 @@ window.FLATUP = window.FLATUP || {};
     return node;
   }
 
-  function show(screenNode) {
+  /* ブラウザ（スマホ）の戻るボタンで、前の質問へ戻れるようにする。
+   * 画面ごとに履歴を1つ積み、popstate で描画する。
+   * file:// で開いた時など pushState が使えない環境では、静かに無効化する。 */
+  var historyEnabled = false;
+  var restoring = false; // popstate 由来の描画中は履歴を積まない
+  try {
+    if (window.history && typeof history.pushState === "function" && location.protocol !== "file:") {
+      history.replaceState({ flatup: "welcome" }, "");
+      historyEnabled = true;
+    }
+  } catch (e) { historyEnabled = false; }
+
+  function syncHistory(screenId, mode) {
+    if (!historyEnabled || restoring) return;
+    try {
+      if (mode === "replace") history.replaceState({ flatup: screenId }, "");
+      else history.pushState({ flatup: screenId }, "");
+    } catch (e) { /* 履歴が使えなくても画面は動く */ }
+  }
+
+  function show(screenNode, screenId, mode) {
     root.textContent = "";
     screenNode.classList.add("screen");
     root.appendChild(screenNode);
     var h = screenNode.querySelector("h1");
     if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
     window.scrollTo(0, 0);
+    syncHistory(screenId, mode);
   }
 
   // ルート内の現在位置（小さな点）。長さを意識させすぎない。
@@ -49,20 +70,40 @@ window.FLATUP = window.FLATUP || {};
 
   /* ---------- 画面: ようこそ ---------- */
 
-  function renderWelcome() {
+  function renderWelcome(welcomeMode) {
     FLATUP.state.pushScreen("welcome");
-    var lead = el("p", { class: "welcome-lead" });
-    lead.innerHTML =
-      "ようこそ。<br><br>ここは、<br>強い人だけの場所ではありません。<br><br>" +
-      "あなたに合った道を、<br>一緒に探します。";
 
-    var start = el("button", { class: "cta opt", type: "button", text: "冒険を始める" });
+    // hero.jpg が主役。写真の上に短いコピーを重ねる。
+    // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
+    var photo = el("img", {
+      class: "welcome-photo",
+      src: "hero.jpg",
+      alt: "FLAT UP GYMのキッズクラス。子どもたちが笑顔でグローブタッチをしている様子",
+      width: "1600", height: "1200", decoding: "async"
+    });
+    var hero = el("div", { class: "hero" }, [
+      photo,
+      el("div", { class: "hero-overlay" }),
+      // 「世界一初心者にやさしい格闘技ジム」は現在の写真に焼き込み済みのため、
+      // 重ねるコピーは1行だけにする（写真を文字なし版に替えたら eyebrow を戻してよい）
+      el("div", { class: "hero-copy" }, [
+        el("h1", { class: "hero-title", text: "はじめの一歩を、安心から。" })
+      ])
+    ]);
+    photo.addEventListener("error", function () { hero.style.display = "none"; });
+
+    var lead = el("p", { class: "welcome-lead" });
+    lead.innerHTML = "ここは、強い人だけの場所ではありません。<br>あなたに合った道を、一緒に探します。";
+
+    var start = el("button", { class: "cta start opt", type: "button", text: "自分に合う始め方を見つける" });
     start.addEventListener("click", function () {
       FLATUP.track("webos_started", {});
       go(FLATUP.FLOW_START);
     });
 
-    show(el("div", {}, [lead, el("div", { class: "options" }, [start])]));
+    var note = el("p", { class: "note", text: "かんたんな質問に、タップで答えるだけ。30秒ほどで終わります。" });
+
+    show(el("div", {}, [hero, lead, el("div", { class: "options" }, [start]), note]), "welcome", welcomeMode);
   }
 
   /* ---------- 画面: 質問 ---------- */
@@ -79,12 +120,19 @@ window.FLATUP = window.FLATUP || {};
     if (q.note) children.push(el("p", { class: "note", text: q.note }));
 
     var opts = el("div", { class: "options" });
+    var answered = false; // 二重タップ防止
     q.options.forEach(function (opt) {
       var b = el("button", { class: "opt", type: "button", text: opt.label });
       b.addEventListener("click", function () {
-        FLATUP.state.answer(q.id, opt.value);
-        FLATUP.trackAnswer(q.id, opt.value);
-        go(opt.next || q.next || "result");
+        if (answered) return;
+        answered = true;
+        b.classList.add("chosen"); // 選んだことが伝わる小さな返事
+        var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+        setTimeout(function () {
+          FLATUP.state.answer(q.id, opt.value);
+          FLATUP.trackAnswer(q.id, opt.value);
+          go(opt.next || q.next || "result");
+        }, reduce ? 0 : 160);
       });
       opts.appendChild(b);
     });
@@ -104,7 +152,7 @@ window.FLATUP = window.FLATUP || {};
     }
     children.push(sub);
 
-    show(el("div", {}, children));
+    show(el("div", {}, children), id);
   }
 
   /* ---------- 画面: 専用の結果 ---------- */
@@ -135,6 +183,9 @@ window.FLATUP = window.FLATUP || {};
 
     wrap.appendChild(el("div", { class: "reassurance", text: c.reassurance }));
 
+    // CTA直前の「最後の安心」（押し売りではなく、不安をひとつ外す一言）
+    wrap.appendChild(el("p", { class: "final-nudge", text: "大丈夫。最初はみんな初心者です。" }));
+
     // CTAは1つだけ（迷わせない）。遷移先は同じLINEのため統合済み。
     var ctas = el("div", { class: "options" });
     var isConsult = audience === "consult";
@@ -151,19 +202,32 @@ window.FLATUP = window.FLATUP || {};
     ctas.appendChild(primary);
     wrap.appendChild(ctas);
 
+    // LINE引き継ぎ: 回答をVPSへ預け、成功したらCTAを「コード入力済みリンク」へ差し替える。
+    // 失敗しても従来リンクのまま（体験は劣化しない）。
+    var handoffNote = el("p", { class: "note handoff-note" });
+    wrap.appendChild(handoffNote);
+    FLATUP.concierge.submitJourney(j).then(function (journeyId) {
+      if (!journeyId) return;
+      primary.setAttribute("href", FLATUP.concierge.buildLineHandoffUrl(journeyId));
+      handoffNote.textContent =
+        "ボタンを押すとLINEが開き、引き継ぎコード（" + journeyId + "）が入力済みになります。" +
+        "そのまま送信するだけで回答内容が伝わり、同じ質問はされません。";
+      FLATUP.track("journey_created", { audience: audience });
+    });
+
     var sub = el("div", { class: "subactions" });
     var backBtn = el("button", { class: "ghost", type: "button", text: "← 戻る" });
     backBtn.addEventListener("click", goBack);
     var restart = el("button", { class: "ghost", type: "button", text: "最初からやり直す" });
     restart.addEventListener("click", function () {
       FLATUP.state.reset();
-      renderWelcome();
+      renderWelcome("replace");
     });
     sub.appendChild(backBtn);
     sub.appendChild(restart);
     wrap.appendChild(sub);
 
-    show(wrap);
+    show(wrap, "result");
   }
 
   /* ---------- 遷移 ---------- */
@@ -175,6 +239,9 @@ window.FLATUP = window.FLATUP || {};
   }
 
   function goBack() {
+    // ブラウザ履歴が使えるときは history.back() に任せる（popstate が描画する）。
+    // 画面内の「← 戻る」とスマホの戻るボタンで、同じ動きになる。
+    if (historyEnabled) { history.back(); return; }
     var prev = FLATUP.state.back(); // 現在の画面を履歴から外し、前の画面IDを得る
     if (!prev) return renderWelcome();
     // pushScreen で再登録されるため、前の画面も履歴から一度外す
@@ -182,7 +249,21 @@ window.FLATUP = window.FLATUP || {};
     go(prev);
   }
 
+  // スマホの戻るボタン。ブラウザ側はすでに1つ戻っているので、履歴は積み直さない。
+  if (historyEnabled) {
+    window.addEventListener("popstate", function (e) {
+      var target = (e && e.state && e.state.flatup) || "welcome";
+      restoring = true;
+      try {
+        FLATUP.state.back(); // いま表示している画面を内部履歴から外す
+        go(target);
+      } finally {
+        restoring = false;
+      }
+    });
+  }
+
   /* ---------- 起動 ---------- */
   FLATUP.state.reset(); // Phase 1: リロードで最初から（途中復帰はPhase 2で検討）
-  renderWelcome();
+  renderWelcome("replace");
 })();

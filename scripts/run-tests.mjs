@@ -25,7 +25,7 @@ const GROUP_RULES = [
   ["aika", ["port/aika/", "src/aika/", "src/generators/"]],
   ["publish", ["src/publish/"]],
   ["ops", ["src/scheduler/", "src/keihi/", "scripts/"]],
-  ["core", ["src/"]],
+  ["core", ["src/", "flatup-webos/"]],
 ];
 
 const GROUP_LABELS = {
@@ -40,7 +40,7 @@ const GROUP_LABELS = {
 const GROUP_ORDER = ["core", "aika", "line", "crm", "publish", "ops"];
 
 function testTarget(command) {
-  return command.match(/(?:src|scripts|port)\/[^\s]+/)?.[0] ?? "";
+  return command.match(/(?:src|scripts|port|flatup-webos)\/[^\s]+/)?.[0] ?? "";
 }
 
 function classify(target) {
