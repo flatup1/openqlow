@@ -23,7 +23,9 @@ import { logError as writeSelfRepairLog } from "../crm/self_repair.js";
 const port = Number(process.env.OPENQLOW_LINE_PORT || 8787);
 const webhookPaths = new Set(["/line/webhook", "/openqlow/webhook"]);
 const healthPaths = new Set(["/openqlow/health"]);
-// WebOS（flatupnarita.jp）からの回答受け口。LINE署名は不要な公開POST（CORS+回数制限で守る）。
+// WebOS → LINE の本番受け口は AIKA VPS（aika.flatupnarita.jp）の Python 実装。
+// ここは移植・障害調査用の待機実装で、明示設定が無い限り公開しない。
+const openqlowJourneyStandbyEnabled = process.env.OPENQLOW_ENABLE_WEBOS_JOURNEY === "true";
 const journeyPaths = new Set(["/journey", "/openqlow/journey"]);
 const journeyAllowedOrigins = new Set(
   (process.env.WEBOS_ALLOWED_ORIGINS || "https://flatupnarita.jp,https://www.flatupnarita.jp")
@@ -119,12 +121,22 @@ const server = http.createServer(async (req, res) => {
   const requestPath = new URL(req.url || "/", "http://localhost").pathname;
   if (req.method === "GET" && healthPaths.has(requestPath)) {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, service: "openqlow-webhook" }));
+    res.end(JSON.stringify({
+      ok: true,
+      service: "openqlow-webhook",
+      webosJourneyRole: openqlowJourneyStandbyEnabled ? "standby_enabled" : "disabled_aika_canonical",
+    }));
     return;
   }
 
-  // ---- WebOS journey 受け口（LINE署名の外側。CORS+サイズ+回数制限で守る） ----
+  // ---- WebOS journey 待機受け口 ----
+  // 通常は404。二重稼働によるデータ分散を防ぐため、障害対応で明示承認された時だけ有効化する。
   if (journeyPaths.has(requestPath)) {
+    if (!openqlowJourneyStandbyEnabled) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "not_served_by_openqlow" }));
+      return;
+    }
     const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
     const cors = journeyCorsHeaders(origin);
     if (req.method === "OPTIONS") {
@@ -239,7 +251,7 @@ const server = http.createServer(async (req, res) => {
       for (const ev of extracted.events) {
         // WebOS引き継ぎコード（J-xxxx）は誰から届いても最優先で処理し、他の経路へ流さない。
         // 固定テンプレートで返信し、承認・CRM・退会の各経路には到達させない。
-        if (ev.kind === "text") {
+        if (openqlowJourneyStandbyEnabled && ev.kind === "text") {
           const journey = await executeLineJourneyLink({
             text: ev.text ?? "",
             lineUserId: ev.userId,

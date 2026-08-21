@@ -1,11 +1,15 @@
 # WebOS → LINE 引き継ぎ（journey）運用ガイド
 
+> **2026-08-21 現物確認済みの正本:** 本番受け口はAIKA VPS `162.43.90.71` の
+> `https://aika.flatupnarita.jp/journey`。実装は `flatup1/flatup` のPython、
+> 保存先はAIKA SQLiteです。openQLOW VPS `162.43.41.182` へjourneyを反映・公開しません。
+
 目的: WebOSで答えた内容をLINEで二度聞かず、オーナーが前提条件を一目で把握できるようにする。
 
 ## 仕組み（1枚図）
 
 ```text
-WebOS回答完了 ─ POST /journey ─▶ VPS: data/journeys.json に保存（カテゴリのみ・PIIなし）
+WebOS回答完了 ─ POST /journey ─▶ AIKA VPS: SQLite に保存（カテゴリのみ・PIIなし）
       │                             journey_id（例 J-3f8a12bc9d01）を返す
       ▼
 「LINEで相談」ボタン ─▶ line.me/R/oaMessage/@jfl00540/?J-…（コード入力済みでトークが開く）
@@ -20,45 +24,30 @@ WebOS回答完了 ─ POST /journey ─▶ VPS: data/journeys.json に保存（�
 - 通知が失敗しても Lead は残る（`notify_status: "failed"` を記録 → 再送判断が可能）
 - URL・analytics に回答値（female / diet 等）は一切出さない
 
-## VPSへの反映手順（Jin）
+## AIKA VPSへの反映手順（Jin）
 
-**Macで1コマンド。** VPSに入って `git pull` してはいけない（VPSの `/opt/openqlow` は
-rsyncで配られる場所で、`.git` は送っていない。VPS上の git は古いまま止まっている）。
-
-```bash
-cd ~/openqlow
-git switch main && git pull --ff-only origin main
-npm run deploy
-```
-
-`npm run deploy` が中で全部やる（GitHub取り込み → VPSへ同期 → `npm ci` → build →
-webhook再起動 → 起動確認）。最後に出る「本番で動いているコード」が、送ったコミットと
-同じであることを必ず確認する。
-
-確認（VPSの中から。公開URLはAIKAが応答するため404になる）:
+AIKAリポジトリ `flatup1/flatup` の専用スクリプトだけを使う。
+openQLOWの `npm run deploy` はjourney反映には使わない。
 
 ```bash
-ssh -i ~/.ssh/openqlow_vps root@162.43.41.182 'curl -s http://127.0.0.1:8787/openqlow/health'
+bash 6_システム/code/ops/deploy_aika_release.sh --dry-run
 ```
 
-nginx（またはトンネル）に `/journey` の中継が無い場合は1ブロック追加:
-
-```nginx
-location = /journey {
-    proxy_pass http://127.0.0.1:8787/journey;
-    proxy_set_header X-Forwarded-For $remote_addr;
-}
-```
-
-反映確認（VPS上またはMacから）:
+テストと反映内容を確認し、JINが本番反映を承認した後だけ実行する。
 
 ```bash
-curl -s -X POST https://aika.flatupnarita.jp/journey \
-  -H 'content-type: application/json' \
-  -H 'origin: https://flatupnarita.jp' \
-  -d '{"answers":{"audience":"self","goal":["diet"],"experience":"first"}}'
-# → {"ok":true,"journey_id":"J-..."} が返ればOK
+bash 6_システム/code/ops/deploy_aika_release.sh --apply
 ```
+
+副作用のない疎通確認:
+
+```bash
+curl -i -X OPTIONS https://aika.flatupnarita.jp/journey \
+  -H 'Origin: https://flatupnarita.jp' \
+  -H 'Access-Control-Request-Method: POST'
+```
+
+HTTP 204と `Access-Control-Allow-Origin: https://flatupnarita.jp` が返れば受け口は稼働中。
 
 最後にWebOS側の最新 `app/` 一式（js含む）をXServerへ上書きすれば、結果画面のLINEボタンが自動で引き継ぎリンクになる。
 
@@ -80,13 +69,20 @@ curl -s -X POST https://aika.flatupnarita.jp/journey \
 
 ## データの見方
 
-- Lead 一覧: `data/journeys.json`（`linked: true` が連携済み見込み客）
-- 通知失敗の確認: `notify_status` が `"failed"` の行（`notify_error` に理由）
+- Lead: AIKA SQLite `/var/lib/flatup-aika/state/aika_state.sqlite3` の `webos_journeys`
+- LINE連携済み: `linked=1`、JIN通知成功: `notify_status='sent'`
 - 環境変数: `WEBOS_ALLOWED_ORIGINS`（既定 `https://flatupnarita.jp,https://www.flatupnarita.jp`）
 
 ## 安全設計（要点）
 
 - 受け口はLINE署名の外側だが、CORS許可オリジン限定・4KB制限・IP毎30回/分の制限つき
 - 保存は選択カテゴリのみ。未知のキー・未知の値は黙って捨てる（氏名等は最初から入らない）
-- ユーザーへの文面は固定テンプレートのみ。顧客への能動pushはしない（openQLOWの原則どおり）
+- ユーザーへの文面は固定テンプレートのみ。顧客への能動pushはしない
 - J-コードは承認・CRM・退会の各経路に到達する前に処理され、コマンドとして解釈されない
+
+## 2台を混ぜないための禁止事項
+
+- `aika.flatupnarita.jp` をopenQLOW VPSへ向けない。
+- openQLOW nginxへ `/journey` の中継を追加しない。
+- `OPENQLOW_ENABLE_WEBOS_JOURNEY=true` を通常運用で設定しない。
+- AIKAのファイルをopenQLOWのデプロイスクリプトで送らない。

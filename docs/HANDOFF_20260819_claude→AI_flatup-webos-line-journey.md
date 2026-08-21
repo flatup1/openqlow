@@ -1,5 +1,10 @@
 # 引き継ぎ指示書 — FLAT UP WebOS ＋ WebOS→LINE引き継ぎ（2026-08-19）
 
+> ⚠️ **2026-08-21 訂正:** この文書のVPS反映手順は過去記録です。本番journeyは
+> AIKA VPS `162.43.90.71` の `https://aika.flatupnarita.jp/journey` で動いています。
+> openQLOW VPS `162.43.41.182` へjourneyを反映しないでください。
+> 現行手順は `docs/webos_line_journey.md` を正とします。
+
 > このファイルは**そのままAIに貼って使える**引き継ぎ文です。
 > 受け取ったAIは「§0 → §1 → §3」の順に読み、**§3「いま止まっている場所」から着手**してください。
 > 元セッション: https://claude.ai/code/session_01UDPpF9zqoWZ41d6hhMLizq
