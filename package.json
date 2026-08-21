@@ -151,7 +151,8 @@
     "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts",
     "deploy": "bash deploy/scripts/deploy-vps.sh",
     "test:deploy-vps": "node scripts/deploy-vps.test.mjs",
-    "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts"
+    "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts",
+    "test:vps-role-guard": "node scripts/vps-role-guard.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
