@@ -91,6 +91,7 @@ class FakeNode {
 function launch(options) {
   const opts = options || {};
   const fetchCalls = [];
+  const beaconCalls = [];
   const store = new Map();
   const historyEntries = [{ flatup: null }];
   let historyIndex = 0;
@@ -111,6 +112,12 @@ function launch(options) {
     getItem: k => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, String(v)),
     removeItem: k => store.delete(k),
+  };
+  win.navigator = {
+    sendBeacon: (url, body) => {
+      beaconCalls.push({ url, body: JSON.parse(String(body)) });
+      return true;
+    },
   };
   win.history = {
     replaceState: state => { historyEntries[historyIndex] = state; },
@@ -149,6 +156,7 @@ function launch(options) {
     root,
     win,
     fetchCalls,
+    beaconCalls,
     events: () => win.FLATUP.getEvents(),
     journey: () => win.FLATUP.state.get(),
     nodes: () => root.descendants(),
@@ -193,8 +201,26 @@ async function testWelcome() {
   assert(app.heading() === "はじめの一歩を、安心から。", "ようこそ画面に見出し（h1）がある");
   assert(app.find("button", "自分に合う始め方を見つける"), "開始ボタンがある");
   assert(app.text().includes("30秒ほどで終わります"), "所要時間の一言がある");
-  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg?v=12", "写真枠がある（v12キャッシュ更新）");
+  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg?v=13", "写真枠がある（v13キャッシュ更新）");
   assert(app.events().length === 0, "画面を見ただけではイベントを送らない");
+  assert(app.beaconCalls.length === 0, "開始前は匿名計測を送らない");
+}
+
+/* ---------- 1-b. 匿名計測の送信 ---------- */
+async function testFirstPartyAnalytics() {
+  const app = launch();
+  await app.click("button", "自分に合う始め方を見つける");
+  await app.click("button", "自分が通ってみたい");
+  assert(app.beaconCalls.length === 2, "開始とQ1回答がAIKA計測口へ送られる");
+  assert(app.beaconCalls.every(call => call.url === "https://aika.flatupnarita.jp/webos-event"), "計測先はAIKA正本だけ");
+  assert(app.beaconCalls.every(call => /^[a-f0-9]{32}$/.test(call.body.session_id)), "匿名セッションIDの形式が正しい");
+  assert(app.beaconCalls[0].body.session_id === app.beaconCalls[1].body.session_id, "同じ操作中は同じ匿名IDでつながる");
+  const sent = JSON.stringify(app.beaconCalls);
+  assert(!/name|phone|email|保存してはいけない名前/i.test(sent), "計測に個人情報フィールドを含めない");
+
+  const local = launch({ hostname: "example.com" });
+  await local.click("button", "自分に合う始め方を見つける");
+  assert(local.beaconCalls.length === 0, "本番ドメイン以外からは計測を送らない");
 }
 
 /* ---------- 2. 3ルートが最後まで進む ---------- */
@@ -360,6 +386,7 @@ async function testIndexHtml() {
 
 const TESTS = [
   ["ようこそ画面", testWelcome],
+  ["匿名の計測送信", testFirstPartyAnalytics],
   ["3ルート（成人・キッズ・相談・家族）", testThreeRoutes],
   ["戻る（画面内・スマホ）", testBack],
   ["選び直しても前の回答が残らない", testAnswerReplacement],
