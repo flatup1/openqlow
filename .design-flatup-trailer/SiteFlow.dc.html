@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Anton&display=swap">
+  <style>
+    body { margin: 0; background: #14150f; }
+    a { color: #ffd23f; text-decoration: none; }
+    a:hover { color: #ffffff; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 430px; min-height: 1740px; background: #14150f; color: #f4f2e9; font-family: 'Zen Kaku Gothic New', 'Hiragino Kaku Gothic ProN', sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; padding: 28px 20px 32px;">
+
+  <p style="margin: 0 0 8px; font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 0.3em; color: #ffd23f;">SCROLL MAP</p>
+  <h1 style="margin: 0 0 6px; font-weight: 900; font-size: 22px; line-height: 1.45;">スクロールで映画になる<br>トップページの設計</h1>
+  <p style="margin: 0 0 22px; font-size: 12px; color: #a3a396; line-height: 1.85;">42秒を一本流すのではなく、10カットを区間に割る。指が止まったところで、その区間の動画だけが動く。</p>
+
+  <!-- 1stビュー -->
+  <div style="border-left: 3px solid #4f8a5f; padding: 0 0 0 14px; margin-bottom: 18px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 13px; color: #4f8a5f;">SECTION 01</span>
+      <span style="padding: 2px 7px; background: rgba(79,138,95,0.22); font-size: 10px; font-weight: 700; color: #8fc79f;">CUT 01–02</span>
+    </div>
+    <div style="font-weight: 900; font-size: 15px;">1stビュー（画面いっぱい）</div>
+    <div style="font-size: 12px; color: #a3a396; margin-top: 4px; line-height: 1.85;">扉が開く動画をループ。コピーは1行だけ。<br><span style="color: #f4f2e9;">「格闘技って、ちょっと怖い。」</span></div>
+    <div style="margin-top: 8px; padding: 9px 12px; background: rgba(6,199,85,0.12); border: 1px solid rgba(6,199,85,0.4); font-size: 11px; color: #6ee89f;">CTA：下部に固定表示（ここから最後まで消えない）</div>
+  </div>
+
+  <!-- 不安 -->
+  <div style="border-left: 3px solid #8aa84f; padding: 0 0 0 14px; margin-bottom: 18px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 13px; color: #8aa84f;">SECTION 02</span>
+      <span style="padding: 2px 7px; background: rgba(138,168,79,0.22); font-size: 10px; font-weight: 700; color: #c3d78f;">CUT 03–04</span>
+    </div>
+    <div style="font-weight: 900; font-size: 15px;">不安 → 出会い</div>
+    <div style="font-size: 12px; color: #a3a396; margin-top: 4px; line-height: 1.85;">「私にできるかな」「子どもがついていけるかな」を心の声で置く。すぐ下でインストラクターがミットを構える動画。<br><span style="color: #f4f2e9;">「はじめてでも、置いていかない。」</span></div>
+  </div>
+
+  <!-- 加速 -->
+  <div style="border-left: 3px solid #e5251f; padding: 0 0 0 14px; margin-bottom: 18px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 13px; color: #e5251f;">SECTION 03</span>
+      <span style="padding: 2px 7px; background: rgba(229,37,31,0.22); font-size: 10px; font-weight: 700; color: #ff8b86;">CUT 05–06–07</span>
+    </div>
+    <div style="font-weight: 900; font-size: 15px;">加速ゾーン（ここだけ全画面）</div>
+    <div style="font-size: 12px; color: #a3a396; margin-top: 4px; line-height: 1.85;">3本を連続再生。スクロール量に合わせて次のカットへ。CUT07の超スローで一度指が止まる設計。<br>テキストは最小、ロゴだけ。</div>
+    <div style="margin-top: 8px; display: flex; gap: 6px;">
+      <div style="flex-grow: 1; height: 30px; background: rgba(229,37,31,0.18); border: 1px solid rgba(229,37,31,0.5); display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: #ff8b86;">05 キッズ</div>
+      <div style="flex-grow: 1; height: 30px; background: rgba(229,37,31,0.18); border: 1px solid rgba(229,37,31,0.5); display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: #ff8b86;">06 ミット交換</div>
+      <div style="flex-grow: 1; height: 30px; background: rgba(229,37,31,0.3); border: 1px solid #e5251f; display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: #ffb3b0;">07 ハイキック</div>
+    </div>
+  </div>
+
+  <!-- 中間CTA -->
+  <div style="border-left: 3px solid #06c755; padding: 0 0 0 14px; margin-bottom: 18px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 13px; color: #06c755;">SECTION 04</span>
+      <span style="padding: 2px 7px; background: rgba(6,199,85,0.18); font-size: 10px; font-weight: 700; color: #6ee89f;">動画なし</span>
+    </div>
+    <div style="font-weight: 900; font-size: 15px;">中間CTA（一番熱いところの直後）</div>
+    <div style="font-size: 12px; color: #a3a396; margin-top: 4px; line-height: 1.85;">迫力の直後は行動率が最も高い。ここに大きめの体験ボタンを1つ置く。料金と持ち物も短く。</div>
+  </div>
+
+  <!-- 着地 -->
+  <div style="border-left: 3px solid #ff5fa2; padding: 0 0 0 14px; margin-bottom: 18px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 13px; color: #ff5fa2;">SECTION 05</span>
+      <span style="padding: 2px 7px; background: rgba(255,95,162,0.2); font-size: 10px; font-weight: 700; color: #ffa5cb;">CUT 08–09</span>
+    </div>
+    <div style="font-weight: 900; font-size: 15px;">着地（強さ＝やさしさ）</div>
+    <div style="font-size: 12px; color: #a3a396; margin-top: 4px; line-height: 1.85;">グローブタッチ → 全員の笑顔。ここで初めて安心の証拠（クラス時間・親子割・見学OK）を並べる。<br><span style="color: #f4f2e9;">「強い人ほど、やさしい。」</span></div>
+  </div>
+
+  <!-- 終幕 -->
+  <div style="border-left: 3px solid #ffd23f; padding: 0 0 0 14px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+      <span style="font-family: 'Anton', sans-serif; font-size: 13px; color: #ffd23f;">SECTION 06</span>
+      <span style="padding: 2px 7px; background: rgba(255,210,63,0.2); font-size: 10px; font-weight: 700; color: #ffe89a;">CUT 10</span>
+    </div>
+    <div style="font-weight: 900; font-size: 15px;">終幕 ＋ 予約導線</div>
+    <div style="font-size: 12px; color: #a3a396; margin-top: 4px; line-height: 1.85;">ロゴ、初回体験500円、LINE。アクセスと駐車場をこの下に。</div>
+  </div>
+
+  <!-- 軽さのルール -->
+  <div style="padding: 18px; border: 1px solid rgba(244,242,233,0.16); background: #1c1d16;">
+    <div style="font-family: 'Anton', sans-serif; font-size: 11px; letter-spacing: 0.24em; color: #ffd23f; margin-bottom: 12px;">KEEP IT LIGHT</div>
+    <div style="font-weight: 900; font-size: 15px; margin-bottom: 10px;">映画に見えて、スマホで軽い条件</div>
+    <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12px; color: #a3a396; line-height: 1.8;">
+      <div style="display: flex; gap: 10px;"><span style="color: #ffd23f; flex-shrink: 0;">01</span><span>1本5〜8秒・縦9:16・音なしループ。長尺は置かない。</span></div>
+      <div style="display: flex; gap: 10px;"><span style="color: #ffd23f; flex-shrink: 0;">02</span><span>各動画に静止画のポスターを必ず付ける。回線が細い人はポスターだけ見える。</span></div>
+      <div style="display: flex; gap: 10px;"><span style="color: #ffd23f; flex-shrink: 0;">03</span><span>画面に入った区間だけ再生。出たら止める。同時再生は1本まで。</span></div>
+      <div style="display: flex; gap: 10px;"><span style="color: #ffd23f; flex-shrink: 0;">04</span><span>加速ゾーン以外は動画を使わず、静止画＋文字で足りる。</span></div>
+      <div style="display: flex; gap: 10px;"><span style="color: #ffd23f; flex-shrink: 0;">05</span><span>「動きを減らす」設定の人には全部ポスター表示に切り替える。</span></div>
+      <div style="display: flex; gap: 10px;"><span style="color: #ffd23f; flex-shrink: 0;">06</span><span>CTAは常時見える位置。動画の上に重ねない（誤タップ防止）。</span></div>
+    </div>
+  </div>
+
+  <!-- 評価軸 -->
+  <div style="margin-top: 16px; padding: 18px; border: 1px solid rgba(255,210,63,0.4);">
+    <div style="font-weight: 900; font-size: 14px; margin-bottom: 10px;">迷ったときの優先順位</div>
+    <div style="display: flex; flex-direction: column; gap: 7px; font-size: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px;"><span style="width: 20px; font-family: 'Anton', sans-serif; color: #ffd23f;">1</span><span>安心感が伝わるか</span></div>
+      <div style="display: flex; align-items: center; gap: 10px;"><span style="width: 20px; font-family: 'Anton', sans-serif; color: #ffd23f;">2</span><span>FLAT UPらしさが伝わるか</span></div>
+      <div style="display: flex; align-items: center; gap: 10px;"><span style="width: 20px; font-family: 'Anton', sans-serif; color: #ffd23f;">3</span><span>予約したくなるか</span></div>
+      <div style="display: flex; align-items: center; gap: 10px; color: #a3a396;"><span style="width: 20px; font-family: 'Anton', sans-serif;">4</span><span>アニメとして魅力的か</span></div>
+      <div style="display: flex; align-items: center; gap: 10px; color: #a3a396;"><span style="width: 20px; font-family: 'Anton', sans-serif;">5</span><span>迫力があるか</span></div>
+    </div>
+    <p style="margin: 12px 0 0; font-size: 11.5px; color: #a3a396; line-height: 1.8;">迫力は5番目。1〜3を削ってまで足さない。目的は体験予約を増やすこと。</p>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":430,"height":1740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
