@@ -10,8 +10,18 @@ const DEFAULT_CHROMIUM = '/opt/pw-browsers/chromium';
 const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const BROWSER_EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ||
   (fs.existsSync(DEFAULT_CHROMIUM) ? DEFAULT_CHROMIUM : MAC_CHROME);
+const analyticsEvents = [];
 
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith('/webos-event')) {
+    let b = ''; req.on('data', c => b += c);
+    req.on('end', () => {
+      analyticsEvents.push(JSON.parse(b || '{}'));
+      res.writeHead(202, { 'content-type': 'application/json' });
+      res.end('{"ok":true}');
+    });
+    return;
+  }
   if (req.url.startsWith('/journey')) { // WebOS→VPS引き継ぎのローカル模擬
     let b = ''; req.on('data', c => b += c);
     req.on('end', () => {
@@ -41,7 +51,10 @@ async function clickByText(page, text) {
   const context = await browser.newContext({ viewport: { width: 320, height: 844 } }); // 小さめのiPhone相当
   await context.route('**lin.ee**', r => r.abort()); // 外部LINEへは実際に飛ばさない
   await context.route('**line.me**', r => r.abort());
-  await context.addInitScript(() => { window.FLATUP_JOURNEY_ENDPOINT = 'http://localhost:8931/journey'; });
+  await context.addInitScript(() => {
+    window.FLATUP_JOURNEY_ENDPOINT = 'http://localhost:8931/journey';
+    window.FLATUP_EVENT_ENDPOINT = 'http://localhost:8931/webos-event';
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -103,6 +116,11 @@ async function clickByText(page, text) {
   const events = await page.evaluate(() => window.dataLayer.map(e => e.event));
   const need = ['webos_started', 'audience_selected', 'question_skipped', 'goal_selected', 'experience_selected', 'availability_selected', 'personalized_view'];
   for (const n of need) if (!events.includes(n)) throw new Error('event missing: ' + n);
+  await page.waitForTimeout(200);
+  const received = analyticsEvents.map(e => e.event);
+  for (const n of need) if (!received.includes(n)) throw new Error('server event missing: ' + n);
+  if (!analyticsEvents.every(e => /^[a-f0-9]{32}$/.test(e.session_id || ''))) throw new Error('anonymous session id invalid');
+  if (/name|phone|email/i.test(JSON.stringify(analyticsEvents))) throw new Error('PII-like field leaked to analytics');
 
   // ---- キッズルート ----
   await clickByText(page, '最初からやり直す');
