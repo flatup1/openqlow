@@ -1,0 +1,480 @@
+diff --git a/src/brand_growth/contracts/record_rules.ts b/src/brand_growth/contracts/record_rules.ts
+index 3350bba..8fcb3ee 100644
+--- a/src/brand_growth/contracts/record_rules.ts
++++ b/src/brand_growth/contracts/record_rules.ts
+@@ -11,7 +11,7 @@
+ // I/O も時刻取得もしない。時刻は必ず呼び出し側から受け取る（同じ入力なら同じ結果）。
+ 
+ import { scanPii } from "../../shared/pii_guard.js";
+-import { hasSecret } from "../../shared/secret_guard.js";
++import { scanText as scanSecrets } from "../../shared/secret_guard.js";
+ 
+ /** 記録の作り方が契約に反しているときに投げる。値そのものは載せない。 */
+ export class RecordRuleError extends Error {
+@@ -91,9 +91,40 @@ export function assertUtcIso8601(field: string, value: unknown): asserts value i
+  * どちらか片方だけ厳しくすると、緩い側から漏れる。
+  */
+ export function scanPiiThorough(text: string): readonly string[] {
+-  const flattened = text.replace(/[_:.\/|]+/g, " ");
++  const normalized = text.normalize("NFKC");
+   const kinds = new Set<string>();
+-  for (const finding of [...scanPii(text), ...scanPii(flattened)]) kinds.add(finding.kind);
++  for (const candidate of boundaryVariants(normalized)) {
++    for (const finding of scanPii(candidate)) kinds.add(finding.kind);
++  }
++  return [...kinds];
++}
++
++/**
++ * 単語境界を隠す区切りを、1か所ずつ空白へ置き換えた検査候補を作る。
++ *
++ * 全区切りを一度に消すだけでは、`ref_ghp_...` のように秘密本体も
++ * `_` を含む形式を壊してしまい、正本 scanner が検出できなくなる。
++ */
++function* boundaryVariants(text: string): Generator<string> {
++  yield text;
++  for (let index = 0; index < text.length; index += 1) {
++    if (!"_:.\/|".includes(text[index] ?? "")) continue;
++    yield `${text.slice(0, index)} ${text.slice(index + 1)}`;
++  }
++}
++
++/**
++ * 秘密情報を、区切り記号に続く表記も含めて探す。
++ *
++ * 検出パターンは shared/secret_guard.ts を正本とし、ここでは
++ * NFKC正規化と区切り文字の平準化だけを担当する。
++ */
++export function scanSecretThorough(text: string): readonly string[] {
++  const normalized = text.normalize("NFKC");
++  const kinds = new Set<string>();
++  for (const candidate of boundaryVariants(normalized)) {
++    for (const finding of scanSecrets(candidate)) kinds.add(finding.kind);
++  }
+   return [...kinds];
+ }
+ 
+@@ -124,8 +155,12 @@ export function assertNonEmpty(field: string, value: unknown): asserts value is
+  * 値そのものは例外メッセージに載せない（種類だけ）。
+  */
+ export function assertCleanText(field: string, text: string): void {
+-  if (hasSecret(text)) {
+-    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
++  const secrets = scanSecretThorough(text);
++  if (secrets.length > 0) {
++    throw new RecordRuleError(
++      "secret_in_record",
++      `${field} must not contain credentials (${secrets.join(",")})`,
++    );
+   }
+   const pii = scanPiiThorough(text);
+   if (pii.length > 0) {
+diff --git a/src/brand_growth/growth/experiment.ts b/src/brand_growth/growth/experiment.ts
+index f816543..1cbb138 100644
+--- a/src/brand_growth/growth/experiment.ts
++++ b/src/brand_growth/growth/experiment.ts
+@@ -183,6 +183,14 @@ export interface RecordResultParams {
+ export function recordExperimentResult(params: RecordResultParams): Experiment {
+   const { experiment, control_snapshot: control, treatment_snapshot: treatment } = params;
+   const metric = experiment.primary_metric;
++  const tolerance = params.flat_tolerance ?? 0;
++
++  if (!Number.isFinite(tolerance) || tolerance < 0) {
++    throw new RecordRuleError(
++      "invalid_tolerance",
++      "flat_tolerance must be a finite number of 0 or more",
++    );
++  }
+ 
+   // 測り終わったものへ二重に書き込ませない。訂正したいときは新しい記録を作る。
+   if (experiment.status === "measured" || experiment.status === "abandoned") {
+@@ -237,7 +245,6 @@ export function recordExperimentResult(params: RecordResultParams): Experiment {
+     limitations.push("主要指標が未取得です。0 として扱わず、比較しません。");
+     confidenceNote = "主要指標が未取得のため比較不可。";
+   } else {
+-    const tolerance = params.flat_tolerance ?? 0;
+     const delta = treatmentValue - controlValue;
+     direction = Math.abs(delta) <= tolerance ? "flat" : delta > 0 ? "up" : "down";
+     confidenceNote =
+diff --git a/src/brand_growth/growth/growth.test.ts b/src/brand_growth/growth/growth.test.ts
+index a2a1b64..268fa90 100644
+--- a/src/brand_growth/growth/growth.test.ts
++++ b/src/brand_growth/growth/growth.test.ts
+@@ -407,6 +407,26 @@ const AT019_SNAPSHOT: MetricSnapshot = importMetricSnapshot({
+     "personal data in evidence",
+   );
+ 
++  const prefixedPhone = ["owner_", "090", "-", "1234", "-", "5678"].join("");
++  throws(
++    () =>
++      importMetricSnapshot({
++        metric_snapshot_id: "met_pii_prefixed",
++        publication_id: "pub_x",
++        captured_at: AT,
++        window: "24h",
++        source: "manual",
++        manual_entry: {
++          entered_by: prefixedPhone,
++          entered_at: AT,
++          evidence_reference: "fixture-evidence",
++          evidence_note: null,
++        },
++      }),
++    "pii_in_record",
++    "prefixed personal data in manual entry",
++  );
++
+   throws(
+     () =>
+       importMetricSnapshot({
+@@ -522,6 +542,23 @@ const AT019_SNAPSHOT: MetricSnapshot = importMetricSnapshot({
+   );
+ }
+ 
++// --- 反証: confidenceは0〜1の有限数だけ ----------------------------------------
++{
++  for (const confidence of [Number.NaN, Number.POSITIVE_INFINITY, -0.1, 1.1]) {
++    throws(
++      () =>
++        recordPredictedScore({
++          content_id: "cnt_bad_confidence",
++          model_or_rule_version: "director-3.0.0",
++          scored_at: AT,
++          confidence,
++        }),
++      "invalid_confidence",
++      `invalid confidence ${String(confidence)}`,
++    );
++  }
++}
++
+ // --- 反証: 片側しか無いときは「無い」と言う（0 で埋めない）---------------------------
+ {
+   const onlyPredicted = buildOutcomeView({
+@@ -1032,4 +1069,21 @@ function snapshot(id: string, window: "24h" | "7d", value: number | null): Metri
+   assert(definition.includes("24h") && definition.includes("7d"), `both windows must be labelled: ${definition}`);
+ }
+ 
++// --- 反証: flat_toleranceは0以上の有限数だけ -------------------------------
++{
++  for (const flatTolerance of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
++    throws(
++      () =>
++        recordExperimentResult({
++          experiment: AT021,
++          control_snapshot: snapshot("reg_tol_a", "7d", 100),
++          treatment_snapshot: snapshot("reg_tol_b", "7d", 101),
++          flat_tolerance: flatTolerance,
++        }),
++      "invalid_tolerance",
++      `invalid flat_tolerance ${String(flatTolerance)}`,
++    );
++  }
++}
++
+ console.log("brand_growth growth (phase 4) tests passed");
+diff --git a/src/brand_growth/growth/metrics.ts b/src/brand_growth/growth/metrics.ts
+index d627e11..e0c0715 100644
+--- a/src/brand_growth/growth/metrics.ts
++++ b/src/brand_growth/growth/metrics.ts
+@@ -33,24 +33,13 @@ import {
+   RATE_METRIC_NAMES,
+ } from "../contracts/growth.js";
+ import {
++  assertCleanText,
+   assertNonEmpty,
+   assertSafeId,
+   assertUtcIso8601,
+   deepFreeze,
+   RecordRuleError,
+ } from "../contracts/record_rules.js";
+-import { scanPii } from "../../shared/pii_guard.js";
+-import { hasSecret } from "../../shared/secret_guard.js";
+-
+-function assertCleanText(field: string, text: string): void {
+-  if (hasSecret(text)) {
+-    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
+-  }
+-  const pii = scanPii(text);
+-  if (pii.length > 0) {
+-    throw new RecordRuleError("pii_in_record", `${field} must not contain personal data (${pii.map(f => f.kind).join(",")})`);
+-  }
+-}
+ 
+ function validateMetricValue(name: MetricFieldName, value: number): number {
+   if (!Number.isFinite(value)) {
+@@ -187,6 +176,11 @@ export function recordPredictedScore(params: PredictedScoreParams): PredictedEmo
+   assertNonEmpty("model_or_rule_version", params.model_or_rule_version);
+   assertUtcIso8601("scored_at", params.scored_at);
+ 
++  const confidence = params.confidence ?? null;
++  if (confidence !== null && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) {
++    throw new RecordRuleError("invalid_confidence", "confidence must be a finite number between 0 and 1 or null");
++  }
++
+   const total = params.total_100 ?? null;
+   if (total !== null && (!Number.isFinite(total) || total < 0 || total > 100)) {
+     throw new RecordRuleError("invalid_score", "total_100 must be between 0 and 100 or null");
+@@ -212,7 +206,7 @@ export function recordPredictedScore(params: PredictedScoreParams): PredictedEmo
+     content_id: params.content_id,
+     model_or_rule_version: params.model_or_rule_version,
+     scored_at: params.scored_at,
+-    confidence: params.confidence ?? null,
++    confidence,
+     axes,
+     total_100: total,
+     reasons: params.reasons ?? [],
+diff --git a/src/brand_growth/quality/post_qa.ts b/src/brand_growth/quality/post_qa.ts
+index bc45e36..f78fb2e 100644
+--- a/src/brand_growth/quality/post_qa.ts
++++ b/src/brand_growth/quality/post_qa.ts
+@@ -25,13 +25,12 @@ import type {
+ } from "../contracts/quality.js";
+ import { BLOCKING_CHECK_NAMES, QUALITY_SCHEMA_VERSION, SCORED_CHECK_NAMES } from "../contracts/quality.js";
+ import {
++  assertCleanText,
+   assertSafeId,
+   assertUtcIso8601,
+   deepFreeze,
+   RecordRuleError,
+ } from "../contracts/record_rules.js";
+-import { scanPii } from "../../shared/pii_guard.js";
+-import { hasSecret } from "../../shared/secret_guard.js";
+ 
+ export interface BlockingInput {
+   readonly outcome: CheckOutcome;
+@@ -81,16 +80,6 @@ function normalizeScored(
+   });
+ }
+ 
+-function assertCleanText(field: string, text: string): void {
+-  if (hasSecret(text)) {
+-    throw new RecordRuleError("secret_in_record", `${field} must not contain credentials`);
+-  }
+-  const pii = scanPii(text);
+-  if (pii.length > 0) {
+-    throw new RecordRuleError("pii_in_record", `${field} must not contain personal data (${pii.map(f => f.kind).join(",")})`);
+-  }
+-}
+-
+ /**
+  * 品質判定を1件つくる。
+  *
+diff --git a/src/brand_growth/quality/preflight.ts b/src/brand_growth/quality/preflight.ts
+index 8e968fd..3b3f1ed 100644
+--- a/src/brand_growth/quality/preflight.ts
++++ b/src/brand_growth/quality/preflight.ts
+@@ -16,11 +16,9 @@ import { blockedMinorAssets, type AssetRef, type CreativeInput } from "../contra
+ import type { RouteDecision } from "../contracts/route_decision.js";
+ import type { BlockingCheckName, CheckOutcome } from "../contracts/quality.js";
+ import { BLOCKING_CHECK_NAMES } from "../contracts/quality.js";
+-import { deepFreeze } from "../contracts/record_rules.js";
++import { deepFreeze, scanPiiThorough, scanSecretThorough } from "../contracts/record_rules.js";
+ import type { NegativeCategory, PromptIR } from "../prompts/prompt_ir.js";
+ import { isFreeOfStyleNames } from "../prompts/style_name_guard.js";
+-import { scanText as scanSecrets } from "../../shared/secret_guard.js";
+-import { scanPii } from "../../shared/pii_guard.js";
+ 
+ export const QUALITY_GUARDIAN_VERSION = "4.0.0";
+ 
+@@ -150,20 +148,20 @@ function checkConsent(input: CreativeInput): PreflightCheck {
+ 
+ function checkSecretOrPii(input: CreativeInput, ir: PromptIR | null): PreflightCheck {
+   const text = `${input.raw_text}\n${promptText(ir)}`;
+-  const secrets = scanSecrets(text);
++  const secrets = scanSecretThorough(text);
+   if (secrets.length > 0) {
+     // 値は絶対に載せない。種類だけ。
+-    return { name: "secret_or_pii", outcome: "fail", reason: `secret:${secrets.map(f => f.kind).join(",")}` };
++    return { name: "secret_or_pii", outcome: "fail", reason: `secret:${secrets.join(",")}` };
+   }
+-  const pii = scanPii(text);
++  const pii = scanPiiThorough(text);
+   if (pii.length > 0) {
+-    return { name: "secret_or_pii", outcome: "fail", reason: `pii:${pii.map(f => f.kind).join(",")}` };
++    return { name: "secret_or_pii", outcome: "fail", reason: `pii:${pii.join(",")}` };
+   }
+   return { name: "secret_or_pii", outcome: "pass", reason: null };
+ }
+ 
+ function checkBrand(input: CreativeInput, ir: PromptIR | null): PreflightCheck {
+-  const text = `${input.raw_text}\n${promptText(ir)}`;
++  const text = `${input.raw_text}\n${promptText(ir)}`.normalize("NFKC").toLowerCase();
+   const hit = BRAND_FORBIDDEN_TERMS.find(term => text.includes(term));
+   if (hit !== undefined) {
+     return { name: "brand", outcome: "fail", reason: "brand_forbidden_expression" };
+diff --git a/src/brand_growth/quality/quality.test.ts b/src/brand_growth/quality/quality.test.ts
+index c9c24ce..dc71699 100644
+--- a/src/brand_growth/quality/quality.test.ts
++++ b/src/brand_growth/quality/quality.test.ts
+@@ -363,6 +363,53 @@ const BASE = pipeline(WOMEN_I2V);
+   assert(!JSON.stringify(result).includes(fakeEmail), "personal data must not appear in the result");
+ }
+ 
++// --- 反証: 区切り記号の直後に隠したPII / secretも止める -------------------
++{
++  const prefixedPhone = ["ref_", "090", "-", "1234", "-", "5678"].join("");
++  const leaky = input("p4_pii_prefixed", `女性向け。この写真をリールに。${prefixedPhone}`, [CONSENTED_ADULT]);
++  const built = pipeline(leaky);
++  const result = runPreflight({ input: leaky, decision: built.decision, prompt_ir: built.ir });
++
++  assert(!result.passed, "prefixed personal data must fail preflight");
++  assert(!result.provider_request_allowed, "prefixed personal data must never reach a provider");
++  assert(
++    result.blockers.some(b => b.startsWith("secret_or_pii:pii:phone")),
++    `prefixed phone must be named by kind only: ${result.blockers.join(",")}`,
++  );
++  assert(!JSON.stringify(result).includes(prefixedPhone), "the prefixed phone must not leak into the result");
++}
++
++{
++  const prefixedKey = ["ref_", "sk", "-", "0".repeat(32)].join("");
++  const leaky = input("p4_secret_prefixed", `女性向け。この写真をリールに。${prefixedKey}`, [CONSENTED_ADULT]);
++  const built = pipeline(leaky);
++  const result = runPreflight({ input: leaky, decision: built.decision, prompt_ir: built.ir });
++
++  assert(!result.passed, "prefixed credential must fail preflight");
++  assert(!result.provider_request_allowed, "prefixed credential must never reach a provider");
++  assert(
++    result.blockers.some(b => b.startsWith("secret_or_pii:secret:")),
++    `prefixed credential must be named by kind only: ${result.blockers.join(",")}`,
++  );
++  assert(!JSON.stringify(result).includes(prefixedKey), "the prefixed credential must not leak into the result");
++}
++
++{
++  // GitHub形式は秘密本体にも`_`を含むため、区切りを全部消す実装への反証になる。
++  const prefixedKey = ["ref_", "gh", "p", "_", "0".repeat(30)].join("");
++  const leaky = input("p4_secret_prefixed_internal_separator", `女性向け。${prefixedKey}`, [CONSENTED_ADULT]);
++  const built = pipeline(leaky);
++  const result = runPreflight({ input: leaky, decision: built.decision, prompt_ir: built.ir });
++
++  assert(!result.passed, "prefixed credential containing an internal separator must fail preflight");
++  assert(!result.provider_request_allowed, "the credential must never reach a provider");
++  assert(
++    result.blockers.some(b => b.startsWith("secret_or_pii:secret:github_token")),
++    `GitHub credential must be named by kind only: ${result.blockers.join(",")}`,
++  );
++  assert(!JSON.stringify(result).includes(prefixedKey), "the credential must not leak into the result");
++}
++
+ {
+   const brutal = input("p4_brand", "流血するくらい激しい試合の動画にして。", [CONSENTED_ADULT]);
+   const decision = route(brutal);
+@@ -373,6 +420,21 @@ const BASE = pipeline(WOMEN_I2V);
+   );
+ }
+ 
++// --- 反証: 英語大文字・全角でもブランド禁止語は止める -------------------
++{
++  for (const word of ["BLOOD", "ＨＯＲＲＯＲ"]) {
++    const brutal = input(`p4_brand_case_${word.length}`, `この写真を${word}演出にして。`, [CONSENTED_ADULT]);
++    const built = pipeline(brutal);
++    const result = runPreflight({ input: brutal, decision: built.decision, prompt_ir: built.ir });
++    assert(!result.passed, `${word}: normalized brand violation must fail`);
++    assert(!result.provider_request_allowed, `${word}: brand violation must not reach a provider`);
++    assert(
++      result.blockers.some(b => b.startsWith("brand:brand_forbidden_expression")),
++      `${word}: brand blocker is required: ${result.blockers.join(",")}`,
++    );
++  }
++}
++
+ // --- Knowledge が止まっているなら、こちらも止まる -------------------------------------
+ {
+   const result = runPreflight({
+@@ -639,6 +701,24 @@ const ALL_PASS = Object.fromEntries(
+   );
+ }
+ 
++// --- 反証: post-QAの担当名に隠したPIIも受け付けない -----------------------
++{
++  const prefixedPhone = ["owner_", "090", "-", "1234", "-", "5678"].join("");
++  throws(
++    () =>
++      assessQuality({
++        assessment_id: "qa_pii_prefixed_reviewer",
++        asset_id: "ast_out_prefixed_reviewer",
++        assessed_by: "human",
++        assessed_at: AT,
++        human_reviewer: prefixedPhone,
++        blocking: ALL_PASS,
++      }),
++    "pii_in_record",
++    "prefixed personal data in human_reviewer",
++  );
++}
++
+ // --- 決定性 ---------------------------------------------------------------------------
+ {
+   const make = () =>
+diff --git a/src/brand_growth/storage/event_store.ts b/src/brand_growth/storage/event_store.ts
+index 31ef876..4e433e4 100644
+--- a/src/brand_growth/storage/event_store.ts
++++ b/src/brand_growth/storage/event_store.ts
+@@ -23,8 +23,8 @@ import {
+   assertUtcIso8601,
+   deepFreeze,
+   scanPiiThorough,
++  scanSecretThorough,
+ } from "../contracts/record_rules.js";
+-import { scanText as scanSecrets } from "../../shared/secret_guard.js";
+ 
+ export const EVENT_SCHEMA_VERSION = "brand_growth.event.4.0.0";
+ 
+@@ -110,10 +110,10 @@ function streamFile(root: string, stream: string): string {
+  * 単語境界の都合で見逃し、そのままディスクへ書いてしまう。
+  */
+ function assertStorable(line: string): void {
+-  const secrets = scanSecrets(line);
++  const secrets = scanSecretThorough(line);
+   if (secrets.length > 0) {
+     // 値は出さない。種類だけを伝える。
+-    throw new StorageError("secret_in_record", `record contains credentials (${secrets.map(f => f.kind).join(",")})`);
++    throw new StorageError("secret_in_record", `record contains credentials (${secrets.join(",")})`);
+   }
+   const pii = scanPiiThorough(line);
+   if (pii.length > 0) {
+diff --git a/src/brand_growth/storage/storage.test.ts b/src/brand_growth/storage/storage.test.ts
+index 790253c..b8b9095 100644
+--- a/src/brand_growth/storage/storage.test.ts
++++ b/src/brand_growth/storage/storage.test.ts
+@@ -324,6 +324,38 @@ try {
+     assert(!after.includes(fakeKey), "the credential must never reach disk");
+   }
+ 
++  // --- 反証: 区切り記号の直後に隠したsecretもファイル前で止める ---
++  {
++    const prefixedKey = ["ref_", "sk", "-", "0".repeat(32)].join("");
++    const file = path.join(root, "secret_prefixed.jsonl");
++
++    await throwsAsync(
++      () => appendEvent(root, "secret_prefixed", event("evt_secret_prefixed", { reference: prefixedKey })),
++      "secret_in_record",
++      "credential hidden after a separator",
++    );
++
++    assert(!existsSync(file), "a prefixed credential must be rejected before creating the file");
++  }
++
++  {
++    const prefixedKey = ["ref_", "gh", "p", "_", "0".repeat(30)].join("");
++    const file = path.join(root, "secret_prefixed_internal_separator.jsonl");
++
++    await throwsAsync(
++      () =>
++        appendEvent(
++          root,
++          "secret_prefixed_internal_separator",
++          event("evt_secret_prefixed_internal_separator", { reference: prefixedKey }),
++        ),
++      "secret_in_record",
++      "credential with an internal separator hidden after a separator",
++    );
++
++    assert(!existsSync(file), "the credential must be rejected before creating the file");
++  }
++
+   // --- 反証: 個人情報も同じく止める ---
+   {
+     const fakeEmail = ["member", "@", "example", ".com"].join("");
