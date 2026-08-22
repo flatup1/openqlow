@@ -382,6 +382,34 @@ async function testIndexHtml() {
   assert(lineLinks.length > 0 && new Set(lineLinks).size === 1, "LINEリンクは1種類だけ（正本と同じ）");
 }
 
+/* ---------- 11. CTAの読みやすさ（WCAG AA） ---------- */
+function relativeLuminance(hex) {
+  const channels = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const linear = channels.map(value => value <= 0.04045
+    ? value / 12.92
+    : ((value + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastRatio(a, b) {
+  const l1 = relativeLuminance(a);
+  const l2 = relativeLuminance(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+async function testCtaContrast() {
+  const css = fs.readFileSync(path.join(APP_DIR, "styles.css"), "utf8");
+  const line = css.match(/--line:\s*(#[0-9a-f]{6})/i);
+  assert(line && contrastRatio(line[1], "#ffffff") >= 4.5,
+    "LINEボタンの白文字はコントラスト比4.5:1以上");
+
+  const start = css.match(/button\.cta\.start\s*\{[\s\S]*?linear-gradient\([^#]*(#[0-9a-f]{6})[^#]*(#[0-9a-f]{6})/i);
+  assert(start && contrastRatio(start[1], "#ffffff") >= 4.5,
+    "開始ボタンのグラデーション左端も4.5:1以上");
+  assert(start && contrastRatio(start[2], "#ffffff") >= 4.5,
+    "開始ボタンのグラデーション右端も4.5:1以上");
+}
+
 /* ---------- 実行 ---------- */
 
 const TESTS = [
@@ -396,6 +424,7 @@ const TESTS = [
   ["本番ドメイン以外では送信しない", testHandoffNotSentOffProduction],
   ["同じ回答を二重送信しない", testHandoffNotDuplicated],
   ["index.html の作り", testIndexHtml],
+  ["CTAの色コントラスト", testCtaContrast],
 ];
 
 (async () => {

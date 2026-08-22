@@ -16,7 +16,8 @@
   --pink: #ff5fa2;
   --peach: #ffb37a;
   --yellow: #ffd23f;
-  --line: #06c755;
+  /* 白文字とのコントラスト比 4.5:1 以上を保つ、読みやすいLINE系グリーン。 */
+  --line: #07833a;
   --shadow: 0 2px 14px rgba(96, 82, 50, .08);
   --radius: 20px;
   --maxw: 560px;
@@ -217,7 +218,8 @@ a.cta.secondary { border-color: var(--green); color: var(--green-d); }
 }
 /* Welcomeの一歩目は、日なたのような緑 */
 button.cta.start {
-  background: linear-gradient(135deg, var(--green) 0%, var(--green-d) 100%);
+  /* 17pxの白文字が屋外や弱視でも読めるよう、両端とも4.5:1以上にする。 */
+  background: linear-gradient(135deg, #4b8159 0%, #376c45 100%);
   border-color: transparent;
   color: #fff;
   box-shadow: 0 4px 16px rgba(111, 174, 125, .35);
