@@ -66,7 +66,8 @@ export async function buildManagementBrief(vaultRoot: string, dateJst: string, n
   const rate = kpi.enrollmentRate === null ? "未集計" : `${(kpi.enrollmentRate * 100).toFixed(1)}%`;
   const todayTask = kpi.pending > 0
     ? `参加確認待ち${kpi.pending}件を確認し、結果をLINEで記録する`
-    : `月間体験予約30件へ向け、予約につながる行動を1つ実行する`;
+    : `月間体験完了30件へ向け、体験につながる集客行動を1つ実行する`;
+  const sources = Object.entries(kpi.sourceBreakdown).map(([source, count]) => `${source} ${count}`).join(" / ");
 
   return [
     `☀ おはようございます (${dateJst})`,
@@ -75,9 +76,10 @@ export async function buildManagementBrief(vaultRoot: string, dateJst: string, n
     ...bullets(latest, "記録なし"),
     "",
     "【現在】",
-    `- 月間体験予約: ${kpi.bookings}/${kpi.targetBookings}件`,
-    ...(kpi.bookings === 0 ? ["- 参考値: 約10件/月（JIN自己申告・未集計。実績としては未登録）"] : []),
-    `- 体験参加: ${kpi.attended}件 / 入会: ${kpi.enrolled}件 / 入会率: ${rate}`,
+    `- 月間体験完了: ${kpi.completed}/${kpi.targetCompleted}件`,
+    ...(kpi.completed === 0 ? ["- 開始基準: 約10件/月（2026-08-23、JIN自己申告。詳細は未登録）"] : []),
+    `- 予約受付: ${kpi.bookings}件 / 入会: ${kpi.enrolled}件 / 入会率: ${rate}`,
+    `- 流入: ${sources}`,
     "",
     "【今日】",
     `- ${todayTask}`,
