@@ -16,7 +16,8 @@
   --pink: #ff5fa2;
   --peach: #ffb37a;
   --yellow: #ffd23f;
-  --line: #06c755;
+  /* 白文字とのコントラスト比 4.5:1 以上を保つ、読みやすいLINE系グリーン。 */
+  --line: #07833a;
   --shadow: 0 2px 14px rgba(96, 82, 50, .08);
   --radius: 20px;
   --maxw: 560px;
@@ -85,7 +86,7 @@ main#app {
   .screen { animation: none; }
 }
 
-/* ===== Welcome: hero.jpg が主役 ===== */
+/* ===== Welcome: FLAT UP GYMで撮影した実写が主役 ===== */
 .hero {
   position: relative;
   border-radius: var(--radius);
@@ -99,8 +100,7 @@ img.welcome-photo {
   height: auto;
   aspect-ratio: 4 / 3;
   object-fit: cover;
-  /* 人物の顔・表情が切れないよう、やや上寄せ。写真に合わせて微調整可 */
-  object-position: 50% 38%;
+  object-position: center;
 }
 .hero-overlay {
   position: absolute;
@@ -124,10 +124,12 @@ img.welcome-photo {
 }
 .hero-title {
   display: block;
-  font-size: 23px;
+  /* 小さめのiPhoneでも句点だけ次の行へ落ちないサイズにする */
+  font-size: clamp(18px, 5.4vw, 23px);
   font-weight: 700;
   line-height: 1.5;
   margin: 0;
+  white-space: nowrap;
 }
 
 /* 画面が切り替わるたび、見出しへフォーカスを移して読み上げの位置を合わせている。
@@ -216,7 +218,8 @@ a.cta.secondary { border-color: var(--green); color: var(--green-d); }
 }
 /* Welcomeの一歩目は、日なたのような緑 */
 button.cta.start {
-  background: linear-gradient(135deg, var(--green) 0%, var(--green-d) 100%);
+  /* 17pxの白文字が屋外や弱視でも読めるよう、両端とも4.5:1以上にする。 */
+  background: linear-gradient(135deg, #4b8159 0%, #376c45 100%);
   border-color: transparent;
   color: #fff;
   box-shadow: 0 4px 16px rgba(111, 174, 125, .35);
@@ -282,6 +285,14 @@ footer.site a.footer-line {
 footer.site a.footer-line:focus-visible {
   outline: 3px solid var(--green);
   outline-offset: 2px;
+}
+
+/* iPhone SE相当では、写真内にも出る長いコピーを省いて店名を1行に保つ。 */
+@media (max-width: 360px) {
+  header.site {
+    padding-inline: 12px;
+  }
+  header.site .brand-tagline { display: none; }
 }
 
 @media (min-width: 720px) {

@@ -91,6 +91,7 @@ class FakeNode {
 function launch(options) {
   const opts = options || {};
   const fetchCalls = [];
+  const beaconCalls = [];
   const store = new Map();
   const historyEntries = [{ flatup: null }];
   let historyIndex = 0;
@@ -111,6 +112,12 @@ function launch(options) {
     getItem: k => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, String(v)),
     removeItem: k => store.delete(k),
+  };
+  win.navigator = {
+    sendBeacon: (url, body) => {
+      beaconCalls.push({ url, body: JSON.parse(String(body)) });
+      return true;
+    },
   };
   win.history = {
     replaceState: state => { historyEntries[historyIndex] = state; },
@@ -149,6 +156,7 @@ function launch(options) {
     root,
     win,
     fetchCalls,
+    beaconCalls,
     events: () => win.FLATUP.getEvents(),
     journey: () => win.FLATUP.state.get(),
     nodes: () => root.descendants(),
@@ -193,8 +201,26 @@ async function testWelcome() {
   assert(app.heading() === "はじめの一歩を、安心から。", "ようこそ画面に見出し（h1）がある");
   assert(app.find("button", "自分に合う始め方を見つける"), "開始ボタンがある");
   assert(app.text().includes("30秒ほどで終わります"), "所要時間の一言がある");
-  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg", "写真枠がある");
+  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg?v=13", "写真枠がある（v13キャッシュ更新）");
   assert(app.events().length === 0, "画面を見ただけではイベントを送らない");
+  assert(app.beaconCalls.length === 0, "開始前は匿名計測を送らない");
+}
+
+/* ---------- 1-b. 匿名計測の送信 ---------- */
+async function testFirstPartyAnalytics() {
+  const app = launch();
+  await app.click("button", "自分に合う始め方を見つける");
+  await app.click("button", "自分が通ってみたい");
+  assert(app.beaconCalls.length === 2, "開始とQ1回答がAIKA計測口へ送られる");
+  assert(app.beaconCalls.every(call => call.url === "https://aika.flatupnarita.jp/webos-event"), "計測先はAIKA正本だけ");
+  assert(app.beaconCalls.every(call => /^[a-f0-9]{32}$/.test(call.body.session_id)), "匿名セッションIDの形式が正しい");
+  assert(app.beaconCalls[0].body.session_id === app.beaconCalls[1].body.session_id, "同じ操作中は同じ匿名IDでつながる");
+  const sent = JSON.stringify(app.beaconCalls);
+  assert(!/name|phone|email|保存してはいけない名前/i.test(sent), "計測に個人情報フィールドを含めない");
+
+  const local = launch({ hostname: "example.com" });
+  await local.click("button", "自分に合う始め方を見つける");
+  assert(local.beaconCalls.length === 0, "本番ドメイン以外からは計測を送らない");
 }
 
 /* ---------- 2. 3ルートが最後まで進む ---------- */
@@ -293,6 +319,7 @@ async function testHandoffSuccess() {
 
   const href = app.cta().getAttribute("href");
   assert(href.startsWith("https://line.me/R/oaMessage/"), "引き継ぎに成功するとCTAが引き継ぎリンクへ変わる");
+  assert(href.includes("%40jfl0054o"), "引き継ぎ先は正しいAIKA公式LINE（末尾は英字o）");
   assert(href.includes("J-3f8a12bc9d01"), "引き継ぎコードがリンクに入る");
   assert(!/female|diet|first|weekday_night/.test(href), "回答の中身はURLに出さない");
   assert(app.text().includes("同じ質問はされません"), "利用者への説明が出る");
@@ -366,10 +393,39 @@ async function testIndexHtml() {
   assert(lineLinks.length > 0 && new Set(lineLinks).size === 1, "LINEリンクは1種類だけ（正本と同じ）");
 }
 
+/* ---------- 11. CTAの読みやすさ（WCAG AA） ---------- */
+function relativeLuminance(hex) {
+  const channels = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const linear = channels.map(value => value <= 0.04045
+    ? value / 12.92
+    : ((value + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastRatio(a, b) {
+  const l1 = relativeLuminance(a);
+  const l2 = relativeLuminance(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+async function testCtaContrast() {
+  const css = fs.readFileSync(path.join(APP_DIR, "styles.css"), "utf8");
+  const line = css.match(/--line:\s*(#[0-9a-f]{6})/i);
+  assert(line && contrastRatio(line[1], "#ffffff") >= 4.5,
+    "LINEボタンの白文字はコントラスト比4.5:1以上");
+
+  const start = css.match(/button\.cta\.start\s*\{[\s\S]*?linear-gradient\([^#]*(#[0-9a-f]{6})[^#]*(#[0-9a-f]{6})/i);
+  assert(start && contrastRatio(start[1], "#ffffff") >= 4.5,
+    "開始ボタンのグラデーション左端も4.5:1以上");
+  assert(start && contrastRatio(start[2], "#ffffff") >= 4.5,
+    "開始ボタンのグラデーション右端も4.5:1以上");
+}
+
 /* ---------- 実行 ---------- */
 
 const TESTS = [
   ["ようこそ画面", testWelcome],
+  ["匿名の計測送信", testFirstPartyAnalytics],
   ["3ルート（成人・キッズ・相談・家族）", testThreeRoutes],
   ["戻る（画面内・スマホ）", testBack],
   ["選び直しても前の回答が残らない", testAnswerReplacement],
@@ -379,6 +435,7 @@ const TESTS = [
   ["本番ドメイン以外では送信しない", testHandoffNotSentOffProduction],
   ["同じ回答を二重送信しない", testHandoffNotDuplicated],
   ["index.html の作り", testIndexHtml],
+  ["CTAの色コントラスト", testCtaContrast],
 ];
 
 (async () => {

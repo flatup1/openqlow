@@ -41,9 +41,23 @@ assert.doesNotMatch(script, /^set -euo pipefail$/m, "set -e だと1個目で止�
 assert.match(script, /set -uo pipefail/, "未定義変数とパイプ失敗は拾う");
 
 // 判定の根拠が固定されている
-assert.match(script, /405\)/, "POST専用の窓口は405が正解");
+// /journey は AIKA VPS 側。docs/webos_line_journey.md と同じ
+// 「CORSプリフライト → 204」で見る。GETの405で見てはいけない。
+assert.match(script, /-X OPTIONS/, "受け口はプリフライトで確かめる");
+assert.match(script, /Access-Control-Request-Method: POST/, "プリフライトの中身を送る");
+assert.match(script, /204\)/, "受け口は204が正解");
 assert.match(script, /404\)/, "404は未反映として扱う");
 assert.match(script, /200/, "ページは200が正解");
+
+// 3つのサーバーをまたぐことを、コメントで必ず断っている。
+// ここが曖昧だと「openQLOWを反映したのに/journeyが直らない」で混乱する。
+assert.match(script, /AIKA VPS/, "受け口が別サーバーだと明記する");
+assert.match(script, /deploy_aika_release\.sh/, "AIKA側の反映手順を案内する");
+assert.doesNotMatch(
+  script,
+  /npm run deploy のあと、まだ404/,
+  "journeyの404を openQLOW の反映不足のせいにしない",
+);
 
 // 失敗したら「次の一手」を必ず出す
 assert.match(script, /TODO\+=\(/, "不合格ごとに次の一手を積む");

@@ -2,10 +2,13 @@
 # openQLOW 本番の健康診断（読むだけ・何も変えない）
 #
 # Mac で `npm run check` と打つだけで、「本当にできてる？」に答えを出す。
-#   1. GitHub の main と、本番で動いているコードが同じか
-#   2. LINE の自動応答（webhook）が動いているか
-#   3. 引き継ぎコードの受け口 /journey が生きているか
-#   4. WebOS のページ（flatupnarita.jp/webos/）が公開されているか
+#   1. GitHub の main と、openQLOW VPS で動いているコードが同じか
+#   2. LINE の自動応答（openQLOW webhook）が動いているか
+#   3. 引き継ぎコードの受け口 /journey が生きているか（← AIKA VPS。別サーバー）
+#   4. WebOS のページ（flatupnarita.jp/webos/。← XServer。別サーバー）が公開されているか
+#
+# 3つのサーバーをまたぐ。どれか1つが赤でも他の2つとは切り離して読むこと。
+# 「openQLOWを反映したのに /journey が直らない」は当たり前で、担当が違う。
 #
 # このスクリプトは読み取りだけ。再起動もデプロイもしない。
 # 鍵が無い場所でも公開側だけ見たいときは `--public` を付ける（SSHを使わない）。
@@ -97,23 +100,32 @@ else
   TODO+=("ssh -i ${SSH_KEY} ${SSH_USER}@${SSH_HOST} 'journalctl -u ${SERVICE} -n 30 --no-pager' でログを見る")
 fi
 
-# ---- 3. 引き継ぎコードの受け口 -----------------------------------------
+# ---- 3. 引き継ぎコードの受け口（AIKA側） -------------------------------
 echo ""
-echo "--- 3. 引き継ぎコードの受け口（WebOS→LINE） ---"
-# POST専用の窓口。GETだと 405 が返るのが正解＝「窓口は生きている」。
-# 404 は「まだ新しいコードが本番に無い」か「nginxが /journey を通していない」。
-JOURNEY_CODE="$(http_code "${JOURNEY_URL}")"
+echo "--- 3. 引き継ぎコードの受け口（WebOS→LINE・AIKA VPS） ---"
+# 重要: この受け口は openQLOW VPS ではなく AIKA VPS で動いている。
+# 反映は AIKA リポジトリ側の deploy_aika_release.sh が担当で、
+# openQLOW の npm run deploy とは無関係。ここが赤くても 1. の結果とは切り離して読む。
+# 判定は docs/webos_line_journey.md の疎通確認と同じ「CORSプリフライト → 204」。
+JOURNEY_CODE="$(http_code -X OPTIONS \
+  -H "Origin: https://flatupnarita.jp" \
+  -H "Access-Control-Request-Method: POST" \
+  "${JOURNEY_URL}")"
 case "$JOURNEY_CODE" in
-  405) ok "${JOURNEY_URL} は生きています（405＝POST専用の正しい反応）" ;;
+  204) ok "${JOURNEY_URL} は稼働中（204＝WebOSからの送信を受け付ける）" ;;
+  403)
+    ng "${JOURNEY_URL} が 403。WebOSのドメインが許可リストに入っていません"
+    TODO+=("AIKA側の journey 許可オリジンに https://flatupnarita.jp があるか確認する")
+    ;;
   404)
-    ng "${JOURNEY_URL} が 404。新しいコードが本番に無いか、nginxが通していません"
-    TODO+=("npm run deploy のあと、まだ404なら nginx に location = /journey を足す")
+    ng "${JOURNEY_URL} が 404。AIKA側にまだ受け口がありません"
+    TODO+=("AIKAリポジトリで deploy_aika_release.sh --dry-run → 承認後 --apply")
     ;;
   000)
     ng "${JOURNEY_URL} につながりません（DNSかネットワーク）"
     TODO+=("スマホの回線など別のネットワークから試す")
     ;;
-  *) warn "${JOURNEY_URL} が ${JOURNEY_CODE} を返しました（405が正解）" ;;
+  *) warn "${JOURNEY_URL} が ${JOURNEY_CODE} を返しました（204が正解）" ;;
 esac
 
 # ---- 4. WebOS のページ -------------------------------------------------

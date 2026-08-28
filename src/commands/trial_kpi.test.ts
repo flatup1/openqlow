@@ -25,7 +25,7 @@ const NOW = new Date("2026-08-13T00:00:00.000Z");
 
   const attended = await executeTrialKpiCommand("参加 山田 太郎", { vaultRoot: vault, now: NOW });
   assert.equal(attended?.ok, true);
-  assert.equal(attended?.summary?.attended, 1);
+  assert.equal(attended?.summary?.completed, 1);
 
   const enrolled = await executeTrialKpiCommand("入会 山田 太郎", { vaultRoot: vault, now: NOW });
   assert.equal(enrolled?.ok, true);
@@ -33,14 +33,23 @@ const NOW = new Date("2026-08-13T00:00:00.000Z");
   assert.equal(enrolled?.summary?.enrollmentRate, 1);
 
   const summary = await executeTrialKpiCommand("体験集計", { vaultRoot: vault, now: NOW });
-  assert.match(summary?.message ?? "", /月間体験予約: 1\/30件/);
+  assert.match(summary?.message ?? "", /月間体験完了: 1\/30件/);
   assert.match(summary?.message ?? "", /入会率: 100\.0%/);
 
+  const oneShot = await executeTrialKpiCommand("体験完了 佐藤 H. 検討 SNS", { vaultRoot: vault, now: NOW });
+  assert.equal(oneShot?.ok, true);
+  assert.equal(oneShot?.summary?.completed, 2);
+  assert.equal(oneShot?.summary?.sourceBreakdown.SNS, 1);
+  const oneShotRecord = (await readTrialRecords(vault)).find(record => record.displayName === "佐藤 H.");
+  assert.equal(oneShotRecord?.enrollment, "検討");
+  assert.equal(oneShotRecord?.acquisitionSource, "SNS");
+
   const tracker = await readFile(path.join(vault, "01_DAILY_OPERATIONS", "体験予約・入会管理.md"), "utf8");
-  assert.match(tracker, /このファイルが体験予約・参加・入会実績の正本/);
+  assert.match(tracker, /このファイルが体験完了・入会・流入経路の正本/);
   assert.match(tracker, /山田 ★\./);
   assert.doesNotMatch(tracker, /山田 太郎/);
-  assert.match(tracker, /入会者数 ÷ 体験参加者数/);
+  assert.match(tracker, /入会者数 ÷ 体験完了数/);
+  assert.match(tracker, /\| SNS \|/);
 
   await rm(vault, { recursive: true, force: true });
 }
@@ -55,7 +64,7 @@ const NOW = new Date("2026-08-13T00:00:00.000Z");
   const emptyVault = await mkdtemp(path.join(tmpdir(), "openqlow-trial-kpi-empty-"));
   const empty = await readTrialKpiSummary(emptyVault, NOW);
   assert.equal(empty.enrollmentRate, null);
-  assert.equal(empty.targetBookings, 30);
+  assert.equal(empty.targetCompleted, 30);
 
   await rm(vault, { recursive: true, force: true });
   await rm(emptyVault, { recursive: true, force: true });

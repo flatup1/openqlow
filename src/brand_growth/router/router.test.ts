@@ -502,10 +502,48 @@ assert(moduleFiles.length >= 10, `brand_growth should contain the Phase 1 files,
 
 const IMPORT_PATTERN = /(?:^|\n)\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']/g;
 
+// Phase 4 で開いた例外（Codex 設計 IMPLEMENTATION_BOOK §6 / SPEC §11）。
+//
+// Phase 1〜3 は純関数だけで済んだが、Phase 4 の記録保存はファイルへ書く必要がある。
+// そこで「どこまで許すか」をここに列挙し、それ以外は今までどおり閉じたままにする。
+// 列挙にないファイル・不要な組み込みは、これまでと同じく落ちる。
+
+/**
+ * brand_growth の外から import してよい唯一の例外。
+ *
+ * 秘密情報・個人情報の検知は、リポジトリの正本を1つに保ちたい。
+ * ここで正規表現を複製すると、正本へパターンが増えたときに brand_growth だけ古くなる。
+ * どちらも副作用の無い純関数で、canon / AIKA / 顧客データには触れない。
+ */
+const ALLOWED_EXTERNAL_IMPORTS = new Set([
+  path.resolve(moduleRoot, "..", "shared", "secret_guard.js"),
+  path.resolve(moduleRoot, "..", "shared", "pii_guard.js"),
+]);
+
+/**
+ * node 組み込みを使ってよいファイルと、その中身を1つずつ挙げる。
+ *
+ * 「storage/ 以下なら何でもよい」にはしない。
+ * ファイルへ実際に書くのは event_store.ts だけ、環境変数を読むのは config.ts だけ。
+ * 新しいファイルを storage へ足しても、ここに書かない限り閉じたままになる。
+ */
+const BUILTIN_ALLOWLIST = new Map<string, ReadonlySet<string>>([
+  // 追記専用の保存アダプタ。ここだけがファイルを触る。
+  [path.join("storage", "event_store.ts"), new Set(["node:fs/promises", "node:path"])],
+  // 保存先を決めるだけ。読み書きはしない。
+  [path.join("storage", "config.ts"), new Set(["node:path"])],
+]);
+
+/** ファイルへ書いてよい唯一のファイル。 */
+const FS_WRITER = path.join("storage", "event_store.ts");
+/** 保存先の差し替えに環境変数を読むのは、この1ファイルだけ。 */
+const ENV_READER = path.join("storage", "config.ts");
+
 for (const file of moduleFiles) {
   const source = readFileSync(file, "utf8");
   const relative = path.relative(moduleRoot, file);
   const isTest = file.endsWith(".test.ts");
+  const allowedBuiltins = BUILTIN_ALLOWLIST.get(relative) ?? new Set<string>();
 
   // 既存モジュールへ依存しない。AIKA、canon、safety、LINE、publish 等を import しない。
   IMPORT_PATTERN.lastIndex = 0;
@@ -518,13 +556,16 @@ for (const file of moduleFiles) {
     if (isInsideModule) {
       const resolved = path.resolve(path.dirname(file), specifier);
       assert(
-        resolved.startsWith(moduleRoot + path.sep),
+        resolved.startsWith(moduleRoot + path.sep) || ALLOWED_EXTERNAL_IMPORTS.has(resolved),
         `${relative} must stay inside brand_growth: ${specifier}`,
       );
     }
     if (isNodeBuiltin) {
-      // node 組み込みを使ってよいのは、この境界検査を行う試験ファイルだけ。
-      assert(isTest, `${relative} must not use node builtin: ${specifier}`);
+      // node 組み込みを使ってよいのは、境界検査を行う試験ファイルと、上で挙げた2ファイルだけ。
+      assert(
+        isTest || allowedBuiltins.has(specifier),
+        `${relative} must not use node builtin: ${specifier}`,
+      );
     }
   }
 
@@ -536,17 +577,14 @@ for (const file of moduleFiles) {
 
   if (!isTest) {
     // 外部への読み書き・ネットワーク・資格情報を持たない。
-    for (const forbidden of [
-      "node:fs",
-      "node:http",
-      "node:https",
-      "node:net",
-      "node:child_process",
-      "process.env",
-      "fetch(",
-      "XMLHttpRequest",
-    ]) {
-      assert(!source.includes(forbidden), `${relative} must not use ${forbidden}`);
+    // storage だけは保存のためにファイルを扱う（ネットワークと外部コマンドは全ファイル禁止のまま）。
+    const forbidden = ["node:http", "node:https", "node:net", "node:child_process", "fetch(", "XMLHttpRequest"];
+    if (relative !== FS_WRITER) forbidden.push("node:fs");
+    // 環境変数を読んでよいのは storage/config.ts だけ。
+    if (relative !== ENV_READER) forbidden.push("process.env");
+
+    for (const banned of forbidden) {
+      assert(!source.includes(banned), `${relative} must not use ${banned}`);
     }
     // 実行時刻や乱数を使わない（決定性）。
     for (const forbidden of ["Date.now(", "new Date(", "Math.random("]) {
