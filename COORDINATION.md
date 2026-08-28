@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-08-16
+最終更新: 2026-08-29
 
 ---
 
@@ -30,7 +30,7 @@
 | `openqlow/src/distribution/` | Claude | open | 2026-06-06 |
 | `openqlow/src/generators/` | Claude | open | 2026-06-06 |
 | `openqlow/src/crm/` | Claude | open | 2026-06-11 |
-| `openqlow/src/brand_growth/` | Claude | open | 2026-08-15 |
+| `openqlow/src/brand_growth/` | Claude | open | 2026-08-29 |
 | `openqlow/src/scheduler/` | Codex | open | 2026-06-06 |
 | `openqlow/src/monitor/` | Codex | open | 2026-06-06 |
 | `openqlow/src/line_bot/` | Codex | open | 2026-06-06 |
@@ -47,7 +47,7 @@
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
 | `openqlow/docs/flatup-ai-os/` | Codex（設計） | open | 2026-08-14 |
-| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 1〜3 pushed / Phase 4 commit済み・未push・Codexレビュー待ち | 2026-08-16 |
+| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 4最終commit `14aae4b`までpush済み / 2026-08-29 JIN承認により`main`へ統合 / Phase 5以降は未着手 | 2026-08-29 |
 | `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
@@ -78,16 +78,30 @@
 
 なし
 
-### レビュー待ち（Claude Code 記入 / 2026-08-16）
+### Phase 4 の現在状態（Claude Code 記入 / 2026-08-29）
 
 - 対象: `src/brand_growth/` Phase 4「Quality Guardian and Growth Metadata」
-- branch: `claude/flatup-gym-ai-os-phase4-20260816`（ローカルのみ・**未push**）
-- commit: `971f53e`（baseline `09da6313`）
-- 状態: 実装とテストは完了。全検証緑（`npm test` 104件成功0失敗、両validator PASS、保護領域29箇所すべて差分0）
-- 引き継ぎ書: `docs/HANDOFF_20260816_claude→codex.md`
-- **Codex承認が要る判断が1件**: `src/brand_growth/router/router.test.ts` の境界検査に、
-  Phase 4 の保存機能のためファイル単位の例外を追加した（詳細は引き継ぎ書 §5）
-- JIN承認が要る事項: push / PR 作成、実データ投入の開始
+- branch: `claude/flatup-gym-ai-os-phase4-20260816`
+- branch最終commit: `14aae4b`。`origin/claude/flatup-gym-ai-os-phase4-20260816` へpush済み。
+- 2026-08-29にJINがmergeを承認し、最新`main`との競合を解消して本merge commitで統合した。
+- 経緯: Claude Code の Phase 4 実装 → Codex レビュー反映 `706da60` → `main` を merge `b5c3965`
+  → push → 2026-08-29 の境界仕上げ（ローカル1 commit・未push）。
+  2026-08-16 時点で「ローカルのみ・未push・`971f53e`」と書いていた記述は、この時点で古くなっている。
+- 2026-08-29 の追加作業（Claude Code / `14aae4b`）: 境界と文書整合性の仕上げ。
+  - `src/brand_growth/storage/config.ts` から環境変数と暗黙の作業ディレクトリ依存を除去し、
+    呼び出し側からの明示注入だけで保存先が決まる純関数にした（基準が無ければ fail closed）。
+  - 境界検査の `process.env` 例外を撤廃し、`src/brand_growth` 全体で環境の読み取りを禁止した。
+    fs / path の許可はファイル単位の完全一致のみで、storage に新しいファイルを足しても
+    権限を継承しないことを恒久的な反証テストで固定した。
+  - `docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md` を追加し、
+    `AGENTS.md` の「pure」記述を storage adapter の例外つきへ最小修正した。
+- 引き継ぎ書: `docs/HANDOFF_20260816_claude→codex.md`（§0 に 2026-08-29 の更新注記あり）
+- Codex 承認: **2026-08-29 に Approved**（境界検査のファイル単位例外 / ADR-0015）。
+  absolute root のみで cwd を渡さない経路は、機能OFF・呼び出し元未接続・明示 root が管理側の信頼済み入力である
+  現 Phase 4 では受容。**将来の本番 integration caller は absolute cwd / repositoryRoot を必須で渡す**運用条件付き。
+  部分文字列による境界検査も保守的な fail-closed として承認。→ Codex 側のレビュー事項はクローズ。
+- push / merge: **JIN承認済み・完了**。deployと実データ投入は未実施。
+- JIN 承認が要る事項: deploy、実データ投入の開始
 - Phase 5・Phase 6 は未着手（指示により禁止中）
 
 ## 3. 並列度のレベル
@@ -115,7 +129,7 @@
   - 集客AI司令塔「サイト改善チェック」 `src/generators/site_audit.ts`（入力テキスト評価・ネットワーク取得なし）
   - 見込み客CRM `src/crm/`（台帳・追客抽出・日報・自己修復ログ・intake）
   - LINE接続口 `src/crm/line_intake.ts`（webhook配線はCodexへハンドオフ → `docs/HANDOFF_2026-06-11_claude→codex.md`）
-- Brand Growth 領域 `src/brand_growth/`（Phase 1: 純関数Routerのみ。外部I/O・課金・公開なし。AIKA / canon / safety / line_bot / publish / scheduler / loop / animation / deploy は読み取りもせず変更しない）
+- Brand Growth 領域 `src/brand_growth/`（Phase 1〜4。ドメインロジックは純関数。ローカル記録の追記だけ `storage/event_store.ts` がファイルI/Oを持つ（ADR-0015）。ネットワーク・課金・公開なし。AIKA / canon / safety / line_bot / publish / scheduler / loop / animation / deploy は読み取りもせず変更しない）
 - ドキュメント整備
 
 ### Codex（フロー層 + ブラウザ投稿全般）
@@ -134,7 +148,7 @@
 - Claude Code: 承認された設計に従う `src/brand_growth/` の段階実装とテスト
 - JIN: ブランド、料金、規約、安全、主要KPI、Provider有効化、本番変更の最終承認
 - 既存AIKA、canon、承認、LINE、公開、デプロイの責務は変更しない。Brand Growth側から重複実装しない。
-- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Design Packを同branchへdocs-only commitで統合するが、本番には未統合で、外部接続と本番変更は未着手。
+- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Phase 4は branch `claude/flatup-gym-ai-os-phase4-20260816` の最終commit `14aae4b`までpushし、2026-08-29にJIN承認のもと`main`へ統合した。本番Runtimeへの接続、外部接続、deployは未着手。
 
 ---
 

@@ -11,8 +11,29 @@
 
 受け手AIは、まず `COORDINATION.md` を読み、自分の担当領域だけを触ってください。
 
-このハンドオフは **レビュー依頼** です。実装は commit 済みですが、push・PR・merge・deploy はしていません。
+このハンドオフは **レビュー依頼** です。
 **§5 に、Codex の承認が必要な設計判断が1件あります。** そこだけは先に見てください。
+
+> **最終更新（2026-08-29 / Codex）**
+> JINの明示承認により、境界仕上げcommit `14aae4b`をbranchへpushし、最新`main`との競合を解消して
+> 本merge commitで統合しました。deployと実データ投入は行っていません。
+> 以下に残る「未push・merge待ち」は当時の履歴であり、この最終更新が優先します。
+
+> **更新（2026-08-29 / Claude Code）**
+> 作成時点（2026-08-16）の「ローカルのみ・未 push・`971f53e`・レビュー待ち」という記述は、現在の状態と一致しません。
+> - branch は `claude/flatup-gym-ai-os-phase4-20260816`。
+> - **remote baseline は `b5c3965`**（`main` を取り込んだ merge commit。Codex のレビュー反映 `706da60` を含む）。
+>   `origin/claude/flatup-gym-ai-os-phase4-20260816` はこの commit を指しており、**ここまでは push 済み**です。
+> - **2026-08-29 の境界仕上げは、この baseline の上のローカル 1 commit のみで、未 push です**
+>   （ローカルは remote より 1 commit ahead）。仕上げ commit の SHA はこの文書に埋め込みません。
+>   正本は `git log -1` です。
+> - push・PR・merge・deploy はいずれも未実施です（JIN 承認待ち）。
+> - その仕上げの内容: `storage/config.ts` は環境変数と暗黙の作業ディレクトリ依存を持たない
+>   caller-injected な純関数になり、境界検査の `process.env` 例外は撤廃されています。判断は
+>   `docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md` に記録しました。
+> - **§5 の設計判断は 2026-08-29 に Codex が Approved しました**（ADR-0015 / 詳細は §5 の注記）。
+>   Codex 側のレビュー事項はクローズ済みです。残る承認は JIN による push / PR / merge / deploy と実データ投入の判断のみです。
+> - したがって以下の §1 §3 §5 §6 §8 は **2026-08-16 時点の記録** として読んでください。差分は本注記が優先します。
 
 ---
 
@@ -29,8 +50,12 @@
 - [x] `.gitignore` へ既定保存先 `/runtime/` を追加
 
 baseline: `09da63131bf2b5327f5ba2a890aedd516b537a70`
-commit: `971f53e94dc12d19b9cae2ba784a5f88499f04df`
-branch: `claude/flatup-gym-ai-os-phase4-20260816`（ローカルのみ。未 push）
+commit: `971f53e94dc12d19b9cae2ba784a5f88499f04df`（2026-08-16 時点）
+branch: `claude/flatup-gym-ai-os-phase4-20260816`
+
+> 2026-08-29 現在: remote baseline は `b5c3965`（Codex 反映 `706da60` → `main` merge）で、そこまでは push 済み。
+> その上に 2026-08-29 の境界仕上げがローカル 1 commit だけ載っており、これは未 push です。
+> `971f53e` は後続の作業で history に残っていません。
 
 ### 設計上の判断（SCHEMA_CATALOG との対応）
 
@@ -56,7 +81,9 @@ branch: `claude/flatup-gym-ai-os-phase4-20260816`（ローカルのみ。未 pus
 ## 2. 未完了で残したこと
 
 - [ ] `COORDINATION.md` の担当表の構造変更（理由：共有領域の構造変更は JIN 最終承認。今回は状態行の更新のみ）
-- [ ] push / PR / merge / deploy（理由：指示により禁止。JIN 承認後）
+- [x] 2026-08-29 の境界仕上げcommit `14aae4b`のpush（JIN承認済み）
+- [x] 最新`main`へのmerge（JIN承認済み。本merge commit）
+- [ ] deploy（未承認・未実施）
 - [ ] Phase 5（learning 昇格 / Weekly Coach）（理由：指示により禁止）
 - [ ] Phase 6（Demo Provider）(理由：指示により禁止)
 - [ ] **実データの投入（0件）**（理由：手入力はオーナー作業。詳細は §6）
@@ -137,6 +164,12 @@ A  src/brand_growth/growth/growth.test.ts        (+855)
 
 **`src/brand_growth/router/router.test.ts` の境界検査に例外を追加しました。**
 
+> **更新（2026-08-29）**: 例外は **ファイル I/O のみ** に絞り込みました。
+> 環境変数の例外（`storage/config.ts` の `process.env`）は撤廃し、`src/brand_growth` 全体で
+> `process.env` と `process.cwd(` を禁止しています。fs / path の許可はファイル単位の完全一致だけで、
+> storage に新しいファイルを足しても権限を継承しないことを恒久的な反証テストで固定しました。
+> 判断の正本は `docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md` です。
+
 ### なぜ必要か
 
 Phase 1〜3 は純関数のみで成立していたため、この境界検査は
@@ -152,7 +185,7 @@ Phase 4 の要件（IMPLEMENTATION_BOOK §6 / SPEC §11）は
 | ファイル | 許した内容 |
 | --- | --- |
 | `storage/event_store.ts` | `node:fs/promises`、`node:path` |
-| `storage/config.ts` | `node:path`、`process.env`（保存先の差し替えのみ） |
+| `storage/config.ts` | `node:path` のみ ※ 2026-08-29 更新: 環境変数の読み取りは撤廃し、保存先は呼び出し側から明示注入する |
 | brand_growth 全体 | 外部 import は `src/shared/secret_guard.ts` と `src/shared/pii_guard.ts` の2本のみ |
 
 「`storage/` 以下なら何でもよい」にはしていません。storage へ新しいファイルを足しても、
@@ -163,6 +196,7 @@ Phase 4 の要件（IMPLEMENTATION_BOOK §6 / SPEC §11）は
 `src/aika` `port/aika` `line_bot` `src/publish` `src/safety` `src/shared/canon` の import 禁止、
 `node:http` `node:https` `node:net` `node:child_process` `fetch(` `XMLHttpRequest` 禁止、
 `Date.now(` `new Date(` `Math.random(` 禁止、外部 npm パッケージ禁止。
+（2026-08-29 追加: `process.env` `process.cwd(` も全ファイル禁止。）
 
 ### なぜ guard を複製せず import したか
 
@@ -170,8 +204,18 @@ Phase 4 の要件（IMPLEMENTATION_BOOK §6 / SPEC §11）は
 brand_growth 内へ正規表現を複製すると、正本にパターンが追加されたとき brand_growth だけ古くなります。
 どちらも副作用のない純関数で、canon / AIKA / 顧客データには触れません。
 
-**この判断が設計意図と合っているか、Codex の確認をお願いします。**
-合わない場合は、guard を brand_growth 内へ複製する案（正本二重化のリスクあり）へ切り替えます。
+### ✅ Codex レビュー結果（2026-08-29 / **Approved**）
+
+Codex の最終設計レビューで **承認**されました。正本は
+`docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md`（`Codex Review: 2026-08-29 = Approved`）です。
+
+- **absolute root のみ・cwd 無しの経路**: 現 Phase 4 では受容。根拠は、機能が OFF であること（未呼出しなら1バイトも書かない）、
+  呼び出し元が未接続であること、明示 root が管理側の信頼済み入力であることの3点。
+  **運用条件**: 将来の本番 integration caller は、追跡領域保護（forbidden path 検証）を必ず効かせるため
+  **absolute cwd / repositoryRoot を必須で渡す**こと。
+- **部分文字列による境界検査**: 保守的な fail-closed として承認。見逃しより安全側であるため意図どおり。
+
+これにより、guard を brand_growth 内へ複製する代替案（正本二重化のリスクあり）は採用しません。
 
 ---
 
@@ -179,8 +223,9 @@ brand_growth 内へ正規表現を複製すると、正本にパターンが追�
 
 | # | 内容 | 影響 |
 | --- | --- | --- |
-| 1 | §5 の境界検査の例外を認めるか | 認めない場合は実装方針の変更が要る |
-| 2 | `claude/flatup-gym-ai-os-phase4-20260816` の push と PR 作成 | 未実施。承認後のみ |
+| 1 | ~~§5 の境界検査の例外を認めるか~~ → **resolved（2026-08-29 Codex Approved）** | 対応不要。ADR-0015 に記録済み。本番 caller は absolute cwd 必須の運用条件付き |
+| 2 | `claude/flatup-gym-ai-os-phase4-20260816` のpush / merge | **resolved（2026-08-29 JIN承認・完了）**。deployは別承認 |
+| 2b | 2026-08-29 の境界仕上げcommit `14aae4b`のpush | **resolved（push済み）** |
 | 3 | `COORDINATION.md` の担当表の構造変更 | 今回は状態行の更新のみに留めた |
 | 4 | **実データ投入の開始**（下記） | Phase 5 の前提。ここが未着手だと Phase 5 は空回りする |
 
@@ -204,7 +249,7 @@ Phase 5 の `validated_learning` は「独立した3回以上の再現」が要�
 
 ## 7. 次にやってほしいこと
 
-1. **§5 の設計判断をレビューする**（最優先。ここが決まらないと他が動かせない）
+1. ~~**§5 の設計判断をレビューする**~~ → **completed（2026-08-29 Codex Approved）**。ADR-0015 に記録済み
 2. AT-017〜022 の実装が受入条件の意図と合っているかを確認する
 3. 反証テストの網羅が十分か（見落としている異常系がないか）を指摘する
 4. Phase 5 の着手可否を判断する（§6 #4 のデータ状況を踏まえて）
@@ -213,7 +258,13 @@ Phase 5 の `validated_learning` は「独立した3回以上の再現」が要�
 
 ## 8. 検証結果（全て緑）
 
-| 項目 | 結果 |
+### 8-1. 2026-08-16 時点の記録（作成当時の値。現在値は §8-2）
+
+下の表は **Phase 4 実装 commit（当時 `971f53e`）時点の記録** です。
+その後 Codex レビュー反映 `706da60`、`main` merge `b5c3965`、2026-08-29 の境界仕上げが入っているため、
+件数・ファイル数は現在値と一致しません。**現在値は §8-2 を参照してください。**
+
+| 項目 | 結果（2026-08-16 時点） |
 | --- | --- |
 | `npm run typecheck` | exit 0 |
 | `npm run test:brand-growth` | 10スイート pass |
@@ -227,8 +278,34 @@ Phase 5 の `validated_learning` は「独立した3回以上の再現」が要�
 | `git diff --check` | exit 0 |
 | 保護領域監査 | 29領域すべて差分0 |
 
-baseline の `npm test` は 103件成功で、今回 `test:brand-growth-phase4` が1件増えて104件です。
+baseline の `npm test` は 103件成功で、当時 `test:brand-growth-phase4` が1件増えて104件でした。
 既存テストの失敗・スキップ化・削除はありません。
+
+### 8-2. 最新の検証結果（2026-08-29 / 境界仕上げ commit 時点・全て緑）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run test:brand-growth` | exit 0（10スイート pass） |
+| `npm run test:brand-growth-phase4` | exit 0（4スイート pass） |
+| `npm test` | **成功 116件 / 失敗 0件** |
+| `./scripts/validate-ai-os.sh` | exit 0 |
+| `./scripts/validate-ai-os.test.sh` | exit 0（下記の注記あり） |
+| `test:secret-guard` | 486ファイル / 0 leaks |
+| `test:pii-guard` | 163ファイル / 0 PII |
+| `test:no-hardcoded-canon` | 168ファイル / 0 violations |
+| `git diff --check` | exit 0 |
+| 保護領域監査 | 31領域すべて差分0 |
+
+104件 → 116件の増加は、2026-08-16 以降に `main` を merge して既存テストが増えたためです。
+Phase 4 側でテストを削除・スキップ化したものはありません。
+
+**`validate-ai-os.test.sh` の注記**: 既定のまま実行すると exit 1 になります。
+原因はグローバルの `init.templateDir`（`~/.git-templates/git-secrets`）で、self-test が一時ディレクトリで
+`git init` した際に git-secrets の pre-commit フックが入り、リポジトリ自身の `src/shared/secret_guard.ts` の
+**検出パターン定義**（実在の秘密情報ではありません）を誤検知します。
+空の一時 `GIT_TEMPLATE_DIR` を指定して再実行すると exit 0 です。
+この事象は 2026-08-29 の変更前の commit でも同じく再現するため、環境要因であり実装起因ではありません。
 
 ---
 
