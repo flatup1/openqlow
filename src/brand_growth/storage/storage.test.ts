@@ -90,15 +90,23 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..");
 
 // =====================================================================================
-// 保存先の決め方
+// 保存先の決め方（明示注入のみ）
 // =====================================================================================
+//
+// この module は process.env も process.cwd() も読まない。
+// 基準ディレクトリと環境変数の束は、呼び出し側が明示的に渡す。
+// 同じ明示入力からは、いつ・どのプロセスで呼んでも同じ結果になる。
 
 {
-  // 既定はリポジトリ直下の runtime/brand_growth。
+  // 渡された cwd 直下の runtime/brand_growth が既定。
   const fallback = resolveStoreRoot({ cwd: "/example/repo", env: {} });
   assert(fallback === "/example/repo/runtime/brand_growth", `default root: ${fallback}`);
 
-  // 環境変数で差し替えられる。
+  // env を省略しても既定は「空の束」。実プロセスの環境変数へは落ちない。
+  const omittedEnv = resolveStoreRoot({ cwd: "/example/repo" });
+  assert(omittedEnv === "/example/repo/runtime/brand_growth", `omitted env must be empty: ${omittedEnv}`);
+
+  // 注入した束で差し替えられる。
   const fromEnv = resolveStoreRoot({
     cwd: "/example/repo",
     env: { [BRAND_GROWTH_ROOT_ENV]: "/var/lib/brand_growth" },
@@ -116,6 +124,87 @@ const repoRoot = path.resolve(here, "..", "..", "..");
   // 空文字は「指定なし」として扱う（空の環境変数でリポジトリ直下へ書かない）。
   const blank = resolveStoreRoot({ root: "  ", cwd: "/example/repo", env: { [BRAND_GROWTH_ROOT_ENV]: "" } });
   assert(blank === "/example/repo/runtime/brand_growth", `blank falls back: ${blank}`);
+
+  // cwd が無くても、絶対パスの root だけで決まる。
+  const absoluteOnly = resolveStoreRoot({ root: "/tmp/absolute-only" });
+  assert(absoluteOnly === "/tmp/absolute-only", `absolute root without cwd: ${absoluteOnly}`);
+}
+
+// --- 反証: 実プロセスの環境変数を読まない -------------------------------------------
+//
+// 本物の process.env に値を置いても結果が変わらないことを、実行時に確かめる。
+// （この検査ができるのは試験ファイルだけ。実装側は router.test.ts の境界検査で
+//   process.env / process.cwd() の記述そのものを禁止している。）
+{
+  const saved = process.env[BRAND_GROWTH_ROOT_ENV];
+  process.env[BRAND_GROWTH_ROOT_ENV] = "/tmp/must-be-ignored";
+  try {
+    const ignored = resolveStoreRoot({ cwd: "/example/repo" });
+    assert(
+      ignored === "/example/repo/runtime/brand_growth",
+      `real process.env must be ignored: ${ignored}`,
+    );
+    const injectedWins = resolveStoreRoot({ cwd: "/example/repo", env: { [BRAND_GROWTH_ROOT_ENV]: "/var/injected" } });
+    assert(injectedWins === "/var/injected", `injected env must win over process.env: ${injectedWins}`);
+  } finally {
+    if (saved === undefined) delete process.env[BRAND_GROWTH_ROOT_ENV];
+    else process.env[BRAND_GROWTH_ROOT_ENV] = saved;
+  }
+}
+
+// --- 反証: 実プロセスの作業ディレクトリを読まない -------------------------------------
+//
+// 相対 root は、渡された cwd だけを基準にする。実際の process.cwd() は使わない。
+{
+  const relativeToSupplied = resolveStoreRoot({ root: "runtime/brand_growth", cwd: "/example/repo", env: {} });
+  assert(
+    relativeToSupplied === "/example/repo/runtime/brand_growth",
+    `relative root must follow the supplied cwd: ${relativeToSupplied}`,
+  );
+  assert(
+    !relativeToSupplied.startsWith(process.cwd()),
+    "the result must not be anchored to the real working directory",
+  );
+}
+
+// --- 決定性: 同じ明示入力からは常に同じ出力 -------------------------------------------
+{
+  const options = {
+    root: "runtime/brand_growth",
+    cwd: "/example/repo",
+    env: { [BRAND_GROWTH_ROOT_ENV]: "/var/lib/ignored" },
+  } as const;
+  const first = resolveStoreRoot(options);
+  for (let i = 0; i < 3; i += 1) {
+    assert(resolveStoreRoot(options) === first, "same explicit input must give the same output");
+  }
+  // 引数オブジェクトを作り直しても同じ。
+  assert(
+    resolveStoreRoot({ root: "runtime/brand_growth", cwd: "/example/repo", env: { [BRAND_GROWTH_ROOT_ENV]: "/var/lib/ignored" } }) === first,
+    "resolution must not depend on object identity or call order",
+  );
+}
+
+// --- 反証: 基準が無ければ fail closed（推測で保存先を作らない）------------------------
+{
+  // 絶対 root も cwd も無い。
+  throwsSync(() => resolveStoreRoot(), "missing_root", "no root and no cwd must fail closed");
+  throwsSync(() => resolveStoreRoot({ env: {} }), "missing_root", "empty env alone must fail closed");
+  // 相対 root だけでは決まらない。
+  throwsSync(() => resolveStoreRoot({ root: "runtime/brand_growth" }), "missing_root", "relative root without cwd");
+  // 環境変数側が相対でも同じ。
+  throwsSync(
+    () => resolveStoreRoot({ env: { [BRAND_GROWTH_ROOT_ENV]: "runtime/brand_growth" } }),
+    "missing_root",
+    "relative env root without cwd",
+  );
+  // cwd が相対だと path.resolve が実プロセスの作業ディレクトリへ落ちるので、先に止める。
+  throwsSync(() => resolveStoreRoot({ cwd: "example/repo" }), "relative_cwd", "relative cwd must be rejected");
+  throwsSync(
+    () => resolveStoreRoot({ root: "runtime", cwd: "./example" }),
+    "relative_cwd",
+    "relative cwd must be rejected even with a root",
+  );
 }
 
 // --- 反証: 追跡対象のソース・設計書の中へは書かせない ---------------------------------
@@ -126,7 +215,19 @@ const repoRoot = path.resolve(here, "..", "..", "..");
       "root_inside_tracked_source",
       `store root must reject ${bad}`,
     );
+    // 環境変数経由でも同じく止まる。
+    throwsSync(
+      () => resolveStoreRoot({ cwd: "/example/repo", env: { [BRAND_GROWTH_ROOT_ENV]: bad } }),
+      "root_inside_tracked_source",
+      `env store root must reject ${bad}`,
+    );
   }
+  // 絶対パスでも、渡された cwd の中の追跡領域なら止める。
+  throwsSync(
+    () => resolveStoreRoot({ root: "/example/repo/src/data", cwd: "/example/repo", env: {} }),
+    "root_inside_tracked_source",
+    "absolute path inside tracked source must be rejected",
+  );
   // 相対指定で登って戻る抜け道も塞ぐ。
   throwsSync(
     () => resolveStoreRoot({ root: "runtime/../src", cwd: "/example/repo", env: {} }),

@@ -524,26 +524,67 @@ const ALLOWED_EXTERNAL_IMPORTS = new Set([
  * node 組み込みを使ってよいファイルと、その中身を1つずつ挙げる。
  *
  * 「storage/ 以下なら何でもよい」にはしない。
- * ファイルへ実際に書くのは event_store.ts だけ、環境変数を読むのは config.ts だけ。
- * 新しいファイルを storage へ足しても、ここに書かない限り閉じたままになる。
+ * ファイルへ実際に書くのは event_store.ts だけ、保存先を組み立てるのは config.ts だけ。
+ * 新しいファイルを storage へ足しても、ここに書かない限り閉じたままになる（下の反証試験）。
  */
 const BUILTIN_ALLOWLIST = new Map<string, ReadonlySet<string>>([
   // 追記専用の保存アダプタ。ここだけがファイルを触る。
   [path.join("storage", "event_store.ts"), new Set(["node:fs/promises", "node:path"])],
-  // 保存先を決めるだけ。読み書きはしない。
+  // 保存先のパスを組み立てるだけ。読み書きも環境の読み取りもしない。
   [path.join("storage", "config.ts"), new Set(["node:path"])],
 ]);
 
 /** ファイルへ書いてよい唯一のファイル。 */
 const FS_WRITER = path.join("storage", "event_store.ts");
-/** 保存先の差し替えに環境変数を読むのは、この1ファイルだけ。 */
-const ENV_READER = path.join("storage", "config.ts");
 
-for (const file of moduleFiles) {
-  const source = readFileSync(file, "utf8");
+/**
+ * 許可されるのはこの2ファイルだけ。増やすときは ADR とレビューを通す。
+ * 許可リストが「storage/ 全体」等へ広がっていないことを、鍵の完全一致で固定する。
+ */
+{
+  const expected = [path.join("storage", "config.ts"), path.join("storage", "event_store.ts")];
+  const actual = [...BUILTIN_ALLOWLIST.keys()].sort();
+  assert(
+    actual.length === expected.length && actual.every((key, i) => key === expected[i]),
+    `builtin allowlist must stay at the two reviewed files: ${actual.join(",")}`,
+  );
+  for (const key of actual) {
+    assert(!key.includes("*"), `allowlist must name exact files, not patterns: ${key}`);
+    assert(key.endsWith(".ts"), `allowlist must name exact files, not directories: ${key}`);
+  }
+}
+
+/**
+ * 全ファイル共通の禁止語。
+ *
+ * `process.env` と `process.cwd(` は例外なく禁止する（ADR-0015）。
+ * 保存先は呼び出し側が明示的に渡す設計なので、brand_growth 側が環境を読む理由が無い。
+ */
+const FORBIDDEN_EVERYWHERE: readonly string[] = [
+  "node:http",
+  "node:https",
+  "node:net",
+  "node:child_process",
+  "fetch(",
+  "XMLHttpRequest",
+  "process.env",
+  "process.cwd(",
+];
+
+/** 決定性を壊すもの。 */
+const FORBIDDEN_NONDETERMINISM: readonly string[] = ["Date.now(", "new Date(", "Math.random("];
+
+/**
+ * 1ファイル分の境界検査。違反の説明を配列で返す（空なら合格）。
+ *
+ * 実在するファイルにも、まだ存在しない「もし足したら」のファイルにも同じ規則を当てる。
+ * ソースを引数で受け取るのはそのため。
+ */
+function boundaryViolations(file: string, source: string): string[] {
   const relative = path.relative(moduleRoot, file);
   const isTest = file.endsWith(".test.ts");
   const allowedBuiltins = BUILTIN_ALLOWLIST.get(relative) ?? new Set<string>();
+  const problems: string[] = [];
 
   // 既存モジュールへ依存しない。AIKA、canon、safety、LINE、publish 等を import しない。
   IMPORT_PATTERN.lastIndex = 0;
@@ -552,45 +593,114 @@ for (const file of moduleFiles) {
     const specifier = match[1] ?? "";
     const isNodeBuiltin = specifier.startsWith("node:");
     const isInsideModule = specifier.startsWith("./") || specifier.startsWith("../");
-    assert(isNodeBuiltin || isInsideModule, `${relative} must not import external package: ${specifier}`);
+    if (!isNodeBuiltin && !isInsideModule) {
+      problems.push(`${relative} must not import external package: ${specifier}`);
+    }
     if (isInsideModule) {
       const resolved = path.resolve(path.dirname(file), specifier);
-      assert(
-        resolved.startsWith(moduleRoot + path.sep) || ALLOWED_EXTERNAL_IMPORTS.has(resolved),
-        `${relative} must stay inside brand_growth: ${specifier}`,
-      );
+      if (!resolved.startsWith(moduleRoot + path.sep) && !ALLOWED_EXTERNAL_IMPORTS.has(resolved)) {
+        problems.push(`${relative} must stay inside brand_growth: ${specifier}`);
+      }
     }
-    if (isNodeBuiltin) {
-      // node 組み込みを使ってよいのは、境界検査を行う試験ファイルと、上で挙げた2ファイルだけ。
-      assert(
-        isTest || allowedBuiltins.has(specifier),
-        `${relative} must not use node builtin: ${specifier}`,
-      );
+    if (isNodeBuiltin && !isTest && !allowedBuiltins.has(specifier)) {
+      // node 組み込みを使ってよいのは、境界検査を行う試験ファイルと、許可リストの2ファイルだけ。
+      problems.push(`${relative} must not use node builtin: ${specifier}`);
     }
   }
 
   // AIKA / 顧客チャネル / Python 実装への言及そのものを禁止する。
   for (const forbidden of ["src/aika", "port/aika", "line_bot", "src/publish", "src/safety", "src/shared/canon"]) {
-    assert(!source.includes(`from "${forbidden}`), `${relative} must not import ${forbidden}`);
-    assert(!source.includes(`require("${forbidden}`), `${relative} must not require ${forbidden}`);
+    if (source.includes(`from "${forbidden}`)) problems.push(`${relative} must not import ${forbidden}`);
+    if (source.includes(`require("${forbidden}`)) problems.push(`${relative} must not require ${forbidden}`);
   }
 
-  if (!isTest) {
-    // 外部への読み書き・ネットワーク・資格情報を持たない。
-    // storage だけは保存のためにファイルを扱う（ネットワークと外部コマンドは全ファイル禁止のまま）。
-    const forbidden = ["node:http", "node:https", "node:net", "node:child_process", "fetch(", "XMLHttpRequest"];
-    if (relative !== FS_WRITER) forbidden.push("node:fs");
-    // 環境変数を読んでよいのは storage/config.ts だけ。
-    if (relative !== ENV_READER) forbidden.push("process.env");
+  if (isTest) return problems;
 
-    for (const banned of forbidden) {
-      assert(!source.includes(banned), `${relative} must not use ${banned}`);
-    }
-    // 実行時刻や乱数を使わない（決定性）。
-    for (const forbidden of ["Date.now(", "new Date(", "Math.random("]) {
-      assert(!source.includes(forbidden), `${relative} must not use ${forbidden}`);
-    }
+  // 外部への読み書き・ネットワーク・資格情報・環境依存を持たない。
+  // storage だけは保存のためにファイルを扱う（ネットワークと外部コマンドは全ファイル禁止のまま）。
+  const forbidden = [...FORBIDDEN_EVERYWHERE];
+  if (relative !== FS_WRITER) forbidden.push("node:fs");
+
+  for (const banned of forbidden) {
+    if (source.includes(banned)) problems.push(`${relative} must not use ${banned}`);
   }
+  // 実行時刻や乱数を使わない（決定性）。
+  for (const banned of FORBIDDEN_NONDETERMINISM) {
+    if (source.includes(banned)) problems.push(`${relative} must not use ${banned}`);
+  }
+  return problems;
+}
+
+for (const file of moduleFiles) {
+  const violations = boundaryViolations(file, readFileSync(file, "utf8"));
+  assert(violations.length === 0, violations.join(" / "));
+}
+
+// --- 反証: storage に新しいファイルを足しても、権限は自動で継承されない（恒久）----------
+//
+// 許可はファイル単位の完全一致で与えている。
+// 「storage の中だから」でファイル I/O や環境変数の読み取りが通ってしまわないことを、
+// 実在しない兄弟ファイルの内容へ同じ規則を当てて確かめる（ディスクには何も作らない）。
+{
+  const siblings: ReadonlyArray<readonly [string, string, string]> = [
+    // 保存アダプタの隣に、もう1つ書き込み口を足そうとした場合。
+    [path.join("storage", "second_store.ts"), 'import { writeFile } from "node:fs/promises";\n', "node:fs"],
+    [path.join("storage", "snapshot.ts"), 'import { readFileSync } from "node:fs";\n', "node:fs"],
+    // 設定ファイルの隣に、環境を読む版を足そうとした場合。
+    [path.join("storage", "config_v2.ts"), "const root = process.env.BRAND_GROWTH_DATA_ROOT;\n", "process.env"],
+    [path.join("storage", "runtime_root.ts"), "const base = process.cwd();\n", "process.cwd("],
+    // path も許可リスト外の兄弟には与えない。
+    [path.join("storage", "paths.ts"), 'import path from "node:path";\n', "node:path"],
+    // storage 以外の階層でも同じ。
+    [path.join("growth", "export_csv.ts"), 'import { appendFileSync } from "node:fs";\n', "node:fs"],
+  ];
+
+  for (const [relative, source, expected] of siblings) {
+    const violations = boundaryViolations(path.join(moduleRoot, relative), source);
+    assert(violations.length > 0, `a new sibling must not inherit permissions: ${relative}`);
+    assert(
+      violations.some(problem => problem.includes(expected)),
+      `${relative} should be rejected for ${expected}, got: ${violations.join(" / ")}`,
+    );
+  }
+
+  // 対照: 許可済みの2ファイルは実物のまま通る（検査が何にでも落ちるだけの空振りでないこと）。
+  for (const allowed of BUILTIN_ALLOWLIST.keys()) {
+    const full = path.join(moduleRoot, allowed);
+    const violations = boundaryViolations(full, readFileSync(full, "utf8"));
+    assert(violations.length === 0, `allowlisted file must still pass: ${allowed} (${violations.join(" / ")})`);
+  }
+
+  // 対照: 許可済みファイルであっても、許可していない組み込みは通らない。
+  const overreach = boundaryViolations(
+    path.join(moduleRoot, FS_WRITER),
+    'import { execSync } from "node:child_process";\n',
+  );
+  assert(
+    overreach.some(problem => problem.includes("node:child_process")),
+    "the allowlisted writer must not gain unrelated builtins",
+  );
+}
+
+// --- 反証: 環境変数の読み取りは brand_growth 全体で禁止（例外ファイル無し）--------------
+//
+// Phase 4 では storage/config.ts だけに process.env を許していた。
+// 保存先を呼び出し側から注入する設計へ変えたので、その例外は残っていない。
+{
+  for (const relative of [...BUILTIN_ALLOWLIST.keys(), path.join("router", "route.ts")]) {
+    const violations = boundaryViolations(
+      path.join(moduleRoot, relative),
+      "const root = process.env.ANYTHING;\n",
+    );
+    assert(
+      violations.some(problem => problem.includes("process.env")),
+      `process.env must be forbidden even in ${relative}`,
+    );
+  }
+  // 実物の config.ts に環境の読み取りが残っていないことも直接確かめる。
+  const configSource = readFileSync(path.join(moduleRoot, "storage", "config.ts"), "utf8");
+  assert(!configSource.includes("process.env"), "storage/config.ts must not read process.env");
+  assert(!configSource.includes("process.cwd("), "storage/config.ts must not read process.cwd()");
 }
 
 console.log("brand_growth router tests passed");
