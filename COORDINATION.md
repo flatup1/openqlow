@@ -47,7 +47,7 @@
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
 | `openqlow/docs/flatup-ai-os/` | Codex（設計） | open | 2026-08-14 |
-| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 1〜3 pushed / Design Pack integration in progress | 2026-08-16 |
+| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 1〜3 pushed / Phase 4 commit済み・未push・Codexレビュー待ち | 2026-08-16 |
 | `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
@@ -77,6 +77,18 @@
 ## 2. 現在のロック（作業中）
 
 なし
+
+### レビュー待ち（Claude Code 記入 / 2026-08-16）
+
+- 対象: `src/brand_growth/` Phase 4「Quality Guardian and Growth Metadata」
+- branch: `claude/flatup-gym-ai-os-phase4-20260816`（ローカルのみ・**未push**）
+- commit: `971f53e`（baseline `09da6313`）
+- 状態: 実装とテストは完了。全検証緑（`npm test` 104件成功0失敗、両validator PASS、保護領域29箇所すべて差分0）
+- 引き継ぎ書: `docs/HANDOFF_20260816_claude→codex.md`
+- **Codex承認が要る判断が1件**: `src/brand_growth/router/router.test.ts` の境界検査に、
+  Phase 4 の保存機能のためファイル単位の例外を追加した（詳細は引き継ぎ書 §5）
+- JIN承認が要る事項: push / PR 作成、実データ投入の開始
+- Phase 5・Phase 6 は未着手（指示により禁止中）
 
 ## 3. 並列度のレベル
 
