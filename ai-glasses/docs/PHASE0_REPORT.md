@@ -1,6 +1,8 @@
 # Phase 0 レポート — 現状確認と採点
 
-作成日: 2026-08-28 / 作成: Claude Code / ブランチ: `claude/ai-glasses-requirements-b8fl2m`
+作成日: 2026-08-28 / 作成: Claude Code
+
+> **これは2026-08-28時点の記録です。最新の採点は [`SCORECARD.md`](SCORECARD.md) を見てください。**
 
 ---
 
