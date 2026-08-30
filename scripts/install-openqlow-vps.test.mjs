@@ -32,5 +32,7 @@ assert.doesNotMatch(activateAdLineDryRun, /systemctl (?:stop|disable) openqlow-m
 assert.doesNotMatch(activateAdLineDryRun, /systemctl enable .*openqlow-ad-daily-report/s);
 assert.match(activateAdLineDryRun, /LINE webhook verification failed; previous endpoint restored/);
 assert.match(activateAdLineDryRun, /Expected unsigned external request to be rejected with 401/);
+assert.match(activateAdLineDryRun, /for _attempt in \{1\.\.20\}/);
+assert.match(activateAdLineDryRun, /'"stored":0'/);
 
 console.log("install openqlow vps tests passed");

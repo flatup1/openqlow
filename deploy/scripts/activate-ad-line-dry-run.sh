@@ -109,16 +109,24 @@ signature="$(AD_SECRET="${legacy_secret}" AD_BODY="${body}" node -e '
   const crypto = require("node:crypto");
   process.stdout.write(crypto.createHmac("sha256", process.env.AD_SECRET).update(process.env.AD_BODY).digest("base64"));
 ')"
-local_status="$(curl -sS -o /tmp/openqlow-ad-line-local-check.json -w '%{http_code}' \
-  -X POST \
-  -H 'Content-Type: application/json' \
-  -H "X-Line-Signature: ${signature}" \
-  --data "${body}" \
-  http://127.0.0.1:8788/openqlow/ad-line/webhook)"
-if [[ "${local_status}" != "200" ]] || ! grep -q '"dryRun":true' /tmp/openqlow-ad-line-local-check.json; then
+local_status=""
+for _attempt in {1..20}; do
+  local_status="$(curl -s -o /tmp/openqlow-ad-line-local-check.json -w '%{http_code}' \
+    -X POST \
+    -H 'Content-Type: application/json' \
+    -H "X-Line-Signature: ${signature}" \
+    --data "${body}" \
+    http://127.0.0.1:8788/openqlow/ad-line/webhook || true)"
+  [[ "${local_status}" == "200" ]] && break
+  sleep 0.25
+done
+if [[ "${local_status}" != "200" ]] \
+  || ! grep -q '"dryRun":true' /tmp/openqlow-ad-line-local-check.json \
+  || ! grep -q '"stored":0' /tmp/openqlow-ad-line-local-check.json; then
   echo "Local signed webhook test failed" >&2
   exit 1
 fi
+rm -f /tmp/openqlow-ad-line-local-check.json
 
 if ! grep -q 'location = /openqlow/ad-line/webhook' "${NGINX_SITE}"; then
   nginx_temp="$(mktemp)"
