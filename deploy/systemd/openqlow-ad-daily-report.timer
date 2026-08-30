@@ -1,0 +1,11 @@
+[Unit]
+Description=Build OPENQLOW advertising daily report at 06:10 JST (dry-run only)
+
+[Timer]
+OnCalendar=*-*-* 06:10:00 Asia/Tokyo
+Persistent=true
+AccuracySec=1s
+Unit=openqlow-ad-daily-report.service
+
+[Install]
+WantedBy=timers.target

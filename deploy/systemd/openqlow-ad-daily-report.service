@@ -1,0 +1,23 @@
+[Unit]
+Description=OPENQLOW advertising daily report dry-run
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=openqlow
+Group=openqlow
+WorkingDirectory=/opt/openqlow
+EnvironmentFile=/etc/openqlow/openqlow.env
+ExecStart=/usr/bin/node dist/scheduler/ad_daily_report.js
+MemoryMax=128M
+CPUQuota=25%
+TasksMax=64
+OOMPolicy=stop
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/openqlow/ad-line-data
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,26 @@
+[Unit]
+Description=OPENQLOW advertising-only LINE webhook
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openqlow
+Group=openqlow
+WorkingDirectory=/opt/openqlow
+EnvironmentFile=/etc/openqlow/openqlow.env
+ExecStart=/usr/bin/node dist/line_bot/ad_webhook.js
+Restart=always
+RestartSec=5
+MemoryMax=128M
+CPUQuota=25%
+TasksMax=64
+OOMPolicy=stop
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/openqlow/ad-line-data
+
+[Install]
+WantedBy=multi-user.target
