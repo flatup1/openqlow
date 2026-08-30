@@ -23,6 +23,22 @@ Instagram / Meta広告
 広告LINEとAIKAは、アカウント、Messaging APIチャネル、secret、token、Webhook URL、データ保存先を共有しない。
 ただし `@817nsdhr` は新規アカウントではなく、旧openQLOWで使っていた同じLINEアカウントを広告専用へ役割変更する。旧 `LINE_*` の資格情報は本番移行時に `AD_LINE_*` へ安全に移し、AIKAの資格情報は使わない。
 
+## 本番接続状況（2026-08-30）
+
+広告専用アカウント `@817nsdhr` は、受信専用ドライランとして本番接続済み。
+
+- LINE DevelopersのWebhookは `https://line.flatupnarita.jp/openqlow/ad-line/webhook`。
+- `openqlow-ad-line.service` は既存openQLOW VPSで稼働中。
+- `AD_LINE_DRY_RUN=true`。有効なLINE署名だけを受け付ける。
+- 受信内容を振り分けるが、ドライラン中はイベントをファイルへ保存しない。
+- 顧客への返信、予約、広告変更、AIKA書き込みを行わない。
+- 広告日報タイマーとLINE日報送信は無効。
+- 既存openQLOWサービスと朝6時通知は稼働を維持。
+- AIKAは別アカウント・別VPSのまま変更していない。
+- 切替前の環境設定、Nginx設定、Webhook URLはVPS内のroot専用バックアップへ保存済み。
+
+LINE公式のWebhook検証、正しい署名のローカル検証、署名なし外部アクセスの401拒否を確認済み。ドライラン用保存先のファイル数は0件。
+
 ## 役割
 
 | レーン | 対象 | してよいこと | してはいけないこと |
@@ -112,13 +128,10 @@ Instagram / Meta広告
 
 そのため、現時点で「広告効果が全部自動で分かる」とは扱わない。まず問い合わせ計測と手入力の費用対効果を安全に検証し、数字が正しいと確認できた後だけ自動連携を足す。
 
-## まだ本番で行わないこと
+## ドライラン段階ではまだ行わないこと
 
-- LINE DevelopersのWebhook URL変更
-- secret/tokenの登録
 - 自動返信
 - 既存AIKAの設定変更
-- VPS serviceの再起動
 - 旧openQLOW日次通知の停止・移動
 - 広告日報タイマーの有効化
 - 広告日報のLINE送信
