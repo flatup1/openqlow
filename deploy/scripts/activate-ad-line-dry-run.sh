@@ -13,7 +13,9 @@ fi
 OPENQLOW_ROOT="${OPENQLOW_ROOT:-/opt/openqlow}"
 ENV_FILE="${ENV_FILE:-/etc/openqlow/openqlow.env}"
 STAGE_DIR="${STAGE_DIR:-/tmp/openqlow-ad-line-release}"
-NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-available/openqlow.conf}"
+# This VPS keeps sites-enabled/openqlow.conf as a regular file rather than a
+# symlink, so patch the file nginx actually loads.
+NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-enabled/openqlow.conf}"
 BACKUP_DIR="${BACKUP_DIR:-/root/openqlow-backups}"
 AD_DATA_DIR="${AD_DATA_DIR:-/opt/openqlow/ad-line-data}"
 AD_ENDPOINT="${AD_ENDPOINT:-https://line.flatupnarita.jp/openqlow/ad-line/webhook}"

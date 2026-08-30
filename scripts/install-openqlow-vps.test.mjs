@@ -34,5 +34,6 @@ assert.match(activateAdLineDryRun, /LINE webhook verification failed; previous e
 assert.match(activateAdLineDryRun, /Expected unsigned external request to be rejected with 401/);
 assert.match(activateAdLineDryRun, /for _attempt in \{1\.\.20\}/);
 assert.match(activateAdLineDryRun, /'"stored":0'/);
+assert.match(activateAdLineDryRun, /NGINX_SITE=.*sites-enabled\/openqlow\.conf/);
 
 console.log("install openqlow vps tests passed");
