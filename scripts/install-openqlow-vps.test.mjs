@@ -4,6 +4,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const script = await readFile(path.join(root, "deploy/scripts/install-openqlow-vps.sh"), "utf8");
+const activateAdLineDryRun = await readFile(path.join(root, "deploy/scripts/activate-ad-line-dry-run.sh"), "utf8");
 const morningTimer = await readFile(path.join(root, "deploy/systemd/openqlow-morning.timer"), "utf8");
 const adReportService = await readFile(path.join(root, "deploy/systemd/openqlow-ad-daily-report.service"), "utf8");
 const adReportTimer = await readFile(path.join(root, "deploy/systemd/openqlow-ad-daily-report.timer"), "utf8");
@@ -24,5 +25,12 @@ assert.doesNotMatch(
   "広告日報タイマーはインストール時に自動有効化しない",
 );
 assert.match(script, /広告日報のドライランは承認後にだけ/);
+assert.match(activateAdLineDryRun, /upsert_env AD_LINE_DRY_RUN true/);
+assert.match(activateAdLineDryRun, /upsert_env AD_LINE_REPORT_DISABLED true/);
+assert.doesNotMatch(activateAdLineDryRun, /upsert_env AD_LINE_CHANNEL_ACCESS_TOKEN/);
+assert.doesNotMatch(activateAdLineDryRun, /systemctl (?:stop|disable) openqlow-morning/);
+assert.doesNotMatch(activateAdLineDryRun, /systemctl enable .*openqlow-ad-daily-report/s);
+assert.match(activateAdLineDryRun, /LINE webhook verification failed; previous endpoint restored/);
+assert.match(activateAdLineDryRun, /Expected unsigned external request to be rejected with 401/);
 
 console.log("install openqlow vps tests passed");
