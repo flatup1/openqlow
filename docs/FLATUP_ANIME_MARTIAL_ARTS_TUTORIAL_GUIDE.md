@@ -4,7 +4,9 @@
 更新: 2026-09-01（v2: プロンプト構造を8ブロック形式へ刷新、音声指定・失敗対応表を追加）
 種別: 制作資料（下書き・検証前提）
 上位文書: `FLATUP_GYM_ANIME_ART_BIBLE.md` / `docs/FLATUP_ANIMATION_BIBLE.md`
-姉妹文書: `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md`（高強度アクション演出）
+姉妹文書:
+- `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md`（高強度アクション演出・タイミング設計）
+- `docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md`（実写→アニメのモーション参照）
 安全基準: `docs/ai-os/canon/safety_rules.md`
 承認基準: `docs/ai-os/canon/approval_matrix.md`
 
@@ -348,6 +350,7 @@ Constraints: no strikes to the face or body of a person, no aggressive or shouti
 ## 13. 関連ファイル
 
 - `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md` — 高強度アクション演出（OP・ハイライト用）
+- `docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md` — 実写→アニメのモーション参照
 - `FLATUP_GYM_ANIME_ART_BIBLE.md` — キャラクター統一基準（正本）
 - `docs/FLATUP_ANIMATION_BIBLE.md` — 物語・映像・トーンの基準
 - `docs/FLATUP_CHARACTER_CONSISTENCY_RULE.md` — 一貫性の絶対ルール
