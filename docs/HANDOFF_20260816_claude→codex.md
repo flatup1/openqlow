@@ -11,19 +11,19 @@
 
 受け手AIは、まず `COORDINATION.md` を読み、自分の担当領域だけを触ってください。
 
-このハンドオフは **レビュー依頼** です。
-**§5 に、Codex の承認が必要な設計判断が1件あります。** そこだけは先に見てください。
+このハンドオフは作成時点では **レビュー依頼** でした。
+**§5 の設計判断は 2026-08-29 に Codex Approved となり、現在は解決済みです。**
 
-> **更新（2026-08-29 / Claude Code）**
+> **更新（2026-09-02 / Claude Code）**
 > 作成時点（2026-08-16）の「ローカルのみ・未 push・`971f53e`・レビュー待ち」という記述は、現在の状態と一致しません。
 > - branch は `claude/flatup-gym-ai-os-phase4-20260816`。
-> - **remote baseline は `b5c3965`**（`main` を取り込んだ merge commit。Codex のレビュー反映 `706da60` を含む）。
+> - **remote baseline は `5096351`**（承認済み境界仕上げ `14aae4b` と手動記録CLIを含む）。
 >   `origin/claude/flatup-gym-ai-os-phase4-20260816` はこの commit を指しており、**ここまでは push 済み**です。
-> - **2026-08-29 の境界仕上げは、この baseline の上のローカル 1 commit のみで、未 push です**
->   （ローカルは remote より 1 commit ahead）。仕上げ commit の SHA はこの文書に埋め込みません。
+> - **記録summary・破損guard・動画ごとの費用と成果の対応付けは、この baseline の上のローカル 1 commit のみで、未 push です**
+>   （ローカルは remote より 1 commit ahead）。ローカル commit の SHA はこの文書に埋め込みません。
 >   正本は `git log -1` です。
-> - push・PR・merge・deploy はいずれも未実施です（JIN 承認待ち）。
-> - その仕上げの内容: `storage/config.ts` は環境変数と暗黙の作業ディレクトリ依存を持たない
+> - 現在のローカル commit の push、PR・merge・deploy は未実施です（JIN 承認待ち）。
+> - 境界仕上げの内容: `storage/config.ts` は環境変数と暗黙の作業ディレクトリ依存を持たない
 >   caller-injected な純関数になり、境界検査の `process.env` 例外は撤廃されています。判断は
 >   `docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md` に記録しました。
 > - **§5 の設計判断は 2026-08-29 に Codex が Approved しました**（ADR-0015 / 詳細は §5 の注記）。
@@ -48,8 +48,8 @@ baseline: `09da63131bf2b5327f5ba2a890aedd516b537a70`
 commit: `971f53e94dc12d19b9cae2ba784a5f88499f04df`（2026-08-16 時点）
 branch: `claude/flatup-gym-ai-os-phase4-20260816`
 
-> 2026-08-29 現在: remote baseline は `b5c3965`（Codex 反映 `706da60` → `main` merge）で、そこまでは push 済み。
-> その上に 2026-08-29 の境界仕上げがローカル 1 commit だけ載っており、これは未 push です。
+> 2026-09-02 現在: remote baseline は `5096351`（承認済み境界仕上げ `14aae4b` と手動記録CLIを含む）で、そこまでは push 済み。
+> その上にsummary・破損guard・動画別の費用成果対応がローカル 1 commit だけ載っており、これは未 push です。
 > `971f53e` は後続の作業で history に残っていません。
 
 ### 設計上の判断（SCHEMA_CATALOG との対応）
@@ -77,7 +77,7 @@ branch: `claude/flatup-gym-ai-os-phase4-20260816`
 
 - [ ] `COORDINATION.md` の担当表の構造変更（理由：共有領域の構造変更は JIN 最終承認。今回は状態行の更新のみ）
 - [ ] PR / merge / deploy（理由：指示により禁止。JIN 承認後）
-- [ ] 2026-08-29 の境界仕上げ commit の push（理由：指示により禁止。JIN 承認後）※ remote baseline `b5c3965` までは push 済み
+- [ ] 現在のローカル1 commit（summary・破損guard・動画別の費用成果対応）の push（理由：指示により禁止。JIN 承認後）※ remote baseline `5096351` までは push 済み
 - [ ] Phase 5（learning 昇格 / Weekly Coach）（理由：指示により禁止）
 - [ ] Phase 6（Demo Provider）(理由：指示により禁止)
 - [ ] **実データの投入（0件）**（理由：手入力はオーナー作業。詳細は §6）
@@ -218,8 +218,8 @@ Codex の最終設計レビューで **承認**されました。正本は
 | # | 内容 | 影響 |
 | --- | --- | --- |
 | 1 | ~~§5 の境界検査の例外を認めるか~~ → **resolved（2026-08-29 Codex Approved）** | 対応不要。ADR-0015 に記録済み。本番 caller は absolute cwd 必須の運用条件付き |
-| 2 | `claude/flatup-gym-ai-os-phase4-20260816` の PR 作成 / merge / deploy | 未実施。承認後のみ（remote baseline `b5c3965` までは push 済み） |
-| 2b | 2026-08-29 の境界仕上げ commit（ローカル 1 commit）の push | 未実施。承認後のみ |
+| 2 | `claude/flatup-gym-ai-os-phase4-20260816` の PR 作成 / merge / deploy | 未実施。承認後のみ（remote baseline `5096351` までは push 済み） |
+| 2b | summary・破損guard・動画別の費用成果対応（ローカル 1 commit）の push | 未実施。承認後のみ |
 | 3 | `COORDINATION.md` の担当表の構造変更 | 今回は状態行の更新のみに留めた |
 | 4 | **実データ投入の開始**（下記） | Phase 5 の前提。ここが未着手だと Phase 5 は空回りする |
 
@@ -255,7 +255,7 @@ Phase 5 の `validated_learning` は「独立した3回以上の再現」が要�
 ### 8-1. 2026-08-16 時点の記録（作成当時の値。現在値は §8-2）
 
 下の表は **Phase 4 実装 commit（当時 `971f53e`）時点の記録** です。
-その後 Codex レビュー反映 `706da60`、`main` merge `b5c3965`、2026-08-29 の境界仕上げが入っているため、
+その後 Codex レビュー反映 `706da60`、`main` merge `b5c3965`、境界仕上げ `14aae4b`、手動記録CLI `5096351`、現在のローカル仕上げが入っているため、
 件数・ファイル数は現在値と一致しません。**現在値は §8-2 を参照してください。**
 
 | 項目 | 結果（2026-08-16 時点） |
@@ -275,21 +275,21 @@ Phase 5 の `validated_learning` は「独立した3回以上の再現」が要�
 baseline の `npm test` は 103件成功で、当時 `test:brand-growth-phase4` が1件増えて104件でした。
 既存テストの失敗・スキップ化・削除はありません。
 
-### 8-2. 最新の検証結果（2026-08-29 / 境界仕上げ commit 時点・全て緑）
+### 8-2. 最新の検証結果（2026-09-02 / ローカル仕上げ commit 時点・全て緑）
 
 | 項目 | 結果 |
 | --- | --- |
 | `npm run typecheck` | exit 0 |
 | `npm run test:brand-growth` | exit 0（10スイート pass） |
-| `npm run test:brand-growth-phase4` | exit 0（4スイート pass） |
+| `npm run test:brand-growth-phase4` | exit 0（5スイート pass） |
 | `npm test` | **成功 116件 / 失敗 0件** |
 | `./scripts/validate-ai-os.sh` | exit 0 |
 | `./scripts/validate-ai-os.test.sh` | exit 0（下記の注記あり） |
-| `test:secret-guard` | 486ファイル / 0 leaks |
-| `test:pii-guard` | 163ファイル / 0 PII |
-| `test:no-hardcoded-canon` | 168ファイル / 0 violations |
+| `test:secret-guard` | 489ファイル / 0 leaks |
+| `test:pii-guard` | 165ファイル / 0 PII |
+| `test:no-hardcoded-canon` | 170ファイル / 0 violations |
 | `git diff --check` | exit 0 |
-| 保護領域監査 | 31領域すべて差分0 |
+| 保護領域監査 | AIKA / LINE / payment / publish / canonical / safety / provider すべて差分0 |
 
 104件 → 116件の増加は、2026-08-16 以降に `main` を merge して既存テストが増えたためです。
 Phase 4 側でテストを削除・スキップ化したものはありません。

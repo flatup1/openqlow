@@ -47,7 +47,7 @@
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
 | `openqlow/docs/flatup-ai-os/` | Codex（設計） | open | 2026-08-14 |
-| `openqlow/src/brand_growth/` | Claude Code（実装） | remote baseline `b5c3965` までpush済み（Phase 1〜4 / Codexレビュー反映`706da60`含む）/ 2026-08-29の境界仕上げは local ahead 1・**未push** / Phase 5以降は未着手 | 2026-08-29 |
+| `openqlow/src/brand_growth/` | Claude Code（実装） | remote baseline `5096351` までpush済み（Phase 1〜4 / 承認済み境界仕上げ / 手動記録CLI）/ 記録summary・破損guard・動画別の費用成果対応は local ahead 1・**未push** / Phase 5以降は未着手 | 2026-09-02 |
 | `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
@@ -78,19 +78,19 @@
 
 なし
 
-### Phase 4 の現在状態（Claude Code 記入 / 2026-08-29）
+### Phase 4 の現在状態（Claude Code 記入 / 2026-09-02）
 
 - 対象: `src/brand_growth/` Phase 4「Quality Guardian and Growth Metadata」
 - branch: `claude/flatup-gym-ai-os-phase4-20260816`
-- remote baseline: `b5c3965`（`main` を取り込んだ merge commit）。**ここまでは push 済み**で、
+- remote baseline: `5096351`（承認済みの境界仕上げ `14aae4b` と手動記録CLIを含む）。**ここまでは push 済み**で、
   `origin/claude/flatup-gym-ai-os-phase4-20260816` はこの commit を指している。
 - ローカルの現在地: remote baseline より **1 commit ahead**。
-  2026-08-29 の境界仕上げは **ローカルのみ・未push**で、push は JIN 承認待ち。
-  仕上げ commit の SHA はこの文書に埋め込まない（`git log -1` が正本）。
+  記録summary・破損guard・動画ごとの費用と成果の対応付けは **ローカルのみ・未push**で、push は JIN 承認待ち。
+  ローカル commit の SHA はこの文書に埋め込まない（`git log -1` が正本）。
 - 経緯: Claude Code の Phase 4 実装 → Codex レビュー反映 `706da60` → `main` を merge `b5c3965`
-  → push → 2026-08-29 の境界仕上げ（ローカル1 commit・未push）。
+  → 境界仕上げ `14aae4b` → 手動記録CLI `5096351` → push → summary・破損guard・動画別集計（ローカル1 commit・未push）。
   2026-08-16 時点で「ローカルのみ・未push・`971f53e`」と書いていた記述は、この時点で古くなっている。
-- 2026-08-29 の追加作業（Claude Code / 上記のローカル未push commit）: 境界と文書整合性の仕上げ。
+- 2026-08-29 の追加作業（Claude Code / remote baseline にpush済み）: 境界と文書整合性の仕上げ。
   - `src/brand_growth/storage/config.ts` から環境変数と暗黙の作業ディレクトリ依存を除去し、
     呼び出し側からの明示注入だけで保存先が決まる純関数にした（基準が無ければ fail closed）。
   - 境界検査の `process.env` 例外を撤廃し、`src/brand_growth` 全体で環境の読み取りを禁止した。
@@ -103,7 +103,8 @@
   absolute root のみで cwd を渡さない経路は、機能OFF・呼び出し元未接続・明示 root が管理側の信頼済み入力である
   現 Phase 4 では受容。**将来の本番 integration caller は absolute cwd / repositoryRoot を必須で渡す**運用条件付き。
   部分文字列による境界検査も保守的な fail-closed として承認。→ Codex 側のレビュー事項はクローズ。
-- JIN 承認が要る事項: 2026-08-29 の仕上げ commit の push、PR 作成 / merge / deploy、実データ投入の開始
+- 2026-09-02 のローカル追加作業: 読み取り専用summary、破損記録の除外guard、`content_id` による動画別の費用と成果の対応付け。
+- JIN 承認が要る事項: 現在のローカル1 commitの push、PR 作成 / merge / deploy、実データ投入の開始
 - Phase 5・Phase 6 は未着手（指示により禁止中）
 
 ## 3. 並列度のレベル
@@ -150,7 +151,7 @@
 - Claude Code: 承認された設計に従う `src/brand_growth/` の段階実装とテスト
 - JIN: ブランド、料金、規約、安全、主要KPI、Provider有効化、本番変更の最終承認
 - 既存AIKA、canon、承認、LINE、公開、デプロイの責務は変更しない。Brand Growth側から重複実装しない。
-- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Phase 4は branch `claude/flatup-gym-ai-os-phase4-20260816` で、remote baseline `b5c3965` までpush済み。2026-08-29の境界仕上げはその上のローカル1 commitで、未push（local ahead 1・JIN承認待ち）。いずれも本番Runtimeには未統合で、外部接続と本番変更は未着手。
+- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Phase 4は branch `claude/flatup-gym-ai-os-phase4-20260816` で、承認済み境界仕上げと手動記録CLIを含む remote baseline `5096351` までpush済み。summary・破損guard・動画別の費用成果対応はその上のローカル1 commitで、未push（local ahead 1・JIN承認待ち）。いずれも本番Runtimeには未統合で、外部接続と本番変更は未着手。
 
 ---
 
