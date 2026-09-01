@@ -223,6 +223,75 @@ async function testFirstPartyAnalytics() {
   assert(local.beaconCalls.length === 0, "本番ドメイン以外からは計測を送らない");
 }
 
+/* ---------- 1-c. 進捗（あと何問か）---------- */
+// dots() は以前 app.js に「gender=1/4, goal=2/4 …」と手打ちの表を持っていた。
+// questions.js には「質問の追加・変更はこのファイルの編集だけで完結させる」と
+// 書いてあるのに、質問を1つ足すと進捗だけが黙って古い数字を出し続けていた。
+// いまは questions.js の next をたどって数える。この2本がその再発を止める。
+function progressOf(app) {
+  const node = app.nodes().find(n => (n.className || "").split(/\s+/).includes("dots"));
+  if (!node) return null;
+  const label = node.getAttribute("aria-label") || "";
+  const m = label.match(/^(\d+)問中(\d+)問目$/);
+  if (!m) throw new Error("FAILED: 進捗の読み上げ文が想定の形ではない: " + label);
+  return { total: Number(m[1]), pos: Number(m[2]), filled: node.children.filter(c => c.className === "on").length };
+}
+
+async function testProgress() {
+  const app = launch();
+  await app.click("button", "自分に合う始め方を見つける");
+
+  // 最初の質問にも進捗が出る（ここが離脱のいちばん多い場所）
+  const q1 = progressOf(app);
+  assert(q1, "最初の質問にも進捗が出る");
+  assert(q1.pos === 1, "最初の質問は1問目と示す");
+  assert(q1.total === 5, `成人ルート（いちばん長い道）の5問を先に示す（今: ${q1 && q1.total}）`);
+  assert(q1.filled === q1.pos, "塗られた点の数が現在位置と一致する");
+
+  // 進むと位置が1つずつ増える
+  await app.click("button", "自分が通ってみたい");
+  const q2 = progressOf(app);
+  assert(q2.pos === 2 && q2.total === 5, `成人ルート2問目は 2/5（今: ${q2.pos}/${q2.total}）`);
+
+  // 短いルートを選んだら総数もその場で正しくなる（多めに言って早く終わるのは良い）
+  const kids = launch();
+  await kids.click("button", "自分に合う始め方を見つける");
+  await kids.click("button", "子どもを通わせたい");
+  const k = progressOf(kids);
+  assert(k.pos === 2 && k.total === 3, `キッズルート2問目は 2/3（今: ${k.pos}/${k.total}）`);
+
+  // 目が見えない人にも伝わる（点だけでは読めない）
+  const node = app.nodes().find(n => (n.className || "").split(/\s+/).includes("dots"));
+  assert(node.getAttribute("aria-hidden") !== "true", "進捗を読み上げから隠さない");
+  assert(node.getAttribute("role") === "img", "進捗に役割を与えて読み上げ可能にする");
+}
+
+// 質問を1問足したら、進捗の総数もひとりでに増えること。
+// 手打ちの表に戻ったら、このテストが落ちる。
+async function testProgressFollowsQuestionData() {
+  const before = launch();
+  await before.click("button", "自分に合う始め方を見つける");
+  const baseTotal = progressOf(before).total;
+
+  // 別のサンドボックスで、availability の後ろに1問差し込む
+  const after = launch();
+  const Q = after.win.FLATUP.QUESTIONS;
+  Q.availability.next = "__extra__";
+  Q.__extra__ = {
+    id: "__extra__",
+    question: "テスト用の追加質問",
+    next: "result",
+    options: [{ value: "x", label: "はい" }],
+  };
+  await after.click("button", "自分に合う始め方を見つける");
+  const afterTotal = progressOf(after).total;
+
+  assert(
+    afterTotal === baseTotal + 1,
+    `questions.js に1問足したら進捗の総数も1増える（${baseTotal} → ${afterTotal}）`,
+  );
+}
+
 /* ---------- 2. 3ルートが最後まで進む ---------- */
 async function testThreeRoutes() {
   const adult = launch();
@@ -426,6 +495,8 @@ async function testCtaContrast() {
 const TESTS = [
   ["ようこそ画面", testWelcome],
   ["匿名の計測送信", testFirstPartyAnalytics],
+  ["進捗（あと何問か）", testProgress],
+  ["進捗は質問データに追従する", testProgressFollowsQuestionData],
   ["3ルート（成人・キッズ・相談・家族）", testThreeRoutes],
   ["戻る（画面内・スマホ）", testBack],
   ["選び直しても前の回答が残らない", testAnswerReplacement],
