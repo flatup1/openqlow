@@ -12,6 +12,11 @@ export function inboxPath(stateDir: string): string {
   return path.join(stateDir, "inbox.jsonl");
 }
 
+/** 処理中の受信を退避しておく場所。実行が途中で落ちても、ここに残る。 */
+export function claimPath(stateDir: string): string {
+  return path.join(stateDir, "inbox.processing.jsonl");
+}
+
 export function recordPath(stateDir: string, id: string): string {
   return path.join(stateDir, "records", `${id}.json`);
 }
@@ -24,9 +29,13 @@ export async function appendInbound(stateDir: string, inbound: InboundMessage): 
 
 /** 待ち行列を読む。壊れた行は黙って飛ばす（1行のせいで全部を落とさない）。 */
 export async function readInbox(stateDir: string): Promise<InboundMessage[]> {
+  return readJsonlFile(inboxPath(stateDir));
+}
+
+async function readJsonlFile(file: string): Promise<InboundMessage[]> {
   let raw: string;
   try {
-    raw = await fs.readFile(inboxPath(stateDir), "utf8");
+    raw = await fs.readFile(file, "utf8");
   } catch {
     return [];
   }
@@ -51,6 +60,72 @@ export async function replaceInbox(stateDir: string, remaining: InboundMessage[]
   await fs.mkdir(stateDir, { recursive: true });
   const body = remaining.map(item => JSON.stringify(item)).join("\n");
   await fs.writeFile(inboxPath(stateDir), body ? `${body}\n` : "", "utf8");
+}
+
+/**
+ * 処理する分を待ち行列から切り離して受け取る。
+ *
+ * ただ読んで後で消す方式だと、読んでから消すまでの間に webhook が受け取った
+ * メッセージが、書き戻しで消えてしまう。ここでファイル名を付け替えることで、
+ * その間に届いたものは新しい待ち行列に入り、取りこぼさない。
+ *
+ * 前回の実行が途中で落ちていた場合、退避ぶんも一緒に返す。
+ */
+export async function claimInbox(stateDir: string): Promise<InboundMessage[]> {
+  await fs.mkdir(stateDir, { recursive: true });
+  const claim = claimPath(stateDir);
+
+  // 落ちた実行の取り残しを先に確保しておく（この後の rename で上書きされるため）。
+  const leftover = await readJsonlFile(claim);
+
+  try {
+    await fs.rename(inboxPath(stateDir), claim);
+  } catch (error) {
+    // 待ち行列が空（ファイルが無い）だけなら、取り残しの処理を続ける。
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const claimed = await readJsonlFile(claim);
+  if (leftover.length > 0) {
+    // 取り残しを先に戻したうえで、退避ファイルの内容を書き直す。
+    const merged = dedupeByExternalId([...leftover, ...claimed]);
+    await fs.writeFile(claim, `${merged.map(item => JSON.stringify(item)).join("\n")}\n`, "utf8");
+    return merged;
+  }
+  return claimed;
+}
+
+/**
+ * 処理しきれなかった分を待ち行列へ戻し、退避ファイルを片づける。
+ * 実行中に届いた新しい分より前に置く（先に来たものを先に処理する）。
+ */
+export async function releaseInbox(stateDir: string, remaining: InboundMessage[]): Promise<void> {
+  await fs.mkdir(stateDir, { recursive: true });
+
+  if (remaining.length > 0) {
+    const arrivedDuringRun = await readInbox(stateDir);
+    const merged = dedupeByExternalId([...remaining, ...arrivedDuringRun]);
+    await replaceInbox(stateDir, merged);
+  }
+
+  // 戻し終えてから退避を消す。ここで落ちても、次回 claimInbox が拾う。
+  try {
+    await fs.unlink(claimPath(stateDir));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+function dedupeByExternalId(items: InboundMessage[]): InboundMessage[] {
+  const seen = new Set<string>();
+  const out: InboundMessage[] = [];
+  for (const item of items) {
+    const key = `${item.source}:${item.externalId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 /** すでに下書きを作った受信か。 */

@@ -68,6 +68,23 @@ export function assertSafeTargetRoot(targetPath: string, home = os.homedir()): v
 }
 
 /**
+ * 完全削除の対象にしてよい「場所」か。
+ *
+ * 設定を1文字書き間違えただけで、ホームの中身が消える、という事態を作らない。
+ * 許すのは次のどちらかだけ:
+ *   1. 自分が作ったゴミ箱待ちフォルダ
+ *   2. 名前が `.Trash` のフォルダ（Macのゴミ箱）
+ */
+export function isAllowedPurgeRoot(root: string, quarantineRoot: string, home = os.homedir()): boolean {
+  const resolved = path.resolve(root);
+
+  if (PROTECTED_ROOTS.includes(resolved)) return false;
+  if (resolved === path.resolve(home)) return false;
+  if (quarantineRoot && resolved === path.resolve(quarantineRoot)) return true;
+  return path.basename(resolved) === ".Trash";
+}
+
+/**
  * 完全削除してよいか。ゴミ箱待ち（または明示したゴミ箱）の中のファイルだけ許す。
  * 1件ずつこの関数を通す。ディレクトリごとの再帰削除はしない。
  */

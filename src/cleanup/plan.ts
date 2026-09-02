@@ -95,6 +95,41 @@ export function destinationFor(
   return undefined;
 }
 
+/** `99_ゴミ箱待ち/2026-09-01/...` の日付フォルダを読む。読めなければ undefined。 */
+export function quarantineDateFromPath(root: string, filePath: string): string | undefined {
+  const relative = path.relative(path.resolve(root), path.resolve(filePath));
+  if (!relative || relative.startsWith("..")) return undefined;
+  const first = relative.split(path.sep)[0];
+  return /^\d{4}-\d{2}-\d{2}$/.test(first) ? first : undefined;
+}
+
+/**
+ * 「ここに置かれてから何日たったか」を出す。
+ *
+ * 更新日時(mtime)は使わない。ファイルを移動しても mtime は元のままなので、
+ * 「90日前に作った書類」を今日ゴミ箱待ちへ入れた瞬間に削除対象になってしまう。
+ * 代わりに次の2つを見て、短いほう（＝消すのが遅くなるほう）を採る。
+ *   1. 日付フォルダ（ゴミ箱待ちへ入れた日そのもの）
+ *   2. ctime（移動などでファイルの状態が変わった時刻）
+ */
+export function purgeAgeDays(
+  root: string,
+  filePath: string,
+  stat: { ctimeMs: number },
+  nowMs: number,
+): number {
+  const fromCtime = Math.floor(Math.max(0, nowMs - stat.ctimeMs) / DAY_MS);
+
+  const dateFolder = quarantineDateFromPath(root, filePath);
+  if (!dateFolder) return fromCtime;
+
+  const enteredMs = Date.parse(`${dateFolder}T00:00:00+09:00`);
+  if (Number.isNaN(enteredMs)) return fromCtime;
+
+  const fromFolder = Math.floor(Math.max(0, nowMs - enteredMs) / DAY_MS);
+  return Math.min(fromFolder, fromCtime);
+}
+
 /** 完全削除の候補を集める。保管日数を過ぎたファイルだけ、1件ずつ拾う。 */
 export async function collectPurgeCandidates(
   root: string,
@@ -102,6 +137,7 @@ export async function collectPurgeCandidates(
   retentionDays: number,
   nowMs: number,
   depth = 0,
+  rootForAge = root,
 ): Promise<PurgeAction[]> {
   // 深追いしすぎない。ゴミ箱待ては「日付フォルダ / ファイル」の2階層で足りる。
   if (depth > 4) return [];
@@ -124,13 +160,15 @@ export async function collectPurgeCandidates(
     }
 
     if (stat.isDirectory()) {
-      out.push(...(await collectPurgeCandidates(full, source, retentionDays, nowMs, depth + 1)));
+      out.push(
+        ...(await collectPurgeCandidates(full, source, retentionDays, nowMs, depth + 1, rootForAge)),
+      );
       continue;
     }
     // シンボリックリンクは追わない。リンク先の本体を消してしまう事故を避ける。
     if (stat.isSymbolicLink()) continue;
 
-    const ageDays = Math.floor(Math.max(0, nowMs - stat.mtimeMs) / DAY_MS);
+    const ageDays = purgeAgeDays(rootForAge, full, stat, nowMs);
     if (ageDays < retentionDays) continue;
 
     out.push({ path: full, ageDays, size: stat.size, source });

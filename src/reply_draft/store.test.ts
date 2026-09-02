@@ -5,11 +5,14 @@ import path from "node:path";
 import { buildReplyDraft, type InboundMessage } from "./draft.js";
 import {
   appendInbound,
+  claimInbox,
+  claimPath,
   hasDraft,
   loadDraft,
   loadUnnotifiedDrafts,
   markNotified,
   readInbox,
+  releaseInbox,
   replaceInbox,
   saveDraft,
 } from "./store.js";
@@ -19,6 +22,15 @@ const NOW = new Date("2026-09-02T09:12:00+09:00");
 async function freshStateDir(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "openqlow-reply-draft-"));
   return path.join(root, "reply_drafts");
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await fs.lstat(file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function inbound(externalId: string, text = "体験に興味があります。土曜は空いていますか？"): InboundMessage {
@@ -99,6 +111,84 @@ function inbound(externalId: string, text = "体験に興味があります。�
   const rest = await loadUnnotifiedDrafts(stateDir);
   assert.deepEqual(rest.map(item => item.externalId), ["msg-02"]);
   assert.equal((await loadDraft(stateDir, first.id))?.notifiedAt, NOW.toISOString());
+}
+
+// 切り離して受け取る。受け取ったあと待ち行列は空になる。
+{
+  const stateDir = await freshStateDir();
+  await appendInbound(stateDir, inbound("msg-01"));
+  await appendInbound(stateDir, inbound("msg-02"));
+
+  const claimed = await claimInbox(stateDir);
+  assert.deepEqual(claimed.map(item => item.externalId), ["msg-01", "msg-02"]);
+  assert.deepEqual(await readInbox(stateDir), [], "待ち行列は空になる");
+
+  await releaseInbox(stateDir, []);
+  assert.deepEqual(await readInbox(stateDir), []);
+}
+
+// 処理中に届いたメッセージが消えない。ここが取りこぼしの本体。
+{
+  const stateDir = await freshStateDir();
+  await appendInbound(stateDir, inbound("msg-01"));
+
+  const claimed = await claimInbox(stateDir); // 実行開始
+  await appendInbound(stateDir, inbound("msg-02")); // 実行中に webhook が受信
+  await releaseInbox(stateDir, []); // 処理し終えて片づけ
+
+  assert.deepEqual(claimed.map(item => item.externalId), ["msg-01"]);
+  assert.deepEqual(
+    (await readInbox(stateDir)).map(item => item.externalId),
+    ["msg-02"],
+    "実行中に届いた分は残る",
+  );
+}
+
+// 上限を超えた分を戻すと、実行中に届いた分より前に並ぶ（先に来たものが先）。
+{
+  const stateDir = await freshStateDir();
+  await appendInbound(stateDir, inbound("msg-01"));
+  await appendInbound(stateDir, inbound("msg-02"));
+
+  const claimed = await claimInbox(stateDir);
+  await appendInbound(stateDir, inbound("msg-03"));
+  await releaseInbox(stateDir, [claimed[1]]); // msg-02 は次回にまわす
+
+  assert.deepEqual(
+    (await readInbox(stateDir)).map(item => item.externalId),
+    ["msg-02", "msg-03"],
+  );
+}
+
+// 実行が途中で落ちても、退避した分は次の実行で拾う。
+{
+  const stateDir = await freshStateDir();
+  await appendInbound(stateDir, inbound("msg-01"));
+  const first = await claimInbox(stateDir);
+  assert.equal(first.length, 1);
+  // ここで落ちたことにする（releaseInbox を呼ばない）
+
+  await appendInbound(stateDir, inbound("msg-02"));
+  const second = await claimInbox(stateDir);
+  assert.deepEqual(
+    second.map(item => item.externalId),
+    ["msg-01", "msg-02"],
+    "落ちた実行の分も一緒に拾う",
+  );
+
+  await releaseInbox(stateDir, []);
+  assert.equal(await exists(claimPath(stateDir)), false, "退避ファイルは片づく");
+}
+
+// 同じ受信が2回入っても、切り離した時点で1つにまとまる。
+{
+  const stateDir = await freshStateDir();
+  await appendInbound(stateDir, inbound("msg-01"));
+  await claimInbox(stateDir); // 落ちたことにする
+  await appendInbound(stateDir, inbound("msg-01"));
+
+  const claimed = await claimInbox(stateDir);
+  assert.deepEqual(claimed.map(item => item.externalId), ["msg-01"]);
 }
 
 console.log("reply draft store tests passed");

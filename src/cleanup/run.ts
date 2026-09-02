@@ -23,7 +23,7 @@ import { applyCleanupPlan } from "./apply.js";
 import { type CleanupConfig, loadCleanupConfig } from "./config.js";
 import { buildCleanupPlan } from "./plan.js";
 import { buildCleanupLineMessage, buildCleanupLog, summariseCleanup, type CleanupSummary } from "./report.js";
-import { UnsafePathError, assertSafeTargetRoot } from "./safety.js";
+import { UnsafePathError, assertSafeTargetRoot, isAllowedPurgeRoot, isInside } from "./safety.js";
 
 const RUN_LOCK_KEY = "cleanup_notified";
 
@@ -103,10 +103,24 @@ export async function runCleanup(opts: CleanupRunOptions = {}): Promise<CleanupR
     plan.errors.push({ path: item.path, message: `対象から除外: ${item.message}` });
   }
 
-  const purgeRoots = [
+  // 削除してよい場所かを、実行の前に1つずつ確かめる。
+  // 通らなかった場所はそのまま落とし、理由をログとLINEに残す（黙って消さない・黙って諦めない）。
+  const requestedPurgeRoots = [
     ...(effective.purgeEnabled ? [effective.quarantineRoot] : []),
     ...(effective.emptyTrashEnabled ? effective.trashRoots : []),
   ];
+  const purgeRoots: string[] = [];
+  for (const root of requestedPurgeRoots) {
+    if (isAllowedPurgeRoot(root, effective.quarantineRoot, opts.home)) {
+      purgeRoots.push(root);
+      continue;
+    }
+    plan.errors.push({ path: root, message: "完全削除の対象にできない場所のため除外" });
+  }
+  // 除外された場所の候補は消さない。計画からも取り除く。
+  plan.purges = plan.purges.filter(purge =>
+    purgeRoots.some(root => isInside(root, purge.path)),
+  );
 
   const result = await applyCleanupPlan(plan, {
     dryRun: !effective.apply,

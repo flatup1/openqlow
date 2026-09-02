@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import type { pushLineMessage } from "../line_bot/notifier.js";
 import { loadReplyDraftConfig, type ReplyDraftConfig } from "./config.js";
-import type { InboundMessage } from "./draft.js";
+import { buildReplyDraft, type InboundMessage } from "./draft.js";
 import { captureInboundForDraft } from "./intake.js";
-import { appendInbound, readInbox } from "./store.js";
+import { appendInbound, claimPath, readInbox } from "./store.js";
 import { hourInJst, isReplyDraftCliEntry, runReplyDraft } from "./run.js";
 
 const NOW = new Date("2026-09-02T09:12:00+09:00");
@@ -274,6 +274,121 @@ async function exists(file: string): Promise<boolean> {
     { config: configFor(), stateDir },
   );
   assert.equal(empty.captured, false);
+}
+
+// 1回に作る下書きは上限まで。あふれた分は待ち行列に残り、次の実行で作る。
+{
+  const root = await freshRoot();
+  const stateDir = path.join(root, "state");
+  const shared = { stateDir, logDir: path.join(root, "logs"), vaultRoot: path.join(root, "vault"), now: NOW };
+
+  for (let i = 1; i <= 7; i += 1) {
+    await appendInbound(stateDir, inbound(`msg-0${i}`, "体験に興味があります。土曜は空いていますか？"));
+  }
+
+  const first = stubPush();
+  const firstRun = await runReplyDraft({ ...shared, config: configFor({ maxPerRun: 3 }), pushFn: first.push });
+  assert.equal(firstRun.created, 3, "上限まで");
+  assert.equal(firstRun.deferred, 4, "残りは次回へ");
+  assert.equal((await readInbox(stateDir)).length, 4, "待ち行列に残る");
+  assert.match(first.sent[0], /新着 3件/);
+
+  const second = stubPush();
+  const secondRun = await runReplyDraft({ ...shared, config: configFor({ maxPerRun: 3 }), pushFn: second.push });
+  assert.equal(secondRun.created, 3);
+  assert.equal((await readInbox(stateDir)).length, 1);
+
+  const third = stubPush();
+  const thirdRun = await runReplyDraft({ ...shared, config: configFor({ maxPerRun: 3 }), pushFn: third.push });
+  assert.equal(thirdRun.created, 1);
+  assert.equal((await readInbox(stateDir)).length, 0, "最後まで作りきる");
+  assert.equal((await fs.readdir(path.join(stateDir, "records"))).length, 7, "7件すべてが下書きになる");
+}
+
+// 実行中に webhook が受け取ったメッセージを取りこぼさない。
+{
+  const root = await freshRoot();
+  const stateDir = path.join(root, "state");
+  const shared = { stateDir, logDir: path.join(root, "logs"), vaultRoot: path.join(root, "vault"), now: NOW };
+
+  await appendInbound(stateDir, inbound("msg-01", "体験に興味があります。土曜は空いていますか？"));
+
+  // 通知の最中に新しい受信が届く状況を作る。
+  const sent: string[] = [];
+  const pushDuringRun: typeof pushLineMessage = async text => {
+    sent.push(text);
+    await captureInboundForDraft(
+      { text: "見学はできますか？", lineUserId: "U-9", messageId: "msg-99" },
+      { config: configFor(), stateDir, now: NOW },
+    );
+    return { ok: true, mode: "sent" };
+  };
+
+  const result = await runReplyDraft({ ...shared, config: configFor(), pushFn: pushDuringRun });
+  assert.equal(result.created, 1);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(
+    (await readInbox(stateDir)).map(item => item.externalId),
+    ["msg-99"],
+    "実行中に届いた分は消えない",
+  );
+
+  const next = stubPush();
+  const nextRun = await runReplyDraft({ ...shared, config: configFor(), pushFn: next.push });
+  assert.equal(nextRun.created, 1, "次の実行で下書きになる");
+}
+
+// 実行が途中で落ちても受信は失わない。次の実行で拾う。
+{
+  const root = await freshRoot();
+  const stateDir = path.join(root, "state");
+  const shared = { stateDir, logDir: path.join(root, "logs"), vaultRoot: path.join(root, "vault"), now: NOW };
+
+  await appendInbound(stateDir, inbound("msg-01", "体験に興味があります。土曜は空いていますか？"));
+
+  const crashing: typeof pushLineMessage = async () => {
+    throw new Error("通知の途中で落ちた");
+  };
+  await assert.rejects(runReplyDraft({ ...shared, config: configFor(), pushFn: crashing }));
+  assert.equal(await exists(claimPath(stateDir)), false, "受信は待ち行列から切り離され、下書きは保存済み");
+
+  // 下書きは残っているので、次の実行で通知だけやり直せる。
+  const retry = stubPush();
+  const retryRun = await runReplyDraft({ ...shared, config: configFor(), pushFn: retry.push });
+  assert.equal(retryRun.created, 0);
+  assert.equal(retry.sent.length, 1, "作った下書きは失われない");
+}
+
+// 1件の下書きが作れなくても、実行は止まらず、残りは作られる。
+// 止めてしまうと、その受信が待ち行列に残り続けて、次の実行も同じ場所で落ちる。
+{
+  const root = await freshRoot();
+  const stateDir = path.join(root, "state");
+  await appendInbound(stateDir, inbound("msg-01", "体験に興味があります。土曜は空いていますか？"));
+  await appendInbound(stateDir, inbound("msg-bad", "壊れた入力"));
+  await appendInbound(stateDir, inbound("msg-03", "見学だけでもできますか？"));
+
+  const { push, sent } = stubPush();
+  const result = await runReplyDraft({
+    config: configFor(),
+    now: NOW,
+    stateDir,
+    logDir: path.join(root, "logs"),
+    vaultRoot: path.join(root, "vault"),
+    pushFn: push,
+    draftBuilder: (message, when) => {
+      if (message.externalId === "msg-bad") throw new Error("解析できない中身");
+      return buildReplyDraft(message, when);
+    },
+  });
+
+  assert.equal(result.created, 3, "3件とも記録する");
+  assert.equal((await readInbox(stateDir)).length, 0, "待ち行列に詰まりを残さない");
+
+  const failed = result.drafts.find(draft => draft.externalId === "msg-bad");
+  assert.equal(failed?.needsHuman, true);
+  assert.match(failed?.humanReason ?? "", /下書きの作成に失敗/);
+  assert.match(sent[0], /JIN確認 1件/, "作れなかったこともJINに伝わる");
 }
 
 // CLI エントリ判定。

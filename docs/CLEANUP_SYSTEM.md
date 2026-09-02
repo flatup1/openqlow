@@ -18,11 +18,21 @@
 捨てる判断をしたファイルは、まず `99_ゴミ箱待ち` へ移すだけ。
 そこから30日たって初めて消える。気づいた時点で戻せる。
 
-さらに、次の3つが実装で守られている（`src/cleanup/safety.ts`）。
+さらに、次の4つが実装で守られている（`src/cleanup/safety.ts`）。
 
 - ホーム直下、`/`、`/System`、`/Applications`、`.git`、`.ssh` などは対象にできない
 - 完全削除は「ゴミ箱待ち」の中のファイルだけ。1件ずつ確認して消す
+- 完全削除の対象にできる**場所**も、`99_ゴミ箱待ち` と名前が `.Trash` のフォルダだけ。
+  設定を書き間違えて `~/Documents` を指定しても、そこは消さずに理由をLINEで知らせる
 - フォルダごとの再帰削除はしない
+
+### 30日はいつから数えるか
+
+**ゴミ箱待ちへ入れた日から**数える。ファイルの更新日時ではない。
+
+「去年作った書類」を今日ゴミ箱待ちへ入れた場合、消えるのは30日後であって今日ではない。
+入れた日は日付フォルダ（`99_ゴミ箱待ち/2026-09-03/`）に残っており、
+それとファイル自体の状態の、**遅いほう**を採る。バックアップから戻したときも消えない。
 
 ## 何も設定しないとどうなるか
 
@@ -89,7 +99,7 @@ OPENQLOW_LAUNCHD_LABEL=com.flatup.openqlow.cleanup bash scripts/install-launchd.
 | `OPENQLOW_CLEANUP_APPLY` | `false` | `true` で実際にファイルを動かす |
 | `OPENQLOW_CLEANUP_PURGE` | `false` | `true` で保管日数を過ぎたものを完全削除 |
 | `OPENQLOW_CLEANUP_EMPTY_TRASH` | `false` | `true` でMacのゴミ箱も対象にする |
-| `OPENQLOW_CLEANUP_TRASH_ROOTS` | `~/.Trash` | Macのゴミ箱の場所 |
+| `OPENQLOW_CLEANUP_TRASH_ROOTS` | `~/.Trash` | Macのゴミ箱の場所（名前が `.Trash` の場所だけ有効） |
 | `OPENQLOW_CLEANUP_INCLUDE_FOLDERS` | `false` | `true` でフォルダごと整頓する |
 | `OPENQLOW_CLEANUP_DISABLED` | `false` | `true` で完全停止 |
 

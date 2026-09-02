@@ -24,11 +24,12 @@ import { isQuietHour, loadReplyDraftConfig, type ReplyDraftConfig } from "./conf
 import { buildReplyDraft, draftIdFor, type ReplyDraft } from "./draft.js";
 import { buildDraftLog, buildDraftNotification } from "./notify.js";
 import {
+  claimInbox,
   hasDraft,
   loadUnnotifiedDrafts,
   markNotified,
   readInbox,
-  replaceInbox,
+  releaseInbox,
   saveDraft,
 } from "./store.js";
 
@@ -42,6 +43,8 @@ export interface ReplyDraftRunResult {
   created: number;
   /** すでに下書き済みで飛ばした数 */
   skipped: number;
+  /** 上限を超えて次回にまわした数 */
+  deferred: number;
   notified: "sent" | "dry_run" | "skipped" | "quiet_hours" | "none";
   message?: string;
   logPath?: string;
@@ -61,6 +64,8 @@ export interface ReplyDraftRunOptions {
   /** Vault内の保存先（相対） */
   vaultRelativeDir?: string;
   pushFn?: typeof pushLineMessage;
+  /** テスト用に下書きの組み立てを差し替え */
+  draftBuilder?: typeof buildReplyDraft;
 }
 
 export const DEFAULT_VAULT_RELATIVE_DIR = "30_INBOX/openqlow/reply_drafts";
@@ -70,7 +75,7 @@ export function hourInJst(now: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Tokyo",
     hour: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(now);
   return Number(parts.find(part => part.type === "hour")?.value ?? "0");
 }
@@ -80,7 +85,7 @@ function timeInJst(now: Date): string {
     timeZone: "Asia/Tokyo",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).format(now);
 }
 
@@ -94,7 +99,7 @@ async function directoryExists(dir: string): Promise<boolean> {
 
 export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<ReplyDraftRunResult> {
   const config = opts.config ?? loadReplyDraftConfig();
-  const empty = { created: 0, skipped: 0, notified: "none" as const, drafts: [] };
+  const empty = { created: 0, skipped: 0, deferred: 0, notified: "none" as const, drafts: [] };
 
   if (config.disabled) {
     return { ok: true, mode: "disabled", reason: "OPENQLOW_REPLY_DRAFT_DISABLED=true", ...empty };
@@ -107,28 +112,55 @@ export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<Re
   const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
   const stateDir = opts.stateDir ?? openqlowPath("state", "reply_drafts");
 
-  // 1. 受信を読む。設定した受信元のものだけ扱う。
-  const inbox = await readInbox(stateDir);
+  // 1. 受信を受け取る。
+  //    本番実行では待ち行列から切り離す（実行中に届いた分を取りこぼさないため）。
+  //    お試し実行では読むだけ。何度でも同じ結果を確かめられる。
+  const inbox = config.dryRun ? await readInbox(stateDir) : await claimInbox(stateDir);
   const mine = inbox.filter(item => config.sources.includes(item.source));
   const others = inbox.filter(item => !config.sources.includes(item.source));
 
   // 2. 下書きを作る。すでに作ってある受信は飛ばす（二重に作らない）。
+  //    1回に作るのは上限まで。あふれた分は待ち行列に残し、次の実行で作る。
   let created = 0;
   let skipped = 0;
   const newDrafts: ReplyDraft[] = [];
+  const deferred: typeof mine = [];
   for (const inbound of mine) {
     if (await hasDraft(stateDir, draftIdFor(inbound.source, inbound.externalId))) {
       skipped += 1;
       continue;
     }
-    const draft = buildReplyDraft(inbound, now);
+    if (created >= config.maxPerRun) {
+      deferred.push(inbound);
+      continue;
+    }
+    // 1件の失敗で実行全体を止めない。止めると、その受信が待ち行列に残り続けて
+    // 次の実行も同じ場所で落ちる（詰まったまま新しい問い合わせが処理されない）。
+    let draft: ReplyDraft;
+    try {
+      draft = (opts.draftBuilder ?? buildReplyDraft)(inbound, now);
+    } catch (error) {
+      draft = {
+        id: draftIdFor(inbound.source, inbound.externalId),
+        source: inbound.source,
+        externalId: inbound.externalId,
+        maskedSender: "",
+        receivedAt: inbound.receivedAt,
+        createdAt: now.toISOString(),
+        inboundText: "",
+        triage: { route: "human_only", reason: "下書きを作れなかった" },
+        needsHuman: true,
+        humanReason: `下書きの作成に失敗（${(error as Error).message}）`,
+        status: "draft_only",
+      };
+    }
     newDrafts.push(draft);
     if (!config.dryRun) await saveDraft(stateDir, draft);
     created += 1;
   }
 
-  // お試し実行のときは待ち行列をそのまま残す。何度でも同じ結果を確かめられる。
-  if (!config.dryRun) await replaceInbox(stateDir, others);
+  // 3. 処理しなかった分だけ待ち行列へ戻す。
+  if (!config.dryRun) await releaseInbox(stateDir, [...others, ...deferred]);
 
   // まだ知らせていない下書き（静音時間に作った前夜のぶんを含む）。
   const pending = config.dryRun ? newDrafts : await loadUnnotifiedDrafts(stateDir);
@@ -140,12 +172,13 @@ export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<Re
       reason: skipped > 0 ? `新しい受信なし（${skipped}件は作成済み）` : "新しい受信なし",
       created,
       skipped,
+      deferred: deferred.length,
       notified: "none",
       drafts: [],
     };
   }
 
-  // 3. 記録を残す。ローカルは必ず、Obsidianはあれば。
+  // 4. 記録を残す。ローカルは必ず、Obsidianはあれば。
   const logDir = opts.logDir ?? openqlowPath("logs", "reply_drafts");
   const logBody = buildDraftLog(pending, dateJst);
   let logPath: string | undefined;
@@ -174,7 +207,7 @@ export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<Re
     }
   }
 
-  // 4. LINEでJINへ。静音時間なら送らず、翌朝の実行に持ち越す。
+  // 5. LINEでJINへ。静音時間なら送らず、翌朝の実行に持ち越す。
   const message = buildDraftNotification(pending, {
     maxPerRun: config.maxPerRun,
     detailPath: vaultPath ?? logPath ?? `${logDir}/${dateJst}.md`,
@@ -189,6 +222,7 @@ export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<Re
       reason: `静音時間のため通知は持ち越し（${config.quietHours.start}時〜${config.quietHours.end}時）`,
       created,
       skipped,
+      deferred: deferred.length,
       notified: "quiet_hours",
       message,
       logPath,
@@ -198,7 +232,16 @@ export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<Re
   }
 
   if (config.dryRun) {
-    return { ok: true, mode: "drafted", created, skipped, notified: "dry_run", message, drafts: pending };
+    return {
+      ok: true,
+      mode: "drafted",
+      created,
+      skipped,
+      deferred: deferred.length,
+      notified: "dry_run",
+      message,
+      drafts: pending,
+    };
   }
 
   const pushFn = opts.pushFn ?? pushLineMessage;
@@ -213,6 +256,7 @@ export async function runReplyDraft(opts: ReplyDraftRunOptions = {}): Promise<Re
     mode: "drafted",
     created,
     skipped,
+    deferred: deferred.length,
     notified: pushResult.mode,
     message,
     logPath,
@@ -233,7 +277,8 @@ if (isReplyDraftCliEntry(import.meta.url, process.argv[1])) {
   const result = await runReplyDraft();
   console.log(
     `[reply-draft] mode=${result.mode} created=${result.created} skipped=${result.skipped}` +
-      ` notified=${result.notified}${result.reason ? ` reason=${result.reason}` : ""}`,
+      ` deferred=${result.deferred} notified=${result.notified}` +
+      `${result.reason ? ` reason=${result.reason}` : ""}`,
   );
   if (result.message) console.log(`\n${result.message}\n`);
   if (!result.ok) process.exit(1);

@@ -137,8 +137,8 @@ function configFor(home: string, overrides: Partial<CleanupConfig> = {}): Cleanu
   await makeFile(path.join(desktop, "作業中.md"), "md", 0);
 
   const config = configFor(home, { apply: true, purgeEnabled: true, backupRoot });
-  const expired = await makeFile(path.join(config.quarantineRoot, "2026-06-01", "古い.tmp"), "x", 90);
-  const keptInQuarantine = await makeFile(path.join(config.quarantineRoot, "2026-08-30", "最近.tmp"), "x", 2);
+  // 中身は90日前のものだが、ゴミ箱待ちへ入れたのは「今日」。まだ消してはいけない。
+  const justMoved = await makeFile(path.join(config.quarantineRoot, "2026-09-01", "中身は古い.tmp"), "x", 90);
 
   const { push, sent } = stubPush();
   const result = await runCleanup({
@@ -161,9 +161,8 @@ function configFor(home: string, overrides: Partial<CleanupConfig> = {}): Cleanu
   assert.equal(await exists(path.join(config.organizedRoot, "2026", "08", "書類", "資料.pdf")), true);
   assert.equal(await exists(path.join(config.quarantineRoot, "2026-09-01", ".DS_Store")), true);
 
-  // 保管日数を過ぎたものだけ消える。最近入れたものは残る。
-  assert.equal(await exists(expired), false);
-  assert.equal(await exists(keptInQuarantine), true);
+  // 入れたばかりのものは、中身が何年前でも消えない。ここが命綱。
+  assert.equal(await exists(justMoved), true);
 
   // 外付けにはコピーが増える。手元からは消えない。
   assert.equal(await exists(path.join(backupRoot, "FLATUP_CLEAN", "2026", "08", "画像", "写真.png")), true);
@@ -172,7 +171,90 @@ function configFor(home: string, overrides: Partial<CleanupConfig> = {}): Cleanu
   assert.equal(sent.length, 1);
   assert.doesNotMatch(sent[0].text, /お試し実行/);
   assert.match(sent[0].text, /整頓 2件 \/ ゴミ箱待ちへ 1件/);
+  assert.match(sent[0].text, /完全削除 なし/);
+}
+
+// 保管日数を過ぎたゴミ箱待ちは、本番実行のときだけ消える。
+// 一時ファイルの ctime は作った瞬間になるので、40日後の目で見る。
+{
+  const home = await freshHome();
+  const config = configFor(home, { apply: true, purgeEnabled: true });
+  const laterMs = Date.now() + 40 * DAY;
+  const folderFor = (daysBefore: number) =>
+    new Date(laterMs - daysBefore * DAY).toISOString().slice(0, 10);
+
+  const expired = await makeFile(
+    path.join(config.quarantineRoot, folderFor(60), "とっくに過ぎた.tmp"),
+    "x",
+    0,
+  );
+  const recent = await makeFile(
+    path.join(config.quarantineRoot, folderFor(20), "まだ日が浅い.tmp"),
+    "x",
+    0,
+  );
+
+  const { push, sent } = stubPush();
+  const result = await runCleanup({
+    config,
+    now: new Date(laterMs),
+    pushFn: push,
+    stateDir: path.join(home, "state"),
+    logDir: path.join(home, "logs"),
+    home,
+  });
+
+  assert.equal(result.summary?.purgedCount, 1);
+  assert.equal(await exists(expired), false, "30日を過ぎたものは消える");
+  assert.equal(await exists(recent), true, "20日しか経っていないものは残る");
   assert.match(sent[0].text, /完全削除 1件/);
+}
+
+// 許可がなければ、どれだけ古くても消さない。
+{
+  const home = await freshHome();
+  const config = configFor(home, { apply: true, purgeEnabled: false });
+  const laterMs = Date.now() + 40 * DAY;
+  const folder = new Date(laterMs - 60 * DAY).toISOString().slice(0, 10);
+  const old = await makeFile(path.join(config.quarantineRoot, folder, "古い.tmp"), "x", 0);
+
+  const { push } = stubPush();
+  await runCleanup({
+    config,
+    now: new Date(laterMs),
+    pushFn: push,
+    stateDir: path.join(home, "state"),
+    logDir: path.join(home, "logs"),
+    home,
+  });
+  assert.equal(await exists(old), true, "OPENQLOW_CLEANUP_PURGE を入れるまでは消えない");
+}
+
+// 削除先の設定を間違えても、ゴミ箱待ちと .Trash の外は消さない。
+{
+  const home = await freshHome();
+  const config = configFor(home, {
+    apply: true,
+    emptyTrashEnabled: true,
+    // 設定ミス。ここを許すと書類フォルダごと消える。
+    trashRoots: [path.join(home, "Documents")],
+  });
+  const laterMs = Date.now() + 60 * DAY;
+  const precious = await makeFile(path.join(home, "Documents", "大事な契約書.pdf"), "pdf", 0);
+
+  const { push, sent } = stubPush();
+  const result = await runCleanup({
+    config,
+    now: new Date(laterMs),
+    pushFn: push,
+    stateDir: path.join(home, "state"),
+    logDir: path.join(home, "logs"),
+    home,
+  });
+
+  assert.equal(await exists(precious), true, "設定を間違えても消えない");
+  assert.equal(result.summary?.purgedCount, 0);
+  assert.match(sent[0].text, /うまくいかなかったもの/, "黙って諦めず、理由を知らせる");
 }
 
 // 同じ日に2回走っても、LINEは1通だけ。timer の二重発火で朝から2通は届かない。

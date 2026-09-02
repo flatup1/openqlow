@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { UnsafePathError, assertSafeToMove, assertSafeToPurge, assertSafeTargetRoot, isInside } from "./safety.js";
+import {
+  UnsafePathError,
+  assertSafeToMove,
+  assertSafeToPurge,
+  assertSafeTargetRoot,
+  isAllowedPurgeRoot,
+  isInside,
+} from "./safety.js";
 
 const HOME = "/Users/test";
 
@@ -78,6 +85,23 @@ const HOME = "/Users/test";
     UnsafePathError,
     "自分の中へは入れられない",
   );
+}
+
+// 完全削除の対象にしてよい「場所」。設定の書き間違いで家中が消えないようにする。
+{
+  const quarantine = `${HOME}/Desktop/99_ゴミ箱待ち`;
+
+  assert.equal(isAllowedPurgeRoot(quarantine, quarantine, HOME), true);
+  assert.equal(isAllowedPurgeRoot(`${HOME}/.Trash`, quarantine, HOME), true);
+  assert.equal(isAllowedPurgeRoot("/Volumes/USB/.Trash", quarantine, HOME), true, "外付けのゴミ箱も名前で判断する");
+
+  // ここから下は1つでも通ると事故になる。
+  assert.equal(isAllowedPurgeRoot(HOME, quarantine, HOME), false, "ホーム直下");
+  assert.equal(isAllowedPurgeRoot("/", quarantine, HOME), false);
+  assert.equal(isAllowedPurgeRoot(`${HOME}/Desktop`, quarantine, HOME), false, "デスクトップそのもの");
+  assert.equal(isAllowedPurgeRoot(`${HOME}/Documents`, quarantine, HOME), false);
+  assert.equal(isAllowedPurgeRoot(`${HOME}/Desktop/00_整理済み`, quarantine, HOME), false, "整頓済みは消さない");
+  assert.equal(isAllowedPurgeRoot(`${HOME}/Desktop/別のゴミ箱待ち`, quarantine, HOME), false, "似た名前でも設定と違えば拒否");
 }
 
 console.log("cleanup safety tests passed");
