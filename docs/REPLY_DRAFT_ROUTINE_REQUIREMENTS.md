@@ -1,6 +1,6 @@
 # 要件指示書 — 返信下書きルーティン（Gmail / LINE公式）
 
-作成日: 2026-09-01 ／ 状態: **未承認ドラフト（JIN確認待ち）** ／ 担当: openQLOW
+作成日: 2026-09-01 ／ 更新: 2026-09-02 ／ 状態: **Phase 1 実装済み（既定オフ・JIN確認待ち）** ／ 担当: openQLOW
 
 ## 1. ひとことで言うと
 
@@ -223,6 +223,37 @@ Obsidianが開けない・書けないときも、ローカルには必ず残す
 | Phase 4 | Gmailの下書き保存（送信はしない） | JINが必要と判断したら |
 
 一度に全部作らない。段階ごとにJINが見て、納得してから次へ進む。
+
+## 14-2. Phase 1 の実装状況（2026-09-02）
+
+Phase 1（LINE公式のみ）を実装した。**既定では1件も動かない。**
+
+| ファイル | 役割 |
+| --- | --- |
+| `src/reply_draft/config.ts` | スイッチの読み取り。既定は全部オフ |
+| `src/reply_draft/triage.ts` | クレーム・健康・未成年・お金・退会・法律を先に分ける |
+| `src/reply_draft/draft.ts` | 既存資産を通して下書きを1件組み立てる |
+| `src/reply_draft/store.ts` | 受信の待ち行列と下書きの保存（同じ受信からは1つだけ） |
+| `src/reply_draft/notify.ts` | LINE本文と記録の組み立て |
+| `src/reply_draft/intake.ts` | webhook の受け口。記録するだけで返信はしない |
+| `src/reply_draft/run.ts` | 入口（`npm run reply-draft`） |
+| `deploy/launchd/com.flatup.openqlow.reply-draft.plist` | 5分ごとの自動実行（既定はオフ） |
+
+- Obsidianへの保存も入れた（Vaultが見つからない日はローカルだけに残す）。当初Phase 2に置いていたが、記録が残らない期間を作らないため前倒しした。
+- 静音時間もこの段階で入れた（夜に作った下書きは翌朝まとめて1通）。
+- **送信する関数はこの配下に1つも無い。** LINEへのpushは既存の `notifier.ts` 経由でJIN宛のみ。
+
+有効にする順番:
+
+```bash
+# 1. まず様子を見る（保存も通知もしない）
+OPENQLOW_REPLY_DRAFT_ENABLED=true npm run reply-draft
+
+# 2. 納得したら保存と通知を有効にする
+OPENQLOW_REPLY_DRAFT_ENABLED=true OPENQLOW_DRY_RUN=false npm run reply-draft
+```
+
+残りは Phase 2 の日次まとめ、Phase 3 の Gmail、Phase 4 の Gmail下書き保存。
 
 ## 15. JINに決めてほしいこと
 

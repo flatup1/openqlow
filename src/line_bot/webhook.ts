@@ -12,6 +12,7 @@ import { pseudonymize } from "./pseudonymize.js";
 import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
 import { createJourneyFromWebos, executeLineJourneyLink } from "./journey_intake.js";
 import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
+import { captureInboundForDraft } from "../reply_draft/intake.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
   exceedsWebhookBodyLimit,
@@ -294,12 +295,24 @@ const server = http.createServer(async (req, res) => {
                 sealMemberReply(brandGrowth as unknown as Record<string, unknown>, memberReplyAllowed),
               );
             } else {
-              results.push({
-                ok: true,
-                action: "ignored",
-                message: "non_approver_message_ignored",
-                replyToSender: false,
+              // どのハンドラも拾わなかったお客様のメッセージは、返信下書きの待ち行列へ置く。
+              // ここで返信はしない（replyToSender は常に false）。
+              // 下書きを作るのは src/reply_draft/run.ts で、送るのは JIN。
+              const captured = await captureInboundForDraft({
+                text: ev.text ?? "",
+                lineUserId: ev.userId,
+                messageId: ev.messageId,
               });
+              results.push(
+                captured.captured
+                  ? { ok: true, action: captured.action, replyToSender: false }
+                  : {
+                      ok: true,
+                      action: "ignored",
+                      message: "non_approver_message_ignored",
+                      replyToSender: false,
+                    },
+              );
             }
           }
           continue;
