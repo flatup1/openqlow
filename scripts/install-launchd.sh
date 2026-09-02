@@ -10,7 +10,9 @@
 
 set -euo pipefail
 
-LABEL="com.flatup.openqlow.organize-posts"
+# 既定は organize-posts。別のエージェントを入れるときはラベルを渡す。
+#   OPENQLOW_LAUNCHD_LABEL=com.flatup.openqlow.cleanup bash scripts/install-launchd.sh
+LABEL="${OPENQLOW_LAUNCHD_LABEL:-com.flatup.openqlow.organize-posts}"
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST_SRC="${PROJECT_ROOT}/deploy/launchd/${LABEL}.plist"
 PLIST_DST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
@@ -79,7 +81,7 @@ cmd_trigger() {
     exit 1
   fi
   launchctl kickstart -k "${GUI_DOMAIN}/${LABEL}"
-  echo "[install-launchd] kickstarted. check log: ${LOG_DIR}/openqlow-organize.log"
+  echo "[install-launchd] kickstarted. check log: ${LOG_DIR}/"
 }
 
 case "${1:-install}" in

@@ -47,8 +47,13 @@ npm run inquiry -- "<問い合わせ文>"
 npm run trial-followup -- --gender female --status 検討中
 npm run ad-copy -- --segment women_beginner
 npm run site-audit -- --file ./index.html
+npm run cleanup          # ゴミ収集クリーン（お試し実行）
+npm run cleanup:apply    # ゴミ収集クリーン（本番実行）
 npm run test
 ```
+
+デスクトップの自動整頓・ゴミ箱・外付けバックアップは `docs/CLEANUP_SYSTEM.md` を参照。
+何も設定しなければお試し実行で、ファイルは1件も動きません。
 
 ### テストの走らせ方
 

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ゴミ収集クリーンシステム。毎朝 6:20 に1回だけ走る。
+
+  この plist のままでは「お試し実行」で、ファイルは1件も動かない。
+  中身を見て納得してから、下の EnvironmentVariables を次の順で有効にする。
+
+    1. OPENQLOW_CLEANUP_APPLY=true        整頓とゴミ箱待ちへの移動を実際に行う
+    2. OPENQLOW_CLEANUP_BACKUP_ROOT=...   外付けドライブへコピーする
+    3. OPENQLOW_CLEANUP_PURGE=true        30日を過ぎたゴミ箱待ちを完全削除する
+    4. OPENQLOW_CLEANUP_EMPTY_TRASH=true  Macのゴミ箱の古いファイルも消す
+
+  1つ変えたら数日ようすを見る。いきなり全部を true にしない。
+  止めたいときは OPENQLOW_CLEANUP_DISABLED=true にして読み込み直す。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.flatup.openqlow.cleanup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>cd "/Users/jin/Desktop/OPENQLOW HelMES/openqlow" &amp;&amp; npm run cleanup &gt;&gt; "$HOME/Library/Logs/openqlow-cleanup.log" 2&gt;&amp;1</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jin/Desktop/OPENQLOW HelMES/openqlow</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>20</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jin/Library/Logs/openqlow-cleanup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jin/Library/Logs/openqlow-cleanup.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+
+        <key>OPENQLOW_CLEANUP_TARGETS</key>
+        <string>~/Desktop,~/Downloads</string>
+
+        <key>OPENQLOW_CLEANUP_IDLE_DAYS</key>
+        <string>1</string>
+        <key>OPENQLOW_CLEANUP_RETENTION_DAYS</key>
+        <string>30</string>
+
+        <!-- ここから下が「実際に動かす」スイッチ。既定は全部オフ。 -->
+        <key>OPENQLOW_CLEANUP_APPLY</key>
+        <string>false</string>
+        <key>OPENQLOW_CLEANUP_BACKUP_ROOT</key>
+        <string></string>
+        <key>OPENQLOW_CLEANUP_PURGE</key>
+        <string>false</string>
+        <key>OPENQLOW_CLEANUP_EMPTY_TRASH</key>
+        <string>false</string>
+
+        <!-- LINE通知。送り先は Jin のみ（notifier.ts が他へは送らない）。 -->
+        <key>OPENQLOW_LINE_DRY_RUN</key>
+        <string>false</string>
+    </dict>
+</dict>
+</plist>
