@@ -14,7 +14,7 @@ import { pseudonymize } from "../line_bot/pseudonymize.js";
 import { loadReplyDraftConfig, type ReplyDraftConfig } from "./config.js";
 import { buildReplyDraft } from "./draft.js";
 import { draftIdFor, eventKey, hasSeen, markSeen, type InquirySource } from "./dedupe.js";
-import { deliverDrafts, type NotifyDeps, type PushImpl } from "./notify.js";
+import { deliverDrafts, flushPendingNotifications, type NotifyDeps, type PushImpl } from "./notify.js";
 import { appendJsonl, appendRunLog, saveDraft, type ReplyDraftRecord } from "./store.js";
 import { dateInJst } from "./time.js";
 
@@ -132,6 +132,13 @@ export async function processInquiryEvent(
 
   // ③ 処理済みとして記録。ここまで来た件は、二度目の受信で下書きも通知も増えない。
   await markSeen(config.root, event.source, key, now, config.seenRetentionDays);
+
+  // 静音時間の間にたまった通知を先に流す。静音時間中も保留が空のときも何もしない。
+  // これが無いと、夜中に届いた分は「翌朝たまたま次の問い合わせが来たとき」しか届かない。
+  const flushed = await flushPendingNotifications(config.root, now, config, { push: deps.push } as NotifyDeps);
+  if (flushed.notified) {
+    await safeRunLog(config.root, dateJst, `保留分を通知 ${flushed.notifiedCount}件`, now.toISOString());
+  }
 
   // ④ JINへ通知。静音時間や送信失敗のときは保留へ積む（下書きは消えない）。
   const delivery = await deliverDrafts(config.root, [record], now, config, { push: deps.push } as NotifyDeps);

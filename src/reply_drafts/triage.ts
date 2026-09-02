@@ -37,6 +37,7 @@ export type EscalationReason =
   | "safety"
   | "minor_sensitive"
   | "special_request"
+  | "outside_canon"
   | "too_little_information";
 
 export interface TriageResult {
@@ -89,6 +90,19 @@ const ESCALATION_RULES: Array<{ reason: EscalationReason; patterns: RegExp[] }> 
   {
     reason: "special_request",
     patterns: [/特例|例外|特別に|値引き|割引して|まけて|安くして|無料にして|裏メニュー/],
+  },
+  // 正本(canon)に無いサービスの問い合わせ。答えられる材料が無いので推測で書かない（要件 §26）。
+  // ここを止めないと、パーソナルの料金を聞かれて通常の月会費を並べる、という
+  // 「間違ってはいないが答えになっていない」下書きがJINへ届く。
+  {
+    reason: "outside_canon",
+    patterns: [
+      /パーソナル|マンツーマン|個人レッスン|プライベートレッスン/,
+      /出張|貸切|合宿|遠征/,
+      /法人|企業(研修|向け)|団体(利用|割)/,
+      /物販|プロテイン|サプリ|グッズ販売/,
+      /スポンサー|取材|撮影許可|イベント(出演|依頼|開催)/,
+    ],
   },
 ];
 
@@ -215,5 +229,6 @@ export const ESCALATION_LABEL: Record<EscalationReason, string> = {
   safety: "安全上の配慮",
   minor_sensitive: "未成年のセンシティブ案件",
   special_request: "特例の要望",
+  outside_canon: "正本にない内容",
   too_little_information: "情報不足",
 };

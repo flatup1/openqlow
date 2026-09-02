@@ -36,6 +36,7 @@ const escalated = [
   "返金してもらえますか",
   "弁護士に相談します",
   "子どもが怪我をしています",
+  "パーソナルレッスンの料金を教えてください",
 ];
 for (const message of escalated) {
   const draft = buildReplyDraft(message);

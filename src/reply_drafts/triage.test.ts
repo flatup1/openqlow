@@ -58,6 +58,21 @@ for (const [message, reason] of escalateCases) {
   assert(result.reasons.includes(reason as never), `理由に ${reason} が入る: ${message}`);
 }
 
+// ---- 正本に無いサービスは推測で答えない（要件 §26）----
+const outsideCanon = [
+  "パーソナルレッスンの料金を教えてください",
+  "マンツーマンで見てもらえますか",
+  "出張指導はやっていますか",
+  "法人研修をお願いできますか",
+  "プロテインの物販はありますか",
+  "取材をお願いしたいのですが",
+];
+for (const message of outsideCanon) {
+  const result = triageInquiry(message);
+  assert(result.escalate, `正本に無い話は止める: ${message}`);
+  assert(result.reasons.includes("outside_canon"), `理由は outside_canon: ${message}`);
+}
+
 // 情報が無さすぎる問い合わせも止める。
 assert(triageInquiry("？").escalate, "情報不足は止める");
 assert(triageInquiry("").escalate, "空文は止める");

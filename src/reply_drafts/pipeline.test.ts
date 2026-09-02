@@ -142,6 +142,31 @@ const event = {
   await fs.rm(root, { recursive: true, force: true });
 }
 
+// ---- 夜のうちに届いた分は、朝の実行でまとめて流れる（要件 §37-38）----
+{
+  const root = await tempRoot();
+  const push = fakePush();
+  const config = configFor(root, { REPLY_DRAFT_ENABLED: "true", OPENQLOW_DRY_RUN: "false" });
+  const night = new Date("2026-09-01T14:30:00Z"); // JST 23:30
+
+  const nightly = await processInquiryEvent({ ...event, eventId: "night-1" }, { now: night, config, push: push.push });
+  assert(nightly.outcome === "saved", "夜でも保存はする");
+  assert(nightly.notified === false && nightly.queued === true, "夜は通知せず保留へ");
+  assert(push.calls.length === 0, "静音時間はLINEへ1通も送らない");
+
+  const morning = new Date("2026-09-01T22:10:00Z"); // JST 翌07:10
+  await processInquiryEvent({ ...event, eventId: "morning-1", text: "料金はいくらですか" }, { now: morning, config, push: push.push });
+  assert(push.calls.length === 2, "朝は保留分と新着の2通が届く");
+  assert(push.calls[0].includes("体験問い合わせ"), "1通目は夜の保留分");
+  assert(push.calls[1].includes("料金問い合わせ"), "2通目は朝の新着");
+
+  // もう一度朝に処理しても、保留分が二度届くことはない。
+  await processInquiryEvent({ ...event, eventId: "morning-2", text: "駐車場はありますか" }, { now: morning, config, push: push.push });
+  assert(push.calls.length === 3, "保留分の再送は起きない");
+
+  await fs.rm(root, { recursive: true, force: true });
+}
+
 // ---- 保存できなければ成功扱いにしない（要件 §32）----
 {
   const root = await tempRoot();
