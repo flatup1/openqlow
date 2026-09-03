@@ -49,6 +49,26 @@ curl -i -X OPTIONS https://aika.flatupnarita.jp/journey \
 
 HTTP 204と `Access-Control-Allow-Origin: https://flatupnarita.jp` が返れば受け口は稼働中。
 
+## 「本当にできてる？」を確かめる（Jin）
+
+反映が終わったか不安なときは、**見るだけ・何も変えない**健康診断を1コマンドで回す。
+
+```bash
+npm run check
+```
+
+4つを順に見て、ダメなものだけ「次の一手」を出す。全部通れば終了コード0。
+
+| 見るもの | 合格 | 不合格のとき |
+| --- | --- | --- |
+| 本番のコード（`deployed-version.txt`） | GitHubのmainと同じSHA | 反映をやり直す |
+| LINE自動応答（`openqlow-webhook`） | `active` | `journalctl` でログ確認 |
+| 引き継ぎコードの受け口 `/journey` | **405**（POST専用の正しい反応） | 未反映 or nginx未設定 |
+| WebOSページ `/webos/` | 200 かつ `?v=` が手元と同じ | XServerへ上げ直す |
+
+つながらない時（`000`）は「本番が落ちた」ではなく「回線の問題」と表示する。
+鍵の無い端末で公開側だけ見たいときは `npm run check -- --public`。
+
 最後にWebOS側の最新 `app/` 一式（js含む）をXServerへ上書きすれば、結果画面のLINEボタンが自動で引き継ぎリンクになる。
 
 ## Jin に届く通知の例
