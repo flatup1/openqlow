@@ -21,6 +21,22 @@ export type PushImpl = (text: string) => Promise<{ ok: boolean; mode: string; er
 
 const defaultPush: PushImpl = text => pushLineMessage(text);
 
+/**
+ * 送信を試みる。例外は失敗として扱う。
+ *
+ * ネットワークが切れているときの fetch は「false を返す」のではなく「例外を投げる」。
+ * ここで例外を通すと、下書きは保存済み・処理済みなのに保留へも積まれず、
+ * JINへの通知が二度と届かなくなる（実際にそうなることを確認済み）。
+ * 失敗はすべて同じ扱いにして、保留へ戻す。
+ */
+async function tryPush(push: PushImpl, text: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    return await push(text);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 const BODY_PREVIEW_CHARS = 300;
 const MESSAGE_PREVIEW_CHARS = 120;
 
@@ -173,8 +189,10 @@ export interface NotifyDeps {
 }
 
 async function markNotified(root: string, records: ReplyDraftRecord[], now: Date): Promise<void> {
+  // 通知はもう届いている。ここで落ちても届いた事実は変わらないので、失敗させない。
+  // 特に保留を空にする前に落ちると、同じ通知がもう一度届いてしまう。
   for (const record of records) {
-    await saveDraft(root, { ...record, notifiedAt: now.toISOString() });
+    await saveDraft(root, { ...record, notifiedAt: now.toISOString() }).catch(() => {});
   }
 }
 
@@ -197,7 +215,7 @@ export async function deliverDrafts(
   }
 
   const push = deps.push ?? defaultPush;
-  const result = await push(renderNotification(records, now, config.notifyMaxItems, root));
+  const result = await tryPush(push, renderNotification(records, now, config.notifyMaxItems, root));
   if (!result.ok) {
     await queuePending(root, records.map(record => ({ id: record.id, dateJst: record.dateJst })));
     return { notified: false, notifiedCount: 0, queuedCount: records.length, reason: "push_failed" };
@@ -237,7 +255,7 @@ export async function flushPendingNotifications(
   }
 
   const push = deps.push ?? defaultPush;
-  const result = await push(renderNotification(records, now, config.notifyMaxItems, root));
+  const result = await tryPush(push, renderNotification(records, now, config.notifyMaxItems, root));
   if (!result.ok) {
     return { notified: false, notifiedCount: 0, queuedCount: records.length, reason: "push_failed" };
   }

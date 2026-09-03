@@ -153,5 +153,36 @@ const retry = fakePush();
 const retried = await flushPendingNotifications(root, day, config, { push: retry.push });
 assert(retried.notified && retry.calls.length === 1, "復旧後に1回だけ届く");
 
+// ---- 送信が「例外を投げた」ときも、失敗として扱う（要件 §32）----
+// ネットワークが切れているときの fetch は false を返さず例外を投げる。
+// ここを取りこぼすと、下書きは保存済みなのに通知が二度と届かなくなる。
+{
+  const thrown = record("t1", { dateJst: "2026-09-04" });
+  await saveDraft(root, thrown);
+  const throwingPush = async () => {
+    throw new Error("fetch failed");
+  };
+
+  const delivered = await deliverDrafts(root, [thrown], day, config, { push: throwingPush });
+  assert(!delivered.notified, "例外は成功にしない");
+  assert(delivered.reason === "push_failed", "例外も送信失敗として扱う");
+  assert(delivered.queuedCount === 1, "保留へ戻す");
+  assert(await loadDraft(root, thrown.dateJst, thrown.id), "下書きは残っている");
+
+  const stillPending = JSON.parse(await fs.readFile(pendingPath(root), "utf8")) as { items: Array<{ id: string }> };
+  assert(stillPending.items.some(item => item.id === "t1"), "保留に積まれている");
+
+  // 保留を流す側でも同じ。例外で保留が消えてはいけない。
+  const flushThrew = await flushPendingNotifications(root, day, config, { push: throwingPush });
+  assert(!flushThrew.notified && flushThrew.reason === "push_failed", "流す側でも例外は失敗扱い");
+  const afterFlush = JSON.parse(await fs.readFile(pendingPath(root), "utf8")) as { items: Array<{ id: string }> };
+  assert(afterFlush.items.some(item => item.id === "t1"), "失敗したら保留は残す");
+
+  // 復旧したら届く。
+  const recovered = fakePush();
+  const ok = await flushPendingNotifications(root, day, config, { push: recovered.push });
+  assert(ok.notified, "復旧後は届く");
+}
+
 await fs.rm(root, { recursive: true, force: true });
 console.log("reply_drafts notify tests passed");

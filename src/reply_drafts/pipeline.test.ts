@@ -9,6 +9,7 @@ import { loadReplyDraftConfig, replyDraftStateDir } from "./config.js";
 import { captureLineInquiryDraft } from "./line_intake.js";
 import { processInquiryEvent } from "./pipeline.js";
 import { jsonlPath, runLogPath } from "./store.js";
+import { flushPendingNotifications } from "./notify.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -189,6 +190,30 @@ const event = {
   assert(result.ok && result.outcome === "saved", "保存は成功している");
   assert(result.notified === false && result.queued === true, "通知は保留へ回る");
   assert((await listFiles(path.join(replyDraftStateDir(root), "2026-09-02"))).length === 1, "下書きは残っている");
+  await fs.rm(root, { recursive: true, force: true });
+}
+
+// ---- 通知が例外で落ちても、下書きは保留へ回る（要件 §32）----
+{
+  const root = await tempRoot();
+  const config = configFor(root, { REPLY_DRAFT_ENABLED: "true", OPENQLOW_DRY_RUN: "false" });
+  const throwingPush = async () => {
+    throw new Error("fetch failed");
+  };
+
+  const result = await processInquiryEvent(event, { now, config, push: throwingPush });
+  assert(result.ok && result.outcome === "saved", "保存は成功している");
+  assert(result.notified === false && result.queued === true, "例外でも保留へ回る");
+  assert(
+    (await listFiles(path.join(replyDraftStateDir(root), "2026-09-02"))).length === 1,
+    "下書きは残っている",
+  );
+
+  // 復旧後に流せばJINへ届く（通知が消えていない）。
+  const recovered = fakePush();
+  const flushed = await flushPendingNotifications(root, now, config, { push: recovered.push });
+  assert(flushed.notified && recovered.calls.length === 1, "復旧後に届く");
+
   await fs.rm(root, { recursive: true, force: true });
 }
 
