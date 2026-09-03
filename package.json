@@ -160,7 +160,9 @@
     "test:line-withdrawal-intake": "tsx src/line_bot/withdrawal_intake.test.ts",
     "test:weekly-organize": "tsx src/commands/weekly_organize.test.ts",
     "deploy": "bash deploy/scripts/deploy-vps.sh",
+    "check": "bash deploy/scripts/check-prod.sh",
     "test:deploy-vps": "node scripts/deploy-vps.test.mjs",
+    "test:check-prod": "node scripts/check-prod.test.mjs",
     "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts",
     "test:vps-role-guard": "node scripts/vps-role-guard.test.mjs"
   },
