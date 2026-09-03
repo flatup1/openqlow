@@ -4,6 +4,7 @@
 // 振る舞いではなく実装を読む。将来だれかが送信コードを足したら、ここで落ちる。
 
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ForbiddenActionError } from "../safety/forbidden_actions.js";
@@ -14,14 +15,51 @@ function assert(condition: unknown, message: string): void {
 }
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const names = (await fs.readdir(moduleDir)).filter(
-  name => name.endsWith(".ts") && !name.endsWith(".test.ts"),
-);
-assert(names.length > 0, "実装ファイルが読めている");
 
-const sources = new Map<string, string>();
-for (const name of names) {
-  sources.set(name, await fs.readFile(path.join(moduleDir, name), "utf8"));
+// フォルダの下まで全部読む。
+// 直下だけを見ていたときは、src/reply_drafts/senders/customer.ts に
+// sendCustomerReply と api.line.me を置いても、このテストは通ってしまった。
+// 「この保証はここまでしか見ていません」という穴を残さない。
+async function collectSources(dir: string, prefix = ""): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      for (const [name, text] of await collectSources(path.join(dir, entry.name), relative)) {
+        found.set(name, text);
+      }
+      continue;
+    }
+    if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
+    found.set(relative, await fs.readFile(path.join(dir, entry.name), "utf8"));
+  }
+  return found;
+}
+
+// この検査そのものが「どこまで見ているか」を先に確かめる。
+// 直下しか見ていなかったとき、サブフォルダに置いた顧客送信コードは素通りした。
+// 検査の範囲が縮んだことに気づけないのが、いちばん危ない。
+{
+  const probe = await fs.mkdtemp(path.join(os.tmpdir(), "no-send-scan-"));
+  await fs.mkdir(path.join(probe, "nested", "deeper"), { recursive: true });
+  await fs.writeFile(path.join(probe, "top.ts"), "export const a = 1;\n", "utf8");
+  await fs.writeFile(path.join(probe, "nested", "deeper", "hidden.ts"), "export const b = 2;\n", "utf8");
+  await fs.writeFile(path.join(probe, "nested", "skip.test.ts"), "export const c = 3;\n", "utf8");
+
+  const scanned = await collectSources(probe);
+  assert(scanned.has("top.ts"), "直下のファイルを見ている");
+  assert(scanned.has("nested/deeper/hidden.ts"), "フォルダの奥まで見ている");
+  assert(!scanned.has("nested/skip.test.ts"), "テストファイルは検査対象にしない");
+
+  await fs.rm(probe, { recursive: true, force: true });
+}
+
+const sources = await collectSources(moduleDir);
+assert(sources.size > 0, "実装ファイルが読めている");
+// 直下のファイルを確実に見ていること（読み取りが壊れて0件検査にならないように）。
+for (const required of ["draft.ts", "notify.ts", "pipeline.ts", "line_intake.ts"]) {
+  assert(sources.has(required), `${required} を検査対象にできている`);
 }
 
 // 顧客へ届きうる送信手段そのものを持たない。
