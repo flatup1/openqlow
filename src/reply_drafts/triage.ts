@@ -38,6 +38,7 @@ export type EscalationReason =
   | "minor_sensitive"
   | "special_request"
   | "outside_canon"
+  | "build_failed"
   | "too_little_information";
 
 export interface TriageResult {
@@ -230,5 +231,6 @@ export const ESCALATION_LABEL: Record<EscalationReason, string> = {
   minor_sensitive: "未成年のセンシティブ案件",
   special_request: "特例の要望",
   outside_canon: "正本にない内容",
+  build_failed: "下書きを作れなかった",
   too_little_information: "情報不足",
 };

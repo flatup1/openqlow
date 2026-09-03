@@ -89,9 +89,52 @@ function pickBaseReply(result: ReturnType<typeof generateInquiryReply>): string 
 }
 
 /**
+ * 何があっても問い合わせを捨てないための最後の受け皿。
+ *
+ * 下書きが作れなくても、JINには「JIN確認」として必ず届ける。
+ * 黙って消えるのがいちばん悪い。お客様は返事を待っているのに、
+ * JINは問い合わせが来たことすら知らない、という状態になる。
+ *
+ * 伏字にすら失敗した場合は、本文を一切載せない。
+ * 生の連絡先を通知やファイルへ出すくらいなら、本文が無い方がよい。
+ */
+export function failedDraft(rawMessage: string, error: unknown): ReplyDraftBuild {
+  let maskedMessage: string;
+  try {
+    maskedMessage = sanitiseFreeText(rawMessage).trim();
+  } catch {
+    maskedMessage = "（本文を伏字にできなかったため載せていません）";
+  }
+  const reason = error instanceof Error ? error.message : String(error);
+  return {
+    maskedMessage,
+    category: "other",
+    priority: "ESCALATE",
+    escalate: true,
+    reasons: ["build_failed"],
+    aboutMinor: false,
+    notes: [
+      "下書きを作れませんでした。JINが内容を確認してください。",
+      `原因: ${reason}`,
+    ],
+  };
+}
+
+/**
  * 問い合わせ1件から下書きを作る。純関数（保存も送信もしない）。
+ *
+ * 例外を外へ出さない。ここで落ちると呼び出し側で問い合わせが消えるため、
+ * 想定外の失敗も「JIN確認」に変えて必ず返す。
  */
 export function buildReplyDraft(rawMessage: string): ReplyDraftBuild {
+  try {
+    return buildReplyDraftOrEscalate(rawMessage);
+  } catch (error) {
+    return failedDraft(rawMessage, error);
+  }
+}
+
+function buildReplyDraftOrEscalate(rawMessage: string): ReplyDraftBuild {
   // STEP 3: 個人情報マスキング。ここから先は伏字の本文しか扱わない。
   const maskedMessage = sanitiseFreeText(rawMessage).trim();
 

@@ -6,6 +6,7 @@
 // Obsidian への書き出し（要件 §27-29 の閲覧用ノート）は Phase 2。
 // Phase 1 は state/ 配下のローカル保存だけを持ち、外部依存を1つも増やさない。
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { replyDraftStateDir } from "./config.js";
@@ -63,7 +64,11 @@ export function runLogPath(root: string, dateJst: string): string {
 export async function saveDraft(root: string, record: ReplyDraftRecord): Promise<string> {
   const file = draftPath(root, record);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  // いったん隣へ書いてから置き換える。途中で落ちても、読めない書きかけの
+  // ファイルが残らない（読めないと通知の保留から黙って外れてしまう）。
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await fs.writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await fs.rename(temporary, file);
   return file;
 }
 
