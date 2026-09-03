@@ -10,6 +10,7 @@ import {
   deliverDrafts,
   flushPendingNotifications,
   pendingPath,
+  queuePending,
   renderNotification,
 } from "./notify.js";
 import { loadDraft, saveDraft, type ReplyDraftRecord } from "./store.js";
@@ -182,6 +183,89 @@ assert(retried.notified && retry.calls.length === 1, "復旧後に1回だけ届�
   const recovered = fakePush();
   const ok = await flushPendingNotifications(root, day, config, { push: recovered.push });
   assert(ok.notified, "復旧後は届く");
+}
+
+// ---- 保留リストが使えなくても、下書きは通知される ----
+//
+// 保留リストへの書き込みが失敗すると、下書きはディスクに残っているのに
+// 「通知すべきもの」の手がかりが消える。実際にそれで通知が0通になった。
+// ディスク側にも手がかりを持たせて、拾い直せることを固定する。
+{
+  const orphanRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-orphan-"));
+  const orphanConfig = { ...config, root: orphanRoot };
+  const received = "2026-09-03T00:00:00.000Z"; // JST 09:00（静音時間外）
+
+  // 保存はされたが、保留リストには載らなかった下書き。
+  const orphan = record("orphan1", { dateJst: "2026-09-03", receivedAt: received, notifiedAt: undefined });
+  await saveDraft(orphanRoot, orphan);
+  assert(
+    !(await fs.readFile(pendingPath(orphanRoot), "utf8").catch(() => "")),
+    "前提: 保留リストは存在しない",
+  );
+
+  // 受け取った直後は拾わない。処理の途中と重なって二重に届くのを防ぐため。
+  const tooSoon = fakePush();
+  const immediate = await flushPendingNotifications(
+    orphanRoot,
+    new Date(Date.parse(received) + 60 * 1000),
+    orphanConfig,
+    { push: tooSoon.push },
+  );
+  assert(!immediate.notified, "受け取った直後は拾わない");
+  assert(tooSoon.calls.length === 0, "猶予の内は送らない");
+
+  // 猶予を過ぎたら拾って通知する。
+  const later = new Date(Date.parse(received) + 30 * 60 * 1000);
+  const recovery = fakePush();
+  const rescued = await flushPendingNotifications(orphanRoot, later, orphanConfig, { push: recovery.push });
+  assert(rescued.notified, "保留に載っていなくても通知する");
+  assert(rescued.notifiedCount === 1, `拾い直しは1件（実際: ${rescued.notifiedCount}）`);
+  assert(recovery.calls.length === 1, "JINへ1通だけ届く");
+
+  // 二度は届かない。
+  const again = fakePush();
+  const second = await flushPendingNotifications(
+    orphanRoot,
+    new Date(later.getTime() + 60 * 60 * 1000),
+    orphanConfig,
+    { push: again.push },
+  );
+  assert(!second.notified, "同じ下書きを二度通知しない");
+  assert(again.calls.length === 0, "二度目は送らない");
+
+  // 通知済みの印が残っている。
+  const after = await loadDraft(orphanRoot, orphan.dateJst, orphan.id);
+  assert(after?.notifiedAt, "通知済みとして記録されている");
+
+  await fs.rm(orphanRoot, { recursive: true, force: true });
+}
+
+// 保留リストの参照先が消えていても、他の下書きの通知は止まらない。
+{
+  const mixedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-mixed-"));
+  const mixedConfig = { ...config, root: mixedRoot };
+  const alive = record("alive1", { dateJst: "2026-09-03", receivedAt: "2026-09-03T00:00:00.000Z" });
+  await saveDraft(mixedRoot, alive);
+  await queuePending(mixedRoot, [
+    { id: "gone1", dateJst: "2026-08-01" },
+    { id: alive.id, dateJst: alive.dateJst },
+  ]);
+
+  const push = fakePush();
+  const flushed = await flushPendingNotifications(
+    mixedRoot,
+    new Date("2026-09-03T00:30:00.000Z"),
+    mixedConfig,
+    { push: push.push },
+  );
+  assert(flushed.notified && flushed.notifiedCount === 1, "読める分だけ通知する");
+
+  const remaining = JSON.parse(await fs.readFile(pendingPath(mixedRoot), "utf8")) as {
+    items: Array<{ id: string }>;
+  };
+  assert(remaining.items.length === 0, `消えた参照も外す（残り: ${remaining.items.length}）`);
+
+  await fs.rm(mixedRoot, { recursive: true, force: true });
 }
 
 await fs.rm(root, { recursive: true, force: true });

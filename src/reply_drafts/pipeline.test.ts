@@ -290,4 +290,41 @@ const event = {
   await fs.rm(root, { recursive: true, force: true });
 }
 
+// ---- 通知の段が壊れても、問い合わせは失われない ----
+//
+// 保留リストの置き場所が壊れていると、通知の段が例外を投げる。
+// その例外を外へ出すと受け口は失敗を返すが、すでに「処理済み」なので
+// LINEが再送してきても duplicate で終わる。JINには何も残らない。
+{
+  const root = await tempRoot();
+  const live = configFor(root, { REPLY_DRAFT_ENABLED: "true", OPENQLOW_DRY_RUN: "false" });
+  // 保留リストの場所をディレクトリにして、書き込みが必ず失敗する状態を作る。
+  await fs.mkdir(pendingPath(root), { recursive: true });
+
+  const broken = async () => {
+    throw new Error("network unreachable");
+  };
+  const result = await captureLineInquiryDraft(
+    { text: "体験を申し込みたいです", lineUserId: "U-customer", webhookEventId: "evt-notify-broken" },
+    { now, config: live, push: broken },
+  );
+  assert(result.ok, "通知の段の失敗で受け口を失敗にしない");
+  assert(result.outcome === "saved", `下書きは保存済みとして返す（実際: ${result.outcome}）`);
+  assert(result.replyToSender === false, "お客様へは何も返さない");
+
+  // 下書きはディスクに残っている。
+  const files = await listFiles(replyDraftStateDir(root));
+  assert(files.some(name => name.endsWith(".json")), "下書きが保存されている");
+
+  // 保留リストが直ったあと、拾い直して届く。
+  await fs.rm(pendingPath(root), { recursive: true, force: true });
+  const recovery = fakePush();
+  const later = new Date(now.getTime() + 30 * 60 * 1000);
+  const flushed = await flushPendingNotifications(root, later, live, { push: recovery.push });
+  assert(flushed.notified, "復旧後はJINへ届く");
+  assert(recovery.calls.length === 1, `JINへ1通（実際: ${recovery.calls.length}）`);
+
+  await fs.rm(root, { recursive: true, force: true });
+}
+
 console.log("reply_drafts pipeline tests passed");

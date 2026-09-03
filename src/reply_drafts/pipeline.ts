@@ -14,7 +14,13 @@ import { pseudonymize } from "../line_bot/pseudonymize.js";
 import { loadReplyDraftConfig, type ReplyDraftConfig } from "./config.js";
 import { buildReplyDraft } from "./draft.js";
 import { draftIdFor, eventKey, hasSeen, markSeen, type InquirySource } from "./dedupe.js";
-import { deliverDrafts, flushPendingNotifications, type NotifyDeps, type PushImpl } from "./notify.js";
+import {
+  deliverDrafts,
+  flushPendingNotifications,
+  type DeliveryResult,
+  type NotifyDeps,
+  type PushImpl,
+} from "./notify.js";
 import { appendJsonl, appendRunLog, saveDraft, type ReplyDraftRecord } from "./store.js";
 import { dateInJst } from "./time.js";
 
@@ -133,17 +139,28 @@ export async function processInquiryEvent(
   // ③ 処理済みとして記録。ここまで来た件は、二度目の受信で下書きも通知も増えない。
   await markSeen(config.root, event.source, key, now, config.seenRetentionDays);
 
-  // 静音時間の間にたまった通知を先に流す。静音時間中も保留が空のときも何もしない。
-  // これが無いと、夜中に届いた分は「翌朝たまたま次の問い合わせが来たとき」しか届かない。
-  const flushed = await flushPendingNotifications(config.root, now, config, { push: deps.push } as NotifyDeps);
-  if (flushed.notified) {
-    await safeRunLog(config.root, dateJst, `保留分を通知 ${flushed.notifiedCount}件`, now.toISOString());
-  }
+  // ④ JINへ通知。ここから先で何が起きても、下書きは保存済み・処理済みで動かない。
+  //
+  // 通知の段の失敗を外へ投げてはいけない。投げると受け口は失敗を返すが、
+  // すでに「処理済み」なのでLINEが再送してきても duplicate で終わる。
+  // 保存できているのに、JINには何も残らない。
+  // 失敗はここで受け止めて、実行ログに残す。拾い直しは flush が行う。
+  let delivery: DeliveryResult = { notified: false, notifiedCount: 0, queuedCount: 0 };
+  try {
+    // 静音時間の間にたまった通知を先に流す。静音時間中も保留が空のときも何もしない。
+    // これが無いと、夜中に届いた分は「翌朝たまたま次の問い合わせが来たとき」しか届かない。
+    const flushed = await flushPendingNotifications(config.root, now, config, { push: deps.push } as NotifyDeps);
+    if (flushed.notified) {
+      await safeRunLog(config.root, dateJst, `保留分を通知 ${flushed.notifiedCount}件`, now.toISOString());
+    }
 
-  // ④ JINへ通知。静音時間や送信失敗のときは保留へ積む（下書きは消えない）。
-  const delivery = await deliverDrafts(config.root, [record], now, config, { push: deps.push } as NotifyDeps);
-  if (delivery.reason === "push_failed") {
-    await safeRunLog(config.root, dateJst, `通知エラー ${id}（保留へ）`, now.toISOString());
+    delivery = await deliverDrafts(config.root, [record], now, config, { push: deps.push } as NotifyDeps);
+    if (delivery.reason === "push_failed") {
+      await safeRunLog(config.root, dateJst, `通知エラー ${id}（保留へ）`, now.toISOString());
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await safeRunLog(config.root, dateJst, `通知処理エラー ${id}: ${message}（下書きは保存済み）`, now.toISOString());
   }
 
   await safeRunLog(

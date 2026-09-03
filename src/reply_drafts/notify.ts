@@ -14,7 +14,7 @@ import path from "node:path";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { replyDraftStateDir, type ReplyDraftConfig } from "./config.js";
 import { withStateLock } from "./lock.js";
-import { stampInJst, isQuietHours } from "./time.js";
+import { dateInJst, stampInJst, isQuietHours } from "./time.js";
 import { CATEGORY_LABEL, ESCALATION_LABEL } from "./triage.js";
 import { draftDir, loadDraft, saveDraft, type ReplyDraftRecord } from "./store.js";
 
@@ -194,6 +194,65 @@ async function removePending(root: string, ids: string[]): Promise<void> {
   });
 }
 
+// ---- 取りこぼしの拾い直し ----
+//
+// 保留リストは「通知が要るもの」を覚えておくための手がかりでしかない。
+// その1ファイルへの書き込みが失敗すると、下書きはディスクに残っているのに
+// JINへの通知だけが永久に消える（保留に載っていないので flush でも拾えない）。
+//
+// 実際にそうなることを確認済み:
+//   保存された下書き: 1 件 / JINへ届いた通知: 0 通
+//   しかも「処理済み」なので、LINEが再送してきても duplicate で終わる。
+//
+// そこで、最後の手がかりをディスク側にも置く。
+// 「保存されているのに notifiedAt が無い下書き」は、拾い直して通知する。
+
+/** 拾い直すまでの猶予。いま処理中のものを二重に通知しないため。 */
+const RECOVERY_GRACE_MS = 10 * 60 * 1000;
+/** 拾い直す範囲（当日と前日）。これより古い取りこぼしは週1回の点検で見つける。 */
+const RECOVERY_DAYS = 2;
+/** 1回の通知で拾い直す上限。残りは次の実行で拾う。 */
+const RECOVERY_MAX = 50;
+
+function recentDatesJst(now: Date, days: number): string[] {
+  const dates: string[] = [];
+  for (let back = 0; back < days; back += 1) {
+    dates.push(dateInJst(new Date(now.getTime() - back * 24 * 60 * 60 * 1000)));
+  }
+  return Array.from(new Set(dates));
+}
+
+/**
+ * 保留リストに載っていないのに通知されていない下書きを、ディスクから拾う。
+ *
+ * 受け取ったばかりのものは拾わない。保存の直後・通知の直前という一瞬があり、
+ * そこで拾うと同じ件が二度届く。猶予を過ぎても通知されていないものだけが対象。
+ */
+async function findUnnotifiedDrafts(
+  root: string,
+  now: Date,
+  known: Set<string>,
+): Promise<ReplyDraftRecord[]> {
+  const found: ReplyDraftRecord[] = [];
+  for (const dateJst of recentDatesJst(now, RECOVERY_DAYS)) {
+    const files = await fs.readdir(draftDir(root, dateJst)).catch(() => [] as string[]);
+    for (const file of files.sort()) {
+      if (!file.endsWith(".json")) continue;
+      const id = file.slice(0, -".json".length);
+      if (known.has(id)) continue;
+      const record = await loadDraft(root, dateJst, id);
+      if (!record || record.notifiedAt) continue;
+      // 時刻が読めない記録は拾わない（毎回拾い続けて通知が止まらなくなる）。
+      const age = now.getTime() - Date.parse(record.receivedAt);
+      if (!(age >= RECOVERY_GRACE_MS)) continue;
+      found.push(record);
+      known.add(id);
+      if (found.length >= RECOVERY_MAX) return found;
+    }
+  }
+  return found;
+}
+
 export interface DeliveryResult {
   /** 通知を送ったか。 */
   notified: boolean;
@@ -246,8 +305,13 @@ export async function deliverDrafts(
 }
 
 /**
- * 保留ぶんをまとめて1回だけ通知する（要件 §38）。
- * 静音時間中は何もしない。送信できたときだけ保留を空にするので、二重には届かない。
+ * まだJINへ届いていない下書きを、まとめて1回だけ通知する（要件 §38）。
+ * 静音時間中は何もしない。送信できたときだけ保留を外すので、二重には届かない。
+ *
+ * 手がかりは2つ持つ。
+ *   ① 保留リスト   … 静音時間ぶん・送信失敗ぶん
+ *   ② ディスクの下書き … 保留リストへの書き込み自体が失敗した取りこぼし
+ * ①が壊れても②で拾える。下書きが残っているのに通知だけ消える、を無くす。
  */
 export async function flushPendingNotifications(
   root: string,
@@ -260,29 +324,37 @@ export async function flushPendingNotifications(
   }
 
   const refs = await withStateLock(`pending:${root}`, () => readPending(root));
-  if (refs.length === 0) return { notified: false, notifiedCount: 0, queuedCount: 0, reason: "nothing_to_send" };
 
   const records: ReplyDraftRecord[] = [];
+  const missingRefIds: string[] = [];
+  const known = new Set<string>();
   for (const ref of refs) {
+    known.add(ref.id);
     const record = await loadDraft(root, ref.dateJst, ref.id);
     if (record) records.push(record);
+    else missingRefIds.push(ref.id);
   }
+
+  // 保留リストに載っていない取りこぼしを、ディスクから拾い直す。
+  records.push(...(await findUnnotifiedDrafts(root, now, known)));
 
   if (records.length === 0) {
     // 参照先が消えている（保持期間切れなど）。読めなかった分だけ外して次へ進む。
-    await removePending(root, refs.map(ref => ref.id));
+    if (missingRefIds.length > 0) await removePending(root, missingRefIds);
     return { notified: false, notifiedCount: 0, queuedCount: 0, reason: "nothing_to_send" };
   }
 
   const push = deps.push ?? defaultPush;
   const result = await tryPush(push, renderNotification(records, now, config.notifyMaxItems, root));
   if (!result.ok) {
+    // 拾い直した分は保留にも積んでおく。次の実行が猶予を待たずに再挑戦できる。
+    await queuePending(root, records.map(record => ({ id: record.id, dateJst: record.dateJst })));
     return { notified: false, notifiedCount: 0, queuedCount: records.length, reason: "push_failed" };
   }
 
   await markNotified(root, records, now);
-  // 通知できた分だけを外す。送っている間に積まれた新しい分まで消さない。
-  // 全部消すと、送信中に届いた問い合わせの通知が失われる。
-  await removePending(root, records.map(record => record.id));
+  // 通知できた分と、参照先が消えていた分だけを外す。
+  // 送っている間に積まれた新しい分まで消すと、その通知が失われる。
+  await removePending(root, [...records.map(record => record.id), ...missingRefIds]);
   return { notified: true, notifiedCount: records.length, queuedCount: 0 };
 }
