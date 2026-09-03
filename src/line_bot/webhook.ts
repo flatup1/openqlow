@@ -11,6 +11,7 @@ import { isMemberAutoReplyEnabled, sealMemberReply } from "./member_reply_gate.j
 import { pseudonymize } from "./pseudonymize.js";
 import { type ExtractedEvent, extractLineEvents } from "./webhook_events.js";
 import { createJourneyFromWebos, executeLineJourneyLink } from "./journey_intake.js";
+import { captureLineInquiryDraft } from "../reply_drafts/line_intake.js";
 import { executeLineWithdrawalIntake } from "./withdrawal_intake.js";
 import {
   MAX_WEBHOOK_BODY_BYTES,
@@ -294,12 +295,26 @@ const server = http.createServer(async (req, res) => {
                 sealMemberReply(brandGrowth as unknown as Record<string, unknown>, memberReplyAllowed),
               );
             } else {
-              results.push({
-                ok: true,
-                action: "ignored",
-                message: "non_approver_message_ignored",
-                replyToSender: false,
+              // ここまで誰も拾わなかった会員・見込み客のメッセージ＝問い合わせ。
+              // これまでは捨てていた。返信下書きルーティンがJINのために下書きを作る。
+              // お客様へは何も返さない（replyToSender は常に false）。
+              const draft = await captureLineInquiryDraft({
+                text: ev.text ?? "",
+                lineUserId: ev.userId,
+                webhookEventId: ev.webhookEventId,
+                messageId: ev.messageId,
+                timestamp: ev.timestamp,
               });
+              results.push(
+                draft.handled
+                  ? { ok: draft.ok, action: draft.action, replyToSender: false }
+                  : {
+                      ok: true,
+                      action: "ignored",
+                      message: "non_approver_message_ignored",
+                      replyToSender: false,
+                    },
+              );
             }
           }
           continue;
