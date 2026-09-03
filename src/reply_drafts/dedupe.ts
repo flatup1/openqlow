@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { replyDraftStateDir } from "./config.js";
+import { withStateLock } from "./lock.js";
 
 export type InquirySource = "line" | "gmail";
 
@@ -106,12 +107,28 @@ export async function markSeen(
   now: Date,
   retentionDays: number,
 ): Promise<boolean> {
-  const file = seenStorePath(root, source);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const seen = await readSeen(file);
-  const already = Object.prototype.hasOwnProperty.call(seen.entries, key);
-  const entries = prune(seen.entries, now, retentionDays);
-  entries[key] = now.toISOString();
-  await fs.writeFile(file, `${JSON.stringify({ version: 1, entries }, null, 2)}\n`, "utf8");
-  return !already;
+  // 「読む→足す→書く」の途中に別の受信が割り込むと、片方の記録が消える。
+  // 同じ台帳への更新は順番に行わせる。
+  return withStateLock(`seen:${root}:${source}`, async () => {
+    const file = seenStorePath(root, source);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const seen = await readSeen(file);
+    const already = Object.prototype.hasOwnProperty.call(seen.entries, key);
+    const entries = prune(seen.entries, now, retentionDays);
+    entries[key] = now.toISOString();
+    await writeJsonAtomic(file, { version: 1, entries });
+    return !already;
+  });
+}
+
+/**
+ * いったん隣のファイルへ書いてから置き換える。
+ * 途中で落ちても、書きかけの壊れたファイルが残らない。
+ */
+async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
+  // 一時ファイル名は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを
+  // 奪い合って rename が失敗する（ロックに頼らず、これ単体で正しくしておく）。
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await fs.writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  await fs.rename(temporary, file);
 }

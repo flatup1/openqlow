@@ -9,7 +9,7 @@ import { loadReplyDraftConfig, replyDraftStateDir } from "./config.js";
 import { captureLineInquiryDraft } from "./line_intake.js";
 import { processInquiryEvent } from "./pipeline.js";
 import { jsonlPath, runLogPath } from "./store.js";
-import { flushPendingNotifications } from "./notify.js";
+import { flushPendingNotifications, pendingPath } from "./notify.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -213,6 +213,57 @@ const event = {
   const recovered = fakePush();
   const flushed = await flushPendingNotifications(root, now, config, { push: recovered.push });
   assert(flushed.notified && recovered.calls.length === 1, "復旧後に届く");
+
+  await fs.rm(root, { recursive: true, force: true });
+}
+
+// ---- 同時に届いても、1件も取りこぼさない ----
+// 保留リストは「読む→足す→書く」で更新するため、同時受信が互いを打ち消しうる。
+// 実際に5件同時で試すと、修正前は2件しか積まれず、通知が3件消えていた。
+{
+  const root = await tempRoot();
+  const config = configFor(root, { REPLY_DRAFT_ENABLED: "true", OPENQLOW_DRY_RUN: "false" });
+  const night = new Date("2026-09-01T14:30:00Z"); // JST 23:30（静音時間＝保留に積まれる）
+  const push = fakePush();
+
+  const many = Array.from({ length: 5 }, (_, index) => ({
+    source: "line" as const,
+    text: `体験したいです${index}`,
+    senderId: `U${index}`,
+    eventId: `concurrent-${index}`,
+  }));
+  await Promise.all(many.map(item => processInquiryEvent(item, { now: night, config, push: push.push })));
+
+  const queued = JSON.parse(await fs.readFile(pendingPath(root), "utf8")) as { items: Array<{ id: string }> };
+  assert(queued.items.length === 5, `同時受信でも5件とも保留に積まれる（実際: ${queued.items.length}）`);
+  assert(
+    (await listFiles(path.join(replyDraftStateDir(root), "2026-09-01"))).length === 5,
+    "下書きも5件そろっている",
+  );
+
+  // 朝になれば、5件ぶんがまとめて1回で届く。
+  const morning = new Date("2026-09-01T22:00:00Z");
+  const flushed = await flushPendingNotifications(root, morning, config, { push: push.push });
+  assert(flushed.notifiedCount === 5, `5件ぶんが届く（実際: ${flushed.notifiedCount}）`);
+
+  await fs.rm(root, { recursive: true, force: true });
+}
+
+// ---- 同じ問い合わせが同時に2回届いても、下書きは1件 ----
+{
+  const root = await tempRoot();
+  const config = configFor(root, { REPLY_DRAFT_ENABLED: "true", OPENQLOW_DRY_RUN: "false" });
+  const push = fakePush();
+
+  const results = await Promise.all([
+    processInquiryEvent(event, { now, config, push: push.push }),
+    processInquiryEvent(event, { now, config, push: push.push }),
+  ]);
+  assert(
+    (await listFiles(path.join(replyDraftStateDir(root), "2026-09-02"))).length === 1,
+    "同時でも下書きは1件",
+  );
+  assert(results.every(result => result.ok), "どちらも失敗しない");
 
   await fs.rm(root, { recursive: true, force: true });
 }

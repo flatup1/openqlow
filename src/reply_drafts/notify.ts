@@ -8,10 +8,12 @@
 // 静音時間（既定 22:00〜翌7:00）は即時通知しない。ただし受信・下書き・保存は行い、
 // 通知は保留リストへ積む。7:00以降の最初の実行でまとめて1回だけ届く（要件 §37-38）。
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { replyDraftStateDir, type ReplyDraftConfig } from "./config.js";
+import { withStateLock } from "./lock.js";
 import { stampInJst, isQuietHours } from "./time.js";
 import { CATEGORY_LABEL, ESCALATION_LABEL } from "./triage.js";
 import { draftDir, loadDraft, saveDraft, type ReplyDraftRecord } from "./store.js";
@@ -157,21 +159,39 @@ async function readPending(root: string): Promise<PendingRef[]> {
 async function writePending(root: string, items: PendingRef[]): Promise<void> {
   const file = pendingPath(root);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, `${JSON.stringify({ version: 1, items }, null, 2)}\n`, "utf8");
+  // いったん隣へ書いてから置き換える。途中で落ちても壊れたファイルが残らない。
+  // 一時ファイル名は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを
+  // 奪い合って rename が失敗する（ロックに頼らず、これ単体で正しくしておく）。
+  const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await fs.writeFile(temporary, `${JSON.stringify({ version: 1, items }, null, 2)}\n`, "utf8");
+  await fs.rename(temporary, file);
 }
 
 /** 保留へ積む。同じIDは1つだけ（何度保留しても通知は1回）。 */
 export async function queuePending(root: string, refs: PendingRef[]): Promise<void> {
-  const current = await readPending(root);
-  const seen = new Set(current.map(ref => ref.id));
-  const merged = [...current];
-  for (const ref of refs) {
-    if (!seen.has(ref.id)) {
-      merged.push(ref);
-      seen.add(ref.id);
+  // 同時に届いた分が互いを打ち消さないよう、順番に積む。
+  // ここを守らないと、下書きは残っているのに通知だけが消える。
+  await withStateLock(`pending:${root}`, async () => {
+    const current = await readPending(root);
+    const seen = new Set(current.map(ref => ref.id));
+    const merged = [...current];
+    for (const ref of refs) {
+      if (!seen.has(ref.id)) {
+        merged.push(ref);
+        seen.add(ref.id);
+      }
     }
-  }
-  await writePending(root, merged);
+    await writePending(root, merged);
+  });
+}
+
+/** 通知できた分だけを保留から外す。待っている間に積まれた新しい分は残す。 */
+async function removePending(root: string, ids: string[]): Promise<void> {
+  const removing = new Set(ids);
+  await withStateLock(`pending:${root}`, async () => {
+    const current = await readPending(root);
+    await writePending(root, current.filter(ref => !removing.has(ref.id)));
+  });
 }
 
 export interface DeliveryResult {
@@ -239,7 +259,7 @@ export async function flushPendingNotifications(
     return { notified: false, notifiedCount: 0, queuedCount: 0, reason: "quiet_hours" };
   }
 
-  const refs = await readPending(root);
+  const refs = await withStateLock(`pending:${root}`, () => readPending(root));
   if (refs.length === 0) return { notified: false, notifiedCount: 0, queuedCount: 0, reason: "nothing_to_send" };
 
   const records: ReplyDraftRecord[] = [];
@@ -249,8 +269,8 @@ export async function flushPendingNotifications(
   }
 
   if (records.length === 0) {
-    // 参照先が消えている（保持期間切れなど）。保留を空にして次へ進む。
-    await writePending(root, []);
+    // 参照先が消えている（保持期間切れなど）。読めなかった分だけ外して次へ進む。
+    await removePending(root, refs.map(ref => ref.id));
     return { notified: false, notifiedCount: 0, queuedCount: 0, reason: "nothing_to_send" };
   }
 
@@ -261,6 +281,8 @@ export async function flushPendingNotifications(
   }
 
   await markNotified(root, records, now);
-  await writePending(root, []);
+  // 通知できた分だけを外す。送っている間に積まれた新しい分まで消さない。
+  // 全部消すと、送信中に届いた問い合わせの通知が失われる。
+  await removePending(root, records.map(record => record.id));
   return { notified: true, notifiedCount: records.length, queuedCount: 0 };
 }
