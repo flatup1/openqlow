@@ -2,7 +2,7 @@
 // 「正本の事実しか出さない」「危ない話には本文を作らない」「個人情報を残さない」を固定する。
 
 import { FLATUP_CANON } from "../shared/canon.js";
-import { buildReplyDraft, nonCanonAmounts } from "./draft.js";
+import { buildReplyDraft, failedDraft, nonCanonAmounts } from "./draft.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -66,5 +66,34 @@ assert(nonCanonAmounts("初回体験500円です").length === 0, "正本の金�
 // 空の問い合わせは推測で埋めずJIN確認へ。
 const empty = buildReplyDraft("   ");
 assert(empty.escalate && empty.body === undefined, "空文は本文を作らない");
+
+// ---- 何があっても問い合わせを捨てない ----
+// 下書き作成のどこかが予期せず落ちても、JINには「JIN確認」として必ず届ける。
+// 黙って消えるのがいちばん悪い（お客様は待っているのに、JINは受信すら知らない）。
+{
+  const failed = failedDraft("体験したいです", new Error("想定外の失敗"));
+  assert(failed.escalate, "JIN確認として扱う");
+  assert(failed.priority === "ESCALATE", "優先度はESCALATE");
+  assert(failed.body === undefined, "本文は作らない");
+  assert(failed.reasons.includes("build_failed"), "理由が分かる");
+  assert(failed.notes.some(note => note.includes("想定外の失敗")), "原因を残す");
+  assert(failed.maskedMessage === "体験したいです", "本文は残す（JINが判断できるように）");
+}
+
+// 伏字にすら失敗したら、本文を載せない。生の連絡先を出すくらいなら空にする。
+{
+  const weird = { toString() { throw new Error("読めない"); } } as unknown as string;
+  const failed = failedDraft(weird, new Error("元の失敗"));
+  assert(failed.escalate, "それでもJIN確認として届ける");
+  assert(!failed.maskedMessage.includes("読めない"), "生の内容を載せない");
+  assert(failed.maskedMessage.includes("伏字にできなかった"), "載せない理由を書く");
+}
+
+// 通常の入力では今までどおり（受け皿が普段の動きを変えていない）。
+{
+  const normalDraft = buildReplyDraft("体験したいです");
+  assert(!normalDraft.escalate, "普通の問い合わせは今までどおり下書きを作る");
+  assert(!normalDraft.reasons.includes("build_failed"), "受け皿は普段は働かない");
+}
 
 console.log("reply_drafts draft tests passed");
