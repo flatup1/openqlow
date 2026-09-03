@@ -17,12 +17,38 @@ function assert(condition: unknown, message: string): void {
 }
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const names = (await fs.readdir(moduleDir)).filter(
-  name => name.endsWith(".ts") && !name.endsWith(".test.ts"),
-);
 
-for (const name of names) {
-  const source = await fs.readFile(path.join(moduleDir, name), "utf8");
+/**
+ * フォルダの奥まで実装ファイルを集める。
+ *
+ * 直下だけを見ていたときは、src/reply_drafts/sinks/obsidian.ts に
+ * OBSIDIAN_VAULT_ROOT を置いてもこの検査は通ってしまった。
+ * 「検査の範囲が縮んだことに気づけない」がいちばん危ない。
+ */
+async function collectSources(dir: string, prefix = ""): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      for (const [name, text] of await collectSources(path.join(dir, entry.name), relative)) {
+        found.set(name, text);
+      }
+      continue;
+    }
+    if (!entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) continue;
+    found.set(relative, await fs.readFile(path.join(dir, entry.name), "utf8"));
+  }
+  return found;
+}
+
+const sources = await collectSources(moduleDir);
+// 0件を検査して「合格」にしない。
+assert(sources.size > 0, "実装ファイルが読めている");
+for (const required of ["draft.ts", "notify.ts", "pipeline.ts", "store.ts"]) {
+  assert(sources.has(required), `${required} を検査対象にできている`);
+}
+
+for (const [name, source] of sources) {
   const code = source
     .split("\n")
     .filter(line => !line.trim().startsWith("//") && !line.trim().startsWith("*") && !line.trim().startsWith("/*"))
