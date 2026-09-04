@@ -12,6 +12,7 @@
   vertical       書き出したMP4を9:16にする（再エンコード・任意）
   highlights     1試合の中からSNS向けの見どころ候補を選ぶ
   captions       投稿文の下書きを作る（送信はしない）
+  peek           枠の中身を文字で表示する（座標決めの確認用）
   run            download → detect → render を一気に実行する
 """
 
@@ -24,6 +25,7 @@ from pathlib import Path
 
 from . import captions as caption_step
 from . import manifest as mf
+from .asciiview import frame_lines, render as render_roi
 from .card import apply_card, parse_card
 from .evaluate import Interval, evaluate, load_truth
 from .highlight import HighlightParams, combine_scores, pick_highlights
@@ -276,7 +278,27 @@ def cmd_calibrate(args) -> int:
         )
     print(f"[calibrate] 基準画像: {template_path}")
     print(f"[calibrate] プロファイル更新: {profile_path}")
+    # ★枠の中身をそのまま文字で見せる。画像を開かなくても、
+    #   ここに ROUND の文字が出ていれば位置が合っていると分かる。
+    print()
+    for line in frame_lines(render_roi(video, at_sec, args.roi), args.roi):
+        print(line)
+    print()
     print("次は `detect` を実行してください。")
+    return 0
+
+
+def cmd_peek(args) -> int:
+    """枠の中身を文字で表示する（設定は一切変更しない）。
+
+    ★座標を決める作業は試行錯誤になる。プロファイルを書き換えずに
+    　何度でも試せる入口があると、安心して当たりを付けられる。
+    """
+    work_root = Path(args.work_dir)
+    video, _, _ = resolve_source(args, work_root)
+    at_sec = parse_timecode(args.at)
+    for line in frame_lines(render_roi(video, at_sec, args.roi, cols=args.cols), args.roi):
+        print(line)
     return 0
 
 
@@ -964,6 +986,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="選手名テロップの位置。指定するとラウンド間の途切れを繋げるようになる",
     )
     p_cal.set_defaults(func=cmd_calibrate)
+
+    p_peek = sub.add_parser("peek", help="枠の中身を文字で表示する（設定は変えない）")
+    add_source(p_peek)
+    p_peek.add_argument("--at", required=True, help="試合中の時刻（例 00:23:10）")
+    p_peek.add_argument("--roi", type=parse_roi, required=True, help="x,y,幅,高さ")
+    p_peek.add_argument("--cols", type=int, default=72, help="横の文字数（既定72）")
+    p_peek.set_defaults(func=cmd_peek)
 
     p_det = sub.add_parser("detect", help="試合区間を検出して segments.json を作る")
     add_source(p_det)
