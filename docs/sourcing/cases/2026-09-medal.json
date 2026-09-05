@@ -1,0 +1,51 @@
+{
+  "_readme": "格闘技大会メダル50個の調達案件。itemEnglish は業者への文面にそのまま入るので複数形で書く。candidates はブラウザ調査で埋める。未確認は null のままにする（埋めない）。",
+  "requirement": {
+    "id": "2026-09-medal",
+    "item": "オリジナル格闘技大会用メダル",
+    "quantity": 50,
+    "arrivalDeadline": "2026-09-22",
+    "deadlineHalf": "AM",
+    "destination": "千葉県成田市",
+    "destinationEnglish": "Narita, Chiba, Japan",
+    "useDate": "2026-09-23",
+    "targetUnitPriceJpy": 400,
+    "maxUnitPriceJpy": 500,
+    "mustHaves": [
+      "金属製（亜鉛合金など）",
+      "ゴールド系のメッキ",
+      "円形",
+      "フルカラーのデザイン",
+      "オリジナルロゴ対応",
+      "オリジナルリボン対応",
+      "大会表彰用として安っぽく見えない厚み・重量"
+    ],
+    "mustHavesEnglish": [
+      "Metal medal (zinc alloy or equivalent), not plastic",
+      "Gold plating",
+      "Round shape",
+      "Full-colour printing",
+      "Custom logo on the front",
+      "Custom printed ribbon",
+      "Solid thickness and weight suitable for a competition award"
+    ],
+    "priorities": ["納期", "品質", "総額", "デザイン"]
+  },
+  "itemEnglish": "award medals",
+  "_leadNote": "急ぎ案件の想定値。業者から製作日数・輸送日数の回答が来たら、必ずその業者の実数で上書きする。",
+  "lead": {
+    "productionDays": 10,
+    "shippingDays": 4,
+    "customsBufferDays": 2,
+    "domesticBufferDays": 1,
+    "safetyBufferDays": 2
+  },
+  "_assumptionNote": "すべて未確認の前提値。fxRateToJpy は見積を受け取った日のレートに、dutyRatePercent は品目のHSコードを調べた実際の税率に、必ず更新する。0 のままだと関税を過小に見積もる。",
+  "assumption": {
+    "fxRateToJpy": 150,
+    "dutyRatePercent": 0,
+    "consumptionTaxRatePercent": 10,
+    "domesticFeesJpy": 0
+  },
+  "candidates": []
+}
