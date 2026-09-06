@@ -297,7 +297,7 @@ async function testThreeRoutes() {
   const adult = launch();
   await runAdultRoute(adult);
   assert(adult.heading() === "あなたなら、こんな一歩から。", "成人ルートが結果画面へ着く");
-  assert(adult.cta() && adult.cta().getAttribute("href") === "https://lin.ee/cTSDajPz", "CTAが正本のLINEリンク");
+  assert(adult.cta() && adult.cta().getAttribute("href") === "https://lin.ee/YWWo4zb", "CTAが正本のLINEリンク");
   assert(adult.text().includes("初回500円"), "体験料金の安心材料が出る");
 
   const kids = launch();
@@ -408,7 +408,7 @@ async function testHandoffFailure() {
   const app = launch({ fetch: () => Promise.reject(new Error("network down")) });
   await runAdultRoute(app);
   await tick();
-  assert(app.cta().getAttribute("href") === "https://lin.ee/cTSDajPz", "引き継ぎに失敗しても従来のLINEリンクで案内できる");
+  assert(app.cta().getAttribute("href") === "https://lin.ee/YWWo4zb", "引き継ぎに失敗しても従来のLINEリンクで案内できる");
   assert(!app.text().includes("引き継ぎコード"), "失敗時に中途半端な説明を出さない");
   assert(app.heading() === "あなたなら、こんな一歩から。", "失敗しても結果画面は壊れない");
 }

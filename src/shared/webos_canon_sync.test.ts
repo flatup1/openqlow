@@ -27,8 +27,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
 const webosApp = path.join(repoRoot, "flatup-webos", "app");
 
-// 正本の公式LINE URL（flatup-lp / girl-power-op と同一の1本）。
-const CANON_LINE_URL = "https://lin.ee/cTSDajPz";
+// 公式LINEの友だち追加URLは正本から取る（ここに直書きしない）。
+const CANON_LINE_URL = FLATUP_CANON.lineFriendUrl;
 
 const TEXT_EXTENSIONS = [".html", ".js", ".css"];
 

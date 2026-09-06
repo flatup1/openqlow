@@ -23,6 +23,10 @@ export const FLATUP_CANON = {
   parking: "専用駐車場あり",
   gloveSet: "グローブ＋レガースのセット11,000円（体験時は貸出あり・購入は任意）",
   address: "成田市土屋516-4 2F（百香亭の上）",
+  // お客様向けLINE公式アカウント（FLATUPGYM / 認証済）。
+  // 友だち追加URLはアカウント設定の「URLを作成」に出ている1本だけを使う（オーナー確認 2026-09-06）。
+  lineOaId: "@jfl0054o",
+  lineFriendUrl: "https://lin.ee/YWWo4zb",
   nearestStation: "成田駅",
   access: "成田駅からイオンモール行きのバスに乗り、イオンのバス停で下車、徒歩約5分",
   scheduleKids: "火曜・木曜18:00〜19:00、土曜13:00〜",
