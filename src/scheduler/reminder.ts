@@ -12,15 +12,23 @@
 //   - JIN_LINE_USER_ID / LINE_CHANNEL_ACCESS_TOKEN 未設定で no-op
 //   - OPENQLOW_LINE_DRY_RUN=true で送信せず stdout
 
-import fs from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { loadConfig } from "../config.js";
 import { defaultSessionStore, type ConversationSession, type SessionStore } from "../conversation/session_store.js";
 import { __interviewInternals } from "../conversation/interview_flow.js";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { formatDateInTimeZone } from "../utils/date.js";
 import { openqlowPath } from "../utils/paths.js";
+import { acquireRunLock } from "./run_lock.js";
 
 const STALE_HOURS = 12;
+// ロックファイル名は既存の reminder_sent_<日付>.txt のまま。
+const RUN_LOCK_KEY = "reminder_sent";
+// メモ促しは別枠でロックする（日報リマインダーと独立に1日1通）。
+const MEMO_NUDGE_LOCK_KEY = "memo_nudge_sent";
+// daily_logs 内のメモ見出し。日本語では \b が効かないため後続を明示する。
+const MEMO_HEADING = /^##\s+(?:LINE追記|LINE自動メモ|追記)(?=\s|$)/m;
 
 export type ReminderMode =
   | "sent"
@@ -31,7 +39,14 @@ export type ReminderMode =
   | "no_session"
   | "already_done"
   | "stale"
-  | "duplicate_today";
+  | "duplicate_today"
+  /** 今日のメモが無いので「3行で残しませんか」を送った */
+  | "memo_nudge_sent"
+  /** メモ促しをドライラン表示した */
+  | "memo_nudge_dry_run"
+  /** 今日すでにメモがある、または今日すでに促した → 送らない */
+  | "memo_exists"
+  | "memo_nudge_duplicate";
 
 export interface ReminderResult {
   ok: boolean;
@@ -50,24 +65,8 @@ export interface ReminderOptions {
   store?: SessionStore;
   /** テスト用に state ディレクトリ差し替え */
   stateDir?: string;
-}
-
-function reminderStampPath(stateDir: string, dateJst: string): string {
-  return path.join(stateDir, `reminder_sent_${dateJst}.txt`);
-}
-
-async function alreadyRemindedToday(stateDir: string, dateJst: string): Promise<boolean> {
-  try {
-    await fs.stat(reminderStampPath(stateDir, dateJst));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function markReminded(stateDir: string, dateJst: string, isoNow: string): Promise<void> {
-  await fs.mkdir(stateDir, { recursive: true });
-  await fs.writeFile(reminderStampPath(stateDir, dateJst), isoNow);
+  /** テスト用に Obsidian Vault のルートを差し替え */
+  vaultRoot?: string;
 }
 
 function currentQuestionText(session: ConversationSession): string {
@@ -90,6 +89,80 @@ function buildMessage(session: ConversationSession): string {
   ].join("\n");
 }
 
+/** 今日の daily_logs にメモが1件でもあるか。ファイルが無ければ「無い」。 */
+async function hasMemoToday(vaultRoot: string, dateJst: string): Promise<boolean> {
+  const file = path.join(vaultRoot, "01_DAILY_OPERATIONS", "daily_logs", `${dateJst}.md`);
+  try {
+    return MEMO_HEADING.test(await readFile(file, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+function buildMemoNudge(): string {
+  return [
+    "🌙 今日の練習、3行で残しませんか？",
+    "",
+    "そのまま返信すればメモになります。例:",
+    "",
+    "寝技 マサキ アンディ",
+    "キッズ 双子 ゆいろ",
+    "体験なし 入会なし",
+    "",
+    "週末に「整理」と送れば1枚にまとまります。",
+  ].join("\n");
+}
+
+/**
+ * 日報リマインダーを送らなかった日に、メモが無ければ「3行で残しませんか」を送る。
+ * 記録が続かないと週次整理が空回りするため、入口をここで支える。
+ */
+async function runMemoNudge(
+  opts: ReminderOptions,
+  userId: string,
+  now: Date,
+  dateJst: string,
+  stateDir: string,
+  /** 日報リマインダーを送らなかった理由。ログ追跡用に結果へ引き継ぐ。 */
+  skipReason: string,
+): Promise<ReminderResult> {
+  const vaultRoot = opts.vaultRoot ?? loadConfig().obsidianVaultRoot;
+  if (await hasMemoToday(vaultRoot, dateJst)) {
+    return {
+      ok: true,
+      mode: "memo_exists",
+      reason: `${skipReason}; memo already recorded on ${dateJst}`,
+    };
+  }
+
+  // 送信直前にロックを取る。同じ日に2回発火しても届くのは1通だけ。
+  const lock = await acquireRunLock(stateDir, MEMO_NUDGE_LOCK_KEY, dateJst, now.toISOString());
+  if (!lock.acquired) {
+    return {
+      ok: true,
+      mode: "memo_nudge_duplicate",
+      reason: `${skipReason}; already nudged on ${dateJst}`,
+    };
+  }
+
+  const pushFn = opts.pushFn ?? pushLineMessage;
+  const pushResult = await pushFn(buildMemoNudge(), { userId });
+
+  // 届かなかった日はやり直せるようにロックを戻す。
+  if (pushResult.mode !== "sent" || !pushResult.ok) {
+    await lock.release();
+  }
+
+  if (pushResult.mode === "dry_run") return { ok: true, mode: "memo_nudge_dry_run" };
+  if (pushResult.mode === "skipped") {
+    return { ok: true, mode: "skipped", reason: "credentials missing for push" };
+  }
+  if (!pushResult.ok) {
+    return { ok: false, mode: "memo_nudge_sent", reason: pushResult.error };
+  }
+  return { ok: true, mode: "memo_nudge_sent" };
+}
+
 export async function runReminder(opts: ReminderOptions = {}): Promise<ReminderResult> {
   if (process.env.OPENQLOW_REMINDER_PUSH_DISABLED === "true") {
     return { ok: true, mode: "disabled", reason: "OPENQLOW_REMINDER_PUSH_DISABLED=true" };
@@ -104,33 +177,39 @@ export async function runReminder(opts: ReminderOptions = {}): Promise<ReminderR
   const dateJst = formatDateInTimeZone(now, "Asia/Tokyo");
   const stateDir = opts.stateDir ?? openqlowPath("state");
 
-  if (await alreadyRemindedToday(stateDir, dateJst)) {
-    return { ok: true, mode: "duplicate_today", reason: `already reminded on ${dateJst}` };
-  }
-
   const store = opts.store ?? defaultSessionStore();
   const session = await store.load(userId);
 
+  // 日報リマインダーを送らない日は、代わりにメモ促しを検討する。
+  // 「日報の途中」を送る日に重ねて2通送ることはしない。
   if (!session) {
-    return {
-      ok: true,
-      mode: "no_session",
-      reason: "no active session — morning push may not have fired or session expired",
-    };
+    return runMemoNudge(opts, userId, now, dateJst, stateDir, "no_session");
   }
   if (session.step === "ready_to_save") {
-    return { ok: true, mode: "already_done", reason: "session already completed" };
+    return runMemoNudge(opts, userId, now, dateJst, stateDir, "already_done");
   }
 
   const lastInteraction = new Date(session.lastInteractionAt ?? session.startedAt);
   const ageHours = (now.getTime() - lastInteraction.getTime()) / (1000 * 60 * 60);
   if (ageHours > STALE_HOURS) {
-    return { ok: true, mode: "stale", reason: `session ${ageHours.toFixed(1)}h old, skipping` };
+    return runMemoNudge(opts, userId, now, dateJst, stateDir, `stale ${ageHours.toFixed(1)}h`);
+  }
+
+  // 送信の直前にロックを取る。timer が同じ日に2回発火しても、届くのは1通だけ。
+  // 「見てから書く」方式と違い、同時に走った2つが両方とも通ることがない。
+  const lock = await acquireRunLock(stateDir, RUN_LOCK_KEY, dateJst, now.toISOString());
+  if (!lock.acquired) {
+    return { ok: true, mode: "duplicate_today", reason: `already reminded on ${dateJst}` };
   }
 
   const message = buildMessage(session);
   const pushFn = opts.pushFn ?? pushLineMessage;
   const pushResult = await pushFn(message, { userId });
+
+  // 実際に届いたときだけロックを残す。送れなかった日はやり直せるようにする。
+  if (pushResult.mode !== "sent" || !pushResult.ok) {
+    await lock.release();
+  }
 
   if (pushResult.mode === "dry_run") {
     return { ok: true, mode: "dry_run" };
@@ -141,8 +220,6 @@ export async function runReminder(opts: ReminderOptions = {}): Promise<ReminderR
   if (!pushResult.ok) {
     return { ok: false, mode: "sent", reason: pushResult.error };
   }
-  // sent
-  await markReminded(stateDir, dateJst, now.toISOString());
   return { ok: true, mode: "sent" };
 }
 

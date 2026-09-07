@@ -22,6 +22,10 @@ const MONTHLY_ALIASES = new Set([
   "今月の日報", "/今月の日報", "月次", "/月次", "monthly", "/monthly",
 ]);
 const SAVE_ALIASES = new Set(["保存用ログ", "/保存用ログ", "保存", "/保存"]);
+const ORGANIZE_ALIASES = new Set([
+  "整理", "/整理", "せいり", "/せいり",
+  "週次整理", "/週次整理", "organize", "/organize",
+]);
 const CANCEL_ALIASES = new Set(["中止", "/中止", "キャンセル", "/キャンセル"]);
 
 // 連結形（"日報まとめ" のようにスペース無し）の prefix 候補。
@@ -54,6 +58,7 @@ export type CanonicalLineCommand =
   | "/おはよう"
   | "/月報"
   | "/保存用ログ"
+  | "/整理"
   | "/中止";
 
 export function normalizeLineText(text: string): string {
@@ -81,6 +86,7 @@ export function canonicalLineCommand(text: string): CanonicalLineCommand | undef
   if (MORNING_ALIASES.has(head)) return "/おはよう";
   if (MONTHLY_ALIASES.has(head)) return "/月報";
   if (SAVE_ALIASES.has(head)) return "/保存用ログ";
+  if (ORGANIZE_ALIASES.has(head)) return "/整理";
   if (CANCEL_ALIASES.has(head)) return "/中止";
   // 連結形（"日報まとめ" 等）も /おはよう として扱う
   if (matchMorningConcatenated(head)) return "/おはよう";

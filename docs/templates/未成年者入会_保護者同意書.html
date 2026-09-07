@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>FLATUP GYM 未成年者入会 保護者同意書</title>
+<style>
+  /* ------------------------------------------------------------------
+     FLATUP GYM 未成年者入会 保護者同意書 — A4縦1枚 印刷用
+     ブラウザで開き Ctrl+P（Cmd+P）→ 用紙A4・余白「なし」→ 印刷。
+     文言の正本は src/crm/guardian_consent.ts の GUARDIAN_CONSENT_ITEMS。
+     文言を変えたら CONSENT_TERMS_VERSION も上げること。
+     ------------------------------------------------------------------ */
+
+  @page { size: A4 portrait; margin: 0; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo",
+                 "Noto Sans JP", "IPAPGothic", sans-serif;
+    color: #000;
+    background: #f0f0f0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .sheet {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 10mm 13mm 8mm;
+    margin: 0 auto;
+    background: #fff;
+    font-size: 9.6pt;
+    line-height: 1.45;
+  }
+
+  /* ---------- ヘッダー ---------- */
+  .head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 2px solid #000;
+    padding-bottom: 2.5mm;
+  }
+  .brand { font-size: 11pt; font-weight: 700; letter-spacing: .18em; }
+  .doc-title { font-size: 16pt; font-weight: 700; letter-spacing: .1em; margin-top: 1mm; }
+  .ctrl {
+    font-size: 7.4pt;
+    text-align: right;
+    line-height: 1.7;
+    white-space: nowrap;
+  }
+  .ctrl .label { color: #444; }
+  .ctrl .box {
+    display: inline-block;
+    min-width: 33mm;
+    border-bottom: 1px solid #666;
+  }
+
+  .lead { margin-top: 3mm; font-size: 9.4pt; }
+
+  /* ---------- セクション ---------- */
+  .sec { margin-top: 3mm; }
+  .sec-title {
+    font-size: 9.6pt;
+    font-weight: 700;
+    background: #000;
+    color: #fff;
+    padding: 1mm 2.5mm;
+    letter-spacing: .06em;
+  }
+  .sec-title .sub { font-weight: 400; font-size: 8pt; letter-spacing: 0; }
+  .sec-body { border: 1px solid #000; border-top: none; padding: 2.5mm 3mm .8mm; }
+
+  /* ---------- 記入欄 ---------- */
+  .row { display: flex; gap: 4mm; }
+  .fld { flex: 1; margin-bottom: 2.6mm; }
+  .fld .name { font-size: 8pt; color: #333; }
+  .fld .line {
+    border-bottom: 1px solid #333;
+    height: 7mm;
+  }
+  .fld.w-name  { flex: 1.7; }
+  .fld.w-small { flex: .85; }
+
+  /* 生年月日など、単位文字を挟む行 */
+  .inline {
+    display: flex;
+    align-items: flex-end;
+    border-bottom: 1px solid #333;
+    height: 7mm;
+    font-size: 9pt;
+    padding-bottom: .8mm;
+  }
+  .inline .gap { display: inline-block; min-width: 11mm; }
+  .inline .gap.sm { min-width: 7mm; }
+  .inline .unit { padding: 0 .5mm; }
+
+  /* ---------- 確認事項 ---------- */
+  .check-note { font-size: 8.4pt; margin-bottom: 2mm; }
+  ul.checks { list-style: none; }
+  ul.checks li {
+    display: flex;
+    align-items: flex-start;
+    gap: 2.2mm;
+    margin-bottom: 1.7mm;
+    font-size: 9pt;
+    line-height: 1.38;
+  }
+  ul.checks li::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 3.6mm;
+    height: 3.6mm;
+    border: 1.2px solid #000;
+    margin-top: .5mm;
+  }
+
+  /* ---------- 署名 ---------- */
+  .agree {
+    margin-top: 3mm;
+    border: 1.6px solid #000;
+    padding: 2.5mm 3.5mm 2mm;
+  }
+  .agree p { font-size: 9.2pt; margin-bottom: 2.5mm; }
+  .sign-row { display: flex; gap: 5mm; align-items: flex-end; }
+  .sign-date { flex: 1.1; }
+  .sign-name { flex: 1.6; }
+  .sign-seal  { flex: 0 0 17mm; }
+  .sign-name .line { height: 10mm; border-bottom: 1px solid #333; }
+  .sign-date .inline { height: 10mm; }
+  .sign-name .name, .sign-date .name { font-size: 8pt; color: #333; }
+  .seal-box {
+    height: 10mm; width: 100%;
+    border: 1px dashed #666;
+    font-size: 7pt; color: #777;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ---------- フッター ---------- */
+  .foot {
+    margin-top: 3.5mm;
+    font-size: 7.4pt;
+    color: #333;
+    line-height: 1.5;
+    border-top: 1px solid #999;
+    padding-top: 1.8mm;
+  }
+  .gym-use {
+    margin-top: 2.5mm;
+    border: 1px solid #999;
+    background: #f4f4f4;
+    padding: 1.8mm 2.5mm;
+    font-size: 7.4pt;
+    color: #333;
+    display: flex;
+    gap: 5mm;
+  }
+  .gym-use .cell { flex: 1; }
+  .gym-use .cell span { border-bottom: 1px solid #999; display: inline-block; min-width: 60%; }
+  .gym-use .cell.nowrap { white-space: nowrap; }
+
+  /* ---------- 印刷 ---------- */
+  @media print {
+    body { background: #fff; }
+    .sheet { margin: 0; box-shadow: none; }
+  }
+  @media screen {
+    .sheet { box-shadow: 0 2px 12px rgba(0,0,0,.2); margin: 8mm auto; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="head">
+    <div>
+      <div class="brand">FLATUP GYM</div>
+      <div class="doc-title">未成年者入会 保護者同意書</div>
+    </div>
+    <div class="ctrl">
+      <div><span class="label">管理番号</span> <span class="box"></span></div>
+      <div><span class="label">受付日</span> <span class="box"></span></div>
+    </div>
+  </div>
+
+  <p class="lead">
+    私は、下記未成年者が FLATUP GYM へ入会し、施設を利用することについて、親権者（法定代理人）として同意します。
+  </p>
+
+  <!-- 入会者 -->
+  <div class="sec">
+    <div class="sec-title">入会者（ご本人）</div>
+    <div class="sec-body">
+      <div class="row">
+        <div class="fld w-name">
+          <div class="name">氏名（ふりがな）</div>
+          <div class="line"></div>
+        </div>
+        <div class="fld">
+          <div class="name">生年月日 / 年齢</div>
+          <div class="inline">
+            <span class="gap"></span><span class="unit">年</span>
+            <span class="gap sm"></span><span class="unit">月</span>
+            <span class="gap sm"></span><span class="unit">日（満</span>
+            <span class="gap sm"></span><span class="unit">歳）</span>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="fld w-name">
+          <div class="name">学校名</div>
+          <div class="line"></div>
+        </div>
+        <div class="fld w-small">
+          <div class="name">学年</div>
+          <div class="line"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 保護者 -->
+  <div class="sec">
+    <div class="sec-title">保護者（親権者・法定代理人）</div>
+    <div class="sec-body">
+      <div class="row">
+        <div class="fld w-name">
+          <div class="name">氏名</div>
+          <div class="line"></div>
+        </div>
+        <div class="fld w-small">
+          <div class="name">続柄</div>
+          <div class="line"></div>
+        </div>
+        <div class="fld">
+          <div class="name">電話番号（日中つながる番号）</div>
+          <div class="line"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="fld w-small">
+          <div class="name">郵便番号</div>
+          <div class="inline">
+            <span class="unit">〒</span><span class="gap"></span>
+            <span class="unit">－</span><span class="gap"></span>
+          </div>
+        </div>
+        <div class="fld" style="flex:3.2">
+          <div class="name">住所</div>
+          <div class="line"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 確認事項 -->
+  <div class="sec">
+    <div class="sec-title">確認事項</div>
+    <div class="sec-body">
+      <p class="check-note">以下の内容を確認し、同意します。すべての□にチェックをご記入ください。</p>
+      <ul class="checks">
+        <li>会員規約・利用ルールを確認し、本人が遵守することに同意します。</li>
+        <li>格闘技には打撲・捻挫・骨折等の怪我を伴う危険性があることを理解しています。</li>
+        <li>健康状態に不安がある場合は事前に申告し、体調不良時は練習へ参加させません。</li>
+        <li>インストラクターの指示および施設ルールに従い、安全に利用します。</li>
+        <li>ジムの故意または過失による場合を除き、練習中に生じた怪我・事故について、通常起こりうる範囲のものは自己の責任となることを理解しています。</li>
+        <li>退会・休会は会員規約に定める手続き（申請期限・届出）に従います。</li>
+        <li>キャンペーンで入会した場合は、適用条件・在籍期間・違約金等を理解し同意します。</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 緊急連絡先 -->
+  <div class="sec">
+    <div class="sec-title">緊急連絡先 <span class="sub">／ 上記保護者と異なる場合のみご記入ください</span></div>
+    <div class="sec-body">
+      <div class="row">
+        <div class="fld w-name">
+          <div class="name">氏名</div>
+          <div class="line"></div>
+        </div>
+        <div class="fld w-small">
+          <div class="name">続柄</div>
+          <div class="line"></div>
+        </div>
+        <div class="fld">
+          <div class="name">電話番号</div>
+          <div class="line"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 署名 -->
+  <div class="agree">
+    <p>私は親権者（法定代理人）として、上記内容を確認し、未成年者の入会に同意します。</p>
+    <div class="sign-row">
+      <div class="sign-date">
+        <div class="name">日付</div>
+        <div class="inline">
+          <span class="gap"></span><span class="unit">年</span>
+          <span class="gap sm"></span><span class="unit">月</span>
+          <span class="gap sm"></span><span class="unit">日</span>
+        </div>
+      </div>
+      <div class="sign-name">
+        <div class="name">保護者署名（自署）</div>
+        <div class="line"></div>
+      </div>
+      <div class="sign-seal">
+        <div class="name">&nbsp;</div>
+        <div class="seal-box">印</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    ※本同意書は未成年者の入会に際し、保護者の同意を確認するための書類です。入会後は FLATUP GYM 会員規約が適用されます。<br>
+    ※ご記入いただいた個人情報は、入会手続き・緊急連絡・会員管理の目的にのみ使用します。
+  </div>
+
+  <div class="gym-use">
+    <div class="cell">受付担当 <span></span></div>
+    <div class="cell">本人確認 <span></span></div>
+    <div class="cell nowrap">LINE事前同意 &nbsp;有 ・ 無</div>
+  </div>
+
+</div>
+</body>
+</html>

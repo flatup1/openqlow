@@ -10,7 +10,14 @@ import {
 } from "../commands/memory_keeper.js";
 import { getOwnerInfoReply, isOwnerInfoCommand } from "../commands/owner_info.js";
 import { buildMonthlyReport, parseMonthlyReportCommand } from "../commands/monthly_report.js";
-import { SessionStore } from "../conversation/session_store.js";
+import { executeTrialKpiCommand } from "../commands/trial_kpi.js";
+import {
+  WEEKLY_REVIEW_DIRECTORY,
+  executeWeeklyOrganizeCommand,
+  parseWeeklyOrganizeCommand,
+} from "../commands/weekly_organize.js";
+import { SessionStore, defaultSessionStore } from "../conversation/session_store.js";
+import { sanitiseFreeText } from "../privacy/rules.js";
 import { rememberApprovalCandidate } from "../approval/shortcut.js";
 import { applyLineRevisionCommand, parseLineRevisionCommand } from "../approval/revision.js";
 import { createMediaPublishCandidate } from "../publish/media_candidate.js";
@@ -31,7 +38,10 @@ export type LineCommandAction =
   | "media_insert"
   | "image_choice"
   | "media_post_candidate"
-  | "monthly_report";
+  | "monthly_report"
+  | "weekly_organize"
+  | "trial_kpi"
+  | "auto_memory";
 
 export interface LineCommandResult {
   handled: boolean;
@@ -50,6 +60,8 @@ export interface ExecuteLineCommandOptions {
   userId?: string;
   /** メモリキーパー用の SessionStore。テスト時に差し替え可能。 */
   memorySessionStore?: SessionStore;
+  /** 自動メモを許可する主オーナーID。省略時はJIN_LINE_USER_ID。 */
+  primaryOwnerUserId?: string;
 }
 
 function defaultVaultRoot(): string {
@@ -87,25 +99,72 @@ function helpMessage(): string {
     "やめる → 中止",
     "",
     "メモはこれだけ:",
-    "/追記 内容 → Obsidianに保存",
+    "普通に送る → 経営メモとして自動保存",
+    "決定: 内容 → 正式決定候補として保存",
+    "/追記 内容 → 手動でObsidianに保存",
     "/push → GitHubへ送る（iPhoneに届く）",
+    "整理 → 今週のメモを1枚にまとめる",
     "※1メッセージに1コマンド",
     "",
+    "体験・入会はこれだけ:",
+    "体験完了 山田 T. 入会 SNS",
+    "入会: 入会 / 検討 / 見送り / 未確認",
+    "流入: LINE / Google / SNS / 紹介 / その他 / 不明",
+    "体験集計 → 今月の完了数・入会率・流入",
+    "※事前予約も残すなら: 予約 山田 T. 8/20",
+    "",
     "朝はこれだけ:",
-    "日報 → 投稿 → 画像 1 → ok",
+    "6時の要約を確認 → 必要な判断だけ返信",
   ].join("\n");
 }
 
-async function appendLineMemo(body: string, opts: ExecuteLineCommandOptions): Promise<string> {
+type MemoStatus = "IDEA" | "CONSIDERING" | "DECIDED" | "IMPLEMENTING" | "ACTIVE" | "REJECTED" | "ARCHIVED";
+
+function inferMemoStatus(body: string): MemoStatus {
+  const value = normaliseBody(body);
+  if (/^(?:正式決定|決定)\s*[:：]/.test(value)) return "DECIDED";
+  if (/^(?:検討|保留)\s*[:：]/.test(value)) return "CONSIDERING";
+  if (/^(?:実装中|作業中)\s*[:：]/.test(value)) return "IMPLEMENTING";
+  if (/^(?:運用中|有効)\s*[:：]/.test(value)) return "ACTIVE";
+  if (/^(?:不採用|却下)\s*[:：]/.test(value)) return "REJECTED";
+  if (/^(?:アーカイブ|過去情報)\s*[:：]/.test(value)) return "ARCHIVED";
+  return "IDEA";
+}
+
+function isPrimaryOwner(opts: ExecuteLineCommandOptions): boolean {
+  const ownerId = opts.primaryOwnerUserId ?? process.env.JIN_LINE_USER_ID ?? "";
+  return Boolean(ownerId && opts.userId === ownerId);
+}
+
+function hasConfiguredPrimaryOwner(opts: ExecuteLineCommandOptions): boolean {
+  return Boolean(opts.primaryOwnerUserId ?? process.env.JIN_LINE_USER_ID ?? "");
+}
+
+function shouldAutoCapture(text: string): boolean {
+  const value = normaliseBody(text);
+  if (!value || /^[\/／]/.test(value)) return false;
+  if (/^(?:ok|おk|okk|y|yes|go|no|なし|ありがとう|ありがとうございます)$/i.test(value)) return false;
+  if (/^(?:ok|no|修正)\s+FG-\d{8}-\d{3}/i.test(value)) return false;
+  return true;
+}
+
+async function appendLineMemo(
+  body: string,
+  opts: ExecuteLineCommandOptions,
+  capture: "manual" | "automatic" = "manual",
+): Promise<string> {
   const now = opts.now ?? new Date();
   const vaultRoot = opts.vaultRoot ?? defaultVaultRoot();
   const date = formatDateInTimeZone(now);
   const file = path.join(vaultRoot, "01_DAILY_OPERATIONS", "daily_logs", `${date}.md`);
+  const cleanBody = sanitiseFreeText(body.trim());
   const block = [
-    `## LINE追記 ${now.toISOString()}`,
+    `## ${capture === "automatic" ? "LINE自動メモ" : "LINE追記"} ${now.toISOString()}`,
     "- source: LINE",
+    `- status: ${inferMemoStatus(cleanBody)}`,
+    `- capture: ${capture}`,
     "",
-    body,
+    cleanBody,
     "",
   ].join("\n");
 
@@ -127,21 +186,44 @@ function parseAheadCount(output: string): number {
 /** /push がコミットしてよいVault内パス。正本（00_COREなど）は絶対に含めない。 */
 const PUSH_ALLOWLIST = [
   "01_DAILY_OPERATIONS/daily_logs",
+  "01_DAILY_OPERATIONS/体験予約・入会管理.md",
+  WEEKLY_REVIEW_DIRECTORY,
+  "DAILY-BRIEF.md",
   "6_システム/openqlow_logs",
+];
+
+const GENERATED_STATUS_PREFIXES = [
+  "6_システム/openqlow_crm_logs",
+  "6_システム/openqlow_drafts",
+  "6_システム/openqlow_loop",
 ];
 
 function isAllowlistedPath(p: string): boolean {
   return PUSH_ALLOWLIST.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
 }
 
+function isGeneratedStatusPath(p: string): boolean {
+  return GENERATED_STATUS_PREFIXES.some(prefix => p === prefix || p.startsWith(`${prefix}/`));
+}
+
 interface VaultChanges {
   allowed: string[];
   others: string[];
+  generated: string[];
+  /**
+   * git add に渡す実パス。許可リストの定義そのものではなく「実際に変更のあったパス」を渡す。
+   * 許可リストをそのまま渡すと、まだ存在しないファイル（例: 体験予約・入会管理.md）で
+   * `fatal: pathspec ... did not match any files` になり push 全体が失敗するため。
+   * リネームは新旧どちらも渡さないと削除側が staged されない。
+   */
+  pathspecs: string[];
 }
 
 function partitionVaultStatus(statusOutput: string): VaultChanges {
   const allowed: string[] = [];
   const others: string[] = [];
+  const generated: string[] = [];
+  const pathspecs: string[] = [];
   for (const line of statusOutput.split("\n")) {
     if (!line.trim()) continue;
     // porcelain形式: `XY <path>`（リネームは `XY <old> -> <new>`）
@@ -150,11 +232,16 @@ function partitionVaultStatus(statusOutput: string): VaultChanges {
     const displayPath = paths[paths.length - 1]!;
     if (paths.every(isAllowlistedPath)) {
       allowed.push(displayPath);
+      for (const p of paths) {
+        if (!pathspecs.includes(p)) pathspecs.push(p);
+      }
+    } else if (paths.every(isGeneratedStatusPath)) {
+      generated.push(displayPath);
     } else {
       others.push(displayPath);
     }
   }
-  return { allowed, others };
+  return { allowed, others, generated, pathspecs };
 }
 
 async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandResult> {
@@ -165,13 +252,16 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
   const status = await runGit([
     "-C", vaultRoot, "-c", "core.quotepath=false", "status", "--porcelain",
   ]);
-  const { allowed, others } = partitionVaultStatus(status);
+  const { allowed, others, generated, pathspecs } = partitionVaultStatus(status);
   const warning = others.length > 0
     ? `⚠️ メモ以外の変更が${others.length}件あります。これらはpushしていません。`
     : "";
+  const generatedNote = generated.length > 0
+    ? `自動生成物${generated.length}件はpush対象外です。`
+    : "";
 
   if (allowed.length > 0) {
-    await runGit(["-C", vaultRoot, "add", "-A", "--", ...PUSH_ALLOWLIST]);
+    await runGit(["-C", vaultRoot, "add", "-A", "--", ...pathspecs]);
     await runGit([
       "-C", vaultRoot, "commit", "-m",
       `memo: LINE追記 ${formatDateInTimeZone(now)} (${allowed.length}件)`,
@@ -187,7 +277,7 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
       handled: true,
       ok: true,
       action: "git_push",
-      message: ["GitHubへpushする変更はありません。", warning].filter(Boolean).join("\n"),
+      message: ["GitHubへpushする変更はありません。", generatedNote, warning].filter(Boolean).join("\n"),
     };
   }
 
@@ -215,9 +305,10 @@ async function pushVault(opts: ExecuteLineCommandOptions): Promise<LineCommandRe
     ? [
         `GitHubへpushしました。（メモ${allowed.length}件）`,
         ...allowed.map(f => `- ${f}`),
+        generatedNote,
         warning,
       ]
-    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, warning];
+    : [`未pushのコミット${ahead}件をGitHubへpushしました。`, generatedNote, warning];
 
   return {
     handled: true,
@@ -233,7 +324,13 @@ async function executeMemoryKeeper(text: string, opts: ExecuteLineCommandOptions
 
   // 明示コマンド or 進行中セッションへの回答を判定
   const willHandle = isMemoryCommandText(text);
-  const memoryOptions = { store: opts.memorySessionStore };
+  const store = opts.memorySessionStore ?? defaultSessionStore();
+  // 新しい自動メモ運用では、セッションのない自由文を旧日報判定に流さない。
+  // これによりJINの発言を加工せずLINE自動メモへ残し、二重保存も防ぐ。
+  if (isPrimaryOwner(opts) && !willHandle && !(await store.exists(userId))) {
+    return undefined;
+  }
+  const memoryOptions = { store };
   const route = await routeMemoryText(userId, text, memoryOptions);
 
   if (route.route === "no_match" && !willHandle) {
@@ -356,6 +453,33 @@ async function executeMonthlyReport(text: string, opts: ExecuteLineCommandOption
   }
 }
 
+async function executeWeeklyOrganize(text: string, opts: ExecuteLineCommandOptions): Promise<LineCommandResult | undefined> {
+  const now = opts.now ?? new Date();
+  if (!parseWeeklyOrganizeCommand(text, now)) return undefined;
+
+  const vaultRoot = opts.vaultRoot ?? defaultVaultRoot();
+  try {
+    const result = await executeWeeklyOrganizeCommand(text, { now, vaultRoot });
+    if (!result.handled) return undefined;
+    return {
+      handled: true,
+      ok: result.ok,
+      action: "weekly_organize",
+      message: result.message,
+      meta: result.meta,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      ok: false,
+      action: "weekly_organize",
+      message: `OPENQLOW: 週次整理の下書き作成に失敗しました。\n理由: ${message}`,
+      meta: { error: message },
+    };
+  }
+}
+
 export async function executeLineCommand(text: string, opts: ExecuteLineCommandOptions = {}): Promise<LineCommandResult> {
   // 0) オーナー情報: 「今何してる」「妻向け」等 → 家族向け説明を返す
   //    （誰でも聞ける情報なので allowlist チェック前に処理して OK）
@@ -428,9 +552,43 @@ export async function executeLineCommand(text: string, opts: ExecuteLineCommandO
   const monthly = await executeMonthlyReport(text, opts);
   if (monthly) return monthly;
 
+  // 2.55) /整理: 直近7日のメモから週次レビューの下書きを作る（正本には書かない）
+  const organize = await executeWeeklyOrganize(text, opts);
+  if (organize) return organize;
+
+  // 2.6) JIN本人だけが体験予約・参加・入会の正本を更新できる。
+  if (isPrimaryOwner(opts)) {
+    const trialKpi = await executeTrialKpiCommand(text, {
+      vaultRoot: opts.vaultRoot ?? defaultVaultRoot(),
+      now: opts.now,
+    });
+    if (trialKpi) {
+      return {
+        handled: true,
+        ok: trialKpi.ok,
+        action: "trial_kpi",
+        message: trialKpi.message,
+        meta: trialKpi.summary ? { summary: trialKpi.summary } : undefined,
+      };
+    }
+  }
+
   // 3) 記憶係: /昨日の記録 /保存用ログ /中止 と、進行中セッションへの回答
-  const memory = await executeMemoryKeeper(text, opts);
-  if (memory) return memory;
+  if (!hasConfiguredPrimaryOwner(opts) || isPrimaryOwner(opts)) {
+    const memory = await executeMemoryKeeper(text, opts);
+    if (memory) return memory;
+  }
+
+  // 4) JIN本人の未処理メッセージだけを自動メモ化。承認・投稿・日報回答は上で処理済み。
+  if (isPrimaryOwner(opts) && shouldAutoCapture(text)) {
+    const file = await appendLineMemo(text, opts, "automatic");
+    return {
+      handled: true,
+      ok: true,
+      action: "auto_memory",
+      message: `経営メモとして保存しました。\nstatus: ${inferMemoStatus(text)}\n${file}`,
+    };
+  }
 
   return {
     handled: false,

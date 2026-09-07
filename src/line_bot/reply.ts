@@ -1,3 +1,4 @@
+import type { BrandGrowthAdapterResult } from "./brand_growth_adapter.js";
 import { safeLineLog } from "./webhook_security.js";
 
 interface LineMessage {
@@ -18,6 +19,38 @@ function trimForLine(text: string): string {
   return text.slice(0, LINE_MESSAGE_MAX_CHARS - 20) + "\n...(truncated)";
 }
 
+const TARGET_LABELS: Record<string, string> = {
+  women_beginners: "女性初心者向け",
+  senior: "シニア向け",
+  families: "ファミリー向け",
+  men_rebuilding: "男性（自信取戻し）",
+};
+
+const OBJECTIVE_LABELS: Record<string, string> = {
+  trial: "体験に繋げる",
+  trust: "信頼構築",
+  conversion: "入会に繋げる",
+  retention: "継続促進",
+};
+
+export function formatBrandGrowthReply(result: BrandGrowthAdapterResult): string {
+  if (!result.handled || !result.target || !result.objective) {
+    return "OPENQLOW: 申し訳ございません。リクエストを処理できませんでした。";
+  }
+
+  const targetLabel = TARGET_LABELS[result.target] || result.target;
+  const objectiveLabel = OBJECTIVE_LABELS[result.objective] || result.objective;
+
+  return [
+    "📋 企画書ができました！",
+    "",
+    `対象: ${targetLabel}`,
+    `目的: ${objectiveLabel}`,
+    "",
+    "次は撮影準備に進みます。",
+  ].join("\n");
+}
+
 export function formatWebhookReply(results: Array<Record<string, unknown>>): string {
   const first = results[0];
   if (!first) return "OPENQLOW: 受信しました。";
@@ -28,6 +61,20 @@ export function formatWebhookReply(results: Array<Record<string, unknown>>): str
 
   if (first.ok === true) {
     const action = typeof first.action === "string" ? first.action : "processed";
+    // Brand Growth routing result
+    if (action === "brand_growth_routed" && typeof first.target === "string") {
+      const brandGrowthResult: BrandGrowthAdapterResult = {
+        ok: first.ok === true,
+        action,
+        target: first.target,
+        objective: typeof first.objective === "string" ? first.objective : undefined,
+        intent: typeof first.intent === "string" ? first.intent : undefined,
+        handled: first.handled === true,
+        replyToSender: first.replyToSender !== false,
+      };
+      return formatBrandGrowthReply(brandGrowthResult);
+    }
+
     const id = typeof first.id === "string" ? first.id : "";
     return ["OPENQLOW: RUNしました。", id ? `ID: ${id}` : "", `action: ${action}`].filter(Boolean).join("\n");
   }

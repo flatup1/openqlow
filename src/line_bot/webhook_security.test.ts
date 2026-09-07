@@ -15,11 +15,13 @@ assert.equal(exceedsWebhookBodyLimit(MAX_WEBHOOK_BODY_BYTES - 1, 1), false);
 assert.equal(exceedsWebhookBodyLimit(MAX_WEBHOOK_BODY_BYTES, 1), true);
 
 const webhookSource = readFileSync(fileURLToPath(new URL("./webhook.ts", import.meta.url)), "utf8");
+const webhookEventsSource = readFileSync(fileURLToPath(new URL("./webhook_events.ts", import.meta.url)), "utf8");
 const notifierSource = readFileSync(fileURLToPath(new URL("./notifier.ts", import.meta.url)), "utf8");
 const replySource = readFileSync(fileURLToPath(new URL("./reply.ts", import.meta.url)), "utf8");
 
 for (const [name, source] of [
   ["webhook.ts", webhookSource],
+  ["webhook_events.ts", webhookEventsSource],
   ["notifier.ts", notifierSource],
   ["reply.ts", replySource],
 ] as const) {
@@ -31,5 +33,20 @@ assert.doesNotMatch(webhookSource, /String\(error\)/, "webhook must not expose i
 assert.doesNotMatch(notifierSource, /res\.text\(\)/, "notifier must not retain LINE API response bodies");
 assert.doesNotMatch(replySource, /res\.text\(\)/, "reply must not retain LINE API response bodies");
 assert.match(webhookSource, /MAX_WEBHOOK_BODY_BYTES/, "webhook must enforce a request size limit");
+assert.match(
+  webhookSource,
+  /OPENQLOW_ENABLE_WEBOS_JOURNEY === "true"/,
+  "openQLOW journey standby must require explicit opt-in",
+);
+assert.match(
+  webhookSource,
+  /disabled_aika_canonical/,
+  "health output must identify AIKA as the canonical WebOS journey service",
+);
+assert.match(
+  webhookSource,
+  /not_served_by_openqlow/,
+  "disabled standby route must fail closed",
+);
 
 console.log("line webhook security tests passed");

@@ -43,26 +43,22 @@ Mac / iPhone の Obsidian
 
 ## ステップA: VPSに新しいコードを反映
 
-Macのターミナルで:
+**Macのターミナルで、これ1行だけ:**
 
 ```bash
-cd "/Users/jin/Desktop/OPENQLOW HelMES/openqlow"
-git pull origin main
-bash deploy/scripts/sync-to-vps.sh
+cd "/Users/jin/Desktop/OPENQLOW HelMES/openqlow" && npm run deploy
 ```
 
-VPSにSSHして、ビルドと再起動:
+これで「取り込み → VPSへ同期 → ビルド → 再起動 → 起動確認」まで全部やる。
+最後に `OK: openqlow-webhook は動いています` と出れば成功。
+
+リッチメニューも登録し直すときは:
 
 ```bash
-ssh -i ~/.ssh/openqlow_vps root@162.43.41.182
-cd /opt/openqlow
-npm ci
-npm run build
-systemctl restart openqlow-webhook
-systemctl status openqlow-webhook --no-pager
+npm run deploy -- --richmenu
 ```
 
-`active (running)` と出ればOK。
+失敗したらその場で止まり、原因のログが出る（本番が半端な状態にならない）。
 
 ## ステップB: VPSのVaultとGitHubをつなぐ
 
@@ -194,6 +190,38 @@ Macで正本を編集したときは、今まで通り自分で commit / push（
 
 ---
 
+# 週次整理（`整理`）
+
+貯まったメモを週1で1枚にまとめる。日曜の夜など、週の終わりに使う。
+
+```text
+1. LINEに「整理」と送る
+2. 「週次整理の下書きを作りました」と返ってくる
+3. 「/push」と送る
+4. iPhoneのObsidianで 01_DAILY_OPERATIONS/weekly_reviews/ を開く
+```
+
+- 引数: `整理`（直近7日）/ `整理 先週`（その前の7日）
+- 出力先: `01_DAILY_OPERATIONS/weekly_reviews/YYYY-MM-DD_週次整理.md`
+
+## 下書きの中身
+
+| 節 | 内容 |
+|---|---|
+| 1. 記録の状況 | メモがあった日 / 記録がなかった日 |
+| 2. 体験・入会の記載 | 「体験なし」「入会」等に触れた行を日付付きで抜き出し |
+| 3. 正本へ昇格する候補 | `決定:` で始まるメモ |
+| 4. 要確認（長文メモ） | 1500字以上のメモは件名だけ（他AIからの貼り付け等） |
+| 5. 今週の記録（原文） | 原文をそのまま日付順に。**要約・書き換えはしない** |
+| 6. JIN記入欄 | 正本に反映すること / 来週やること / 気づいたこと |
+
+## 安全のきまり
+
+- 下書きは **未承認ドラフト**。openQLOWは正本（`00_CORE` など）に一切書かない。
+- 正本への反映は、JINが3節と6節を見て決めてから**人間が**行う。
+- AIによる要約をしないので、記録が言い換えられたり事実が作られたりしない。
+- `整理 ロッカーを買う` のように知らない引数のときはコマンド扱いせず、普通のメモとして保存する。
+
 # リッチメニュー（ワンタップ操作）
 
 トーク画面の下に常設ボタンを出せる。文字を打たずに `push` / `ヘルプ` / `日報` が送れる。
@@ -232,3 +260,35 @@ npm run richmenu
 3. 衝突したら自動で止まって人間に知らせる（勝手に解決しない）
 4. 正本（00_COREなど）の変更は、人間の承認（JIN）を通してのみ
 5. force push はどこでも使わない
+
+# 夜のメモ促し（毎晩20:00）
+
+記録が続かないと週次整理が空回りするので、20時に一度だけ声をかける。
+
+```text
+🌙 今日の練習、3行で残しませんか？
+
+そのまま返信すればメモになります。例:
+
+寝技 マサキ アンディ
+キッズ 双子 ゆいろ
+体験なし 入会なし
+
+週末に「整理」と送れば1枚にまとまります。
+```
+
+- 既存の `openqlow-reminder.timer`（20:00 JST）に相乗り。**新しいタイマーは不要**
+- 送るのは**今日のメモが1件も無いときだけ**。ある日は何も送らない
+- 日報が途中の日は日報リマインダーだけ。**1日に2通は送らない**
+- 同じ日に2回発火しても届くのは1通（`state/memo_nudge_sent_<日付>.txt` で管理）
+- 送信に失敗した日はやり直せる（ロックを戻す）
+
+## 止めたいとき
+
+`/etc/openqlow/openqlow.env` に次を入れて `systemctl restart openqlow-webhook`:
+
+```bash
+OPENQLOW_REMINDER_PUSH_DISABLED=true
+```
+
+（日報リマインダーも一緒に止まる）

@@ -1,18 +1,38 @@
 # OPENQLOW
 
+![CI](https://github.com/flatup1/openqlow/actions/workflows/ci.yml/badge.svg)
+
 地図: この箱はFLATUP AIの頭脳・安全網・正本です。
 地図: 事実の正本は `openqlow/src/shared/canon.ts` です。
 地図: 触る前に `src/shared/canon.ts` と `src/aika/receptionist.ts` を読みます。
 
-OPENQLOW is FLATUP GYM's attack AI for YouTube/SNS growth.
+OPENQLOW is FLATUP GYM's human-approved AI operations system for LINE, CRM, daily operations, and SNS draft generation.
 
-Phase 1 does not publish or schedule posts. It generates three daily ideas, expands them into platform drafts, runs safety checks, sends or previews LINE approval messages, and saves approved drafts.
+It is designed to help the gym move faster while keeping the final decision with a human.
+Phase 1 does not publish or schedule posts. It generates ideas and drafts, runs safety checks, handles LINE/CRM operations, and saves approved drafts.
 
 The canonical handoff/spec is:
 
 ```text
 /Users/jin/Desktop/OPENQLOW HelMES/openqlow/OPENQLOW_HANDOFF.md
 ```
+
+## What this repo protects
+
+- Human approval stays required for customer-facing actions.
+- Secrets and personal data must not be committed.
+- Business facts must come from canonical source files, not from memory.
+- Generated drafts are drafts, not automatic publication.
+
+## Repository quality checklist
+
+| Area | Current standard |
+| --- | --- |
+| CI | GitHub Actions runs grouped tests, typecheck, and AI OS validation on `main` and PRs. |
+| Safety | `scripts/validate-ai-os.sh` and safety tests guard secrets, canon drift, and forbidden actions. |
+| Operations | VPS deploy uses `npm run deploy`; LINE webhook runs at `/openqlow/webhook`. |
+| Contribution | See `CONTRIBUTING.md` before changing code. |
+| Security | See `SECURITY.md`; never post secrets in issues, PRs, Obsidian, or logs. |
 
 ## Commands
 
@@ -29,6 +49,23 @@ npm run ad-copy -- --segment women_beginner
 npm run site-audit -- --file ./index.html
 npm run test
 ```
+
+### テストの走らせ方
+
+`npm test` は全テストを担当領域ごとのグループに分けて実行します。
+1本落ちても最後まで走り、落ちたテストを最後に一覧で出します。
+
+```bash
+npm test                    # typecheck + 全グループ
+npm run test:list           # どのテストがどのグループかを確認
+npm run test:group:line     # LINE窓口・承認だけ
+npm run test:group:crm      # 顧客台帳だけ
+npm run <テスト名>           # 1本だけ再実行（例: npm run test:line-webhook-events）
+```
+
+グループ: `core`（土台・正本・安全） / `aika`（守りの顧客対応） / `line`（LINE窓口・承認） /
+`crm`（顧客台帳） / `publish`（発信・メディア） / `ops`（定時処理・経費・運用スクリプト）。
+どのグループに入るかは実行ファイルの置き場所で自動的に決まるので、テストを増やしたときの登録漏れは起きません。
 
 ## 集客AI司令塔 / 問い合わせ返信AIKA（第1段階）
 
@@ -50,6 +87,26 @@ npm run inquiry -- "ダイエットで通いたい女性です。料金を教え
 - 返信は基本「AIKA」で締めます。
 
 見込み客の保存・ステータス管理は新規 DB を作らず、既存の朝インタビュー（`src/conversation/interview_flow.ts` の inquiry/trial ジャンル）＋ CRM ログ（`crm_log_generator`）＋ ToDo 抽出（`commands/daily_report_todo.ts`）運用を活かす方針です。
+
+## 返信の下書きルーティン（LINE公式・Phase 1）
+
+LINE公式に届いた問い合わせを受け取ると、**返信案だけ**を作ってJINのLINEへ届けます。
+お客様へは何も送りません。送るか、直すか、返さないかを決めるのは常にJINです。
+
+```bash
+# 既定は「動かない」。使うときだけ明示的に入れる（値は "true" ちょうどのみ有効）
+REPLY_DRAFT_ENABLED=true      # 使う意思表示
+OPENQLOW_DRY_RUN=false        # ここを false にして初めて保存・通知が動く
+REPLY_DRAFT_DISABLED=true     # 非常停止（他の設定より優先）
+```
+
+- 顧客への送信コードを実装していません。`src/reply_drafts/no_customer_send.test.ts` が毎回それを検査します。
+- クレーム・医療・ケガ・法律・金銭・退会・未成年のセンシティブ案件は、返信案を作らず「JIN確認」として届けます。
+- 通常のキッズ問い合わせ（何歳から／曜日／持ち物／料金）は返信案を作ります。
+- 保存は `state/reply_drafts/`、実行ログは `logs/reply_drafts/`。個人情報は伏字にしてから保存します。
+- 静音時間は 22:00〜翌7:00。その間は保存だけ行い、通知は翌朝まとめて1回だけ届きます。
+
+詳しくは `docs/REPLY_DRAFT_ROUTINE_REQUIREMENTS.md`。
 
 ## 集客AI司令塔 / 体験後フォロー生成
 

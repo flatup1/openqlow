@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { SessionStore } from "../conversation/session_store.js";
 import { saveRecord } from "../state/file_store.js";
 import type { DraftRecord } from "../types.js";
 import { executeLineCommand } from "./commands.js";
@@ -71,11 +72,10 @@ const STATUS_CALL = ["-C", "/tmp/vault", "-c", "core.quotepath=false", "status",
 const REV_LIST_CALL = ["-C", "/tmp/vault", "rev-list", "--left-right", "--count", "@{u}...HEAD"];
 const PULL_CALL = ["-C", "/tmp/vault", "pull", "--rebase", "--autostash", "origin", "main"];
 const PUSH_CALL = ["-C", "/tmp/vault", "push", "origin", "HEAD"];
-const ADD_ALLOWLIST_CALL = [
-  "-C", "/tmp/vault", "add", "-A", "--",
-  "01_DAILY_OPERATIONS/daily_logs",
-  "6_システム/openqlow_logs",
-];
+// git add には「許可リストの定義」ではなく「実際に変更のあったパス」を渡す。
+// 許可リストをそのまま渡すと、まだ存在しないファイルで
+// `fatal: pathspec ... did not match any files` になり push 全体が落ちるため。
+const addCall = (...paths: string[]) => ["-C", "/tmp/vault", "add", "-A", "--", ...paths];
 
 async function testPushCommandSkipsWhenNoChanges(): Promise<void> {
   const calls: string[][] = [];
@@ -137,7 +137,7 @@ async function testPushCommandCommitsAndPushesChanges(): Promise<void> {
   assert.doesNotMatch(result.message, /メモ以外の変更/);
   assert.deepEqual(calls, [
     STATUS_CALL,
-    ADD_ALLOWLIST_CALL,
+    addCall("01_DAILY_OPERATIONS/daily_logs/2026-07-10.md"),
     ["-C", "/tmp/vault", "commit", "-m", "memo: LINE追記 2026-07-10 (1件)"],
     REV_LIST_CALL,
     PULL_CALL,
@@ -154,6 +154,8 @@ async function testPushCommandExcludesNonAllowlistedChanges(): Promise<void> {
         return [
           " M 01_DAILY_OPERATIONS/daily_logs/2026-07-10.md",
           " M 00_CORE/FLATUPGYM_AI_HOME.md",
+          "?? 6_システム/openqlow_drafts/threads/2026-07-10-fg-20260710-003-threads.md",
+          "?? 6_システム/openqlow_loop/",
           "?? DAILY-BRIEF.md",
           "",
         ].join("\n");
@@ -167,10 +169,37 @@ async function testPushCommandExcludesNonAllowlistedChanges(): Promise<void> {
 
   assert.equal(result.ok, true);
   assert.match(result.message, /GitHubへpushしました/);
-  assert.match(result.message, /⚠️ メモ以外の変更が2件あります。これらはpushしていません。/);
+  assert.match(result.message, /⚠️ メモ以外の変更が1件あります。これらはpushしていません。/);
+  assert.match(result.message, /自動生成物2件はpush対象外です。/);
   // add はallowlistのパス限定でだけ呼ばれる（-A 単独は絶対に呼ばれない）
   const addCalls = calls.filter(args => args.includes("add"));
-  assert.deepEqual(addCalls, [ADD_ALLOWLIST_CALL]);
+  assert.deepEqual(addCalls, [addCall("01_DAILY_OPERATIONS/daily_logs/2026-07-10.md", "DAILY-BRIEF.md")]);
+}
+
+async function testPushCommandDoesNotWarnForOnlyGeneratedChanges(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) {
+        return [
+          "?? 6_システム/openqlow_crm_logs/2026-08-04.md",
+          "?? 6_システム/openqlow_drafts/x/2026-07-10-fg-20260710-003-x.md",
+          "?? 6_システム/openqlow_loop/",
+          "",
+        ].join("\n");
+      }
+      if (args.includes("rev-list")) return "0\t0\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.message, /変更はありません/);
+  assert.match(result.message, /自動生成物3件はpush対象外です。/);
+  assert.doesNotMatch(result.message, /⚠️ メモ以外の変更/);
+  assert.deepEqual(calls, [STATUS_CALL, REV_LIST_CALL]);
 }
 
 async function testPushCommandOnlyNonAllowlistedChangesDoesNotPush(): Promise<void> {
@@ -232,7 +261,71 @@ async function testHelpCommandShowsJuniorHighModeReply(): Promise<void> {
   assert.match(result.message, /やめる/);
   assert.match(result.message, /\/追記 内容/);
   assert.match(result.message, /\/push/);
+  assert.match(result.message, /体験完了 山田 T\. 入会 SNS/);
+  assert.match(result.message, /LINE \/ Google \/ SNS \/ 紹介 \/ その他 \/ 不明/);
+  assert.match(result.message, /体験集計/);
   assert.doesNotMatch(result.message, /FG-\d{8}-\d{3}/);
+}
+
+async function testTrialCompletionIsRecordedInOneMessage(): Promise<void> {
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-line-trial-completion-"));
+  const result = await executeLineCommand("体験完了 山田 T. 入会 SNS", {
+    now: new Date("2026-08-23T00:00:00.000Z"),
+    vaultRoot: vault,
+    userId: "U_JIN",
+    primaryOwnerUserId: "U_JIN",
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "trial_kpi");
+  assert.match(result.message, /月間体験完了: 1\/30件/);
+  assert.match(result.message, /入会: 入会 \/ 流入: SNS/);
+
+  const tracker = await readFile(path.join(vault, "01_DAILY_OPERATIONS", "体験予約・入会管理.md"), "utf8");
+  assert.match(tracker, /\| SNS \|/);
+}
+
+async function testPrimaryOwnerMessageIsAutomaticallySaved(): Promise<void> {
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-auto-memory-vault-"));
+  const result = await executeLineCommand("検討: レディース体験会を月1回にする 電話090-1234-5678", {
+    now: new Date("2026-08-13T00:10:00.000Z"),
+    vaultRoot: vault,
+    userId: "U_JIN",
+    primaryOwnerUserId: "U_JIN",
+    memorySessionStore: new SessionStore({ baseDir: path.join(vault, "sessions") }),
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "auto_memory");
+  assert.match(result.message, /status: CONSIDERING/);
+
+  const log = await readFile(path.join(vault, "01_DAILY_OPERATIONS", "daily_logs", "2026-08-13.md"), "utf8");
+  assert.match(log, /## LINE自動メモ/);
+  assert.match(log, /- status: CONSIDERING/);
+  assert.match(log, /- capture: automatic/);
+  assert.doesNotMatch(log, /090-1234-5678/);
+  assert.match(log, /████/);
+}
+
+async function testNonOwnerAndTerseReplyAreNotAutomaticallySaved(): Promise<void> {
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-auto-memory-deny-vault-"));
+  const nonOwner = await executeLineCommand("新しい企画を考えた", {
+    vaultRoot: vault,
+    userId: "U_BACKUP",
+    primaryOwnerUserId: "U_JIN",
+    memorySessionStore: new SessionStore({ baseDir: path.join(vault, "sessions-backup") }),
+  });
+  assert.equal(nonOwner.handled, false);
+
+  const terse = await executeLineCommand("おk", {
+    vaultRoot: vault,
+    userId: "U_JIN",
+    primaryOwnerUserId: "U_JIN",
+    memorySessionStore: new SessionStore({ baseDir: path.join(vault, "sessions-jin") }),
+  });
+  assert.equal(terse.handled, false);
 }
 
 async function testRevisionCommandUpdatesPendingDraft(): Promise<void> {
@@ -332,16 +425,82 @@ async function testMediaPostCommandCreatesApprovalCandidate(): Promise<void> {
   assert.deepEqual(saved.mediaFiles, ["/tmp/post.mp4"]);
 }
 
+// 2026-08-16 の本番障害の回帰テスト:
+// 許可リストに載っているが Vault にまだ存在しないファイルがあると、
+// git add にそのパスを渡してしまい `fatal: pathspec ... did not match any files` で
+// push 全体が失敗していた。git add には変更のあったパスだけを渡す。
+async function testPushCommandDoesNotPassMissingAllowlistPaths(): Promise<void> {
+  const calls: string[][] = [];
+  const result = await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) {
+        return [
+          "?? 01_DAILY_OPERATIONS/weekly_reviews/2026-08-16_週次整理.md",
+          " M 01_DAILY_OPERATIONS/daily_logs/2026-08-16.md",
+        ].join("\n");
+      }
+      if (args.includes("rev-list")) return "0\t1\n";
+      if (args.includes("commit")) return "[main abc123] memo\n";
+      if (args.includes("push")) return "pushed\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+    now: new Date("2026-08-16T00:00:00.000Z"),
+  });
+
+  assert.equal(result.ok, true);
+  const addCall = calls.find(args => args.includes("add"));
+  assert.ok(addCall, "git add が呼ばれる");
+  // 存在しない許可リストのパスは渡さない
+  assert.ok(
+    !addCall.includes("01_DAILY_OPERATIONS/体験予約・入会管理.md"),
+    "変更のないファイルを git add に渡さない",
+  );
+  assert.ok(!addCall.includes("DAILY-BRIEF.md"), "変更のないファイルを git add に渡さない");
+  // 変更のあったパスは渡す
+  assert.ok(addCall.includes("01_DAILY_OPERATIONS/weekly_reviews/2026-08-16_週次整理.md"));
+  assert.ok(addCall.includes("01_DAILY_OPERATIONS/daily_logs/2026-08-16.md"));
+}
+
+// リネームは新旧どちらも staged しないと削除側が残る
+async function testPushCommandStagesBothSidesOfRename(): Promise<void> {
+  const calls: string[][] = [];
+  await executeLineCommand("/push", {
+    runGit: async (args) => {
+      calls.push(args);
+      if (args.includes("status")) {
+        return "R  01_DAILY_OPERATIONS/daily_logs/old.md -> 01_DAILY_OPERATIONS/daily_logs/new.md\n";
+      }
+      if (args.includes("rev-list")) return "0\t1\n";
+      return "";
+    },
+    vaultRoot: "/tmp/vault",
+    now: new Date("2026-08-16T00:00:00.000Z"),
+  });
+
+  const addCall = calls.find(args => args.includes("add"));
+  assert.ok(addCall, "git add が呼ばれる");
+  assert.ok(addCall.includes("01_DAILY_OPERATIONS/daily_logs/old.md"), "旧パスも渡す");
+  assert.ok(addCall.includes("01_DAILY_OPERATIONS/daily_logs/new.md"), "新パスも渡す");
+}
+
 await testAppendCommandWritesDailyLog();
+await testPushCommandDoesNotPassMissingAllowlistPaths();
+await testPushCommandStagesBothSidesOfRename();
 await testAppendCommandRequiresBody();
 await testPushCommandSkipsWhenNoChanges();
 await testPushCommandPushesCleanAheadCommit();
 await testPushCommandCommitsAndPushesChanges();
 await testPushCommandExcludesNonAllowlistedChanges();
+await testPushCommandDoesNotWarnForOnlyGeneratedChanges();
 await testPushCommandOnlyNonAllowlistedChangesDoesNotPush();
 await testPushCommandAbortsOnRebaseConflict();
 await testNonCommandIsNotHandled();
 await testHelpCommandShowsJuniorHighModeReply();
+await testTrialCompletionIsRecordedInOneMessage();
+await testPrimaryOwnerMessageIsAutomaticallySaved();
+await testNonOwnerAndTerseReplyAreNotAutomaticallySaved();
 await testRevisionCommandUpdatesPendingDraft();
 await testInsertCommandAttachesWhitelistedMedia();
 await testImageChoiceCommandSelectsAndClearsMedia();

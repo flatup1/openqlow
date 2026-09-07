@@ -1,0 +1,10 @@
+# UIZIN 大会動画 自動切り抜きシステム（MVP）
+# 依存は3つだけ。すべて無料・OSS。増やすときは「本当に必要か」を必ず疑うこと。
+#
+# 別途、システム側に ffmpeg / ffprobe が必要:
+#   macOS: brew install ffmpeg
+#   Linux: sudo apt install ffmpeg
+
+yt-dlp>=2024.1.1
+numpy>=1.24
+PyYAML>=6.0

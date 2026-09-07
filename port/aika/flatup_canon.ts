@@ -8,8 +8,8 @@ export const FLATUP_CANON = {
   // 料金
   trialFirst: "初回体験500円",
   visitorSecond: "2回目以降ビジター3,000円",
-  visitorPass6: "6回券15,000円（1年有効）",
-  visitorPass12: "12回券30,000円（1年有効）",
+  visitorPass5: "5回券14,000円（1年有効）",
+  visitorPass10: "10回券24,000円（1年有効）",
   priceKids: "キッズ7,700円",
   priceWomen: "女性8,800円",
   priceMen: "男性9,900円",
@@ -34,12 +34,14 @@ export const FLATUP_CANON = {
   selfAccess: "会員はカードキーで24時間セルフ利用可（体験・見学は対象外）",
   cancellation:
     "退会は当月末日までの申請で翌月末退会（即日不可・退会届の提出が必要）。キャンペーン適用で入会し、1年未満で退会する場合は入会金相当10,000円が発生する可能性があります。詳細は契約内容を確認。正本は cancellation_rules.md",
-  cardKeyReturn: "退会時はカードキーの返却が必要。未返却・紛失時は1,000円",
-  suspension: "休会は原則3ヶ月。詳細はスタッフ確認。正本は cancellation_rules.md",
+  cardKeyReturn:
+    "退会時・休会時ともにカードキーの返却が必要（店頭返却のほか郵送可・送料は本人負担）。休会明けの復帰時に再度お渡しする。未返却・紛失時は1,000円（在籍中の紛失による再発行も同額）",
+  suspension:
+    "休会は原則3ヶ月・休会費は無料。3ヶ月を超える場合は再申請で延長可（自動退会にはしない）。正本は cancellation_rules.md",
   classes:
     "ボクシング／キックボクシング／ムエタイ／寝技／レスリング／総合格闘技(MMA)／ブラジリアン柔術／キッズ／レディース",
   scheduleKids: "火曜・木曜18:00〜19:00、土曜13:00〜",
-  scheduleLadies: "土曜14:30",
+  scheduleLadies: "土曜14:30〜15:30",
   bookingMen: "火曜・木曜・土曜（男性インストラクター在籍）、または平日19:00以降",
   bookingWomen: "月曜・水曜・土曜",
   noBooking: "日曜・祝日は原則体験不可",

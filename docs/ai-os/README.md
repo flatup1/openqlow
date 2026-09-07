@@ -32,3 +32,11 @@ CodexとClaude Codeが、短い指示でもFLATUPの正本・口調・承認ル�
 ```
 
 Skillsを変更した場合は、先に `docs/ai-os/skills-source/` を編集し、`./scripts/sync-agent-skills.sh --check` で配置を確認します。
+
+## Brand Growth / Creative設計
+
+映像制作、感情設計、Prompt合成、投稿後学習は [`../flatup-ai-os/README.md`](../flatup-ai-os/README.md) が設計入口です。
+
+- 既存AI OSを置き換えず、将来 `src/brand_growth/` から既存のcanon・承認・公開機能を利用します。
+- Codexが設計、Claude Codeが実装、JINが最終承認します。
+- このworktreeは設計書の統合のみです。隔離Claude Code branchにはPhase 1〜3候補がありますが、Provider接続・自動投稿・本番統合は未実装です。

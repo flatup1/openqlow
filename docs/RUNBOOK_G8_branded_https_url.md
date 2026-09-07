@@ -1,4 +1,10 @@
-# G8 手順書: branded固定HTTPS URLをopenQLOWへ接続
+# G8 完了済み旧手順書: branded固定HTTPS URLをopenQLOWへ接続
+
+> **2026-08-21 訂正・実行禁止:** この下はG8実施前の過去手順です。
+> 現在は `line.flatupnarita.jp` → openQLOW VPS `162.43.41.182`、
+> `aika.flatupnarita.jp` → AIKA VPS `162.43.90.71` が正しく、両方ともhealthはHTTP 200です。
+> DNSを入れ替えたり、AIKAのjourneyをopenQLOWへ移したりしないでください。
+> 現行のWebOS→LINE手順は `docs/webos_line_journey.md` を参照してください。
 
 > 対象: インフラ（Cloudflare / DNS / reverse-proxy）
 > 担当: 人間（Cloudflare操作）
