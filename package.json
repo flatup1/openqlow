@@ -164,7 +164,8 @@
     "test:deploy-vps": "node scripts/deploy-vps.test.mjs",
     "test:check-prod": "node scripts/check-prod.test.mjs",
     "test:member-reply-gate": "tsx src/line_bot/member_reply_gate.test.ts",
-    "test:vps-role-guard": "node scripts/vps-role-guard.test.mjs"
+    "test:vps-role-guard": "node scripts/vps-role-guard.test.mjs",
+    "test:uizin-eventos": "node --test uizin-eventos/tests/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

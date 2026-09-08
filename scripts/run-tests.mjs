@@ -24,7 +24,7 @@ const GROUP_RULES = [
   ["crm", ["src/crm/"]],
   ["aika", ["port/aika/", "src/aika/", "src/generators/"]],
   ["publish", ["src/publish/"]],
-  ["ops", ["src/scheduler/", "src/keihi/", "scripts/"]],
+  ["ops", ["src/scheduler/", "src/keihi/", "scripts/", "uizin-eventos/"]],
   ["core", ["src/", "flatup-webos/"]],
 ];
 
@@ -34,13 +34,13 @@ const GROUP_LABELS = {
   line: "LINE窓口・承認",
   crm: "顧客台帳",
   publish: "発信・メディア",
-  ops: "定時処理・経費・運用スクリプト",
+  ops: "定時処理・経費・運用スクリプト・大会運営(EventOS)",
 };
 
 const GROUP_ORDER = ["core", "aika", "line", "crm", "publish", "ops"];
 
 function testTarget(command) {
-  return command.match(/(?:src|scripts|port|flatup-webos)\/[^\s]+/)?.[0] ?? "";
+  return command.match(/(?:src|scripts|port|flatup-webos|uizin-eventos)\/[^\s]+/)?.[0] ?? "";
 }
 
 function classify(target) {
