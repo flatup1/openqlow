@@ -7,6 +7,7 @@
 
 import type { CueKind, EventMeta, Match, MusicCue, Program } from './types.ts';
 import { fingerprint, parseSeconds, pick, pickNumber, toRows } from './csv.ts';
+import { extractUrl, isAppleMusicUrl, isYouTubeUrl } from './music.ts';
 import type { Row } from './csv.ts';
 
 export type SheetCsv = {
@@ -143,6 +144,35 @@ function parseMatches(csv: string, warnings: string[]): Match[] {
   return matches;
 }
 
+/**
+ * 音源URLの振り分け。
+ *
+ * 申込フォームは「入場曲URL」という1つの欄しか持たない。
+ * Apple用・YouTube用に人間が手で分けさせると、55人ぶんの手作業が発生して大会準備が止まる。
+ * そこで、1列で来たURLはここで自動的に振り分ける。
+ */
+function routeMusicUrls(apple: string, youtube: string, combined: string): {
+  appleMusicUrl: string;
+  youtubeUrl: string;
+  otherUrl: string;
+} {
+  const appleUrl = extractUrl(apple) || apple.trim();
+  const youtubeUrl = extractUrl(youtube) || youtube.trim();
+  if (appleUrl !== '' || youtubeUrl !== '') {
+    return { appleMusicUrl: appleUrl, youtubeUrl, otherUrl: '' };
+  }
+
+  const one = extractUrl(combined);
+  if (one === '') {
+    // URLらしきものが無い。文字が書いてあるなら、それはそのまま Apple 欄に入れて
+    // 「URLになっていません」と赤で言わせる（黙って捨てない）。
+    return { appleMusicUrl: combined.trim(), youtubeUrl: '', otherUrl: '' };
+  }
+  if (isAppleMusicUrl(one)) return { appleMusicUrl: one, youtubeUrl: '', otherUrl: '' };
+  if (isYouTubeUrl(one)) return { appleMusicUrl: '', youtubeUrl: one, otherUrl: '' };
+  return { appleMusicUrl: '', youtubeUrl: '', otherUrl: one };
+}
+
 function parseCues(csv: string, warnings: string[]): MusicCue[] {
   const rows = toRows(csv);
   const cues: MusicCue[] = [];
@@ -151,10 +181,23 @@ function parseCues(csv: string, warnings: string[]): MusicCue[] {
     const title = pick(row, 'title', '曲名', 'タイトル');
     const apple = pick(row, 'apple_music_url', 'applemusic', 'apple', 'apple_music');
     const youtube = pick(row, 'youtube_url', 'youtube', 'yt');
-    if (title === '' && apple === '' && youtube === '') return;
+    // 申込フォームそのままの1列（Apple/YouTubeが混ざって入ってくる）
+    const combined = pick(
+      row,
+      'music_url',
+      'url',
+      '入場曲',
+      '入場曲url',
+      '入場曲url（apple_music推奨）',
+      '入場曲url(apple_music推奨)',
+      '曲url',
+      '音源url',
+    );
+    if (title === '' && apple === '' && youtube === '' && combined === '') return;
 
     const matchNoRaw = pick(row, 'match_no', '試合番号', '試合no');
     const matchNo = matchNoRaw === '' ? null : pickNumber(row, 0, 'match_no', '試合番号', '試合no') || null;
+    const routed = routeMusicUrls(apple, youtube, combined);
 
     cues.push({
       no: pickNumber(row, index + 1, 'no', '番号', '曲番号', '順番'),
@@ -162,8 +205,9 @@ function parseCues(csv: string, warnings: string[]): MusicCue[] {
       kind: parseCueKind(pick(row, 'kind', 'cue', '種別', '用途')),
       title: title || '（曲名未入力）',
       artist: pick(row, 'artist', 'アーティスト', '演奏者'),
-      appleMusicUrl: apple,
-      youtubeUrl: youtube,
+      appleMusicUrl: routed.appleMusicUrl,
+      youtubeUrl: routed.youtubeUrl,
+      otherUrl: routed.otherUrl,
       seconds: Math.max(0, parseSeconds(pick(row, 'seconds', '秒数', '尺', '長さ'), 0)),
       note: pick(row, 'note', '備考', 'メモ'),
     });

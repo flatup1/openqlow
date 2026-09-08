@@ -70,6 +70,7 @@ node scripts/rehearsal.mjs        # 模擬大会スモークテスト
 | [docs/OPERATION_5MIN.md](docs/OPERATION_5MIN.md) | 初見のスタッフに5分で説明するとき |
 | [docs/SPREADSHEET_TEMPLATE.md](docs/SPREADSHEET_TEMPLATE.md) | 番組表スプレッドシートを作るとき |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Cloudflare に公開するとき |
+| [docs/GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) | **本番投入まで何が残っているか**（実データ検証の結果つき） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | なぜこの作りなのか／v2に回したもの |
 
 ## v1 の完成条件（4つ）
@@ -82,3 +83,11 @@ node scripts/rehearsal.mjs        # 模擬大会スモークテスト
 | 音源チェックで赤が残らない | `/check/` 画面 | 赤>0 のあいだダッシュボードに警告 |
 
 **これ以外の機能追加は、すべて Version 2 以降に回すこと。**
+
+## 本番投入の前に
+
+実データ（申込55件）での検証結果と、残っている作業は
+[docs/GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) にまとめてあります。
+
+**申込の原本スプレッドシート（連絡先・保護者氏名を含む）を EventOS に繋いではいけません。**
+理由と正しいやり方は [docs/SPREADSHEET_TEMPLATE.md](docs/SPREADSHEET_TEMPLATE.md) の冒頭にあります。

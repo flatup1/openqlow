@@ -102,7 +102,12 @@ async function main() {
   const health = await fetch(API + '/api/health').then((r) => r.json());
   check(health.ok === true, 'Worker が応答する', 'eventId=' + health.eventId);
 
-  // --- 1. 番組表を入れる ---------------------------------------------------
+  // --- 1. 前の大会の状態が残っていても、必ず最初から始める --------------------
+  // （番組表を入れ直しても進行状況は保たれる仕様なので、模擬大会の前に明示的に戻す）
+  await post('/api/command', { command: { type: 'resume' } });
+  const reset = await post('/api/command', { command: { type: 'reset_event' } });
+  check(reset.data.ok === true && reset.data.state.phase === 'before', '大会を最初の状態に戻せる');
+
   const upload = await post('/api/program/upload', buildCsv(3));
   check(upload.status === 200 && upload.data.ok === true, '番組表を取り込める', upload.data.reason ?? '');
   check(upload.data.program?.matches?.length === 3, '3試合が入っている');

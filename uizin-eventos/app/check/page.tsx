@@ -12,7 +12,7 @@ import { useEventState } from '../lib/useEventState.ts';
 import { checkMusic } from '../lib/client.ts';
 import { Loading } from '../components/Loading.tsx';
 import { ConnectionBadge } from '../components/TimerBar.tsx';
-import { colorClass, colorLabel, summarizeMusic } from '../../core/music.ts';
+import { colorClass, colorLabel, sortVerdictsForReview, summarizeMusic } from '../../core/music.ts';
 import { cueKindLabel } from '../../core/sheet.ts';
 import { formatDuration } from '../../core/timer.ts';
 
@@ -68,7 +68,10 @@ export default function CheckPage() {
             <span className="text-slate-400">合計 {summary.total}</span>
           </div>
           <p className="mt-3 text-sm text-slate-300">
-            緑 = Apple Music で再生できる（第一優先）／黄 = YouTube のみ、または尺が未設定／赤 = URLが無い・形が違う・リンク切れ
+            緑 = Apple Music で再生できる（第一優先）／黄 = YouTube のみ、または尺が未設定／赤 = URLが無い・別サービス・リンク切れ／灰 = 入場曲なし（確認済み）
+          </p>
+          <p className="mt-1 text-sm text-slate-400">
+            下の表は「直すべき順」に並べています（赤 → 黄 → 灰 → 緑）。上から潰してください。
           </p>
         </section>
 
@@ -111,7 +114,7 @@ export default function CheckPage() {
               </tr>
             </thead>
             <tbody>
-              {summary.verdicts.map((v) => {
+              {sortVerdictsForReview(summary.verdicts).map((v) => {
                 const cue = program.cues.find((c) => c.no === v.cueNo);
                 const link = v.playUrl ? links.find((l) => l.url === v.playUrl) : undefined;
                 return (

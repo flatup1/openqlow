@@ -6,11 +6,15 @@
 
 ## 1. バックエンド（Worker + Durable Object）
 
+> **先に読む**: 繋いでよいのは、個人情報を含まない**進行表スプレッドシート**だけです。
+> 申込の原本（連絡先メール・電話番号・保護者氏名を含む）は絶対に公開しないでください。
+> 理由は [SPREADSHEET_TEMPLATE.md](SPREADSHEET_TEMPLATE.md) の冒頭。
+
 ```bash
 cd uizin-eventos
 npm install
 
-# 1) 番組表スプレッドシートのIDを入れる
+# 1) 進行表スプレッドシートのIDを入れる（申込の原本のIDではない）
 #    worker/wrangler.toml の [vars] SHEET_ID を書き換える
 #    （公開リポジトリに実IDを置きたくない場合は、デプロイ直前に書き換えて戻す運用にする）
 

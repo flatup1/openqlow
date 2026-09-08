@@ -13,6 +13,7 @@ function cue(over: Partial<MusicCue>): MusicCue {
     artist: '',
     appleMusicUrl: '',
     youtubeUrl: '',
+    otherUrl: '',
     seconds: 60,
     note: '',
     ...over,

@@ -63,6 +63,11 @@ export type MusicCue = {
   appleMusicUrl: string;
   /** 第二優先 */
   youtubeUrl: string;
+  /**
+   * Apple でも YouTube でもないURLが入っていたとき、その中身。
+   * 「なぜ赤なのか」を人間に具体的に伝えるためだけに持つ（再生には使わない）。
+   */
+  otherUrl: string;
   /** 尺（秒）。0 は未設定 */
   seconds: number;
   note: string;
@@ -221,7 +226,9 @@ export type MusicStatus =
   /** リンク切れを検出した */
   | 'dead'
   /** 尺（秒数）が未設定 */
-  | 'no_seconds';
+  | 'no_seconds'
+  /** 「入場曲なし」と本人確認済み（対象外・灰） */
+  | 'none';
 
 export type MusicVerdict = {
   cueNo: number;
