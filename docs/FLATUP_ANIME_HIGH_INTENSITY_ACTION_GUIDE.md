@@ -430,6 +430,7 @@ Constraints: no opponent, no contact with a person, no floating, planted feet wi
 
 - `docs/FLATUP_ANIME_MARTIAL_ARTS_TUTORIAL_GUIDE.md` — 教則動画（この文書と混ぜない）
 - `docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md` — 実写→アニメのモーション参照
+- `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` — 参照画像9枚の生成プロンプト（最初にこれを作る）
 - `docs/FLATUP_ANIMATION_BIBLE.md` — ブランドの約束とトーン
 - `docs/FLATUP_CHARACTER_CONSISTENCY_RULE.md` — キャラ一貫性の絶対ルール
 - `FLATUP_GYM_ANIME_ART_BIBLE.md` — キャラクター統一基準（正本）

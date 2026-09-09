@@ -239,7 +239,7 @@ Constraints: no strikes to the face or body of a person, no aggressive or shouti
 
 ## 7. 量産ワークフロー
 
-1. **キャラクターシート固定（最重要）**: 正面・斜め45度・側面・背面・構え・技の途中の **5〜9枚** を静止画で作り、毎回 `@image1〜` に指定する。ここが品質の8割を決める。
+1. **キャラクターシート固定（最重要）**: 正面・斜め45度・側面・背面・構え・技の途中の **5〜9枚** を静止画で作り、毎回 `@image1〜` に指定する。ここが品質の8割を決める。**コピペ用プロンプトは `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md`**。
 2. **技リスト化**: 1本1技。カリキュラム順（構え → 前蹴り → ジャブ → ストレート → ミドル）に並べる。
 3. **絵コンテ**: 難しい技は9〜16コマの静止画を先に作り、Image-to-Video に渡す。
 4. **短尺生成**: 6〜10秒で「構え → 技 → 復帰」。1技につき3〜4本作って良い1本を選ぶ。
@@ -351,6 +351,7 @@ Constraints: no strikes to the face or body of a person, no aggressive or shouti
 
 - `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md` — 高強度アクション演出（OP・ハイライト用）
 - `docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md` — 実写→アニメのモーション参照
+- `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` — 参照画像9枚の生成プロンプト（最初にこれを作る）
 - `FLATUP_GYM_ANIME_ART_BIBLE.md` — キャラクター統一基準（正本）
 - `docs/FLATUP_ANIMATION_BIBLE.md` — 物語・映像・トーンの基準
 - `docs/FLATUP_CHARACTER_CONSISTENCY_RULE.md` — 一貫性の絶対ルール

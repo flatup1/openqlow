@@ -233,6 +233,7 @@ Constraints: no opponent, no contact with a person, no identity drift, no floati
 
 - `docs/FLATUP_ANIME_MARTIAL_ARTS_TUTORIAL_GUIDE.md` — 教則動画のプロンプト構造
 - `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md` — 演出強度とタイミング設計
+- `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` — 参照画像9枚の生成プロンプト（最初にこれを作る）
 - `docs/GUARDIAN_CONSENT_LINE_SETUP.md` — 保護者同意の運用
 - `docs/ai-os/canon/safety_rules.md` — 安全ルール
 - `docs/ai-os/canon/approval_matrix.md` — 承認マトリクス
