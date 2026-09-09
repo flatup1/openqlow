@@ -53,6 +53,7 @@
   var s = new URLSearchParams(location.search).get('story');
   var file = (s === 'op' || s === 'girlpower') ? 'story.js'
            : (s === 'ep01') ? 'story.ep01.js'
+           : (s === 'ep02') ? 'story.ep02.js'
            : 'story.flatup.js';
   document.write('<scr' + 'ipt src="' + file + '"><\/scr' + 'ipt>');
 })();
@@ -1039,6 +1040,14 @@ const loadImg = src => new Promise((ok, ng) => {
     momWatching: 'scenes/mom-watching.jpg',     // はじめてのミット打ち。後ろで母が手を組んで見守る
     goingHome: 'scenes/going-home.jpg',         // 手をつないで帰る親子
     gymExterior: 'scenes/gym-exterior.jpg',     // 夜の街に灯る FLAT UP GYM の外観
+    // EP02(少女の物語): 教わる側から、手渡す側へ
+    // 画像が未配置のうちは読み込みに失敗しても安全にスキップされる(EP01と同じ扱い)
+    girlShy: 'scenes/girl-shy.jpg',             // マットのはしっこで、うつむき気味に構える
+    girlFocused: 'scenes/girl-focused.jpg',     // フォーム棒を握る真剣な横顔
+    girlSuccess: 'scenes/girl-success.jpg',     // フォームが決まり、驚いたような笑顔
+    girlNoticed: 'scenes/girl-noticed.jpg',     // 少し離れて、小さな子がじっと見ている
+    girlTeaching: 'scenes/girl-teaching.jpg',   // ひざをついて、下級生に手を添えて教える
+    girlHandover: 'scenes/girl-handover.jpg',   // 黄色いフォーム棒を両手で手渡す
   };
   for (const [key, file] of Object.entries(SCENE_FILES)) {
     try {

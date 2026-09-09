@@ -43,22 +43,19 @@ export interface ReplyDraftBuild {
 }
 
 // safety/check は SNS投稿の下書き用も兼ねているため、投稿専用の指摘まで拾ってしまう。
-// 顧客への返信では次の指摘だけを「下書きにしない理由」として扱う。
-//   - salesy_cta / unsafe_auto_publish : 投稿ルール。返信で体験へ案内するのは正しい振る舞い
-//   - missing_flatup_value             : 警告レベル（severity: warn）で、返信の可否には使わない
-const REPLY_BLOCKING_SAFETY_CODES = new Set([
-  "pii_phone",
-  "pii_email",
-  "other_gym_attack",
-  "overclaim",
-  "body_shaming",
-  "fear_baiting",
-  "before_after_baiting",
-  "elitist_phrasing",
-  "medical_claim",
-  "mocking_weakness",
-  "blaming_effort",
-  "low_kindness_score",
+// 顧客への返信で「見なくてよい」のは次の2つだけ。
+//   - salesy_cta        : 投稿ルール。返信で体験へ案内するのは正しい振る舞い
+//   - unsafe_auto_publish : 投稿ルール。人の承認を経る返信には当たらない
+// （警告レベル severity:"warn" の指摘は、下の filter が severity で外している）
+//
+// 一覧を持つ側を「止めるもの」ではなく「見ないもの」にしている理由:
+//   止めるものを並べる書き方だと、あとから safety に新しい判定が足されたとき、
+//   その判定はここに載っていないので黙って素通りする。実際に試すと、
+//   新しく足した block 判定に当たる文面でも、下書きがそのまま作られた。
+//   知らない指摘は止める側に倒す。迷ったら答えない（要件 §23）。
+const REPLY_IGNORED_SAFETY_CODES = new Set([
+  "salesy_cta",
+  "unsafe_auto_publish",
 ]);
 
 // 正本に載っていない金額を、AIが作文して出さないためのガード（要件 §26）。
@@ -176,7 +173,7 @@ function buildReplyDraftOrEscalate(rawMessage: string): ReplyDraftBuild {
   // STEP 10: 安全チェック。返信として出してはいけない表現が残っていたらJIN確認へ。
   const safety = checkDraftSafety(reception.reply);
   const blocking = safety.issues.filter(
-    issue => issue.severity === "block" && REPLY_BLOCKING_SAFETY_CODES.has(issue.code),
+    issue => issue.severity === "block" && !REPLY_IGNORED_SAFETY_CODES.has(issue.code),
   );
   if (blocking.length > 0) {
     return {
