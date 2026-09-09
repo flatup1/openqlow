@@ -61,6 +61,8 @@
 
 ### 4-2. 既存の動画生成API（`animation-studio`）
 
+**このHTTP APIの形（下表）は変えずに残す。中身の生成エンジンだけ fal.ai へ入れ替える。**
+
 | メソッド | パス | 用途 |
 |---|---|---|
 | POST | `/api/generate-video` | 画像＋指示を渡して生成開始（`202` でジョブID返却） |
@@ -71,6 +73,7 @@
 - 実装は `animation-studio/server/`。設定は `animation-studio/server/config.ts`。
 - 既定は `VIDEO_GENERATION_DEMO_MODE=true`（**デモモード＝課金なし**）。まずここで動作確認する。
 - APIキーはサーバー側だけで扱う。フロントに出さない。ログに出さない。コミットしない。
+- 現在の生成エンジンは Google Veo（`animation-studio/server/services/geminiVideoService.ts`）。**これは撤去対象**（§5-4）。
 
 ### 4-3. API優先の原則
 
@@ -85,9 +88,31 @@
 
 ---
 
-## 5. 動画生成の標準手順（fal.ai / MiniMax H3 Turbo）
+## 5. 動画生成の標準手順（fal.ai / MiniMax H3 Max Turbo）
 
-FLATUPの動画生成は **fal.ai の MiniMax H3 Turbo** を標準とする。手順は固定する。
+FLATUPの動画生成は **fal.ai に一本化**する（2026-09-04 オーナー判断）。他サービスを併用しない。
+標準モデルは **MiniMax H3 Max Turbo**。手順は固定する。
+
+### 5-0. 確認済みの事実（fal.ai 公式モデルページ由来）
+
+| 項目 | 値 |
+|---|---|
+| 標準モデル（画像→動画） | `minimax/h3-max-turbo/image-to-video` |
+| 標準モデル（文章→動画） | `minimax/h3-max-turbo/text-to-video` |
+| 参考：無印H3 | `minimax/h3/image-to-video` / `text-to-video` / `reference-to-video` |
+| 参考：H3 Max（Turbo無し） | `minimax/h3-max/image-to-video` / `text-to-video` |
+| 認証 | 環境変数 `FAL_KEY` |
+| 公式クライアント | `@fal-ai/client`（`@fal-ai/serverless-client` は非推奨） |
+| 解像度 | 480p / 768p（既定 768p）。16:9 で 1344×768 |
+| フレームレート | 24fps |
+| 尺 | 5〜15秒 |
+| 画像→動画の比率 | **入力画像の比率に従う**（比率は入力画像で決める） |
+
+**注意1（名前）**：fal.ai に「H3 Turbo」という単体モデルは無い。Turbo版の正式名は **H3 Max Turbo**。
+**注意2（解像度）**：最大 768p なので、納品仕様の 1080×1920 にはアップスケールが必要。
+アップスケールは**カラーグレーディングより前**に行う（`brand-film-series/01_TECHNICAL_SPECS.md`）。
+**未確認**：リクエスト／レスポンスの正確なパラメータ名と料金は、この環境から fal.ai へ直接アクセスできず未取得。
+実装前に `https://fal.ai/models/minimax/h3-max-turbo/image-to-video/api` を開いて確認し、この表を更新する。
 
 ### 5-1. ルート選択（必ずこの順）
 
@@ -96,6 +121,9 @@ FLATUPの動画生成は **fal.ai の MiniMax H3 Turbo** を標準とする。�
 ② API が使えない   → ブラウザ経由で fal.ai を操作（下記5-3の手順に固定）
 ③ どちらも不可     → 停止してオーナーに報告。勝手に別サービスへ乗り換えない
 ```
+
+**fal.ai が使えないときに、Veo・Runway・Pika など他サービスへ勝手に切り替えるのは禁止。**
+一本化の判断を崩すので、必ずオーナーに確認する。
 
 ### 5-2. 生成前チェック（毎回）
 
@@ -107,7 +135,7 @@ FLATUPの動画生成は **fal.ai の MiniMax H3 Turbo** を標準とする。�
 
 ### 5-3. ブラウザ経由の固定手順
 
-1. fal.ai にログインし、**MiniMax H3 Turbo** のモデルページを開く。
+1. fal.ai にログインし、**H3 Max Turbo**（`minimax/h3-max-turbo/image-to-video`）のモデルページを開く。
 2. 入力画像（i2v の場合）をアップロードする。
 3. プロンプト・尺・比率・seed を、PROJECTの生成台帳に書いてある値と**1文字も変えずに**入力する。
 4. まずプレビュー設定で生成し、結果を検品（§6）する。
@@ -117,15 +145,25 @@ FLATUPの動画生成は **fal.ai の MiniMax H3 Turbo** を標準とする。�
 
 **モデル名・パラメータ名・料金は必ず fal.ai の公式ページで確認してから台帳に書く。記憶で埋めない（§3）。**
 
-### 5-4. API化するときの条件
+### 5-4. fal.ai への一本化（移行方針）
 
-`animation-studio` に fal.ai 経路を足す場合は、次を守る。
+`animation-studio` の生成エンジンを Veo から fal.ai へ入れ替える。**足すのではなく、置き換える。**
 
-- 既存の Veo 経路を壊さない。**プロバイダを切り替えられる形で足す**（既存の `/api/generate-video` の入出力は変えない）。
-- APIキーは環境変数。`.env.example` にキー名だけ追記し、値は書かない。
-- デモモードで動くことを先に確認する。
-- テストを足す。`npm test` と `./scripts/validate-ai-os.sh` が通ることを確認する。
-- 既存 Veo と fal.ai のどちらを標準にするかで迷いが出たら、**推測で統合せずオーナーに確認**する。
+進め方（この順を守る）。
+
+1. **API仕様を確認する。** `minimax/h3-max-turbo/image-to-video` のAPIドキュメントを開き、§5-0 の「未確認」を埋める。ここを飛ばして実装しない。
+2. **HTTP APIの形は変えない。** `/api/generate-video` などの入出力（§4-2）は現状維持。フロントの改修が要らない状態にする。
+3. **`geminiVideoService.ts` の隣に fal.ai 実装を作り、呼び出し先を切り替える。** 先に消さない。
+4. **デモモードで動作確認する。**（`VIDEO_GENERATION_DEMO_MODE=true` は課金なし）
+5. **テストを足す。** `npm test` と `./scripts/validate-ai-os.sh` が通ることを確認する。
+6. **本番生成で1本通ったら、Veo実装と Veo専用の設定を撤去する。**（`VIDEO_MODEL` / `GEMINI_API_KEY` など）
+7. **撤去（削除）は必ずオーナー承認後。** 動作確認が済むまで消さない。
+
+守ること。
+
+- APIキーは環境変数（`FAL_KEY`）。`.env.example` にはキー名だけ書き、値は書かない。
+- 課金が発生する本番生成は、その都度オーナー承認（§7）。
+- 「一本化」は fal.ai へ寄せる判断であって、**動くものを先に壊してよいという意味ではない**。置き換えが動いてから消す。
 
 ---
 
@@ -220,6 +258,18 @@ FLATUPの動画生成は **fal.ai の MiniMax H3 Turbo** を標準とする。�
 | ブランド・作画 | `FLATUP_GYM_ANIME_ART_BIBLE.md` / `docs/FLATUP_CHARACTER_CONSISTENCY_RULE.md` |
 | 技術仕様 | `brand-film-series/01_TECHNICAL_SPECS.md` |
 | 既存の生成アプリ | `animation-studio/README.md` / `animation-studio/server/` |
+| 生成サービス | fal.ai `minimax/h3-max-turbo/image-to-video`（環境変数 `FAL_KEY`） |
 | 既存の企画資産 | `brand-film-ep09`〜`ep13` / `girl-power-op/` / `gymstorys/` |
 | 映像制作の設計正本 | `docs/flatup-ai-os/README.md` |
 | 自動クリップ設計 | `docs/UIZIN_AUTO_CLIP_SYSTEM_DESIGN.md` |
+
+---
+
+## 12. 決定履歴
+
+| 日付 | 決めたこと | 決めた人 |
+|---|---|---|
+| 2026-09-04 | 本仕様書を動画制作の共通ルールとして新規制定 | JIN |
+| 2026-09-04 | 動画生成は **fal.ai に一本化**。Google Veo 経路は撤去対象（§5-4の順で置き換え、削除は承認後） | JIN |
+
+新しい決定が出たらこの表に1行足す。過去の行は消さない。
