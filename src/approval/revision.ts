@@ -3,6 +3,7 @@ import path from "node:path";
 import { checkDraftSafety } from "../safety/check.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import type { DraftRecord, PlatformDraft } from "../types.js";
+import { resolveCurrentDraftId } from "./shortcut.js";
 import { formatApprovalMessage } from "./message.js";
 
 export interface LineRevisionCommand {
@@ -46,10 +47,21 @@ async function loadStateRecords(root: string): Promise<DraftRecord[]> {
   return records;
 }
 
-async function latestPendingRecord(root: string): Promise<DraftRecord | undefined> {
-  return (await loadStateRecords(root))
-    .filter(record => record.status === "pending_approval")
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+/**
+ * ID を省いた「修正 …」が、どの下書きを指しているかを決める。
+ *
+ * 「JINへ最後に見せたもの」の判断は resolveCurrentDraftId が1か所で持つ。
+ * ここで独自に「いちばん新しい保留」を選んでいたため、JINが画面で見ている
+ * ものと、書き換わるものが違っていた。実際に試すと:
+ *
+ *   JINが見ているのは A (FG-20260101-001)
+ *   修正 Aを直した本文です
+ *   → Aの本文: Aの本文（そのまま）
+ *     Bの本文: Aを直した本文です  ← 見ていない B が書き換わる
+ */
+async function currentPendingRecord(root: string): Promise<DraftRecord | undefined> {
+  const id = await resolveCurrentDraftId(root);
+  return id ? loadRecord(root, id) : undefined;
 }
 
 function draftText(drafts: PlatformDraft[]): string {
@@ -68,7 +80,7 @@ export async function applyLineRevisionCommand(root: string, text: string, now =
 
   const target = command.id
     ? await loadRecord(root, command.id)
-    : await latestPendingRecord(root);
+    : await currentPendingRecord(root);
 
   if (!target || target.status !== "pending_approval") {
     return { ok: false, message: "修正できる承認待ち下書きがありません。" };
