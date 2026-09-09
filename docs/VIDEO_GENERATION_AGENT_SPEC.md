@@ -256,6 +256,9 @@ FLATUPの動画生成は **fal.ai に一本化**する（2026-09-04 オーナー
 | 事実の正本 | `src/shared/canon.ts` |
 | 承認マトリクス | `docs/ai-os/canon/approval_matrix.md` |
 | ブランド・作画 | `FLATUP_GYM_ANIME_ART_BIBLE.md` / `docs/FLATUP_CHARACTER_CONSISTENCY_RULE.md` |
+| 制作ガイド（教則動画） | `docs/FLATUP_ANIME_MARTIAL_ARTS_TUTORIAL_GUIDE.md` |
+| 制作ガイド（アクション演出） | `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md` |
+| 制作ガイド（実写→アニメ） | `docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md` |
 | 技術仕様 | `brand-film-series/01_TECHNICAL_SPECS.md` |
 | 既存の生成アプリ | `animation-studio/README.md` / `animation-studio/server/` |
 | 生成サービス | fal.ai `minimax/h3-max-turbo/image-to-video`（環境変数 `FAL_KEY`） |
