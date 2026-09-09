@@ -16,7 +16,7 @@ import { replyDraftStateDir, type ReplyDraftConfig } from "./config.js";
 import { withStateLock } from "./lock.js";
 import { dateInJst, stampInJst, isQuietHours } from "./time.js";
 import { CATEGORY_LABEL, ESCALATION_LABEL } from "./triage.js";
-import { draftDir, loadDraft, saveDraft, type ReplyDraftRecord } from "./store.js";
+import { appendRunLog, draftDir, readDraft, saveDraft, type ReplyDraftRecord } from "./store.js";
 
 /** LINEへ本文を送る関数。テストではここを差し替える。宛先は渡さない。 */
 export type PushImpl = (text: string) => Promise<{ ok: boolean; mode: string; error?: string }>;
@@ -234,21 +234,51 @@ async function findUnnotifiedDrafts(
   known: Set<string>,
 ): Promise<ReplyDraftRecord[]> {
   const found: ReplyDraftRecord[] = [];
+  // 拾えなかったものは黙って捨てない。ここで消えると手がかりが1つも残らない。
+  const skipped: string[] = [];
   for (const dateJst of recentDatesJst(now, RECOVERY_DAYS)) {
-    const files = await fs.readdir(draftDir(root, dateJst)).catch(() => [] as string[]);
+    let files: string[];
+    try {
+      files = await fs.readdir(draftDir(root, dateJst));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // その日のフォルダが無い＝下書きが無い。それ以外は「見に行けなかった」。
+      if (code !== "ENOENT" && code !== "ENOTDIR") {
+        skipped.push(`${dateJst} のフォルダを読めない（${code ?? String(error)}）`);
+      }
+      continue;
+    }
     for (const file of files.sort()) {
       if (!file.endsWith(".json")) continue;
       const id = file.slice(0, -".json".length);
       if (known.has(id)) continue;
-      const record = await loadDraft(root, dateJst, id);
-      if (!record || record.notifiedAt) continue;
-      // 時刻が読めない記録は拾わない（毎回拾い続けて通知が止まらなくなる）。
+      const result = await readDraft(root, dateJst, id);
+      if (result.status === "missing") continue;
+      if (result.status === "unreadable") {
+        skipped.push(`${id}（${result.reason}）`);
+        continue;
+      }
+      const record = result.record;
+      if (record.notifiedAt) continue;
       const age = now.getTime() - Date.parse(record.receivedAt);
-      if (!(age >= RECOVERY_GRACE_MS)) continue;
+      if (Number.isNaN(age)) {
+        // 受信時刻が壊れている。拾い続けると通知が止まらないので拾わないが、
+        // 黙って見捨てるのではなく記録に残す（人が気づけるようにする）。
+        skipped.push(`${id}（受信時刻が読めない）`);
+        continue;
+      }
+      if (age < RECOVERY_GRACE_MS) continue;
       found.push(record);
       known.add(id);
-      if (found.length >= RECOVERY_MAX) return found;
+      if (found.length >= RECOVERY_MAX) break;
     }
+    if (found.length >= RECOVERY_MAX) break;
+  }
+  if (skipped.length > 0) {
+    await appendRunLog(root, dateInJst(now), {
+      at: now.toISOString(),
+      message: `拾い直せなかった下書きがあります: ${skipped.join(" / ")}`,
+    }).catch(() => {});
   }
   return found;
 }
@@ -327,12 +357,24 @@ export async function flushPendingNotifications(
 
   const records: ReplyDraftRecord[] = [];
   const missingRefIds: string[] = [];
+  const unreadableRefIds: string[] = [];
   const known = new Set<string>();
   for (const ref of refs) {
     known.add(ref.id);
-    const record = await loadDraft(root, ref.dateJst, ref.id);
-    if (record) records.push(record);
-    else missingRefIds.push(ref.id);
+    const result = await readDraft(root, ref.dateJst, ref.id);
+    if (result.status === "ok") records.push(result.record);
+    else if (result.status === "missing") missingRefIds.push(ref.id);
+    // 読めなかっただけの分は保留から外さない。ここで外すと、拾い直しの範囲
+    // （当日と前日）を過ぎた下書きは手がかりが1つも無くなり、永久に届かない。
+    else unreadableRefIds.push(`${ref.id}（${result.reason}）`);
+  }
+
+  if (unreadableRefIds.length > 0) {
+    // 黙って残さない。次の実行で読めれば通知される。
+    await appendRunLog(root, dateInJst(now), {
+      at: now.toISOString(),
+      message: `下書きを読めませんでした（保留に残して次回また試します）: ${unreadableRefIds.join(" / ")}`,
+    }).catch(() => {});
   }
 
   // 保留リストに載っていない取りこぼしを、ディスクから拾い直す。
