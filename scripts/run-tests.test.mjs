@@ -103,4 +103,35 @@ try {
   rmSync(fixtureDir, { recursive: true, force: true });
 }
 
+// ---- 1本も見つからなかったら失敗にする ----
+//
+// 以前は「失敗0件」だけを見ていたので、テストを1本も見つけられなくても
+// 終了コード0を返していた:
+//   成功 0件 / 失敗 0件
+//   終了コード: 0
+// package.json の test:* が壊れれば、CIは何も検査せずに緑になる。
+{
+  const emptyDir = mkdtempSync(join(tmpdir(), "openqlow-run-tests-empty-"));
+  try {
+    writeFileSync(
+      join(emptyDir, "package.json"),
+      JSON.stringify({ name: "empty", private: true, scripts: { typecheck: "node -e \"process.exit(0)\"" } }, null, 2),
+      "utf8",
+    );
+    const result = spawnSync(
+      process.execPath,
+      [runner, `--package=${join(emptyDir, "package.json")}`],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 1, "テストが1本も無いときは失敗にする（何も走っていない緑を作らない）");
+    assert.match(
+      result.stdout,
+      /テストが1本も見つかりませんでした/,
+      "なぜ失敗したかを人が読める形で出す",
+    );
+  } finally {
+    rmSync(emptyDir, { recursive: true, force: true });
+  }
+}
+
 console.log("run-tests runner tests passed");

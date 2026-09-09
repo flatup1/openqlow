@@ -1,11 +1,34 @@
 // 下書き作成テスト。
 // 「正本の事実しか出さない」「危ない話には本文を作らない」「個人情報を残さない」を固定する。
 
+import fs from "node:fs/promises";
 import { FLATUP_CANON } from "../shared/canon.js";
 import { buildReplyDraft, failedDraft, nonCanonAmounts } from "./draft.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
+}
+
+// ---- 知らない安全判定は、止める側に倒す ----
+//
+// safety/check は SNS投稿の下書き用も兼ねている。返信で見なくてよいのは
+// 投稿ルールの2つだけで、それ以外の「送ってはいけない」判定は全部止める。
+//
+// ここを「止めるものを並べる」書き方にしていたときは、safety に新しい block 判定を
+// 足しても、その判定に当たる文面で下書きがそのまま作られた（素通り）。
+// あとから安全判定が増えるほど危なくなる書き方なので、向きを固定しておく。
+{
+  const source = await fs.readFile(new URL("./draft.ts", import.meta.url), "utf8");
+  assert(
+    /!REPLY_IGNORED_SAFETY_CODES\.has\(issue\.code\)/.test(source),
+    "除外リストに載っていない block 判定は止める（許可リスト方式にしない）",
+  );
+  const body = source.match(/const REPLY_IGNORED_SAFETY_CODES = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
+  const codes = Array.from(body.matchAll(/"([a-z_]+)"/g), match => match[1]).sort();
+  assert(
+    codes.join(",") === "salesy_cta,unsafe_auto_publish",
+    `返信で見ない指摘はSNS投稿用の2つだけ（実際: ${codes.join(",") || "なし"}）`,
+  );
 }
 
 // ---- 通常の問い合わせは下書きができる ----
