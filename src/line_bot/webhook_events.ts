@@ -6,6 +6,10 @@ export interface ExtractedEvent {
   messageId?: string;
   messageType?: "image" | "video";
   userId?: string;
+  /** LINE が各イベントに付ける一意ID。返信下書きの重複判定に使う。 */
+  webhookEventId?: string;
+  /** LINEイベントの送信時刻（ms）。webhookEventId が無いときの指紋づくりに使う。 */
+  timestamp?: number;
   /**
    * 承認者（オーナー）からのイベントか。
    * false = 会員。会員のメッセージは退会相談の受付だけに使い、
@@ -24,6 +28,8 @@ export interface ExtractedEvents {
 interface RawLineEvent {
   type?: string;
   replyToken?: string;
+  webhookEventId?: string;
+  timestamp?: number;
   source?: { userId?: string };
   message?: { type?: string; text?: string; id?: string };
 }
@@ -67,6 +73,8 @@ export function extractLineEvents(
           text: event.message.text,
           messageId: event.message.id,
           userId,
+          webhookEventId: event.webhookEventId,
+          timestamp: event.timestamp,
           isApprover,
         });
       }
@@ -79,6 +87,8 @@ export function extractLineEvents(
           messageId: event.message.id,
           messageType: event.message.type,
           userId,
+          webhookEventId: event.webhookEventId,
+          timestamp: event.timestamp,
           isApprover,
         });
       }

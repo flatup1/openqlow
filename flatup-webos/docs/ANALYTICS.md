@@ -49,13 +49,16 @@ booking_completed        # 予約完了（Phase 2で予約システム接続後�
 - 送るのはイベント名と選択カテゴリ（例: `audience=self`）まで。
   氏名・連絡先・自由入力テキストは送らない。
 
-## Phase 1の実装
+## 現在の実装（v13）
 
-- 計測基盤（GA4等）はまだ接続しない。
-- `track(eventName, payload)` の1関数に集約し、Phase 1では
-  console + `dataLayer` 互換の配列へ記録するだけのスタブとする。
-- 後からGA4 / Clarity等を「track関数の中身の差し替え」だけで接続できる構造にする。
-  （既存LPに GA4 / Clarity / Meta Pixel のタグ挿入枠の前例あり）
+- `track(eventName, payload)` の1関数に集約し、`dataLayer` とAIKAの
+  `POST /webos-event` の両方へ記録する。計測失敗で画面は止めない。
+- AIKA SQLiteが保存するのは、匿名セッションID・イベント名・
+  許可済みの選択カテゴリのみ。氏名・電話・自由文・IPは計測DBへ保存しない。
+- 行動イベントは90日で自動削除。運用担当者はAIKA VPS内の
+  `webos_metrics.py --days 7` で「開始 → 結果 → LINE → 引き継ぎ」を確認する。
+- 外部SaaSや月額費用は不要。GA4 / Clarityは、将来必要になった時だけ
+  `dataLayer` を利用して追加できる。
 
 ## 将来の管理画面（Phase 1では作らない）
 

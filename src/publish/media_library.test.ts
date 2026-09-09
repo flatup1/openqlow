@@ -5,11 +5,13 @@ import path from "node:path";
 import { saveRecord } from "../state/file_store.js";
 import {
   attachMediaSelectionCommand,
+  attachMediaToLatestPending,
   listMediaCandidates,
   mediaDirectoryForEnv,
   parseInsertMediaCommand,
 } from "./media_library.js";
 import type { DraftRecord } from "../types.js";
+import { expandApprovalShortcut, rememberApprovalCandidate } from "../approval/shortcut.js";
 
 function record(id: string): DraftRecord {
   return {
@@ -80,5 +82,55 @@ assert.match(empty.message, /候補がありません/);
 await rm(root, { recursive: true, force: true });
 await rm(mediaDir, { recursive: true, force: true });
 await rm(emptyDir, { recursive: true, force: true });
+
+// ---- 写真は、JINが見ている下書きに付く ----
+//
+// 添付先は「いちばん新しい保留」だった。承認（OK）や修正が目印を見るのに、
+// ここだけ見ていないので、別々の下書きを指していた。実際にこうなった:
+//
+//   JINが見ているのは A (FG-20260101-001)
+//   "OK" が指すもの → FG-20260101-001
+//   写真の添付先    → FG-20260101-002   ← 別の下書き
+//
+// JINは A に付けたつもりで、A は写真なしで承認される。
+{
+  const markerRoot = await mkdtemp(path.join(os.tmpdir(), "openqlow-media-lib-marker-"));
+  const older = { ...record("FG-20260608-201"), createdAt: "2026-06-08T00:00:00.000Z" };
+  const newer = { ...record("FG-20260608-202"), createdAt: "2026-06-08T01:00:00.000Z" };
+  await saveRecord(markerRoot, older);
+  await saveRecord(markerRoot, newer);
+  await rememberApprovalCandidate(markerRoot, "FG-20260608-201");   // 見せたのは古い方
+
+  const attached = await attachMediaToLatestPending(markerRoot, "/tmp/photo.jpg");
+  assert.equal(attached.ok, true);
+  assert.equal(attached.id, "FG-20260608-201", "見せた下書きに付ける（いちばん新しいものではない）");
+
+  const a = JSON.parse(await readFile(path.join(markerRoot, "state", "FG-20260608-201.json"), "utf8"));
+  const b = JSON.parse(await readFile(path.join(markerRoot, "state", "FG-20260608-202.json"), "utf8"));
+  assert.deepEqual(a.mediaFiles, ["/tmp/photo.jpg"]);
+  assert.deepEqual(b.mediaFiles ?? [], [], "見ていない下書きに写真を付けない");
+
+  // 承認が指す先と同じであること。ここがずれると、写真なしで承認される。
+  assert.equal(await expandApprovalShortcut("ok", markerRoot), "OK FG-20260608-201 all");
+
+  await rm(markerRoot, { recursive: true, force: true });
+}
+
+// 見せた下書きが読めないときは、別のものに付けない。
+{
+  const brokenRoot = await mkdtemp(path.join(os.tmpdir(), "openqlow-media-lib-broken-"));
+  await saveRecord(brokenRoot, { ...record("FG-20260608-211"), createdAt: "2026-06-08T00:00:00.000Z" });
+  await saveRecord(brokenRoot, { ...record("FG-20260608-212"), createdAt: "2026-06-08T01:00:00.000Z" });
+  await rememberApprovalCandidate(brokenRoot, "FG-20260608-211");
+  await writeFile(path.join(brokenRoot, "state", "FG-20260608-211.json"), '{"id": "FG-2026', "utf8");
+
+  const attached = await attachMediaToLatestPending(brokenRoot, "/tmp/photo.jpg");
+  assert.equal(attached.ok, false, "分からないなら付けない");
+
+  const b = JSON.parse(await readFile(path.join(brokenRoot, "state", "FG-20260608-212.json"), "utf8"));
+  assert.deepEqual(b.mediaFiles ?? [], [], "巻き添えで別の下書きに付けない");
+
+  await rm(brokenRoot, { recursive: true, force: true });
+}
 
 console.log("media library tests passed");

@@ -49,6 +49,8 @@ trap cleanup EXIT
 # 次のケースの `rm -rf` が走ると、CIで
 # `rm: cannot remove '.../case/.git/objects': Directory not empty` として落ちる。
 # 使い捨ての検査用リポジトリにメンテナンスは不要なので、最初から起動させない。
+# core.hooksPath=/dev/null は、Mac側の共通git-secrets hookがfixture作成を
+# 誤停止するのを防ぐ。AI OS validatorの検査内容自体は変えない。
 build_sandbox() {
   local work="$1"
   rm -rf "$work"
@@ -58,8 +60,8 @@ build_sandbox() {
     | ( cd "$work" && tar -xf - )
   ( cd "$work" \
       && git init -q \
-      && git -c gc.auto=0 -c maintenance.auto=false add -A \
-      && git -c gc.auto=0 -c maintenance.auto=false \
+      && git -c core.hooksPath=/dev/null -c gc.auto=0 -c maintenance.auto=false add -A \
+      && git -c core.hooksPath=/dev/null -c gc.auto=0 -c maintenance.auto=false \
              -c user.email=t@t -c user.name=t commit -qm fixture )
 }
 
