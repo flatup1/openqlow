@@ -85,7 +85,7 @@ function createdAtValue(record: DraftRecord): number {
  * 画面で見たものと、承認されるものが違う。AIKA側で直した「番号ずれ」と同じ形。
  * 分からないときは何も指さない（返事はそのままの文として扱われ、何も承認されない）。
  */
-async function resolveShortcutTarget(root: string): Promise<string | undefined> {
+export async function resolveCurrentDraftId(root: string): Promise<string | undefined> {
   const last = await loadLastApprovalCandidate(root);
   if (last) {
     const lastRecord = await loadRecord(root, last.id);
@@ -101,12 +101,12 @@ async function resolveShortcutTarget(root: string): Promise<string | undefined> 
 
 export async function expandApprovalShortcut(text: string, root: string): Promise<string | undefined> {
   if (!isOkOnly(text)) return undefined;
-  const id = await resolveShortcutTarget(root);
+  const id = await resolveCurrentDraftId(root);
   return id ? `OK ${id} all` : undefined;
 }
 
 export async function expandRejectionShortcut(text: string, root: string): Promise<string | undefined> {
   if (!isRejectOnly(text)) return undefined;
-  const id = await resolveShortcutTarget(root);
+  const id = await resolveCurrentDraftId(root);
   return id ? `NO ${id}` : undefined;
 }
