@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { attachMediaToLatestPending, latestPendingRecord, mediaDirectoryForEnv } from "./media_library.js";
+import { attachMediaToLatestPending, currentPendingRecord, mediaDirectoryForEnv } from "./media_library.js";
 
 export type LineMediaMessageType = "image" | "video";
 
@@ -73,7 +73,7 @@ export async function saveLineMessageMediaAndAttach(
     };
   }
 
-  const record = await latestPendingRecord(input.root);
+  const record = await currentPendingRecord(input.root);
   if (!record) return { ok: false, message: "添付できる承認待ち下書きがありません。" };
 
   const fetchImpl = input.fetchImpl ?? fetch;
