@@ -65,40 +65,48 @@ export async function rememberApprovalCandidate(root: string, id: string, now = 
   await writeFile(path.join(dir, "last_approval_candidate.json"), `${JSON.stringify(marker, null, 2)}\n`, "utf8");
 }
 
-export async function expandApprovalShortcut(text: string, root: string): Promise<string | undefined> {
-  if (!isOkOnly(text)) return undefined;
+/** 並べ替えの基準。日付が読めない記録を「いちばん新しい」にしない。 */
+function createdAtValue(record: DraftRecord): number {
+  const at = Date.parse(record.createdAt);
+  return Number.isNaN(at) ? 0 : at;
+}
 
+/**
+ * 「OK」「NO」だけの返事が、どの下書きを指しているかを決める。
+ *
+ * 目印（last_approval_candidate）は「JINへ最後に見せたもの」。
+ * これがあるなら、それだけを見る。読めなかったり、もう保留でなかったりしても、
+ * 「いちばん新しいもの」へ落としてはいけない。実際に試すと:
+ *
+ *   JINが見ているのは A (FG-20260101-001)
+ *   通常時に "OK" → OK FG-20260101-001 all
+ *   Aが壊れた状態で "OK" → OK FG-20260101-002 all  ← 見ていない B が承認される
+ *
+ * 画面で見たものと、承認されるものが違う。AIKA側で直した「番号ずれ」と同じ形。
+ * 分からないときは何も指さない（返事はそのままの文として扱われ、何も承認されない）。
+ */
+async function resolveShortcutTarget(root: string): Promise<string | undefined> {
   const last = await loadLastApprovalCandidate(root);
   if (last) {
     const lastRecord = await loadRecord(root, last.id);
-    if (lastRecord?.status === "pending_approval") {
-      return `OK ${lastRecord.id} all`;
-    }
+    return lastRecord?.status === "pending_approval" ? lastRecord.id : undefined;
   }
 
+  // 目印がまだ無いときだけ、いちばん新しい保留を指す。
   const latest = (await loadStateRecords(root))
     .filter((record) => record.status === "pending_approval")
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+    .sort((a, b) => createdAtValue(b) - createdAtValue(a))[0];
+  return latest?.id;
+}
 
-  if (!latest) return undefined;
-  return `OK ${latest.id} all`;
+export async function expandApprovalShortcut(text: string, root: string): Promise<string | undefined> {
+  if (!isOkOnly(text)) return undefined;
+  const id = await resolveShortcutTarget(root);
+  return id ? `OK ${id} all` : undefined;
 }
 
 export async function expandRejectionShortcut(text: string, root: string): Promise<string | undefined> {
   if (!isRejectOnly(text)) return undefined;
-
-  const last = await loadLastApprovalCandidate(root);
-  if (last) {
-    const lastRecord = await loadRecord(root, last.id);
-    if (lastRecord?.status === "pending_approval") {
-      return `NO ${lastRecord.id}`;
-    }
-  }
-
-  const latest = (await loadStateRecords(root))
-    .filter((record) => record.status === "pending_approval")
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
-
-  if (!latest) return undefined;
-  return `NO ${latest.id}`;
+  const id = await resolveShortcutTarget(root);
+  return id ? `NO ${id}` : undefined;
 }
