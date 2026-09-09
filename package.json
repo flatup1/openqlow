@@ -168,7 +168,7 @@
     "test:vps-role-guard": "node scripts/vps-role-guard.test.mjs"
   },
   "devDependencies": {
-    "@types/node": "^22.15.0",
+    "@types/node": "^26.4.1",
     "tsx": "^4.23.12",
     "typescript": "^5.8.3"
   },
