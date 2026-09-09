@@ -168,3 +168,33 @@ test('前日チェックは「直すべき順」に並ぶ（赤が黄に埋も�
   );
   assert.equal(sorted[0].cueNo, 8, '赤がいちばん上に来る');
 });
+
+test('公開されていないシートのログイン画面HTMLを、CSVとして取り込まない', async () => {
+  const { looksLikeHtml } = await import('../core/sheet.ts');
+
+  // Google が非公開シートに返すログイン画面（実際の形）
+  const loginPage = [
+    '<!DOCTYPE html>',
+    '<html lang="ja"><head><title>ログイン - Google アカウント</title></head>',
+    '<body><form action="https://accounts.google.com/ServiceLogin">…</form></body></html>',
+  ].join('\n');
+  assert.equal(looksLikeHtml(loginPage), true);
+  assert.equal(looksLikeHtml('<html><body>Temporary Redirect</body></html>'), true);
+
+  // 正しいCSVは HTML と判定しない
+  assert.equal(looksLikeHtml('key,value\ntitle,UIZIN 2026'), false);
+  assert.equal(
+    looksLikeHtml('no,title,入場曲\n1,曲A,https://music.apple.com/jp/album/x/1'),
+    false,
+  );
+  // セルの中に山括弧があっても、先頭でなければ CSV のまま
+  assert.equal(looksLikeHtml('no,note\n1,"<注意> 入場は右から"'), false);
+});
+
+test('ログイン画面HTMLをCSVとして通すと、試合0件になってしまう（だから手前で止める）', () => {
+  const loginPage = '<!DOCTYPE html>\n<html><head><title>ログイン</title></head></html>';
+  const program = parseProgram({ event: loginPage, matches: loginPage, music: loginPage }, 0);
+  assert.equal(program.matches.length, 0, 'HTMLを取り込むと対戦カードが消える');
+  assert.equal(program.cues.length, 0);
+  // → だから worker 側で looksLikeHtml を見て、取り込む前に失敗させる
+});

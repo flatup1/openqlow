@@ -9,7 +9,7 @@
  * 状態はここには置かない。唯一の真実は EventRoom の中だけ。
  */
 
-import { sheetCsvUrl } from '../core/sheet.ts';
+import { looksLikeHtml, sheetCsvUrl } from '../core/sheet.ts';
 import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
 
@@ -105,7 +105,16 @@ async function loadSheets(env: Env): Promise<{ event: string; matches: string; m
           'シート「' + name + '」を読めませんでした（HTTP ' + res.status + '）。共有設定を「リンクを知っている全員／閲覧者」にしてください。',
         );
       }
-      return await res.text();
+      const text = await res.text();
+      // 200が返ってきても、中身がログイン画面のHTMLなら「読めていない」。
+      // これをCSVとして取り込むと、試合0件で上書きしてしまう。
+      if (looksLikeHtml(text)) {
+        throw new Error(
+          'シート「' + name + '」が公開されていません（CSVではなくGoogleのログイン画面が返りました）。' +
+            '共有設定を「リンクを知っている全員／閲覧者」にしてください。',
+        );
+      }
+      return text;
     }),
   );
   return { event, matches, music };

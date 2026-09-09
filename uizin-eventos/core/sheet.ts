@@ -19,6 +19,21 @@ export type SheetCsv = {
   music: string;
 };
 
+/**
+ * 返ってきたのが CSV ではなく HTML かどうか。
+ *
+ * Google は「公開されていないシート」に対して、CSVの代わりに
+ * ログイン画面のHTMLを HTTP 200 で返すことがある（ログインへリダイレクトされるため）。
+ * これをCSVとして取り込むと、試合0件の番組表ができあがり、
+ * 進行中の対戦カードを空で上書きしてしまう。大会が止まる。
+ * だから「200が返ってきた」だけでは信用しない。
+ */
+export function looksLikeHtml(text: string): boolean {
+  const head = text.slice(0, 2000).trimStart().toLowerCase();
+  if (head.startsWith('<')) return true;
+  return head.includes('accounts.google.com/servicelogin') || head.includes('<!doctype html');
+}
+
 /** Google スプレッドシートの1シートをCSVで取り出すURL */
 export function sheetCsvUrl(sheetId: string, sheetName: string): string {
   return (

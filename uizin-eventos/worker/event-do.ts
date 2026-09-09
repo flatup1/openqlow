@@ -191,6 +191,27 @@ export class EventRoom {
       const now = Date.now();
       const next = parseProgram(csv, now);
       const previous = this.program;
+
+      // 進行中に「試合0件の番組表」で上書きしない。
+      // シートの消し間違い・SHEET_IDの入れ違い・読み取り失敗のどれであっても、
+      // 走っている大会から対戦カードが消えるのは、最も避けたい壊れ方。
+      if (
+        next.matches.length === 0 &&
+        previous.matches.length > 0 &&
+        this.history.current.phase !== 'before'
+      ) {
+        return json(
+          {
+            ok: false,
+            kept: true,
+            reason:
+              '取り込んだ番組表に試合が1件もありません。大会が進行中のため、今の番組表を残しました。シートを確認してください。',
+            serverNow: now,
+            state: this.history.current,
+          },
+          409,
+        );
+      }
       this.program = next;
       const entry: LogEntry = {
         type: 'program_reload',
