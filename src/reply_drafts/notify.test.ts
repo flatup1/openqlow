@@ -13,7 +13,7 @@ import {
   queuePending,
   renderNotification,
 } from "./notify.js";
-import { loadDraft, saveDraft, type ReplyDraftRecord } from "./store.js";
+import { loadDraft, runLogPath, saveDraft, type ReplyDraftRecord } from "./store.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -266,6 +266,62 @@ assert(retried.notified && retry.calls.length === 1, "復旧後に1回だけ届�
   assert(remaining.items.length === 0, `消えた参照も外す（残り: ${remaining.items.length}）`);
 
   await fs.rm(mixedRoot, { recursive: true, force: true });
+}
+
+// 「読めなかった」を「もう無い」と同じ扱いにしない。
+// 一度読めなかっただけで保留から外すと、拾い直しの範囲（当日と前日）を過ぎた
+// 下書きは手がかりが1つも無くなり、ディスクに残っていても永久に届かなくなる。
+{
+  const brokenRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-broken-"));
+  const brokenConfig = { ...config, root: brokenRoot };
+  const now = new Date("2026-09-09T00:00:00.000Z"); // 09:00 JST（静音時間外）
+  // 3日前の下書き。拾い直しの範囲より古いので、保留リストだけが手がかり。
+  const old = record("d_old", { dateJst: "2026-09-06", receivedAt: "2026-09-06T01:00:00.000Z" });
+  const file = await saveDraft(brokenRoot, old);
+  await queuePending(brokenRoot, [{ id: old.id, dateJst: old.dateJst }]);
+
+  const good = await fs.readFile(file, "utf8");
+  await fs.writeFile(file, "{ こわれた", "utf8"); // 一時的に読めない
+
+  const first = fakePush();
+  const r1 = await flushPendingNotifications(brokenRoot, now, brokenConfig, { push: first.push });
+  assert(!r1.notified, "読めない回は通知しない");
+  const pending1 = JSON.parse(await fs.readFile(pendingPath(brokenRoot), "utf8")) as {
+    items: Array<{ id: string }>;
+  };
+  assert(
+    pending1.items.some(item => item.id === old.id),
+    "読めなかっただけの下書きを保留から外さない",
+  );
+
+  // 読めなかったことが実行ログに残る（黙って残さない）。
+  const log = await fs.readFile(runLogPath(brokenRoot, "2026-09-09"), "utf8");
+  assert(log.includes("下書きを読めませんでした"), `読めなかったことを記録する: ${log}`);
+
+  // ディスクが復旧すれば、次の実行で届く。
+  await fs.writeFile(file, good, "utf8");
+  const second = fakePush();
+  const r2 = await flushPendingNotifications(brokenRoot, now, brokenConfig, { push: second.push });
+  assert(r2.notified && r2.notifiedCount === 1, `復旧後に届く: ${JSON.stringify(r2)}`);
+  assert(second.calls.length === 1, "JINへ1通だけ届く");
+
+  await fs.rm(brokenRoot, { recursive: true, force: true });
+}
+
+// 受信時刻が壊れた下書きは拾い直せないが、黙って見捨てない。
+{
+  const oddRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-odd-"));
+  const oddConfig = { ...config, root: oddRoot };
+  const now = new Date("2026-09-09T00:00:00.000Z");
+  await saveDraft(oddRoot, record("d_odd", { dateJst: "2026-09-09", receivedAt: "こわれた時刻" }));
+
+  const push = fakePush();
+  const result = await flushPendingNotifications(oddRoot, now, oddConfig, { push: push.push });
+  assert(!result.notified, "時刻が読めない記録は拾い続けない");
+  const log = await fs.readFile(runLogPath(oddRoot, "2026-09-09"), "utf8");
+  assert(log.includes("受信時刻が読めない"), `拾えなかった理由を記録する: ${log}`);
+
+  await fs.rm(oddRoot, { recursive: true, force: true });
 }
 
 await fs.rm(root, { recursive: true, force: true });
