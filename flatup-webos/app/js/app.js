@@ -50,17 +50,46 @@ window.FLATUP = window.FLATUP || {};
     syncHistory(screenId, mode);
   }
 
+  // この質問から先、あと何問あるか。questions.js の next をたどって数える。
+  // 手打ちの表を持たない。questions.js を編集しただけで進捗が黙って嘘をつくのを防ぐ。
+  // 枝分かれ（audienceの選択肢）は「いちばん長い道」で数える。
+  // 少なく言って裏切るより、多めに言って早く終わるほうが気持ちがいい。
+  function stepsAfter(questionId, seen) {
+    var q = FLATUP.QUESTIONS[questionId];
+    if (!q) return 0;
+    seen = seen || {};
+    if (seen[questionId]) return 0; // 万一の循環でも止まる
+    seen[questionId] = true;
+
+    var longest = 0;
+    var nexts = [];
+    (q.options || []).forEach(function (opt) {
+      if (opt.next) nexts.push(opt.next);
+    });
+    if (!nexts.length && q.next) nexts.push(q.next);
+    if (!nexts.length) nexts.push("result");
+
+    nexts.forEach(function (nextId) {
+      if (nextId === "result") return;
+      var branchSeen = {};
+      for (var k in seen) { if (seen.hasOwnProperty(k)) branchSeen[k] = true; }
+      var n = 1 + stepsAfter(nextId, branchSeen);
+      if (n > longest) longest = n;
+    });
+    return longest;
+  }
+
   // ルート内の現在位置（小さな点）。長さを意識させすぎない。
+  // 最初の質問にも出す。ここが離脱のいちばん多い場所で、
+  // 「あと何問あるか分からない」が理由になりやすい。
   function dots(questionId) {
-    var routes = {
-      gender: 1, goal: 2, experience: 3, availability: 4,
-      kids_age: 1, kids_hope: 2
-    };
-    var totals = { gender: 4, goal: 4, experience: 4, availability: 4, kids_age: 2, kids_hope: 2 };
-    var pos = routes[questionId];
-    if (!pos) return null;
-    var wrap = el("div", { class: "dots", "aria-hidden": "true" });
-    for (var i = 1; i <= totals[questionId]; i++) {
+    if (!FLATUP.QUESTIONS[questionId]) return null;
+    var pos = FLATUP.state.get().answers.length + 1;
+    var total = pos + stepsAfter(questionId);
+    var wrap = el("div", { class: "dots" });
+    wrap.setAttribute("role", "img");
+    wrap.setAttribute("aria-label", total + "問中" + pos + "問目");
+    for (var i = 1; i <= total; i++) {
       var d = el("span");
       if (i <= pos) d.className = "on";
       wrap.appendChild(d);
@@ -73,20 +102,19 @@ window.FLATUP = window.FLATUP || {};
   function renderWelcome(welcomeMode) {
     FLATUP.state.pushScreen("welcome");
 
-    // hero.jpg が主役。写真の上に短いコピーを重ねる。
+    // FLAT UP GYMで撮影した実写が主役。写真の上に短いコピーを重ねる。
     // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
     var photo = el("img", {
       class: "welcome-photo",
-      src: "hero.jpg",
-      alt: "FLAT UP GYMのキッズクラス。子どもたちが笑顔でグローブタッチをしている様子",
-      width: "1600", height: "1200", decoding: "async"
+      src: "hero.jpg?v=13",
+      alt: "FLAT UP GYMで、先生が小さなお子さんのミット練習を優しく見守っている様子",
+      width: "800", height: "600", decoding: "async", fetchpriority: "high"
     });
     var hero = el("div", { class: "hero" }, [
       photo,
       el("div", { class: "hero-overlay" }),
-      // 「世界一初心者にやさしい格闘技ジム」は現在の写真に焼き込み済みのため、
-      // 重ねるコピーは1行だけにする（写真を文字なし版に替えたら eyebrow を戻してよい）
       el("div", { class: "hero-copy" }, [
+        el("span", { class: "hero-eyebrow", text: "世界一、初心者にやさしい格闘技ジム" }),
         el("h1", { class: "hero-title", text: "はじめの一歩を、安心から。" })
       ])
     ]);

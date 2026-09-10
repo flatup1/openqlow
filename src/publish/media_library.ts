@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { loadRecord, saveRecord } from "../state/file_store.js";
+import { resolveCurrentDraftId } from "../approval/shortcut.js";
 import type { DraftRecord } from "../types.js";
 
 export interface MediaCandidate {
@@ -75,16 +76,24 @@ export async function listMediaCandidates(mediaDir = mediaDirectoryForEnv()): Pr
   return candidates;
 }
 
-export async function latestPendingRecord(root: string): Promise<DraftRecord | undefined> {
-  const dir = path.join(root, "state");
-  const files = await readdir(dir).catch(() => []);
-  const records: DraftRecord[] = [];
-  for (const file of files) {
-    if (!/^FG-\d{8}-\d{3}\.json$/.test(file)) continue;
-    const record = await loadRecord(root, file.replace(/\.json$/, ""));
-    if (record?.status === "pending_approval") records.push(record);
-  }
-  return records.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+/**
+ * いま添付の対象になっている下書き。
+ *
+ * 「JINへ最後に見せたもの」の判断は resolveCurrentDraftId が1か所で持つ。
+ * ここで独自に「いちばん新しい保留」を選んでいたため、承認や修正とは
+ * 別の下書きに写真が付いていた。実際に試すと:
+ *
+ *   JINが見ているのは A (FG-20260101-001)
+ *   "OK" が指すもの → FG-20260101-001
+ *   写真の添付先    → FG-20260101-002   ← 別の下書き
+ *
+ * JINは A に付けたつもりで、A は写真なしで承認される。
+ */
+export async function currentPendingRecord(root: string): Promise<DraftRecord | undefined> {
+  const id = await resolveCurrentDraftId(root);
+  if (!id) return undefined;
+  const record = await loadRecord(root, id);
+  return record?.status === "pending_approval" ? record : undefined;
 }
 
 function formatCandidateList(candidates: MediaCandidate[]): string {
@@ -119,7 +128,7 @@ function visualConfirmMessage(record: DraftRecord, fileName: string): string {
 }
 
 export async function attachMediaToLatestPending(root: string, mediaFile: string): Promise<AttachMediaResult> {
-  const record = await latestPendingRecord(root);
+  const record = await currentPendingRecord(root);
   if (!record) return { ok: false, message: "添付できる承認待ち下書きがありません。" };
 
   const updated: DraftRecord = {
@@ -181,7 +190,7 @@ export async function applyImageChoiceCommand(
   const command = parseImageChoiceCommand(text);
   if (!command) return { ok: false, message: "画像は `画像 1` または `画像なし` の形で送ってください。" };
 
-  const record = await latestPendingRecord(root);
+  const record = await currentPendingRecord(root);
   if (!record) return { ok: false, message: "画像を選べる承認待ち下書きがありません。" };
 
   if (command.kind === "none") {

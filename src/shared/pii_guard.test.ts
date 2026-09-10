@@ -35,8 +35,27 @@ function walk(dir: string, out: string[]): void {
   }
 }
 
+
+// 走査できていることを先に確かめる。
+//
+// 実装ファイルを1件も拾えていなくても、このテストは今まで合格していた:
+//   pii_guard tests passed (scanned 0 files, 0 PII)
+// フォルダの移動や除外設定の書き換えで、検査が黙って空回りする。
+// 何も見ていない緑は、赤より危ない。
+function assertScanned(found: string[], floor: number, mustInclude: string[]): void {
+  if (found.length < floor) {
+    throw new Error(`走査できたファイルが ${found.length} 件しかありません（${floor} 件以上のはず）`);
+  }
+  for (const needle of mustInclude) {
+    if (!found.some(f => f.endsWith(needle))) {
+      throw new Error(`${needle} を走査できていません（検査の範囲が縮んでいます）`);
+    }
+  }
+}
+
 const files: string[] = [];
 walk(path.join(repoRoot, "src"), files);
+assertScanned(files, 100, ["shared/canon.ts", "reply_drafts/draft.ts"]);
 
 const leaks: string[] = [];
 for (const f of files) {

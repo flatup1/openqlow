@@ -1,8 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
 import { checkDraftSafety } from "../safety/check.js";
-import { loadRecord, saveRecord } from "../state/file_store.js";
+import { loadRecord, readRecord, saveRecord } from "../state/file_store.js";
 import type { DraftRecord, PlatformDraft } from "../types.js";
+import { resolveCurrentDraftId } from "./shortcut.js";
 import { formatApprovalMessage } from "./message.js";
 
 export interface LineRevisionCommand {
@@ -29,27 +28,21 @@ export function parseLineRevisionCommand(text: string): LineRevisionCommand | un
   return undefined;
 }
 
-async function loadStateRecords(root: string): Promise<DraftRecord[]> {
-  const dir = path.join(root, "state");
-  const files = await readdir(dir).catch(() => []);
-  const records: DraftRecord[] = [];
-  for (const file of files) {
-    if (!/^FG-\d{8}-\d{3}\.json$/.test(file)) continue;
-    const text = await readFile(path.join(dir, file), "utf8").catch(() => "");
-    if (!text) continue;
-    try {
-      records.push(JSON.parse(text) as DraftRecord);
-    } catch {
-      // Ignore malformed state files; revision must fail closed.
-    }
-  }
-  return records;
-}
-
-async function latestPendingRecord(root: string): Promise<DraftRecord | undefined> {
-  return (await loadStateRecords(root))
-    .filter(record => record.status === "pending_approval")
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+/**
+ * ID を省いた「修正 …」が、どの下書きを指しているかを決める。
+ *
+ * 「JINへ最後に見せたもの」の判断は resolveCurrentDraftId が1か所で持つ。
+ * ここで独自に「いちばん新しい保留」を選んでいたため、JINが画面で見ている
+ * ものと、書き換わるものが違っていた。実際に試すと:
+ *
+ *   JINが見ているのは A (FG-20260101-001)
+ *   修正 Aを直した本文です
+ *   → Aの本文: Aの本文（そのまま）
+ *     Bの本文: Aを直した本文です  ← 見ていない B が書き換わる
+ */
+async function currentPendingRecord(root: string): Promise<DraftRecord | undefined> {
+  const id = await resolveCurrentDraftId(root);
+  return id ? loadRecord(root, id) : undefined;
 }
 
 function draftText(drafts: PlatformDraft[]): string {
@@ -66,9 +59,21 @@ export async function applyLineRevisionCommand(root: string, text: string, now =
     return { ok: false, message: "修正は `修正 新しい本文` または `修正 FG-YYYYMMDD-NNN: 新しい本文` で送ってください。" };
   }
 
+  if (command.id) {
+    // 読めなかっただけなのに「ありません」と答えると、JINはIDを間違えたと思う。
+    const read = await readRecord(root, command.id);
+    if (read.status === "unreadable") {
+      return {
+        ok: false,
+        id: command.id,
+        message: `${command.id} の下書きを読めませんでした（${read.reason}）。修正は反映していません。`,
+      };
+    }
+  }
+
   const target = command.id
     ? await loadRecord(root, command.id)
-    : await latestPendingRecord(root);
+    : await currentPendingRecord(root);
 
   if (!target || target.status !== "pending_approval") {
     return { ok: false, message: "修正できる承認待ち下書きがありません。" };

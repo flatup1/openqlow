@@ -128,3 +128,105 @@ export {
 export { guardStyleNames, isFreeOfStyleNames } from "./prompts/style_name_guard.js";
 export type { ApprovalRequirement, CreativePackage } from "./prompts/render_preview.js";
 export { renderCreativePackage } from "./prompts/render_preview.js";
+
+// --- Phase 4: 生成前の見張り役と、結果の記録（保存は追記のみ・外部送信なし）---
+
+export type {
+  AssessedBy,
+  BlockingCheck,
+  BlockingCheckName,
+  CheckOutcome,
+  QualityAssessment,
+  ScoredCheck,
+  ScoredCheckName,
+  Usability,
+} from "./contracts/quality.js";
+export {
+  BLOCKING_CHECK_NAMES,
+  QUALITY_SCHEMA_VERSION,
+  SCORED_CHECK_NAMES,
+} from "./contracts/quality.js";
+
+export type { PreflightCheck, PreflightParams, PreflightResult } from "./quality/preflight.js";
+export { explainPreflight, QUALITY_GUARDIAN_VERSION, runPreflight } from "./quality/preflight.js";
+
+export type { PostQaParams } from "./quality/post_qa.js";
+export { assessQuality, countUsable, explainAssessment } from "./quality/post_qa.js";
+
+export { deepFreeze, isUtcIso8601, RecordRuleError } from "./contracts/record_rules.js";
+
+export type { ResolveRootOptions } from "./storage/config.js";
+export {
+  BRAND_GROWTH_ROOT_ENV,
+  DEFAULT_RUNTIME_DIRNAME,
+  resolveStoreRoot,
+  StoreConfigError,
+} from "./storage/config.js";
+
+export type { ReadResult, StoredEvent } from "./storage/event_store.js";
+export {
+  appendEvent,
+  currentEvents,
+  EVENT_SCHEMA_VERSION,
+  makeEvent,
+  readEvents,
+  StorageError,
+  supersedeEvent,
+} from "./storage/event_store.js";
+
+export type {
+  AttemptCostRecord,
+  ContentLifecycleStatus,
+  ContentOutcomeView,
+  ContentRecord,
+  CostSummary,
+  PublicationRecord,
+  PublicationStatus,
+  EffectiveCostReason,
+  Experiment,
+  ExperimentArm,
+  ExperimentDesign,
+  ExperimentResult,
+  ExperimentVariableName,
+  ManualEntry,
+  MeasuredMetricsView,
+  MetricFieldName,
+  MetricSnapshot,
+  MetricSource,
+  MetricWindow,
+  Money,
+  PredictedEmotionalScore,
+} from "./contracts/growth.js";
+export {
+  CONTENT_SCHEMA_VERSION,
+  COST_SCHEMA_VERSION,
+  EXPERIMENT_SCHEMA_VERSION,
+  METRIC_FIELD_NAMES,
+  METRIC_SCHEMA_VERSION,
+  PREDICTED_AXIS_NAMES,
+  PUBLICATION_SCHEMA_VERSION,
+} from "./contracts/growth.js";
+
+export {
+  advanceLifecycle,
+  buildContentRecord,
+  explainContentRecord,
+  isAwaitingMetrics,
+  recordPublication,
+} from "./growth/content_record.js";
+
+export { explainCost, summarizeCost } from "./growth/cost.js";
+export {
+  buildOutcomeView,
+  explainOutcome,
+  importMetricSnapshot,
+  isAveragingAllowed,
+  recordPredictedScore,
+} from "./growth/metrics.js";
+export {
+  constantVariables,
+  designExperiment,
+  diffVariables,
+  explainExperiment,
+  recordExperimentResult,
+} from "./growth/experiment.js";

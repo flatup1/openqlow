@@ -88,6 +88,26 @@ npm run inquiry -- "ダイエットで通いたい女性です。料金を教え
 
 見込み客の保存・ステータス管理は新規 DB を作らず、既存の朝インタビュー（`src/conversation/interview_flow.ts` の inquiry/trial ジャンル）＋ CRM ログ（`crm_log_generator`）＋ ToDo 抽出（`commands/daily_report_todo.ts`）運用を活かす方針です。
 
+## 返信の下書きルーティン（LINE公式・Phase 1）
+
+LINE公式に届いた問い合わせを受け取ると、**返信案だけ**を作ってJINのLINEへ届けます。
+お客様へは何も送りません。送るか、直すか、返さないかを決めるのは常にJINです。
+
+```bash
+# 既定は「動かない」。使うときだけ明示的に入れる（値は "true" ちょうどのみ有効）
+REPLY_DRAFT_ENABLED=true      # 使う意思表示
+OPENQLOW_DRY_RUN=false        # ここを false にして初めて保存・通知が動く
+REPLY_DRAFT_DISABLED=true     # 非常停止（他の設定より優先）
+```
+
+- 顧客への送信コードを実装していません。`src/reply_drafts/no_customer_send.test.ts` が毎回それを検査します。
+- クレーム・医療・ケガ・法律・金銭・退会・未成年のセンシティブ案件は、返信案を作らず「JIN確認」として届けます。
+- 通常のキッズ問い合わせ（何歳から／曜日／持ち物／料金）は返信案を作ります。
+- 保存は `state/reply_drafts/`、実行ログは `logs/reply_drafts/`。個人情報は伏字にしてから保存します。
+- 静音時間は 22:00〜翌7:00。その間は保存だけ行い、通知は翌朝まとめて1回だけ届きます。
+
+詳しくは `docs/REPLY_DRAFT_ROUTINE_REQUIREMENTS.md`。
+
 ## 集客AI司令塔 / 体験後フォロー生成
 
 体験に来た方の属性・様子・不安点・入会温度感を渡すと、AIKA 口調で

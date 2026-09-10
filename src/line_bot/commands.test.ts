@@ -261,9 +261,29 @@ async function testHelpCommandShowsJuniorHighModeReply(): Promise<void> {
   assert.match(result.message, /やめる/);
   assert.match(result.message, /\/追記 内容/);
   assert.match(result.message, /\/push/);
-  assert.match(result.message, /予約 山田 T\. 8\/20/);
+  assert.match(result.message, /体験完了 山田 T\. 入会 SNS/);
+  assert.match(result.message, /LINE \/ Google \/ SNS \/ 紹介 \/ その他 \/ 不明/);
   assert.match(result.message, /体験集計/);
   assert.doesNotMatch(result.message, /FG-\d{8}-\d{3}/);
+}
+
+async function testTrialCompletionIsRecordedInOneMessage(): Promise<void> {
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-line-trial-completion-"));
+  const result = await executeLineCommand("体験完了 山田 T. 入会 SNS", {
+    now: new Date("2026-08-23T00:00:00.000Z"),
+    vaultRoot: vault,
+    userId: "U_JIN",
+    primaryOwnerUserId: "U_JIN",
+  });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.action, "trial_kpi");
+  assert.match(result.message, /月間体験完了: 1\/30件/);
+  assert.match(result.message, /入会: 入会 \/ 流入: SNS/);
+
+  const tracker = await readFile(path.join(vault, "01_DAILY_OPERATIONS", "体験予約・入会管理.md"), "utf8");
+  assert.match(tracker, /\| SNS \|/);
 }
 
 async function testPrimaryOwnerMessageIsAutomaticallySaved(): Promise<void> {
@@ -478,6 +498,7 @@ await testPushCommandOnlyNonAllowlistedChangesDoesNotPush();
 await testPushCommandAbortsOnRebaseConflict();
 await testNonCommandIsNotHandled();
 await testHelpCommandShowsJuniorHighModeReply();
+await testTrialCompletionIsRecordedInOneMessage();
 await testPrimaryOwnerMessageIsAutomaticallySaved();
 await testNonOwnerAndTerseReplyAreNotAutomaticallySaved();
 await testRevisionCommandUpdatesPendingDraft();

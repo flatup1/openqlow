@@ -30,13 +30,11 @@
 - **JS・CSSを更新したら `?v=` の数字を上げる。** 上げ忘れると、古いファイルが
   利用者のスマホに残り、新しい画面が出ない。
 
-- **計測はまだどこにも送信されない。** 現状のイベントはブラウザ内の `dataLayer` に
-  貯まるだけで、サーバー送信ゼロ（プライバシー的には最安全）。
-  実ユーザーのデータを集めるには、公開時に **GTM（Googleタグマネージャー）の
-  標準スニペットを index.html の `<head>` に貼る**のが最小手順。
-  `track()` は dataLayer 互換なので、GTM側で「カスタムイベント」トリガーを
-  作るだけで webos_started 等をGA4へ送れる（コード変更不要）。
-  GTM/GA4のIDはJINが管理。**IDをリポジトリへコミットしない。**
+- **v13から計測はAIKAへ送信する。** 外部の有料サービスは使わず、
+  匿名セッションID・イベント名・選択カテゴリだけを保存する。
+  氏名・電話・自由文・IPは計測DBへ保存しない。行動データは90日で自動削除する。
+- 運用確認はAIKA VPSで
+  `python3 /opt/flatup-aika/ops/webos_metrics.py --days 7` を実行する。
 - 個人情報はAnalyticsへ送らない（イベント名と選択カテゴリのみ。現実装は準拠済み）。
 - LINEリンクは正本 `https://lin.ee/cTSDajPz`（flatup-lp と同一）を使用済み。
 - 既存LP・既存サイトとURLが競合しないこと（/webos/ など専用パスに置く）。
@@ -50,8 +48,8 @@
 - [ ] Android Chrome でも1周する
 - [ ] 表示が一瞬で出る（重い・白い時間がないこと）
 - [ ] 誤字・不自然な文言がない
-- [ ] （GTM接続後）webos_started / audience_selected / 各質問回答 /
-      personalized_view / booking_clicked / line_clicked がGA4に届く
+- [ ] AIKAの7日レポートに webos_started / personalized_view /
+      booking_clicked / line_clicked / LINE引き継ぎ数が反映される
 
 ## データが集まったら見ること（削る判断はデータで）
 

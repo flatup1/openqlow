@@ -496,6 +496,70 @@ try {
   assert(WITHDRAWAL_EVENT_LABELS.FORMAL_RECEIPT_COMPLETED === "正式受付", "イベントの日本語表示");
   assert(WITHDRAWAL_EVENT_LABELS.PAYMENT_STOP_COMPLETED === "会費ペイ処理済", "会費ペイの日本語表示");
 
+  // --- 同時に処理しても台帳が壊れない -------------------------------------------
+  // 退会台帳は1ファイルを丸ごと読み書きするので、順番待ちさせないと
+  // 後から書いた方が先の更新を消す。しかも update は成功を返すため、
+  // 「記録しました」と答えたのに台帳には何も残っていない状態になる。
+  {
+    const raceDir = await mkdtemp(path.join(tmpdir(), "withdrawal-race-"));
+    try {
+      // ① 同時に別々のケースを更新しても、両方とも残る。
+      const cases = openWithdrawalCaseStore(path.join(raceDir, "cases.json"));
+      const a = await cases.create({ memberId: "M001", lineUserId: "u_a" });
+      const b = await cases.create({ memberId: "M002", lineUserId: "u_b" });
+      const settled = await Promise.allSettled([
+        cases.update(a.id, { withdrawalFormReceivedAt: jst("2026-09-01T09:00:00") }),
+        cases.update(b.id, { withdrawalFormReceivedAt: jst("2026-09-01T09:00:01") }),
+      ]);
+      for (const [i, r] of settled.entries()) {
+        assert(r.status === "fulfilled", `同時更新で例外になった（${i}）: ${String((r as PromiseRejectedResult).reason)}`);
+      }
+      const saved = await cases.getAll();
+      assert(
+        saved.find(c => c.id === a.id)?.withdrawalFormReceivedAt,
+        "同時更新でも先の受領日が消えない（成功と答えたなら台帳にも残っている）",
+      );
+      assert(saved.find(c => c.id === b.id)?.withdrawalFormReceivedAt, "後の受領日も残る");
+
+      // ② 同時に作成しても、退会ケースが消えない。
+      const fresh = openWithdrawalCaseStore(path.join(raceDir, "cases2.json"));
+      await Promise.all([
+        fresh.create({ memberId: "M101", lineUserId: "u_1" }),
+        fresh.create({ memberId: "M102", lineUserId: "u_2" }),
+        fresh.create({ memberId: "M103", lineUserId: "u_3" }),
+      ]);
+      const created = await fresh.getAll();
+      assert(created.length === 3, `同時に作った退会ケースが消えない（残り ${created.length} 件）`);
+      assert(new Set(created.map(c => c.id)).size === 3, "同時作成でもIDが重複しない");
+
+      // ③ 証跡（append-only の監査ログ）のIDが重複しない。
+      const log = openWithdrawalAuditLog(path.join(raceDir, "audit.jsonl"));
+      await Promise.all(
+        [1, 2, 3, 4, 5].map(n =>
+          log.append({
+            caseId: 1,
+            memberId: "M001",
+            eventType: "FORM_RECEIVED",
+            oldStatus: "",
+            newStatus: "",
+            actorType: "staff",
+            actorId: "staff-1",
+            source: "CLI",
+            metadata: { n: String(n) },
+          }),
+        ),
+      );
+      const logs = await log.getAll();
+      assert(logs.length === 5, `証跡が5件残る（残り ${logs.length} 件）`);
+      assert(
+        new Set(logs.map(entry => entry.id)).size === 5,
+        `証跡のIDが重複しない（${logs.map(entry => entry.id).join(", ")}）`,
+      );
+    } finally {
+      await rm(raceDir, { recursive: true, force: true });
+    }
+  }
+
   console.log("withdrawal store tests passed");
 } finally {
   await rm(dir, { recursive: true, force: true });

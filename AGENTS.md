@@ -144,7 +144,7 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 - 料金・日時・予約・退会・休会・安全に関する回答は、正本確認後も送信前に人間確認を入れる。
 - Skillsの正本は `docs/ai-os/skills-source/`。CodexとClaude Codeの配置は同期スクリプトで検証する。
 - 削除、外部送信、公開、課金、本番変更、commit、push、PR作成は `docs/ai-os/canon/approval_matrix.md` に従う。
-- `src/brand_growth/` は Brand Growth 領域（Claude Code 担当、設計は FLATUP GYM AI OS Design Pack v1.0）。純関数のみで、外部API・課金・公開・本番接続を持たない。AIKA、`src/shared/canon.ts`、`src/safety/`、LINE、publish、scheduler、loop、animation、deploy を変更・重複実装しない。事実が必要なときは canon への型付きセレクタ経由にし、料金・住所・時間を直書きしない。
+- `src/brand_growth/` は Brand Growth 領域（Claude Code 担当、設計は FLATUP GYM AI OS Design Pack v1.0）。ドメインロジックは純関数のみ。唯一の例外として、ローカル記録の追記に `src/brand_growth/storage/event_store.ts` だけがファイルI/Oを持ち、`src/brand_growth/storage/config.ts` は保存先を決めるだけで実行環境を読まない純関数とする（ファイル単位の許可制。詳細は `docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md`）。外部API・ネットワークI/O・課金・公開・本番接続は引き続き持たない。AIKA、`src/shared/canon.ts`、`src/safety/`、LINE、publish、scheduler、loop、animation、deploy を変更・重複実装しない。事実が必要なときは canon への型付きセレクタ経由にし、料金・住所・時間を直書きしない。
 - 変更後は `./scripts/validate-ai-os.sh` と関連する既存テストを実行する。
 - 完了報告は「作成・変更・保持・検証・未実装・人間確認・Git状態」の順にする。
 

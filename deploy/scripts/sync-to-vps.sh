@@ -9,6 +9,13 @@ SSH_KEY="${OPENQLOW_VPS_KEY:-$HOME/.ssh/openqlow_vps}"
 SSH_USER="${OPENQLOW_VPS_USER:-root}"
 SSH_HOST="${OPENQLOW_VPS_HOST:-162.43.41.182}"
 REMOTE_DIR="${OPENQLOW_VPS_REMOTE:-/opt/openqlow/}"
+AIKA_RESERVED_HOST="162.43.90.71"
+
+if [[ "$SSH_HOST" == "$AIKA_RESERVED_HOST" || "$SSH_HOST" == "aika.flatupnarita.jp" ]]; then
+  echo "停止: openQLOWの同期先にAIKA VPSは指定できません。" >&2
+  echo "openQLOWの正しい同期先は 162.43.41.182 です。" >&2
+  exit 2
+fi
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)/"
 

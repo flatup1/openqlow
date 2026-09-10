@@ -98,8 +98,23 @@ export async function pushLineMessage(text: string, opts: PushOptions = {}): Pro
 }
 
 export async function pushApprovalNotification(record: DraftRecord, opts: PushOptions = {}): Promise<{ ok: boolean; mode: "dry_run" | "sent" | "skipped"; error?: string }> {
-  await rememberApprovalCandidate(loadConfig().root, record.id);
-  return pushLineMessage(record.approvalMessage, opts);
+  const result = await pushLineMessage(record.approvalMessage, opts);
+
+  // 目印（＝JINへ最後に見せたもの）は、実際に届いたときだけ動かす。
+  //
+  // 以前は送る前に動かしていた。通知が届かなくても目印だけが進むので、
+  // JINの画面には前の下書きが出たまま、「OK」は見ていない方を指した:
+  //
+  //   いま "OK" が指すもの → OK FG-20260101-001 all
+  //   Bの通知 → {"ok":false,"error":"LINE push 500"}
+  //   そのあと "OK" が指すもの → OK FG-20260101-002 all  ← 見ていない B
+  //
+  // 承認・修正・添付がこの目印を見るので、ここがずれると全部ずれる。
+  // dry run と skipped も動かさない。どちらも届いていない。
+  if (result.ok && result.mode === "sent") {
+    await rememberApprovalCandidate(loadConfig().root, record.id);
+  }
+  return result;
 }
 
 export async function pushAlert(subject: string, body: string, opts: PushOptions = {}): Promise<{ ok: boolean; mode: "dry_run" | "sent" | "skipped"; error?: string }> {

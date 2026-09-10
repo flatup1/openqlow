@@ -74,7 +74,8 @@ type UserJourney = {
 };
 ```
 
-- 保存先はブラウザの `sessionStorage`（Phase 1）。サーバーへ送信しない。
+- 画面状態の保存先はブラウザの `sessionStorage`。結果到達時のLINE引き継ぎと
+  匿名イベント計測だけAIKA VPSへ送る。
 - 質問ロジックをハードコードしすぎない。質問はデータ駆動（→ USER_FLOWS.md）。
 
 ## ディレクトリ構成
@@ -91,7 +92,7 @@ flatup-webos/
     └── js/
         ├── questions.js   # 質問定義（データ）
         ├── state.js       # UserJourney状態管理
-        ├── analytics.js   # イベント計測（Phase 1はローカル記録）
+        ├── analytics.js   # 匿名イベント計測（dataLayer + AIKA）
         ├── concierge.js   # AI API接続用interface（Phase 1はスタブ）
         └── app.js         # 画面遷移・描画
 ```

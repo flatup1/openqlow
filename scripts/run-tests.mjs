@@ -136,6 +136,9 @@ const runTypecheck = options.typecheck && options.groups.length === 0;
 const failures = [];
 let passed = 0;
 let bailed = false;
+// 実際に走らせたテストの本数。typecheck は含めない。
+// 「成功0件」で判定すると、typecheck が通っただけで1件と数えられてしまう。
+let testsAttempted = 0;
 
 if (runTypecheck) {
   console.log("\n[typecheck]");
@@ -153,6 +156,7 @@ for (const group of targetGroups) {
   if (names.length === 0) continue;
   console.log(`\n[${group}] ${GROUP_LABELS[group]} — ${names.length}本`);
   for (const name of names) {
+    testsAttempted += 1;
     const result = runStep(name, npm, ["run", name], workingDir);
     if (result.ok) passed += 1;
     else {
@@ -181,5 +185,19 @@ if (failures.length > 0) {
 }
 if (bailed) console.log("--bail のため途中で止めました。");
 console.log(`${"=".repeat(60)}`);
+
+// 1本も走らなかったら失敗にする。
+//
+// 以前は「失敗0件」だけを見ていたので、テストを1本も見つけられなくても
+// 終了コード0を返していた:
+//   成功 0件 / 失敗 0件
+//   終了コード: 0
+// package.json の test:* が壊れれば、CIは何も検査せずに緑になる。
+// 何も見ていない緑は、赤より危ない。
+if (testsAttempted === 0) {
+  console.log("テストが1本も見つかりませんでした。何も走っていない状態を成功にはしません。");
+  console.log("package.json の test:* スクリプトと、--group の指定を確認してください。");
+  process.exit(1);
+}
 
 process.exit(failures.length > 0 ? 1 : 0);

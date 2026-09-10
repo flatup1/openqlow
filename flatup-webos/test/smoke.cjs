@@ -6,8 +6,22 @@ const { chromium } = require('playwright');
 const path0 = require('path');
 const ROOT = path0.join(__dirname, '..', 'app');
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
+const DEFAULT_CHROMIUM = '/opt/pw-browsers/chromium';
+const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const BROWSER_EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ||
+  (fs.existsSync(DEFAULT_CHROMIUM) ? DEFAULT_CHROMIUM : MAC_CHROME);
+const analyticsEvents = [];
 
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith('/webos-event')) {
+    let b = ''; req.on('data', c => b += c);
+    req.on('end', () => {
+      analyticsEvents.push(JSON.parse(b || '{}'));
+      res.writeHead(202, { 'content-type': 'application/json' });
+      res.end('{"ok":true}');
+    });
+    return;
+  }
   if (req.url.startsWith('/journey')) { // WebOS→VPS引き継ぎのローカル模擬
     let b = ''; req.on('data', c => b += c);
     req.on('end', () => {
@@ -33,11 +47,14 @@ async function clickByText(page, text) {
 
 (async () => {
   await new Promise(r => server.listen(8931, r));
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); // iPhone size
+  const browser = await chromium.launch({ executablePath: BROWSER_EXECUTABLE });
+  const context = await browser.newContext({ viewport: { width: 320, height: 844 } }); // 小さめのiPhone相当
   await context.route('**lin.ee**', r => r.abort()); // 外部LINEへは実際に飛ばさない
   await context.route('**line.me**', r => r.abort());
-  await context.addInitScript(() => { window.FLATUP_JOURNEY_ENDPOINT = 'http://localhost:8931/journey'; });
+  await context.addInitScript(() => {
+    window.FLATUP_JOURNEY_ENDPOINT = 'http://localhost:8931/journey';
+    window.FLATUP_EVENT_ENDPOINT = 'http://localhost:8931/webos-event';
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -46,6 +63,19 @@ async function clickByText(page, text) {
   // ---- 成人ルート ----
   await page.goto('http://localhost:8931/');
   if (!(await page.textContent('body')).includes('強い人だけの場所ではありません')) throw new Error('welcome missing');
+  const welcomeLayout = await page.evaluate(() => {
+    const hero = document.querySelector('.hero').getBoundingClientRect();
+    const heading = document.querySelector('.hero-title').getBoundingClientRect();
+    const header = document.querySelector('header.site');
+    return {
+      hasHorizontalOverflow: document.documentElement.scrollWidth > innerWidth,
+      headerHeight: header.getBoundingClientRect().height,
+      headingInsideHero: heading.left >= hero.left && heading.right <= hero.right,
+    };
+  });
+  if (welcomeLayout.hasHorizontalOverflow) throw new Error('welcome has horizontal overflow');
+  if (welcomeLayout.headerHeight > 56) throw new Error('header wraps on small iPhone');
+  if (!welcomeLayout.headingInsideHero) throw new Error('hero heading overflows photo');
   await clickByText(page, '自分に合う始め方を見つける');
   if (!(await page.textContent('h1')).includes('誰のために')) throw new Error('Q1 missing');
   await clickByText(page, '自分が通ってみたい');
@@ -86,6 +116,11 @@ async function clickByText(page, text) {
   const events = await page.evaluate(() => window.dataLayer.map(e => e.event));
   const need = ['webos_started', 'audience_selected', 'question_skipped', 'goal_selected', 'experience_selected', 'availability_selected', 'personalized_view'];
   for (const n of need) if (!events.includes(n)) throw new Error('event missing: ' + n);
+  await page.waitForTimeout(200);
+  const received = analyticsEvents.map(e => e.event);
+  for (const n of need) if (!received.includes(n)) throw new Error('server event missing: ' + n);
+  if (!analyticsEvents.every(e => /^[a-f0-9]{32}$/.test(e.session_id || ''))) throw new Error('anonymous session id invalid');
+  if (/name|phone|email/i.test(JSON.stringify(analyticsEvents))) throw new Error('PII-like field leaked to analytics');
 
   // ---- キッズルート ----
   await clickByText(page, '最初からやり直す');

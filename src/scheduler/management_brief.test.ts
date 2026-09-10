@@ -32,12 +32,14 @@ const NOW = new Date("2026-08-13T00:00:00.000Z");
   ].join("\n"), "utf8");
 
   await executeTrialKpiCommand("予約 山田 T. 8/13", { vaultRoot: vault, now: NOW });
+  await executeTrialKpiCommand("体験完了 山田 T. 入会 紹介", { vaultRoot: vault, now: NOW });
   const brief = await buildManagementBrief(vault, "2026-08-13", NOW);
 
   assert.match(brief, /【前回】/);
   assert.match(brief, /【現在】/);
-  assert.match(brief, /月間体験予約: 1\/30件/);
-  assert.match(brief, /【今日】\n- 参加確認待ち1件/);
+  assert.match(brief, /月間体験完了: 1\/30件/);
+  assert.match(brief, /流入: LINE 0 \/ Google 0 \/ SNS 0 \/ 紹介 1/);
+  assert.match(brief, /【今日】\n- 月間体験完了30件/);
   assert.match(brief, /【正式決定】\n- 決定: 朝の要約は6時にする/);
   assert.match(brief, /【保留・実装中】\n- \[CONSIDERING\] 検討: レディース体験会を月1回にする/);
   assert.match(brief, /【今やらなくていいこと】/);
@@ -52,8 +54,8 @@ const NOW = new Date("2026-08-13T00:00:00.000Z");
   const vault = await mkdtemp(path.join(tmpdir(), "openqlow-management-brief-empty-"));
   const brief = await buildManagementBrief(vault, "2026-08-13", NOW);
   assert.match(brief, /前回】\n- 記録なし/);
-  assert.match(brief, /月間体験予約: 0\/30件/);
-  assert.match(brief, /約10件\/月（JIN自己申告・未集計/);
+  assert.match(brief, /月間体験完了: 0\/30件/);
+  assert.match(brief, /約10件\/月（2026-08-23、JIN自己申告/);
   assert.match(brief, /入会率: 未集計/);
   assert.match(brief, /正式決定なし/);
   await rm(vault, { recursive: true, force: true });
