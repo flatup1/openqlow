@@ -113,4 +113,31 @@ await rm(root, { recursive: true, force: true });
   await rm(root3, { recursive: true, force: true });
 }
 
+// IDを指定した修正で、下書きが読めないとき。
+// 例外を投げるとLINEのコマンドが理由を返さずに落ちる。
+// 「ありません」と答えると、JINはIDを間違えたと思ってしまう。
+{
+  const root4 = await mkdtemp(path.join(os.tmpdir(), "openqlow-revision-byid-"));
+  await saveRecord(root4, record("FG-20260609-101", "元の本文", "2026-06-09T00:00:00.000Z"));
+  const file = path.join(root4, "state", "FG-20260609-101.json");
+  const whole = await readFile(file, "utf8");
+  await writeFile(file, whole.slice(0, Math.floor(whole.length / 2)), "utf8"); // 書きかけ
+
+  let threw = false;
+  let result: Awaited<ReturnType<typeof applyLineRevisionCommand>> | undefined;
+  try {
+    result = await applyLineRevisionCommand(root4, "修正 FG-20260609-101: 直した本文です");
+  } catch {
+    threw = true;
+  }
+  assert.equal(threw, false, "読めない下書きでも例外にしない");
+  assert.equal(result?.ok, false, "読めないなら書き換えない");
+  assert.ok(
+    result?.message.includes("読めませんでした"),
+    `読めなかったことを伝える: ${result?.message}`,
+  );
+
+  await rm(root4, { recursive: true, force: true });
+}
+
 console.log("revision tests passed");
