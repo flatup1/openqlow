@@ -61,7 +61,14 @@ npm run worker:dev                # 別ターミナル
 node scripts/rehearsal.mjs        # 模擬大会スモークテスト
 ```
 
-公開手順は [docs/DEPLOY.md](docs/DEPLOY.md)。
+本番に公開するときは、コマンド1つです。
+
+```bash
+npm run go-live
+```
+
+ログインから動作確認まで全部やり、スタッフに配る5つのURLを表示します。
+詳しくは [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ## ドキュメント
 

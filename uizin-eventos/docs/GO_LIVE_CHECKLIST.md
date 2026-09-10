@@ -104,7 +104,20 @@ no,class,rule,rounds,round_seconds,break_seconds,red_name,red_team,red_record,re
 
 ### ステップ3: Cloudflare に公開する
 
-手順は [DEPLOY.md](DEPLOY.md)。必要なもの:
+**コマンド1つで終わります。対戦カードを待つ必要はありません。**
+
+```bash
+cd uizin-eventos
+npm run go-live
+```
+
+ログイン・シートID設定・操作キー作成・公開・動作確認まで全部やり、
+スタッフに配る5つのURLを表示します。所要 約20分（ほとんどは待ち時間）。費用 ¥0。
+
+先に公開しておくと、あとは進行表に中身を入れるだけになります。
+「当日ちゃんと動くのか分からない」という状態が、この時点で消えます。
+
+詳しい中身と、手で1つずつやる手順は [DEPLOY.md](DEPLOY.md)。必要なもの:
 
 - Cloudflare アカウント（`wrangler login`）
 - `OPERATOR_KEY` を決めて `wrangler secret put` で入れる
