@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+.wrangler/
+*.tsbuildinfo
+.env
+.env.local
+# wrangler dev のローカル用シークレット。本番の操作キーは絶対に置かない
+.dev.vars
+worker/.dev.vars
+# next build / next dev が自動生成する（.next/ 内の型を参照するため、追跡しない）
+next-env.d.ts
