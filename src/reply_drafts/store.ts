@@ -72,18 +72,44 @@ export async function saveDraft(root: string, record: ReplyDraftRecord): Promise
   return file;
 }
 
+/**
+ * 下書きを読んだ結果。「無い」と「読めなかった」を必ず区別する。
+ *
+ * この2つを同じ扱いにすると、一度読めなかっただけの下書きが
+ * 「もう存在しない」とみなされ、保留リストから外れて永久に通知されなくなる。
+ */
+export type DraftReadResult =
+  | { status: "ok"; record: ReplyDraftRecord }
+  | { status: "missing" }
+  | { status: "unreadable"; reason: string };
+
+/** 下書きを読む。読めなかった理由まで返す（保存されているのに消える、を無くす）。 */
+export async function readDraft(root: string, dateJst: string, id: string): Promise<DraftReadResult> {
+  const file = path.join(draftDir(root, dateJst), `${id}.json`);
+  let text: string;
+  try {
+    text = await fs.readFile(file, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // ファイルが無い・親フォルダが無い＝本当に無い。それ以外は「読めなかった」。
+    if (code === "ENOENT" || code === "ENOTDIR") return { status: "missing" };
+    return { status: "unreadable", reason: code ?? String(error) };
+  }
+  try {
+    return { status: "ok", record: JSON.parse(text) as ReplyDraftRecord };
+  } catch {
+    // 中身が壊れている。中身が無いのとは違う。
+    return { status: "unreadable", reason: "JSONとして読めない" };
+  }
+}
+
 export async function loadDraft(
   root: string,
   dateJst: string,
   id: string,
 ): Promise<ReplyDraftRecord | undefined> {
-  const text = await fs.readFile(path.join(draftDir(root, dateJst), `${id}.json`), "utf8").catch(() => "");
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text) as ReplyDraftRecord;
-  } catch {
-    return undefined;
-  }
+  const result = await readDraft(root, dateJst, id);
+  return result.status === "ok" ? result.record : undefined;
 }
 
 /** 将来の集計用に1行追記する。ここが失敗しても下書き本体は残っている。 */

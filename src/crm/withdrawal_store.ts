@@ -9,8 +9,12 @@
 // 監査ログだけは JSONL の appendFile にする。行を書き換えるAPIを**実装しない**ことで、
 // 過去ログを後から修正する経路そのものを無くしている。
 
+import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+// 「読む → 直す → 書く」を1件ずつ順番にやらせる。すでにある仕組みをそのまま使う
+// （返信下書きの保留リストで同じ壊れ方をして、そのために作られたもの）。
+import { withStateLock } from "../reply_drafts/lock.js";
 import {
   applyFormalReceipt,
   calcFormalReceivedAt,
@@ -121,15 +125,19 @@ export function openWithdrawalAuditLog(
 ): WithdrawalAuditLogStore {
   return {
     async append(entry) {
-      const existing = await readLogs(filePath);
-      const record: WithdrawalAuditLog = {
-        id: existing.reduce((max, e) => Math.max(max, e.id), 0) + 1,
-        ...entry,
-        createdAt: now().toISOString(),
-      };
-      await mkdir(path.dirname(filePath), { recursive: true });
-      await appendFile(filePath, JSON.stringify(record) + "\n", "utf8");
-      return record;
+      // 採番（最大ID+1）と追記の間に別の追記が入ると、同じIDの証跡が並ぶ。
+      // 5件同時で試すと全部 id=1 になった。証跡はIDで引くので台帳の整合が壊れる。
+      return withStateLock(`withdrawal-audit:${filePath}`, async () => {
+        const existing = await readLogs(filePath);
+        const record: WithdrawalAuditLog = {
+          id: existing.reduce((max, e) => Math.max(max, e.id), 0) + 1,
+          ...entry,
+          createdAt: now().toISOString(),
+        };
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await appendFile(filePath, JSON.stringify(record) + "\n", "utf8");
+        return record;
+      });
     },
     async getAll() {
       return readLogs(filePath);
@@ -168,7 +176,9 @@ async function writeCases(filePath: string, list: WithdrawalCase[]): Promise<voi
   await mkdir(path.dirname(filePath), { recursive: true });
   // 一時ファイルに書き切ってから rename（同一ディレクトリ内なので原子的）。
   // 保存の途中で中断しても退会台帳が壊れない。
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  // 一時ファイル名は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを
+  // 奪い合い、片方の rename が ENOENT で落ちる（実際に落ちることを確認済み）。
+  const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmpPath, JSON.stringify(list, null, 2) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
@@ -200,21 +210,25 @@ export function openWithdrawalCaseStore(
 
   return {
     async create(input) {
-      const list = await readCases(filePath);
-      const nextId = list.reduce((max, c) => Math.max(max, c.id), 0) + 1;
-      const at = stamp();
-      const normalized = normalizeWithdrawalCaseInput(input);
-      if (!normalized.caseNumber) normalized.caseNumber = formatCaseNumber(nextId, now());
+      // 台帳は1ファイルを丸ごと読み書きする。順番待ちさせないと、同時に来た
+      // 退会ケースが互いを上書きして消える（3件同時で1件しか残らなかった）。
+      return withStateLock(`withdrawal-cases:${filePath}`, async () => {
+        const list = await readCases(filePath);
+        const nextId = list.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+        const at = stamp();
+        const normalized = normalizeWithdrawalCaseInput(input);
+        if (!normalized.caseNumber) normalized.caseNumber = formatCaseNumber(nextId, now());
 
-      const created = recomputeDerived({
-        id: nextId,
-        ...normalized,
-        createdAt: at,
-        updatedAt: at,
+        const created = recomputeDerived({
+          id: nextId,
+          ...normalized,
+          createdAt: at,
+          updatedAt: at,
+        });
+        list.push(created);
+        await writeCases(filePath, list);
+        return created;
       });
-      list.push(created);
-      await writeCases(filePath, list);
-      return created;
     },
 
     async getAll() {
@@ -246,20 +260,25 @@ export function openWithdrawalCaseStore(
     },
 
     async update(id, patch) {
-      const list = await readCases(filePath);
-      const index = list.findIndex(c => c.id === id);
-      if (index < 0) return undefined;
-      const current = list[index];
-      const merged = normalizeWithdrawalCaseInput({ ...current, ...patch });
-      const updated = recomputeDerived({
-        ...merged,
-        id: current.id,
-        createdAt: current.createdAt,
-        updatedAt: stamp(),
+      // 別のケースへの更新と重なると、後から書いた方が先の更新を消す。
+      // それでも update は成功を返すので、「記録しました」と答えたのに
+      // 台帳には何も残っていない、という状態になる（実際に確認済み）。
+      return withStateLock(`withdrawal-cases:${filePath}`, async () => {
+        const list = await readCases(filePath);
+        const index = list.findIndex(c => c.id === id);
+        if (index < 0) return undefined;
+        const current = list[index];
+        const merged = normalizeWithdrawalCaseInput({ ...current, ...patch });
+        const updated = recomputeDerived({
+          ...merged,
+          id: current.id,
+          createdAt: current.createdAt,
+          updatedAt: stamp(),
+        });
+        list[index] = updated;
+        await writeCases(filePath, list);
+        return updated;
       });
-      list[index] = updated;
-      await writeCases(filePath, list);
-      return updated;
     },
   };
 }
