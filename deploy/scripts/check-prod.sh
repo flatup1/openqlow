@@ -59,12 +59,30 @@ echo "（見るだけです。本番は何も変わりません）"
 # ---- 1. コードの新しさ -------------------------------------------------
 echo ""
 echo "--- 1. コードの新しさ ---"
-ORIGIN_SHA="$(git rev-parse --short origin/main 2>/dev/null || echo unknown)"
-echo "GitHubのmain : ${ORIGIN_SHA}"
+# origin/main は「最後にGitHubから取ってきた時点」の記録でしかない。
+# 取り直さずに比べると、本番が古いのに「同じです」と言ってしまう。
+#   GitHubの本当のmain : 4506882
+#   本番に載っているの : bf30c99 ← 古い
+#   → ✅ 本番 bf30c99 ＝ GitHubのmainと同じ
+# 「本当にできてる？」に答える道具が、できていないのに ✅ を出すのが一番まずい。
+#
+# 認証を聞かれたら止まるのではなく固まるので、聞かずに失敗させる。
+ORIGIN_SHA=""
+if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" \
+   git fetch --quiet origin main 2>/dev/null; then
+  ORIGIN_SHA="$(git rev-parse --short FETCH_HEAD 2>/dev/null || echo "")"
+fi
 
 if [[ "$PUBLIC_ONLY" -eq 1 ]]; then
+  echo "GitHubのmain : ${ORIGIN_SHA:-（取得できず）}"
   warn "--public のため、本番のコードは確認していません"
+elif [[ -z "$ORIGIN_SHA" ]]; then
+  # 比べられないなら「できている」と言わない。わからないことをわからないと言う。
+  echo "GitHubのmain : （取得できず）"
+  ng "GitHubの最新を取れないため、本番が最新かどうか判断できません"
+  TODO+=("git fetch origin main が通るか確かめる（ネットワークかGitHubへのログイン）")
 else
+  echo "GitHubのmain : ${ORIGIN_SHA}"
   LIVE_VERSION="$(ssh -i "${SSH_KEY}" -o ConnectTimeout=10 "${SSH_USER}@${SSH_HOST}" \
     "cat ${REMOTE_DIR}deployed-version.txt 2>/dev/null || echo none" 2>/dev/null || echo unreachable)"
   LIVE_SHA="${LIVE_VERSION%% *}"
@@ -136,9 +154,18 @@ if [[ "$WEBOS_CODE" == "200" ]]; then
   ok "${WEBOS_URL} は公開されています"
   WEBOS_HTML="$(curl -s -m 10 "${WEBOS_URL}" 2>/dev/null || echo "")"
   LOCAL_V="$(grep -o 'styles\.css?v=[0-9]*' flatup-webos/app/index.html 2>/dev/null | head -1)"
-  if [[ -n "$LOCAL_V" ]] && [[ "$WEBOS_HTML" == *"$LOCAL_V"* ]]; then
+  # 版の目印が読めないときに黙って飛ばさない。
+  # 飛ばすと、公開中のページが古いままでも「✅ 公開されています」で終わる
+  # （キャッシュ破棄の書き方を変えただけで、この検査は静かに効かなくなる）。
+  if [[ -z "$LOCAL_V" ]]; then
+    warn "手元の index.html に版の目印（styles.css?v=…）が無く、新旧を比べていません"
+    TODO+=("flatup-webos/app/index.html の styles.css?v=… の書き方を確認する")
+  elif [[ -z "$WEBOS_HTML" ]]; then
+    warn "公開中のページの中身を読めず、新旧を比べていません"
+    TODO+=("${WEBOS_URL} をブラウザで開いて表示されるか確かめる")
+  elif [[ "$WEBOS_HTML" == *"$LOCAL_V"* ]]; then
     ok "アップロード済みのページは手元と同じ版です（${LOCAL_V}）"
-  elif [[ -n "$LOCAL_V" ]]; then
+  else
     ng "公開中のページが古いです（手元は ${LOCAL_V}）"
     TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す")
   fi
