@@ -1,0 +1,452 @@
+<title>未成年同意フロー 進捗ボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #F6F7F8;
+    --surface:     #FFFFFF;
+    --surface-sub: #EDEFF1;
+    --ink:         #171A1D;
+    --ink-mute:    #5C646E;
+    --line:        #D9DDE1;
+    --done:        #0F6E63;
+    --done-soft:   #E2F0ED;
+    --todo:        #B4610F;
+    --todo-soft:   #FBEEDF;
+    --alert:       #A32C29;
+    --alert-soft:  #FAE9E8;
+    --shadow:      0 1px 2px rgba(23,26,29,.06), 0 8px 24px rgba(23,26,29,.05);
+
+    --display: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    --body:    "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    --mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #101317;
+      --surface:     #181C21;
+      --surface-sub: #21262C;
+      --ink:         #E8EBEE;
+      --ink-mute:    #9AA3AD;
+      --line:        #2C333A;
+      --done:        #4FBFAE;
+      --done-soft:   #14312D;
+      --todo:        #E39A4A;
+      --todo-soft:   #352715;
+      --alert:       #E8837E;
+      --alert-soft:  #3A1F1E;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #101317;
+    --surface:     #181C21;
+    --surface-sub: #21262C;
+    --ink:         #E8EBEE;
+    --ink-mute:    #9AA3AD;
+    --line:        #2C333A;
+    --done:        #4FBFAE;
+    --done-soft:   #14312D;
+    --todo:        #E39A4A;
+    --todo-soft:   #352715;
+    --alert:       #E8837E;
+    --alert-soft:  #3A1F1E;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.35; }
+  h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 900; letter-spacing: -.01em; }
+  h2 { font-size: clamp(20px, 3vw, 25px); font-weight: 700; }
+  h3 { font-size: 17px; font-weight: 700; }
+  p  { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+
+  .lede { color: var(--ink-mute); font-size: 17px; }
+
+  section { display: flex; flex-direction: column; gap: 20px; }
+
+  /* ---------- 採点 ---------- */
+  .scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .score {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 6px;
+    border-top: 3px solid var(--done);
+  }
+  .score.zero { border-top-color: var(--alert); }
+  .score .n {
+    font-family: var(--mono);
+    font-size: 40px; font-weight: 600; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--done);
+  }
+  .score.zero .n { color: var(--alert); }
+  .score .n small { font-size: 15px; color: var(--ink-mute); font-weight: 500; }
+  .score .lbl { font-family: var(--display); font-weight: 700; font-size: 15px; }
+  .score .why { font-size: 13.5px; color: var(--ink-mute); line-height: 1.6; }
+
+  /* ---------- 仕組み図 ---------- */
+  .flow {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 0;
+    box-shadow: var(--shadow);
+  }
+  .fstep { display: flex; gap: 16px; align-items: flex-start; }
+  .fstep .rail { display: flex; flex-direction: column; align-items: center; align-self: stretch; }
+  .fstep .dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--done); flex: 0 0 auto; margin-top: 8px;
+  }
+  .fstep .bar { width: 2px; flex: 1; background: var(--line); min-height: 18px; }
+  .fstep:last-child .bar { display: none; }
+  .fstep .txt { padding-bottom: 18px; }
+  .fstep:last-child .txt { padding-bottom: 0; }
+  .fstep .who { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; color: var(--ink-mute); }
+  .fstep .what { font-weight: 500; }
+  .fstep .note { font-size: 13.5px; color: var(--ink-mute); }
+  .tag {
+    display: inline-block;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--done-soft); color: var(--done);
+    margin-left: 6px; vertical-align: 2px;
+  }
+
+  /* ---------- バグ 前後 ---------- */
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .ba { grid-template-columns: 1fr; } }
+  .ba > div {
+    border-radius: 10px; padding: 18px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ba .before { background: var(--alert-soft); border-color: color-mix(in srgb, var(--alert) 30%, transparent); }
+  .ba .after  { background: var(--done-soft);  border-color: color-mix(in srgb, var(--done) 30%, transparent); }
+  .ba .cap { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .1em; }
+  .ba .before .cap { color: var(--alert); }
+  .ba .after  .cap { color: var(--done); }
+  .ba .quote { font-family: var(--display); font-weight: 700; font-size: 16.5px; line-height: 1.6; }
+
+  .callout {
+    border-left: 3px solid var(--alert);
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .callout .hd { font-family: var(--display); font-weight: 700; color: var(--alert); }
+  .callout p { font-size: 14.5px; }
+
+  /* ---------- 残作業 ---------- */
+  ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  ol.steps li {
+    display: grid;
+    grid-template-columns: 34px 1fr auto;
+    gap: 14px; align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 13px 16px;
+  }
+  @media (max-width: 560px) {
+    ol.steps li { grid-template-columns: 34px 1fr; }
+    ol.steps li .cost { grid-column: 2; }
+  }
+  ol.steps li.next {
+    border-color: var(--todo);
+    background: var(--todo-soft);
+    box-shadow: var(--shadow);
+  }
+  ol.steps .num {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--ink-mute); font-variant-numeric: tabular-nums;
+  }
+  ol.steps li.done .num { color: var(--done); }
+  ol.steps li.next .num { color: var(--todo); }
+  ol.steps .task { font-weight: 500; }
+  ol.steps li.done .task { color: var(--ink-mute); }
+  ol.steps li.next .task { font-family: var(--display); font-weight: 700; }
+  ol.steps .cost {
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink-mute);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  ol.steps li.next .cost { color: var(--todo); font-weight: 600; }
+
+  /* ---------- 次の一手 ---------- */
+  .next-move {
+    background: var(--surface);
+    border: 2px solid var(--todo);
+    border-radius: 12px;
+    padding: 28px;
+    display: flex; flex-direction: column; gap: 14px;
+    box-shadow: var(--shadow);
+  }
+  .next-move .eyebrow { color: var(--todo); }
+  .next-move ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; }
+  .next-move li::marker { font-family: var(--mono); font-weight: 600; color: var(--todo); }
+
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--surface-sub);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  .foot {
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+    font-size: 13.5px; color: var(--ink-mute);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+</style>
+
+<div class="wrap">
+
+  <header style="display:flex;flex-direction:column;gap:12px">
+    <p class="eyebrow">FLATUP GYM &middot; 2026-08-20</p>
+    <h1>未成年の保護者同意フロー<br>進み具合</h1>
+    <p class="lede">
+      LINE公式アカウントに「未成年 → 保護者の同意」のルートを足す作業です。
+      準備はほぼ終わり、残っているのは<strong>あなたの手作業ひとつ</strong>だけです。
+    </p>
+  </header>
+
+  <!-- 採点 -->
+  <section>
+    <div>
+      <p class="eyebrow">採点</p>
+      <h2>準備は95点、自動チェックは100点。でも稼働は0点</h2>
+    </div>
+    <div class="scores">
+      <div class="score">
+        <p class="n">95<small>/100</small></p>
+        <p class="lbl">準備</p>
+        <p class="why">コード・文面・紙の同意書がそろった。免責文言の法的確認だけ未了。</p>
+      </div>
+      <div class="score">
+        <p class="n">100<small>/100</small></p>
+        <p class="lbl">自動チェック</p>
+        <p class="why">見逃していた穴を3つとも塞いだ。テスト115件・CI 7件すべて成功。</p>
+      </div>
+      <div class="score zero">
+        <p class="n">0<small>/100</small></p>
+        <p class="lbl">実際に動いているか</p>
+        <p class="why">LINE管理画面が未設定。まだ1件も動いていない。</p>
+      </div>
+    </div>
+    <p class="lede" style="font-size:15px">
+      道具はぜんぶ作り終えて箱に入っている状態です。箱を開けて置く作業がまだ残っています。
+    </p>
+  </section>
+
+  <!-- 仕組み -->
+  <section>
+    <div>
+      <p class="eyebrow">仕組み</p>
+      <h2>LINEは「下書き」、紙が「本物」</h2>
+      <p class="lede" style="font-size:15px;margin-top:6px">
+        LINEに入力フォームは作れません。できるのは<strong>カードとボタン</strong>だけです。
+        だからLINEでは事前確認だけを取り、サインは紙でもらいます。
+      </p>
+    </div>
+    <div class="flow">
+      <div class="fstep">
+        <div class="rail"><span class="dot"></span><span class="bar"></span></div>
+        <div class="txt">
+          <p class="who">お客様</p>
+          <p class="what">「入会手続き」と送る</p>
+        </div>
+      </div>
+      <div class="fstep">
+        <div class="rail"><span class="dot"></span><span class="bar"></span></div>
+        <div class="txt">
+          <p class="who">AIKA</p>
+          <p class="what">年代を聞くカードを出す<span class="tag">100点</span></p>
+          <p class="note">小学生／中学生／高校生／成人 の4ボタン。生年月日は聞きません。</p>
+        </div>
+      </div>
+      <div class="fstep">
+        <div class="rail"><span class="dot"></span><span class="bar"></span></div>
+        <div class="txt">
+          <p class="who">AIKA</p>
+          <p class="what">未成年なら、保護者向けカードを出す<span class="tag">100点</span></p>
+          <p class="note">けがのリスクなど4点を伝える。成人ならこの手順は飛ばします。</p>
+        </div>
+      </div>
+      <div class="fstep">
+        <div class="rail"><span class="dot"></span><span class="bar"></span></div>
+        <div class="txt">
+          <p class="who">保護者</p>
+          <p class="what">ボタンを押す</p>
+          <p class="note">「私は保護者として…同意します」がトークに残る。これが<strong>事前確認の記録</strong>。</p>
+        </div>
+      </div>
+      <div class="fstep">
+        <div class="rail"><span class="dot"></span><span class="bar"></span></div>
+        <div class="txt">
+          <p class="who">AIKA</p>
+          <p class="what">管理番号を返す<span class="tag">100点</span></p>
+          <p class="note"><code>FG-MC-2026.08.20.0001</code> の形。紙と結びつける鍵になります。</p>
+        </div>
+      </div>
+      <div class="fstep">
+        <div class="rail"><span class="dot"></span></div>
+        <div class="txt">
+          <p class="who">初回来館時</p>
+          <p class="what">紙の同意書にサインをもらう</p>
+          <p class="note">A4縦1枚。<strong>これが原本です。</strong>LINEだけでは完結しません。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 今日みつけたバグ -->
+  <section>
+    <div>
+      <p class="eyebrow">今日いちばん大事だったこと</p>
+      <h2>お客様に送る前に、間違いを1つ止めました</h2>
+      <p class="lede" style="font-size:15px;margin-top:6px">
+        LINEに貼る予定だった文面が、違約金を<strong>「必ず取られる」</strong>という書き方になっていました。
+        ジムの正式ルールは「取られる<strong>こともある</strong>／契約による」です。
+      </p>
+    </div>
+    <div class="ba">
+      <div class="before">
+        <p class="cap">修正前 &mdash; ルール違反</p>
+        <p class="quote">違約金（入会金相当10,000円）が発生します。</p>
+        <p class="note" style="font-size:13.5px;color:var(--ink-mute)">
+          違約金が出ない人にも「必ず1万円取られる」と伝わってしまう。
+        </p>
+      </div>
+      <div class="after">
+        <p class="cap">修正後 &mdash; ルールどおり</p>
+        <p class="quote">入会金相当の違約金が発生することがあります。金額と条件はご契約内容によって異なるため、お手続きの前に個別にご案内します。</p>
+      </div>
+    </div>
+    <div class="callout">
+      <p class="hd">なぜ9日間も気づけなかったのか</p>
+      <p>
+        自動チェックの機械は2台あります。1台は<strong>「決められた場所」しか見回りません</strong>でした
+        &mdash; 今回の文面は見回りコースの外にありました。
+      </p>
+      <p>
+        もう1台は文章を100点満点で採点する機械ですが、これは<strong>話し方の優しさしか見ていません</strong>。
+        実際に試したところ、間違った文面も直した文面も<strong>どちらも100点満点</strong>でした。
+      </p>
+      <p style="font-weight:700;color:var(--ink)">
+        つまり「100点満点＝安全」ではありません。だから今日、事実の正しさを見張る3台目を作りました。
+      </p>
+    </div>
+    <p class="lede" style="font-size:15px">
+      新しい見張り役は、文面361件を検査します。わざとバグを戻して、
+      ちゃんと見つけられることも確認済みです &mdash; 鳴らない火災報知器では意味がないからです。
+    </p>
+
+    <div class="callout" style="border-left-color:var(--todo)">
+      <p class="hd" style="color:var(--todo)">さらに、穴をもう2つ見つけて塞ぎました</p>
+      <p>
+        <strong>穴その1 &mdash; 版番号がズレても誰も気づかない。</strong>
+        「この文章は何月何日版か」を示す番号が、システムの中の<strong>2か所</strong>に別々に書かれていました。
+        片方だけ直すと、記録には「8月6日版に同意」と残るのに、実際に見せた文章は9月版、ということが起こります。
+      </p>
+      <p>
+        <strong>穴その2 &mdash; 紙に版が書いていない。</strong>
+        文章を変えても、引き出しの中の<strong>古い用紙と新しい用紙が見分けられません</strong>。
+        そこで紙の右下に小さく「文言版 2026-08-06」と印刷しました。
+      </p>
+      <p style="font-weight:700;color:var(--ink)">
+        いまは3か所の版が揃っていないとテストが落ちます。上げ忘れは機械が止めます。
+      </p>
+    </div>
+  </section>
+
+  <!-- 残作業 -->
+  <section>
+    <div>
+      <p class="eyebrow">残りの作業</p>
+      <h2>9つのうち、5つ終わり</h2>
+    </div>
+    <ol class="steps">
+      <li class="done"><span class="num">01</span><span class="task">同意を記録する台帳をつくる</span><span class="cost">済 &middot; 0円</span></li>
+      <li class="done"><span class="num">02</span><span class="task">LINEに出す文面を決める</span><span class="cost">済 &middot; 0円</span></li>
+      <li class="done"><span class="num">03</span><span class="task">紙の同意書の様式をつくる</span><span class="cost">済 &middot; 0円</span></li>
+      <li class="done"><span class="num">04</span><span class="task">違約金の書き方を正式ルールに合わせる＋見張り役を追加</span><span class="cost">済 &middot; 0円</span></li>
+      <li class="done"><span class="num">04b</span><span class="task">文言の版を紙にも印字し、版ズレを機械で止める</span><span class="cost">済 &middot; 0円</span></li>
+      <li class="next"><span class="num">05</span><span class="task">LINE管理画面に文面を貼る</span><span class="cost">30分 &middot; 0円</span></li>
+      <li><span class="num">06</span><span class="task">自分のLINEで通し確認（成人・未成年の両方）</span><span class="cost">10分 &middot; 0円</span></li>
+      <li><span class="num">07</span><span class="task">紙を印刷して受付に置く</span><span class="cost">10分 &middot; 印刷代</span></li>
+      <li><span class="num">08</span><span class="task">免責の文言を専門家に見てもらう</span><span class="cost">要相談</span></li>
+    </ol>
+    <p class="lede" style="font-size:15px">
+      05 をやるまでは、何件お問い合わせが来ても<strong>この仕組みは1回も動きません</strong>。
+      逆に05が終われば、その日から使えます。
+    </p>
+  </section>
+
+  <!-- 次の一手 -->
+  <section>
+    <div class="next-move">
+      <p class="eyebrow">次の一手</p>
+      <h2>PRを承認 → LINEに貼る（合計30分）</h2>
+      <ol>
+        <li>GitHubの <strong>PR #106</strong> を承認してマージする。</li>
+        <li>
+          設定書 <code>docs/GUARDIAN_CONSENT_LINE_SETUP.md</code> を開く。
+          <strong>まず【1/2】の文面差し替えだけ</strong>やる &mdash;
+          未成年対応と切り離せるうえ、今の文面に違約金の問題があるので最優先。
+        </li>
+        <li>自分のLINEで「入会手続き」と打って、正しく返るか見る。</li>
+        <li>問題なければ、年代カード → 未成年カードの順に足す。</li>
+        <li>最後にもう一度、成人ルートと未成年ルートを通しで確認する。</li>
+      </ol>
+      <p style="font-size:14.5px;color:var(--ink-mute)">
+        文面はすべてコピーして貼るだけの状態です。考える作業は残っていません。
+      </p>
+    </div>
+  </section>
+
+  <div class="foot">
+    <p><strong>今日の検証:</strong> テスト115件すべて成功 &middot; CI 7件すべて成功 &middot; 型チェック通過 &middot; AI-OS検証通過 &middot; マージ競合を解消済み</p>
+    <p><strong>まだ承認が要るもの:</strong> LINE管理画面への設定（未実施）／紙の免責文言の法的な妥当性</p>
+    <p><strong>文言を変えるとき:</strong> 版番号 <code>CONSENT_TERMS_VERSION</code> と紙の「文言版」を必ず一緒に上げてください。忘れるとテストが落ちて教えてくれます &mdash; もう覚えておく必要はありません。</p>
+  </div>
+
+</div>
