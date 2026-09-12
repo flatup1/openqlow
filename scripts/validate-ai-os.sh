@@ -43,6 +43,7 @@ REQUIRED_FILES=(
   docs/ai-os/templates/weekly_report.md
   docs/ai-os/integrations/MCP_SETUP.md
   docs/ai-os/integrations/AUTOMATION_SETUP.md
+  docs/ai-os/integrations/CODEX_CHATGPT_BRIDGE.md
   .codex/config.toml
   .codex/rules/flatup-safety.rules
   .codex/hooks.json
@@ -98,7 +99,7 @@ else
   fail "Node.js unavailable for JSON and hook validation"
 fi
 
-for shell_file in scripts/validate-ai-os.sh scripts/validate-ai-os.test.sh scripts/sync-agent-skills.sh .codex/hooks/guard-command.sh .claude/hooks/guard-command.sh; do
+for shell_file in scripts/validate-ai-os.sh scripts/validate-ai-os.test.sh scripts/sync-agent-skills.sh .codex/hooks/guard-command.sh .claude/hooks/guard-command.sh .claude/hooks/auto-delegate.sh; do
   bash -n "$shell_file" || fail "shell syntax invalid: $shell_file"
 done
 [[ "$FAILURES" -eq 0 ]] && pass "shell syntax valid"
