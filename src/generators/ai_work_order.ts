@@ -63,7 +63,7 @@ export interface WorkOrderInput {
   signals: WorkSignal[];
   /** 今日AIに使える時間（分）。渡されたら、収まる仕事だけを選ぶ。 */
   minutesAvailable?: number;
-  /** 何日前までを「今日の仕事」として扱うか。既定14日。 */
+  /** 何日前までを「今日の仕事」として扱うか。既定は DEFAULT_STALE_AFTER_DAYS。 */
   staleAfterDays?: number;
   askHuman?: string[];
   notes?: string[];
@@ -73,8 +73,11 @@ interface KindSpec {
   /** 小さいほど優先。 */
   order: number;
   label: string;
-  /** 件数の言い方。「3件」「目安に4件不足」のように、数字の意味が分かる形にする。 */
-  amount: (signal: WorkSignal) => string;
+  /**
+   * 件数の言い方。既定は「3件」。
+   * 数字が件数でない種類（不足数など）だけ、意味が分かる言い方に差し替える。
+   */
+  amount?: (signal: WorkSignal) => string;
   assignee: string;
   estimateMinutes: number;
   references: string[];
@@ -84,6 +87,17 @@ interface KindSpec {
   request: (signal: WorkSignal, dateJst: string) => string[];
 }
 
+/** 何日前までを「今日の仕事」として扱うか。 */
+const DEFAULT_STALE_AFTER_DAYS = 14;
+
+/** 件数の既定の言い方。 */
+function countLabel(signal: WorkSignal): string {
+  return `${signal.count}件`;
+}
+
+/** 測った時間を書き込む先。増やさないため、記録先は1つだけ。 */
+const TIME_SHEET = "6_システム/AI作戦基地/06_AI依頼の時間記録.md";
+
 const CANON_REF = "docs/ai-os/canon/（料金・時間・ルールの正本）";
 const NO_SEND = "送信・予約確定・料金／返金／退会の判断はしない（JINが実行する）";
 
@@ -91,7 +105,6 @@ const KIND_SPECS: Record<WorkKind, KindSpec> = {
   reply_waiting: {
     order: 1,
     label: "返信待ち",
-    amount: signal => `${signal.count}件`,
     assignee: "AIKA（守りの顧客対応・下書きまで）",
     estimateMinutes: 15,
     references: ["state/reply_drafts/（保留中の返信下書き）", CANON_REF],
@@ -116,7 +129,6 @@ const KIND_SPECS: Record<WorkKind, KindSpec> = {
   trial_pending: {
     order: 2,
     label: "体験の結果待ち",
-    amount: signal => `${signal.count}件`,
     assignee: "openQLOW（攻めの営業・経営支援）",
     estimateMinutes: 10,
     references: ["01_DAILY_OPERATIONS/体験予約・入会管理.md", CANON_REF],
@@ -141,7 +153,6 @@ const KIND_SPECS: Record<WorkKind, KindSpec> = {
   trial_followup: {
     order: 3,
     label: "体験済み未入会のフォロー",
-    amount: signal => `${signal.count}件`,
     assignee: "AIKA（守りの顧客対応・下書きまで）",
     estimateMinutes: 15,
     references: [
@@ -170,7 +181,6 @@ const KIND_SPECS: Record<WorkKind, KindSpec> = {
   in_progress: {
     order: 4,
     label: "進行中の仕事",
-    amount: signal => `${signal.count}件`,
     assignee: "Claude Code（実装）",
     estimateMinutes: 30,
     references: ["01_DAILY_OPERATIONS/daily_logs/（status: IMPLEMENTING のメモ）", "COORDINATION.md"],
@@ -198,7 +208,6 @@ const KIND_SPECS: Record<WorkKind, KindSpec> = {
   decision_support: {
     order: 5,
     label: "保留中の判断",
-    amount: signal => `${signal.count}件`,
     assignee: "openQLOW（攻めの営業・経営支援）",
     estimateMinutes: 20,
     references: ["01_DAILY_OPERATIONS/daily_logs/（status: CONSIDERING のメモ）", CANON_REF],
@@ -265,12 +274,16 @@ export function daysBefore(dateJst: string, observedOn: string): number | null {
   return Math.round((today - observed) / 86_400_000);
 }
 
+function amountOf(signal: WorkSignal): string {
+  return (KIND_SPECS[signal.kind].amount ?? countLabel)(signal);
+}
+
 function buildTask(signal: WorkSignal, dateJst: string): WorkOrderTask {
   const spec = KIND_SPECS[signal.kind];
   return {
     kind: signal.kind,
     title: spec.title(signal),
-    reason: `${spec.label}: ${spec.amount(signal)}（根拠: ${signal.evidence} / ${signal.observedOn}）`,
+    reason: `${spec.label}: ${amountOf(signal)}（根拠: ${signal.evidence} / ${signal.observedOn}）`,
     references: spec.references,
     doneWhen: spec.doneWhen(signal),
     assignee: spec.assignee,
@@ -285,7 +298,7 @@ function buildTask(signal: WorkSignal, dateJst: string): WorkOrderTask {
  * 該当が無ければ hasWork=false を返す。無理に仕事を作らない。
  */
 export function buildAiWorkOrder(input: WorkOrderInput): WorkOrder {
-  const staleAfterDays = input.staleAfterDays ?? 14;
+  const staleAfterDays = input.staleAfterDays ?? DEFAULT_STALE_AFTER_DAYS;
   const skipped: string[] = [];
   const notes = [...(input.notes ?? [])];
 
@@ -311,8 +324,8 @@ export function buildAiWorkOrder(input: WorkOrderInput): WorkOrder {
     const spec = KIND_SPECS[signal.kind];
     skipped.push(
       fits(signal)
-        ? `${spec.label}（${spec.amount(signal)}）: 今日は1件だけにするため見送り`
-        : `${spec.label}（${spec.amount(signal)}）: 目安${spec.estimateMinutes}分で今日の持ち時間に入らない`,
+        ? `${spec.label}（${amountOf(signal)}）: 今日は1件だけにするため見送り`
+        : `${spec.label}（${amountOf(signal)}）: 目安${spec.estimateMinutes}分で今日の持ち時間に入らない`,
     );
   }
 
@@ -338,6 +351,11 @@ function block(heading: string, lines: string[]): string[] {
   return lines.length ? ["", `■ ${heading}`, ...lines] : [];
 }
 
+/** 箇条書きの節。中身が空なら節ごと出さない。 */
+function listBlock(heading: string, values: string[]): string[] {
+  return block(heading, values.map(value => `- ${value}`));
+}
+
 /** LINE・ターミナルのどちらでも読める1枚に整形する。 */
 export function renderWorkOrder(order: WorkOrder): string {
   const lines: string[] = [`============ FLATUP / 今日のAI依頼（1件だけ） ${order.dateJst} ============`];
@@ -347,23 +365,23 @@ export function renderWorkOrder(order: WorkOrder): string {
     lines.push(
       ...block("今日やること", [task.title]),
       ...block("今やる理由", [task.reason]),
-      ...block("参照する資料", task.references.map(value => `- ${value}`)),
-      ...block("完成条件", task.doneWhen.map(value => `- ${value}`)),
+      ...listBlock("参照する資料", task.references),
+      ...listBlock("完成条件", task.doneWhen),
       ...block("担当するAI", [`${task.assignee}（目安 ${task.estimateMinutes}分）`]),
       ...block("そのまま使える依頼文（ここからコピー）", ["---", task.requestText, "---"]),
-      ...block("人間確認が必要な地点", task.humanCheckpoints.map(value => `- ${value}`)),
+      ...listBlock("人間確認が必要な地点", task.humanCheckpoints),
     );
   } else {
     lines.push("", "■ 今日やること", "今日は追加のAI作業なし。今動いている仕事と現場を優先してください。");
   }
 
   lines.push(
-    ...block("今日はやらないこと", order.skipped.map(value => `- ${value}`)),
-    ...block("AIでは分からなかったこと（これだけ教えてください）", order.askHuman.map(value => `- ${value}`)),
-    ...block("メモ", order.notes.map(value => `- ${value}`)),
+    ...listBlock("今日はやらないこと", order.skipped),
+    ...listBlock("AIでは分からなかったこと（これだけ教えてください）", order.askHuman),
+    ...listBlock("メモ", order.notes),
     ...block("時間の記録（1週間だけ）", [
       "- 考えた時間: __分 / 依頼して確認した時間: __分 / 直した時間: __分",
-      "- 記録先: 6_システム/AI作戦基地/06_AI依頼の時間記録.md",
+      `- 記録先: ${TIME_SHEET}`,
     ]),
     "=====================================================================",
   );

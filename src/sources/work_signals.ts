@@ -32,6 +32,9 @@ export interface CollectedWorkSignals {
   notes: string[];
 }
 
+// 日次ログのメモ書式は src/scheduler/management_brief.ts と同じ。
+// 向こうの parser は export されておらず、src/scheduler/ は COORDINATION.md 上で別AIの担当。
+// 共通化するならその担当と合わせて1か所へ寄せる（ここで勝手に触らない）。
 const MEMO_HEADING = /^## LINE(?:自動メモ|追記) /;
 
 function compact(value: string, max = 60): string {
@@ -156,11 +159,10 @@ async function dailyLogSignals(vaultRoot: string): Promise<WorkSignal[]> {
   const dir = path.join(vaultRoot, "01_DAILY_OPERATIONS", "daily_logs");
   const names = await readMissing(async () => await readdir(dir), [] as string[]);
   const targets = names.filter(name => /^\d{4}-\d{2}-\d{2}\.md$/.test(name)).sort().slice(-14);
-  const memos: DailyMemo[] = [];
-  for (const name of targets) {
-    const text = await readMissing(() => readFile(path.join(dir, name), "utf8"), "");
-    memos.push(...parseMemos(text, name.replace(/\.md$/, "")));
-  }
+  // 14ファイルは互いに独立しているので、順番待ちせずまとめて読む。
+  const perFile = await Promise.all(targets.map(async name =>
+    parseMemos(await readMissing(() => readFile(path.join(dir, name), "utf8"), ""), name.replace(/\.md$/, ""))));
+  const memos = perFile.flat();
 
   const signals: WorkSignal[] = [];
   const pick = (status: string, kind: WorkSignal["kind"]): void => {
