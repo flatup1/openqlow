@@ -150,9 +150,21 @@ step "5/6  5つの画面（Pages）を公開"
 
 $WRANGLER pages project create uizin-eventos --production-branch main >/dev/null 2>&1 || true
 
+# 前回のビルドの残骸が混ざると、裏側のURLが焼き込まれていない画面ができる。
+# それを公開すると、画面は開くのに「サーバーに届いていません(HTTP 404)」になる
+# （画面が自分自身に問い合わせてしまうため）。毎回まっさらから組み立てる。
+rm -rf .next out
 NEXT_PUBLIC_EVENTOS_API="$API_URL" npm run build >/dev/null 2>&1 \
   || die "画面を組み立てられませんでした。" "npm run build を単体で実行して、出たエラーを見てください。"
-ok "画面を組み立てました"
+
+# 組み立てた画面に裏側のURLが本当に入っているかを確かめる。
+# ここを確かめずに公開すると、当日まで誰も気づかないまま「開くけど動かない」
+# 状態のものを配ってしまう。入っていなければ公開しない。
+if ! grep -rqF "$API_URL" out 2>/dev/null; then
+  die "画面に裏側のURLが入りませんでした。この状態で公開すると、画面は開くのに動きません。" \
+      "npm run build を単体で実行してエラーを確認してください。応急処置として、URLの末尾に ?api=$API_URL を付ければ動きます。"
+fi
+ok "画面を組み立てました（裏側のURLも入っています）"
 
 PAGES_OUT=""
 PAGES_OUT="$($WRANGLER pages deploy out --project-name uizin-eventos --branch main --commit-dirty=true 2>&1)" \
@@ -216,3 +228,7 @@ printf '    1. 進行表の共有を「リンクを知っている全員／閲�
 printf '    2. %s/op/ を開いて操作キーを入れる\n' "$APP_URL"
 printf '    3. 「取り込み直す」を押す\n'
 printf '    4. 「音源チェック」で赤がゼロになるまで直す\n\n'
+
+printf '  %sもし「サーバーに届いていません」と出たら%s\n' "$DIM" "$RESET"
+printf '    %s/op/?api=%s を一度開くと、その端末が接続先を覚えます。\n\n' "$APP_URL" "$API_URL"
+
