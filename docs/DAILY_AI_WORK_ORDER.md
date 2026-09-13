@@ -1,0 +1,123 @@
+# 今日のAI依頼（work-order）
+
+最終更新: 2026-09-14
+
+## これは何か
+
+毎朝「AIに何を頼もうか」と考える時間を無くすための道具です。
+
+既にある記録だけを読んで、**今日AIに頼む仕事を1件だけ**選び、そのまま貼れる依頼文まで作ります。
+仕事が見つからなければ「今日は追加のAI作業なし」と出します。無理に仕事を作りません。
+
+## 使い方
+
+```bash
+npm run work-order                  # 今日の1件を表示
+npm run work-order -- --minutes 15  # 今日AIに使える時間が15分のとき
+npm run work-order -- --json        # 機械可読（他のスクリプトから使うとき）
+```
+
+確認用のフラグ:
+
+| フラグ | 意味 |
+|---|---|
+| `--date 2026-09-13` | 日付を指定する |
+| `--stale 7` | 何日前までを「今日の仕事」とみなすか（既定14日） |
+| `--vault <path>` | Obsidian Vault の場所（既定は `OBSIDIAN_VAULT_ROOT`） |
+| `--root <path>` | openQLOW の場所（既定は `OPENQLOW_ROOT`） |
+| `--ai-os <path>` | flatup-ai-os の場所（既定は `FLATUP_AI_OS_ROOT`） |
+
+## 毎朝ひとりでに出す（Mac / launchd）
+
+毎朝6:30に自動で作り、Vault の `6_システム/AI作戦基地/今日のAI依頼.md` へ書き出します。
+Obsidianが同期していれば、iPhoneでもそのまま読めます。**LINE送信はしません。**
+
+入れる:
+
+```bash
+cp "deploy/launchd/com.flatup.openqlow.work-order.plist" ~/Library/LaunchAgents/
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.flatup.openqlow.work-order.plist
+```
+
+確認する / いますぐ1回動かす:
+
+```bash
+launchctl print "gui/$(id -u)/com.flatup.openqlow.work-order" | grep -E "state|last exit code"
+launchctl kickstart -k "gui/$(id -u)/com.flatup.openqlow.work-order"
+```
+
+やめる:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.flatup.openqlow.work-order"
+rm ~/Library/LaunchAgents/com.flatup.openqlow.work-order.plist
+```
+
+- 実行ログ: `~/Library/Logs/openqlow-work-order.log`
+- Macが寝ていた朝は、起きたときに1回動きます（launchdの通常動作）。
+- 書き出すファイルは**毎朝上書き**されます。手で書いた内容は残らないので、メモは日次ログへ。
+- 時刻を変えるなら plist の `StartCalendarInterval` を直して入れ直します。
+
+## 出るもの
+
+1. 今日やること（1件だけ）
+2. 今やる理由（根拠のファイル名と日付つき）
+3. 参照する資料
+4. 完成条件
+5. 担当するAI（AIKA / openQLOW / Claude Code）
+6. そのまま使える依頼文
+7. 人間確認が必要な地点
+
+あわせて「今日はやらないこと」「AIでは分からなかったこと」「時間の記録欄」が付きます。
+
+## 何を読んでいるか
+
+書き込みは一切しません。読むのは次の4か所だけです。
+
+| 読む場所 | 何の手がかりになるか |
+|---|---|
+| `state/reply_drafts/pending_notify.json` | JINにまだ渡せていない返信下書きの件数 |
+| `01_DAILY_OPERATIONS/体験予約・入会管理.md` | 体験の結果待ち / 体験済み未入会 / 体験のペース |
+| `01_DAILY_OPERATIONS/daily_logs/`（直近14日） | `status: IMPLEMENTING` / `CONSIDERING` のメモ |
+| `tasks/today.md`（flatup-ai-os） | 古い未完了リスト。**今日の仕事には採用せず**、あることだけ伝える |
+
+顧客の氏名・連絡先は手がかりに載せません。体験の対象は `TRIAL-xxxx` のIDだけで示します。
+
+## 優先順位
+
+朝の司令書（`6_システム/AI作戦基地/01_朝の司令書.md`）の優先順位に合わせています。
+
+1. 返信待ち（お客様を待たせている）
+2. 体験の結果待ち（予定日を過ぎて未記録）
+3. 体験済み未入会のフォロー
+4. 進行中の仕事を終わらせる
+5. 保留中の判断を選べる形にする
+6. 体験を増やす行動（目標ペースに届いていないときだけ）
+
+`--minutes` を渡すと、その時間に収まる仕事だけを選びます。収まるものが無ければ「今日はなし」です。
+
+## 仕事を作らない条件
+
+- 手がかりが1つも無い
+- 手がかりが古い（既定14日より前）
+- 体験台帳にその月の記録が1件も無い（＝未記録であって、遅れの根拠ではない）
+- 今日の持ち時間に収まる仕事が無い
+
+台帳が読めないときは、推測で補わず「未確認」と書いて先へ進みます。
+
+## 承認の境界
+
+依頼文には送信・予約確定・公開・料金判断を入れません。それらは「人間確認が必要な地点」に並べます。
+コマンドがするのは、読むこと・表示すること・`--out` のときに1ファイル書くことだけです。
+送信・投稿・台帳の書き換えはしません。自動実行にしても、この境界は変わりません。
+
+## 実装
+
+| ファイル | 役割 |
+|---|---|
+| `src/generators/ai_work_order.ts` | 手がかり → 今日の1件（入出力なし） |
+| `src/sources/work_signals.ts` | 既存の記録から手がかりを集める（読み取り専用） |
+| `src/generators/ai_work_order_cli.ts` | CLI と、`--out` のときだけのノート書き出し |
+| `deploy/launchd/com.flatup.openqlow.work-order.plist` | 毎朝6:30の自動実行（Mac） |
+
+テスト: `npm run test:ai-work-order` / `npm run test:work-signals`
