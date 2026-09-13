@@ -76,16 +76,24 @@ if ! logged_in; then
   $WRANGLER login || die "ログインできませんでした。" "npx wrangler login を単体で実行してから、もう一度このコマンドを実行してください。"
   logged_in || die "ログインが完了していません。" "ブラウザで「Allow」を押しましたか？ npx wrangler login をもう一度実行してください。"
 fi
-ACCOUNT="$($WRANGLER whoami 2>/dev/null | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | head -1 || true)"
-if [ -n "$ACCOUNT" ]; then ok "ログイン済み（$ACCOUNT）"; else ok "ログイン済み"; fi
+# macOS 標準の bash は 3.2 と古い。set -u のもとでは、代入が一度でも走らないと
+# その先の参照が「unbound variable」で落ちる。落ちたら公開できないので、
+# 先に空で初期化し、参照側も ${VAR:-} で受けて、ここでは絶対に止まらないようにする。
+# （アカウント名は「出せたら出す」だけの飾りで、公開に必須の情報ではない）
+ACCOUNT=""
+if WHOAMI_OUT="$($WRANGLER whoami 2>/dev/null)"; then
+  ACCOUNT="$(printf '%s' "$WHOAMI_OUT" | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | head -1 || true)"
+fi
+if [ -n "${ACCOUNT:-}" ]; then ok "ログイン済み（$ACCOUNT）"; else ok "ログイン済み"; fi
 
 # ---------------------------------------------------------------- 2. 進行表のID
 step "2/6  進行表スプレッドシートのIDを設定"
 
 SHEET_ID="${SHEET_ID:-${1:-}}"
 if [ -z "$SHEET_ID" ]; then
+  CURRENT=""
   CURRENT="$(grep -E '^SHEET_ID' "$CONFIG" | sed -E 's/.*"(.*)".*/\1/' || true)"
-  if [ -n "$CURRENT" ]; then
+  if [ -n "${CURRENT:-}" ]; then
     SHEET_ID="$CURRENT"
     ok "設定済みのIDを使います: $SHEET_ID"
   else
@@ -120,9 +128,13 @@ fi
 # ---------------------------------------------------------------- 4. 裏側を公開
 step "4/6  裏側のシステム（Worker）を公開"
 
+WORKER_OUT=""
+API_URL=""
 WORKER_OUT="$($WRANGLER deploy --config "$CONFIG" 2>&1)" || { printf '%s\n' "$WORKER_OUT"; die "Worker を公開できませんでした。"; }
-API_URL="$(printf '%s' "$WORKER_OUT" | grep -oE 'https://[A-Za-z0-9._-]+\.workers\.dev' | head -1)"
-if [ -z "$API_URL" ]; then
+# grep は見つからないと 1 を返す。pipefail + set -e のもとで || true を付けないと、
+# 下の「URLを読み取れませんでした」という案内を出す前にスクリプトごと落ちてしまう。
+API_URL="$(printf '%s' "$WORKER_OUT" | grep -oE 'https://[A-Za-z0-9._-]+\.workers\.dev' | head -1 || true)"
+if [ -z "${API_URL:-}" ]; then
   printf '%s\n' "$WORKER_OUT"
   die "公開はできましたが、URLを読み取れませんでした。" "上の出力から workers.dev のURLを控えて、docs/DEPLOY.md の手順で続けてください。"
 fi
@@ -137,6 +149,7 @@ NEXT_PUBLIC_EVENTOS_API="$API_URL" npm run build >/dev/null 2>&1 \
   || die "画面を組み立てられませんでした。" "npm run build を単体で実行して、出たエラーを見てください。"
 ok "画面を組み立てました"
 
+PAGES_OUT=""
 PAGES_OUT="$($WRANGLER pages deploy out --project-name uizin-eventos --branch main --commit-dirty=true 2>&1)" \
   || { printf '%s\n' "$PAGES_OUT"; die "画面を公開できませんでした。"; }
 # 出力には2種類のURLが出る:
@@ -147,8 +160,8 @@ STABLE_URL="https://uizin-eventos.pages.dev"
 if printf '%s' "$PAGES_OUT" | grep -qF "$STABLE_URL"; then
   APP_URL="$STABLE_URL"
 else
-  PREVIEW_URL="$(printf '%s' "$PAGES_OUT" | grep -oE 'https://[A-Za-z0-9._-]+\.pages\.dev' | tail -1)"
-  if [ -z "$PREVIEW_URL" ]; then
+  PREVIEW_URL="$(printf '%s' "$PAGES_OUT" | grep -oE 'https://[A-Za-z0-9._-]+\.pages\.dev' | tail -1 || true)"
+  if [ -z "${PREVIEW_URL:-}" ]; then
     printf '%s\n' "$PAGES_OUT"
     die "公開はできましたが、URLを読み取れませんでした。"
   fi
