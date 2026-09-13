@@ -84,7 +84,12 @@ ACCOUNT=""
 if WHOAMI_OUT="$($WRANGLER whoami 2>/dev/null)"; then
   ACCOUNT="$(printf '%s' "$WHOAMI_OUT" | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | head -1 || true)"
 fi
-if [ -n "${ACCOUNT:-}" ]; then ok "ログイン済み（$ACCOUNT）"; else ok "ログイン済み"; fi
+# 変数の直後に全角文字を置いてはいけない。
+# 変数名のすぐ後ろに全角の閉じ括弧を書くと、環境によっては bash が
+# 変数名の一部と読み、ACCOUNT<謎の1バイト> という存在しない変数を参照して
+# 「unbound variable」で止まる。実機（macOS）で3回公開を止めた。
+# 必ず ${VAR} で囲い、直後は半角にする。
+if [ -n "${ACCOUNT:-}" ]; then ok "ログイン済み: ${ACCOUNT}"; else ok "ログイン済み"; fi
 
 # ---------------------------------------------------------------- 2. 進行表のID
 step "2/6  進行表スプレッドシートのIDを設定"
