@@ -79,6 +79,7 @@ npm run go-live
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Cloudflare に公開するとき |
 | [docs/GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) | **本番投入まで何が残っているか**（実データ検証の結果つき） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | なぜこの作りなのか／v2に回したもの |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | **他のAIや新しい担当者に引き継ぐとき**（発注者の指示の全文＋現在地） |
 
 ## v1 の完成条件（4つ）
 
