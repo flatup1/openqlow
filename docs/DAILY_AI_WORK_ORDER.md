@@ -1,6 +1,6 @@
 # 今日のAI依頼（work-order）
 
-最終更新: 2026-09-13
+最終更新: 2026-09-14
 
 ## これは何か
 
@@ -26,6 +26,37 @@ npm run work-order -- --json        # 機械可読（他のスクリプトから
 | `--vault <path>` | Obsidian Vault の場所（既定は `OBSIDIAN_VAULT_ROOT`） |
 | `--root <path>` | openQLOW の場所（既定は `OPENQLOW_ROOT`） |
 | `--ai-os <path>` | flatup-ai-os の場所（既定は `FLATUP_AI_OS_ROOT`） |
+
+## 毎朝ひとりでに出す（Mac / launchd）
+
+毎朝6:30に自動で作り、Vault の `6_システム/AI作戦基地/今日のAI依頼.md` へ書き出します。
+Obsidianが同期していれば、iPhoneでもそのまま読めます。**LINE送信はしません。**
+
+入れる:
+
+```bash
+cp "deploy/launchd/com.flatup.openqlow.work-order.plist" ~/Library/LaunchAgents/
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.flatup.openqlow.work-order.plist
+```
+
+確認する / いますぐ1回動かす:
+
+```bash
+launchctl print "gui/$(id -u)/com.flatup.openqlow.work-order" | grep -E "state|last exit code"
+launchctl kickstart -k "gui/$(id -u)/com.flatup.openqlow.work-order"
+```
+
+やめる:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.flatup.openqlow.work-order"
+rm ~/Library/LaunchAgents/com.flatup.openqlow.work-order.plist
+```
+
+- 実行ログ: `~/Library/Logs/openqlow-work-order.log`
+- Macが寝ていた朝は、起きたときに1回動きます（launchdの通常動作）。
+- 書き出すファイルは**毎朝上書き**されます。手で書いた内容は残らないので、メモは日次ログへ。
+- 時刻を変えるなら plist の `StartCalendarInterval` を直して入れ直します。
 
 ## 出るもの
 
@@ -77,7 +108,8 @@ npm run work-order -- --json        # 機械可読（他のスクリプトから
 ## 承認の境界
 
 依頼文には送信・予約確定・公開・料金判断を入れません。それらは「人間確認が必要な地点」に並べます。
-このコマンド自体も、表示するだけで送信・投稿・書き込みをしません。
+コマンドがするのは、読むこと・表示すること・`--out` のときに1ファイル書くことだけです。
+送信・投稿・台帳の書き換えはしません。自動実行にしても、この境界は変わりません。
 
 ## 実装
 
@@ -85,6 +117,7 @@ npm run work-order -- --json        # 機械可読（他のスクリプトから
 |---|---|
 | `src/generators/ai_work_order.ts` | 手がかり → 今日の1件（入出力なし） |
 | `src/sources/work_signals.ts` | 既存の記録から手がかりを集める（読み取り専用） |
-| `src/generators/ai_work_order_cli.ts` | CLI |
+| `src/generators/ai_work_order_cli.ts` | CLI と、`--out` のときだけのノート書き出し |
+| `deploy/launchd/com.flatup.openqlow.work-order.plist` | 毎朝6:30の自動実行（Mac） |
 
 テスト: `npm run test:ai-work-order` / `npm run test:work-signals`

@@ -1,5 +1,8 @@
 import { buildAiWorkOrder, daysBefore, renderWorkOrder, type WorkSignal } from "./ai_work_order.js";
-import { parseArgs } from "./ai_work_order_cli.js";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { parseArgs, renderNote, resolveOutPath, VAULT_OUT_RELATIVE, writeNote } from "./ai_work_order_cli.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -152,5 +155,32 @@ const bad = parseArgs(["--minutes", "0", "--date", "9/13"]);
 assert(bad.minutesAvailable === undefined, "rejects non-positive minutes");
 assert(bad.dateJst === undefined, "rejects a malformed date");
 assert(parseArgs([]).json === false, "defaults to text output");
+
+// --- 毎朝の自動実行（--out） --------------------------------------------------
+assert(parseArgs([]).out === undefined, "--out 無しでは書き出さない");
+assert(parseArgs(["--out"]).out === "", "値なしの --out は Vault の決まった場所");
+assert(parseArgs(["--out", "./today.md"]).out === "./today.md", "場所を指定できる");
+
+const vaultRoot = "/tmp/vault-example";
+assert(
+  resolveOutPath("", vaultRoot) === path.join(vaultRoot, VAULT_OUT_RELATIVE),
+  "値なしなら Vault の 6_システム/AI作戦基地/今日のAI依頼.md",
+);
+assert(VAULT_OUT_RELATIVE.includes("AI作戦基地"), "書き出し先は朝の司令書と同じ場所");
+assert(resolveOutPath("./today.md", vaultRoot) === path.resolve("./today.md"), "指定があればそちらへ");
+
+const note = renderNote(buildAiWorkOrder({ dateJst: TODAY, signals: [signal({ kind: "reply_waiting", count: 2 })] }), "2026-09-13");
+assert(note.startsWith(`# 今日のAI依頼 — ${TODAY}`), "見出しに日付が入る");
+assert(note.includes("毎朝上書きされます"), "手で書いても残らないことを書いておく");
+assert(note.includes("送信・投稿・予約確定・料金判断はJINが実行"), "承認の境界をノートにも書く");
+assert(note.includes("■ そのまま使える依頼文"), "本文がそのまま入っている");
+
+// 途中で落ちても壊れたファイルを残さない（隣へ書いてから置き換える）
+const outDir = await mkdtemp(path.join(tmpdir(), "openqlow-work-order-out-"));
+const outFile = path.join(outDir, "深い", "階層", "今日のAI依頼.md");
+await writeNote(outFile, note);
+assert(await readFile(outFile, "utf8") === note, "無い階層も作って書き出す");
+await writeNote(outFile, "2回目");
+assert(await readFile(outFile, "utf8") === "2回目", "毎朝上書きできる");
 
 console.log("ai_work_order.test.ts: all assertions passed");
