@@ -59,9 +59,22 @@ ok "部品そろっています"
 # ---------------------------------------------------------------- 1. ログイン
 step "1/6  Cloudflare にログインしているか確認"
 
-if ! $WRANGLER whoami >/dev/null 2>&1; then
+# wrangler whoami は未ログインでも終了コード0を返す。
+# 終了コードで判定すると「ログイン済み」と誤検出し、3/6 の secret put で
+# 「CLOUDFLARE_API_TOKEN を設定しろ」という分かりにくいエラーになって初めて気づくことになる。
+# だから出力の文面で判定する。
+logged_in() {
+  local out
+  # whoami 自体が落ちたとき（ネットワーク不通など）も「未ログイン」扱いにして login に進ませる
+  out="$($WRANGLER whoami 2>&1)" || return 1
+  case "$out" in *"not authenticated"*) return 1 ;; esac
+  return 0
+}
+
+if ! logged_in; then
   warn "まだログインしていません。ブラウザが開くので、許可してください。"
-  $WRANGLER login || die "ログインできませんでした。" "もう一度 bash scripts/go-live.sh を実行してください。"
+  $WRANGLER login || die "ログインできませんでした。" "npx wrangler login を単体で実行してから、もう一度このコマンドを実行してください。"
+  logged_in || die "ログインが完了していません。" "ブラウザで「Allow」を押しましたか？ npx wrangler login をもう一度実行してください。"
 fi
 ACCOUNT="$($WRANGLER whoami 2>/dev/null | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | head -1 || true)"
 if [ -n "$ACCOUNT" ]; then ok "ログイン済み（$ACCOUNT）"; else ok "ログイン済み"; fi
@@ -100,7 +113,7 @@ if $WRANGLER secret list --config "$CONFIG" 2>/dev/null | grep -q OPERATOR_KEY; 
 else
   NEW_KEY="$(node -e 'console.log(require("crypto").randomBytes(9).toString("base64url"))')"
   printf '%s' "$NEW_KEY" | $WRANGLER secret put OPERATOR_KEY --config "$CONFIG" >/dev/null \
-    || die "操作キーを設定できませんでした。"
+    || die "操作キーを設定できませんでした。" "npx wrangler login を実行してから、もう一度このコマンドを実行してください。"
   ok "操作キーを新しく作りました（最後に画面に出します）"
 fi
 
