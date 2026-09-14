@@ -10,3 +10,6 @@ out/
 worker/.dev.vars
 # next build / next dev が自動生成する（.next/ 内の型を参照するため、追跡しない）
 next-env.d.ts
+
+# オフライン進行台本の出力。選手名・意気込みが入るのでコミットしない
+out-offline/
