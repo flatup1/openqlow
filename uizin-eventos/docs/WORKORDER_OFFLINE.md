@@ -297,3 +297,4 @@ npx tsx src/shared/pii_guard.test.ts
 **作成日**: 2026-09-14
 **対象リポジトリ**: `flatup1/openqlow` / ブランチ `claude/uizin-eventos-v1-6f2l8p` / `uizin-eventos/`
 **関連**: [HANDOFF.md](HANDOFF.md)（全体の背景）／[ARCHITECTURE.md](ARCHITECTURE.md)（なぜこの作りなのか）／[OPERATION_5MIN.md](OPERATION_5MIN.md)（当日の操作）
+**この指示書の書式**: [AI制作依頼_100点完成テンプレート](../../docs/AI制作依頼_100点完成テンプレート.md) から書き起こしたもの
