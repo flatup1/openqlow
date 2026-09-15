@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/*
+  UIZIN EventOS の見た目の決まりごと
+  - 暗い背景 + 高コントラスト（体育館の照明でも読める）
+  - 文字は大きく。迷ったら大きい方を選ぶ
+  - 色は「意味」にだけ使う。赤=止まっている/危険、緑=OK、黄=要確認
+*/
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: #07090d;
+  color: #f5f7fa;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  font-feature-settings: "palt";
+  overscroll-behavior: none;
+}
+
+/* タイマーの数字は幅が動かないようにする（見ていて落ち着く） */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* 操作ボタンは押し間違えない大きさを最低保証する */
+.op-button {
+  min-height: 4.5rem;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

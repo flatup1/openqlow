@@ -1,0 +1,3 @@
+# wrangler dev（ローカル）専用。本番の操作キーは絶対に書かないこと。
+# cp worker/.dev.vars.example worker/.dev.vars で使う。
+OPERATOR_KEY = "local-dev-key"
