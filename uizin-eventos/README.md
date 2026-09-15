@@ -1,5 +1,8 @@
 # UIZIN EventOS v1.0
 
+> **引き継ぎ・初めて触る人は [START_HERE.md](START_HERE.md) を先に読んでください。**
+> 現在地・残作業・当日の逃げ道が1枚にまとまっています。
+
 大会運営者が一人でも、迷わず・止まらず・ミスなく大会を最後まで進行するための Event Operating System。
 
 **v1の絶対ルール: 大会を止めないことだけに集中する。**
@@ -80,6 +83,8 @@ npm run go-live
 | [docs/GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) | **本番投入まで何が残っているか**（実データ検証の結果つき） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | なぜこの作りなのか／v2に回したもの |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | **他のAIや新しい担当者に引き継ぐとき**（発注者の指示の全文＋現在地） |
+| [START_HERE.md](START_HERE.md) | **引き継いだ人が最初に読む1枚**（現在地・残作業・受け取るもの・逃げ道） |
+| [docs/WORKORDER_OFFLINE.md](docs/WORKORDER_OFFLINE.md) | ネット断への備え（オフライン進行台本）を作るとき |
 
 ## v1 の完成条件（4つ）
 
