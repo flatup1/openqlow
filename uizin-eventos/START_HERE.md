@@ -88,20 +88,32 @@ uizin-eventos/START_HERE.md（現在地・残作業・禁止事項・当日の�
   これは発注者が選手に確認して埋めるもの。あなたの作業対象ではない。
 - 緑が0なのは「尺（秒数）が未設定」というだけ。進行を妨げない。
 
-【あなたの作業】優先順に2つある。どちらをやるかは発注者に確認すること。
+【終わっていること（あなたはここに手を入れなくてよい）】
+ ✅ docs/WORKORDER_SIMPLE_UI.md の /live/ ＝ 実装ずみ
+    app/live/page.tsx ＋ core/walkout.ts ＋ tests/walkout.test.ts（16件）。
+    実測: ボタン3つ / 88px・104px / 1回押せば試合が変わる / JSエラー0。
+    「次の試合へ」は next ではなく jump_match を送っている（next は1段ずつしか進まないため）。
+    再生は 音源ファイル → YouTube埋め込み → Apple Music を開く の3段構え。
+    Apple Music はブラウザから鳴らせないので ▶ を付けず「開く」と表示している。
+    指示書の先頭に、実測値と設計の変更理由を書き足してある。
 
- A) docs/WORKORDER_SIMPLE_UI.md
-    「パソコンを触ったことがない人でも使える進行画面 /live/」を作る。
-    対戦カード＋顔写真＋大きな再生ボタン＋「次の試合へ」だけの1画面。
-    ★ 重要: 「押せばすぐ流れる」は Apple Music では技術的に不可能（53件が該当）。
-      ブラウザから Apple Music は再生できず、アプリが開くだけ。
-      音源ファイル → YouTube埋め込み → Apple を開く、の3段構えにすること。
-      詳細と判定基準はその指示書に全部書いてある。
+【あなたの作業】上から順。迷ったら発注者に確認すること。
 
- B) docs/WORKORDER_OFFLINE.md
+ A) docs/WORKORDER_OFFLINE.md ← ★ 最優先。これが今いちばん大きい穴
     「インターネットが落ちても大会を止めない」オフライン進行台本を作る。
     会場のネット断が現状いちばん大きいリスクで、備えがゼロ。
+    今のシステムは「自分が止まらない」ようには作ってあるが、
+    「自分が止まったとき大会が止まらない」ようには作っていない。
     テスト入力は tests/fixtures-offline.ts（架空データ）を使う。
+
+ B) music シートの match_no を埋めたときに、/live/ の保険が外れることを確認する
+    今の進行表は music 93行の match_no が全部空で、kind も other。
+    そのため /live/ は「選手名で曲を探す」保険で動いている（core/walkout.ts の findByName）。
+    match_no と kind（walkout_red / walkout_blue）が入れば正しい紐づけが優先される。
+    埋めるのは発注者の作業。あなたは埋まった状態でも正しく動くことを確かめるだけでよい。
+
+ C) 本番への再公開（npm run go-live）は**発注者の承認後**。
+    /live/ はまだ本番 pages.dev に出ていない。承認が出るまで公開しない。
 
 【絶対に守ること】
 1. すべての判断は「これは大会を止めないことに効くか？」だけで行う。効かないならやらない。
@@ -130,7 +142,7 @@ uizin-eventos/START_HERE.md（現在地・残作業・禁止事項・当日の�
 
 【やりがちな間違い】
 - 採点する前に、自分がどのディレクトリを測っているか確認しないこと。
-  uizin-eventos は Next.js + node --test tests/*.test.ts でテスト86件。
+  uizin-eventos は Next.js + node --test tests/*.test.ts でテスト102件。
   vite も jest も使っていない。vite のエラーが出たら別プロジェクトを見ている。
 - 「動かないから」と機能を足すこと。足すのではなく、止まらないように直す。
 - 引き継ぎ資料の古い数字をそのまま信じること。必ず実物（PR・進行表・本番URL）で確認する。
@@ -287,7 +299,7 @@ npm run go-live -- <進行表のシートID>
 | **当日の進行担当** | この1枚 → [OPERATION_5MIN.md](docs/OPERATION_5MIN.md) |
 | **前日の準備担当** | この1枚 → [GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) |
 | **コードを触る人** | この1枚 → [ARCHITECTURE.md](docs/ARCHITECTURE.md) → [HANDOFF.md](docs/HANDOFF.md) |
-| **`/live/`（初めての人用画面）を作る人** | この1枚 → [WORKORDER_SIMPLE_UI.md](docs/WORKORDER_SIMPLE_UI.md) |
+| **`/live/`（初めての人用画面）の中身を知りたい人** | この1枚 → [WORKORDER_SIMPLE_UI.md](docs/WORKORDER_SIMPLE_UI.md)（**実装ずみ**） |
 | **スプレッドシートを埋める人** | この1枚 → [SPREADSHEET_TEMPLATE.md](docs/SPREADSHEET_TEMPLATE.md) |
 | **公開し直す人** | この1枚 → [DEPLOY.md](docs/DEPLOY.md) |
 | **経緯を全部知りたい人** | [HANDOFF.md](docs/HANDOFF.md)（発注者の指示の全文＋対話式Q&A） |
@@ -298,7 +310,7 @@ npm run go-live -- <進行表のシートID>
 
 | # | リスク | 状態 |
 |---|---|---|
-| **1** | **会場のネット回線が落ちると5画面すべてが死ぬ** | **備えなし。** 対策の指示書は [WORKORDER_OFFLINE.md](docs/WORKORDER_OFFLINE.md) にあるが未着手 |
+| **1** | **会場のネット回線が落ちると全画面が死ぬ** | **備えなし。** 対策の指示書は [WORKORDER_OFFLINE.md](docs/WORKORDER_OFFLINE.md) にあるが未着手 |
 | 2 | リハーサル0回のまま本番を迎える可能性 | 対戦カードが入り次第やる |
 | 3 | 赤13件が当日まで消えない可能性 | 選手の返事次第 |
 | 4 | オペレーターが1人しかいない（席を外すと誰も操作できない） | 未対応 |
