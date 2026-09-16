@@ -85,6 +85,7 @@ npm run go-live
 | [docs/HANDOFF.md](docs/HANDOFF.md) | **他のAIや新しい担当者に引き継ぐとき**（発注者の指示の全文＋現在地） |
 | [START_HERE.md](START_HERE.md) | **引き継いだ人が最初に読む1枚**（現在地・残作業・受け取るもの・逃げ道） |
 | [docs/WORKORDER_OFFLINE.md](docs/WORKORDER_OFFLINE.md) | ネット断への備え（オフライン進行台本）を作るとき |
+| [docs/WORKORDER_SIMPLE_UI.md](docs/WORKORDER_SIMPLE_UI.md) | PCに不慣れな人でも使える進行画面を作るとき |
 
 ## v1 の完成条件（4つ）
 

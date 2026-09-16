@@ -125,7 +125,7 @@ uizin-eventos/docs/WORKORDER_OFFLINE.md を読んで、書かれている作業�
 | 本番公開 | 15/15 | ✅ 公開済み |
 | 本番での実データ取り込み | 5/5 | ✅ 71行を実際に読めた |
 | 3端末リハーサル | 0/5 | ❌ **1回もやっていない** |
-| 音源チェックで赤ゼロ | 0/5 | ❌ **赤13件が残っている** |
+| 音源チェックで赤ゼロ | 0/5 | ❌ **赤14件**（2026-09-16 実測・申込90件版） |
 
 ---
 
@@ -137,8 +137,12 @@ uizin-eventos/docs/WORKORDER_OFFLINE.md を読んで、書かれている作業�
 
 | 種類 | 件数 | どうする |
 |---|---|---|
-| 入場曲URLが**空欄** | **10件** | 本人に聞く。曲を使わないなら `入場曲` 欄に **`なし`** と書く（灰色＝対象外になり、赤から外れる） |
+| 入場曲URLが**空欄** | **11件** | 本人に聞く。曲を使わないなら `入場曲` 欄に **`なし`** と書く（灰色＝対象外になり、赤から外れる） |
 | Apple / YouTube **以外**のリンク | **3件** | Google広告リンク1・LINE1・Amazon Music1。Apple Music か YouTube のURLに貼り替える |
+
+> **2026-09-16 に申込が55件→90件に増えたため、音源を作り直しました。**
+> 合計90 / 緑0 / 黄75（Apple 52・YouTube 23）/ 赤14 / 灰1。
+> 貼り付け用ファイル `UIZIN2026_music_93件.csv` を JIN に渡してあります。
 
 該当する No. は https://uizin-eventos.pages.dev/check/ を開けば**赤が一番上に並びます。**
 
@@ -165,17 +169,25 @@ no,class,rule,rounds,round_seconds,break_seconds,red_name,red_team,red_record,re
 
 書き方の詳細: [SPREADSHEET_TEMPLATE.md](docs/SPREADSHEET_TEMPLATE.md)
 
-### ③ `venue` と `start_at` を埋める
+### ③ 選手写真（任意・2026-09-16 に対応ずみ）
+
+`matches` に `red_photo` / `blue_photo` を足すと、**大型モニターに顔写真が出ます。**
+申込90件のうち **30件が写真を提供ずみ**（全部そのまま表示できる形）。
+
+**広報利用に不同意の選手は、写真欄を空にしてください。** 空なら絶対に出ません。
+書き方: [SPREADSHEET_TEMPLATE.md](docs/SPREADSHEET_TEMPLATE.md)
+
+### ④ `venue` と `start_at` を埋める
 
 `event` タブの2か所が空です。会場名と開始時刻を入れてください。
 
-### ④ 3端末でリハーサルをする ← **①②が終わってから**
+### ⑤ 3端末でリハーサルをする ← **①②が終わってから**
 
 手順: [GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) のステップ4
 
-### ⑤ PR #144 をマージする
+### ⑥ PR #144 をマージする
 
-①〜④が全部通ってから。マージの判断は **JIN** です。
+①〜⑤が全部通ってから。マージの判断は **JIN** です。
 
 ---
 
@@ -242,6 +254,7 @@ npm run go-live -- <進行表のシートID>
 | **当日の進行担当** | この1枚 → [OPERATION_5MIN.md](docs/OPERATION_5MIN.md) |
 | **前日の準備担当** | この1枚 → [GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) |
 | **コードを触る人** | この1枚 → [ARCHITECTURE.md](docs/ARCHITECTURE.md) → [HANDOFF.md](docs/HANDOFF.md) |
+| **`/live/`（初めての人用画面）を作る人** | この1枚 → [WORKORDER_SIMPLE_UI.md](docs/WORKORDER_SIMPLE_UI.md) |
 | **スプレッドシートを埋める人** | この1枚 → [SPREADSHEET_TEMPLATE.md](docs/SPREADSHEET_TEMPLATE.md) |
 | **公開し直す人** | この1枚 → [DEPLOY.md](docs/DEPLOY.md) |
 | **経緯を全部知りたい人** | [HANDOFF.md](docs/HANDOFF.md)（発注者の指示の全文＋対話式Q&A） |
