@@ -40,7 +40,7 @@ set_var() {
 }
 
 printf '%s\n' "${BOLD}=== UIZIN EventOS 本番公開 ===${RESET}"
-printf '%s\n' "${DIM}5画面と裏側のシステムを Cloudflare に公開します。費用はかかりません。${RESET}"
+printf '%s\n' "${DIM}6画面と裏側のシステムを Cloudflare に公開します。費用はかかりません。${RESET}"
 
 # ---------------------------------------------------------------- 0. 前提確認
 step "0/6  必要なものがそろっているか確認"
@@ -209,6 +209,7 @@ fi
 
 # ---------------------------------------------------------------- 結果
 printf '\n%s=== 公開できました ===%s\n\n' "$BOLD" "$RESET"
+printf '  %sかんたん進行（PCが初めての人）%s  %s/live/\n' "$BOLD" "$RESET" "${APP_URL}"
 printf '  %sオペレーター（JINだけ）%s  %s/op/\n'   "$BOLD" "$RESET" "$APP_URL"
 printf '  MC                        %s/mc/\n'      "$APP_URL"
 printf '  大型モニター               %s/screen/\n' "$APP_URL"
@@ -227,7 +228,8 @@ printf '  %s次にやること%s\n' "$BOLD" "$RESET"
 printf '    1. 進行表の共有を「リンクを知っている全員／閲覧者」にする\n'
 printf '    2. %s/op/ を開いて操作キーを入れる\n' "$APP_URL"
 printf '    3. 「取り込み直す」を押す\n'
-printf '    4. 「音源チェック」で赤がゼロになるまで直す\n\n'
+printf '    4. 「音源チェック」で赤がゼロになるまで直す\n'
+printf '    5. 当日の進行担当には %s/live/ を渡す（ボタン3つだけの画面）\n\n' "${APP_URL}"
 
 printf '  %sもし「サーバーに届いていません」と出たら%s\n' "$DIM" "$RESET"
 printf '    %s/op/?api=%s を一度開くと、その端末が接続先を覚えます。\n\n' "$APP_URL" "$API_URL"

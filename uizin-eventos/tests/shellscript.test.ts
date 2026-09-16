@@ -23,8 +23,9 @@ const SCRIPTS_DIR = new URL('../scripts/', import.meta.url).pathname;
 /** $VAR の直後に非ASCIIバイトが続く箇所（${VAR} で囲えば安全なので、囲っていないものだけ） */
 const RISKY = /\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/;
 
+/** .command は Mac のダブルクリック用。中身は同じ bash なので、同じ罠を踏む */
 function shellScripts(): string[] {
-  return readdirSync(SCRIPTS_DIR).filter((f) => f.endsWith('.sh'));
+  return readdirSync(SCRIPTS_DIR).filter((f) => f.endsWith('.sh') || f.endsWith('.command'));
 }
 
 test('シェルスクリプト: 変数の直後に全角文字を置いていない', () => {
