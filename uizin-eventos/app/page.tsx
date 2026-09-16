@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 入口。5画面へのリンクだけ。
+ * 入口。各画面へのリンクだけ。
  * 初見のスタッフに渡すのはこのURL1つでよい、という形にしてある。
  */
 
@@ -11,6 +11,13 @@ import { useEventState } from './lib/useEventState.ts';
 import { ConnectionBadge } from './components/TimerBar.tsx';
 
 const SCREENS = [
+  {
+    href: './live/',
+    title: 'かんたん進行',
+    role: '当日の進行担当（初めての人）',
+    body: '写真と名前を見ながら、▶で入場曲を流し、「次の試合へ」を押すだけ。ボタンは3つだけです。',
+    tone: 'border-amber-500 bg-amber-950/30',
+  },
   {
     href: './op/',
     title: 'ダッシュボード',

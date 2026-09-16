@@ -17,6 +17,7 @@
 
 | 誰が使う | URL |
 |---|---|
+| **かんたん進行（PCが初めての人はこれ1枚）** | https://uizin-eventos.pages.dev/live/ |
 | **オペレーター（進行を操作する人・1人だけ）** | https://uizin-eventos.pages.dev/op/ |
 | MC | https://uizin-eventos.pages.dev/mc/ |
 | 大型モニター | https://uizin-eventos.pages.dev/screen/ |
@@ -72,8 +73,10 @@ uizin-eventos/START_HERE.md（現在地・残作業・禁止事項・当日の�
 迷ったらこの2つに戻ること。
 
 【いまの状態（2026-09-16 実測）】
-- 本番公開ずみ。5画面が動いている（uizin-eventos.pages.dev）。費用¥0。
-- テスト86件・CI 7/7 green。mergeable_state clean。
+- 本番公開ずみ。6画面が動いている（uizin-eventos.pages.dev）。費用¥0。
+- テスト102件・fail 0。
+- かんたん進行画面 /live/ を新設ずみ。顔写真つき対戦カード＋▶入場曲＋「次の試合へ」の
+  3ボタンだけ。1回押せば必ず次の「試合」に行く（ラウンドではない）。
 - 選手写真の表示は実装ずみ。matches の red_photo / blue_photo を読み、
   /screen/ に赤左・青右で顔写真つきの対戦カードを出す。写真が無い/読めない場合は
   名前だけの表示に自動で戻る（写真のせいで画面が止まらない設計）。
@@ -108,12 +111,13 @@ uizin-eventos/START_HERE.md（現在地・残作業・禁止事項・当日の�
    接続しない・公開しない。進行表にも個人情報を入れない。
 5. 選手名・写真URL・進行表のシートID・操作キーをリポジトリにコミットしない。
 6. worker/ と既存5画面（/op/ /mc/ /screen/ /mix/ /check/）の動作を変えない。
+   （かんたん進行 /live/ はこの5画面に手を入れずに足した6枚目）
    core/ の変更は最後の手段。
 7. 広報利用に不同意の選手の写真は出さない。進行表の写真欄を空にすれば出ない。
 8. commit / push / PR / 本番への再公開は、発注者の承認後に行う。
 
 【push 前に必ず通すこと】
-  cd uizin-eventos && npm run verify        # tests 86以上 / fail 0 であること
+  cd uizin-eventos && npm run verify        # tests 102以上 / fail 0 であること
   cd .. && bash ./scripts/validate-ai-os.sh
   npx tsx src/shared/secret_guard.test.ts
   npx tsx src/shared/pii_guard.test.ts
