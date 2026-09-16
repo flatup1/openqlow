@@ -5,6 +5,7 @@
  * こうしておくと、取り込みの正しさをオフラインでテストできる。
  */
 
+import { normalizePhotoUrl } from './photo.ts';
 import type { CueKind, EventMeta, Match, MusicCue, Program } from './types.ts';
 import { fingerprint, parseSeconds, pick, pickNumber, toRows } from './csv.ts';
 import { extractUrl, isAppleMusicUrl, isYouTubeUrl } from './music.ts';
@@ -85,6 +86,11 @@ function fighterFrom(row: Row, side: 'red' | 'blue'): Match['red'] {
     team: pick(row, side + '_team', jp + '_所属', jp + '_チーム'),
     record: pick(row, side + '_record', jp + '_戦績', jp + '_プロフィール'),
     comment: pick(row, side + '_comment', jp + '_意気込み', jp + '_コメント'),
+    // 共有リンクのままでは <img> で出ないので、取り込みのときに直す。
+    // 直せない形（SNSの投稿ページなど）は空になり、写真なしで進む。
+    photo: normalizePhotoUrl(
+      pick(row, side + '_photo', side + '_image', jp + '_写真', jp + '_画像', jp + '_photo'),
+    ),
   };
 }
 

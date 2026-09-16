@@ -20,6 +20,13 @@ export type Fighter = {
   record: string;
   /** 意気込み（MC・表示画面で読む本文） */
   comment: string;
+  /**
+   * 選手写真。表示画面（大型モニター）にだけ出す。
+   *
+   * 空でよい。空なら今までどおり名前だけを出す。
+   * 写真を出してよいかは同意の範囲の問題なので、出さない選手はここを空にする。
+   */
+  photo: string;
 };
 
 export type Match = {
