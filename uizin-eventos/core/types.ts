@@ -14,6 +14,14 @@
 export type Fighter = {
   /** 選手名 */
   name: string;
+  /** 既存の進行表に追加できる任意項目。読みを推測しない。 */
+  kana?: string;
+  age?: string;
+  height?: string;
+  weight?: string;
+  category?: string;
+  stance?: string;
+  musicUrl?: string;
   /** 所属 */
   team: string;
   /** 戦績など短い紹介 */
@@ -78,6 +86,12 @@ export type MusicCue = {
   /** 尺（秒）。0 は未設定 */
   seconds: number;
   note: string;
+  /** 申込者との照合キー。画面には通常表示しない */
+  receiptNo: string;
+  /** 入場する選手名 */
+  fighterName: string;
+  /** 広報利用同意済みの表示用写真URL。未登録なら空文字 */
+  photoUrl: string;
 };
 
 export type EventMeta = {
@@ -222,6 +236,7 @@ export type ReduceResult = {
 export type MusicColor = 'green' | 'yellow' | 'red' | 'gray';
 
 export type MusicStatus =
+  | 'audio'
   /** Apple Music が使える（第一優先） */
   | 'apple'
   /** YouTube のみ（第二優先） */
@@ -243,7 +258,7 @@ export type MusicVerdict = {
   color: MusicColor;
   /** 実際に人間が押すべきURL。無ければ null */
   playUrl: string | null;
-  source: 'apple' | 'youtube' | null;
+  source: 'apple' | 'youtube' | 'audio' | null;
   /** 日本語の理由（画面にそのまま出す） */
   reason: string;
 };

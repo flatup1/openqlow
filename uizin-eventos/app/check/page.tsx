@@ -105,6 +105,7 @@ export default function CheckPage() {
             <thead>
               <tr className="border-b border-white/20 text-xs tracking-widest text-slate-400">
                 <th className="px-3 py-2">色</th>
+                <th className="px-3 py-2">写真</th>
                 <th className="px-3 py-2">No</th>
                 <th className="px-3 py-2">用途</th>
                 <th className="px-3 py-2">曲名</th>
@@ -123,9 +124,17 @@ export default function CheckPage() {
                       <span className={'inline-flex h-4 w-4 rounded-full ' + colorClass(v.color)} aria-hidden />
                       <span className="sr-only">{colorLabel(v.color)}</span>
                     </td>
+                    <td className="px-3 py-3">
+                      {cue?.photoUrl ? (
+                        <img src={cue.photoUrl} alt={cue.fighterName + ' 選手'} loading="lazy" className="h-14 w-14 rounded-lg bg-slate-800 object-cover" />
+                      ) : (
+                        <span className="text-slate-600">—</span>
+                      )}
+                    </td>
                     <td className="tabular px-3 py-3 text-slate-300">{v.cueNo}</td>
                     <td className="px-3 py-3 text-slate-300">{cue ? cueKindLabel(cue.kind) : '—'}</td>
                     <td className="px-3 py-3 font-semibold text-white">
+                      {cue?.fighterName ? <span className="mr-2 text-slate-300">{cue.fighterName}</span> : null}
                       {cue?.title ?? '—'}
                       {cue?.artist ? <span className="ml-2 text-slate-400">{cue.artist}</span> : null}
                       {cue?.matchNo ? <span className="ml-2 text-slate-500">第{cue.matchNo}試合</span> : null}
@@ -136,7 +145,7 @@ export default function CheckPage() {
                     <td className="px-3 py-3">
                       {v.playUrl ? (
                         <a className="text-slate-200 underline" href={v.playUrl} target="_blank" rel="noreferrer">
-                          {v.source === 'apple' ? 'Apple Music' : 'YouTube'}
+                          {v.source === 'apple' ? 'Apple Music' : v.source === 'audio' ? '音声ファイル' : 'YouTube'}
                         </a>
                       ) : (
                         <span className="text-rose-400">なし</span>

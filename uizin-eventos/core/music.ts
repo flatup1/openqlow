@@ -1,3 +1,4 @@
+import { audioSource } from './audio.ts';
 /**
  * 音源ステータスの判定（純関数）。
  *
@@ -86,6 +87,11 @@ export function judgeCue(cue: MusicCue, links: LinkCheck[]): MusicVerdict {
   const appleOk = isAppleMusicUrl(apple);
   const youtubeOk = isYouTubeUrl(youtube);
 
+  // File URLs are directly playable; never claim that a URL check proves audible output.
+  const direct = [apple, youtube, other].map(audioSource).find(s => s.kind === 'audio');
+  if (direct) return { cueNo: cue.no, status: 'audio', color: 'yellow', playUrl: direct.url,
+    source: 'audio', reason: '音声ファイルあり。大会前にDJデスクで実際に再生して確認してください。' };
+
   // 「入場曲なし」と確認済み → 対象外（灰）。赤にはしない
   if (!appleOk && !youtubeOk && other === '' && isDeclaredNoMusic(apple)) {
     return {
@@ -143,7 +149,7 @@ export function judgeCue(cue: MusicCue, links: LinkCheck[]): MusicVerdict {
       source: null,
       reason:
         serviceName(other) +
-        ' のリンクです。v1で再生できるのは Apple Music と YouTube だけです。貼り替えてください。',
+        ' のリンクです。DJデスクで外部リンクを開けますが、再生できるかを必ず確認してください。',
     };
   }
 

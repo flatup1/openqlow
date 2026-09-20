@@ -14,6 +14,7 @@
 
 import type { Command, EventState, Match, MusicCue, Program } from './types.ts';
 import { nextMatch } from './state.ts';
+import { safeMusicUrl, audioSource } from './audio.ts';
 
 /** 比べる前に、ゆらぎを吸収する（全角空白・半角空白・記号を落とす） */
 function normalizeName(s: string): string {
@@ -24,14 +25,17 @@ function normalizeName(s: string): string {
 }
 
 /** 選手名で曲を探す。曲名か備考に名前が入っていれば、それとみなす */
-function findByName(cues: MusicCue[], name: string): MusicCue | null {
+function findByName(cues: MusicCue[], name: string, knownNames: string[]): MusicCue | null {
   const key = normalizeName(name);
   if (key === '') return null;
-  for (const cue of cues) {
-    if (normalizeName(cue.title).includes(key)) return cue;
-    if (normalizeName(cue.note).includes(key)) return cue;
-  }
-  return null;
+  const matches = cues.filter(cue => {
+    if (cue.fighterName) return normalizeName(cue.fighterName) === key;
+    const text = normalizeName(cue.title + ' ' + cue.note);
+    if (!text.includes(key)) return false;
+    // Preserve legacy title/note matching, but never match a shorter name inside another fighter's name.
+    return !knownNames.map(normalizeName).some(other => other !== key && other.includes(key) && text.includes(other));
+  });
+  return matches.length === 1 ? matches[0] : null;
 }
 
 /**
@@ -47,21 +51,30 @@ export function cueForFighter(program: Program, match: Match | null, side: 'red'
   const tied = program.cues.find((c) => c.matchNo === match.no && c.kind === want);
   if (tied) return tied;
 
+  // 選手行に明示された入場曲を優先する。既存の music 表は変更しない。
+  const fighter = match[side];
+  if (fighter.musicUrl?.trim()) return {
+    no: -match.no, matchNo: match.no, kind: want, title: fighter.name + ' 入場曲',
+    artist: '', appleMusicUrl: '', youtubeUrl: '', otherUrl: fighter.musicUrl.trim(), seconds: 0, note: '',
+    receiptNo: '', fighterName: fighter.name, photoUrl: fighter.photo,
+  };
+
   // 2. 保険: 選手名で探す
-  return findByName(program.cues, side === 'red' ? match.red.name : match.blue.name);
+  return findByName(program.cues.filter(c => c.matchNo === null && (c.kind === 'other' || c.kind === want)), match[side].name, program.matches.flatMap(m => [m.red.name, m.blue.name]));
 }
 
 /** YouTube の動画ID。取り出せなければ空文字 */
 export function youtubeVideoId(url: string): string {
-  const u = url.trim();
-  if (u === '') return '';
-  const short = u.match(/youtu\.be\/([\w-]{6,})/);
-  if (short) return short[1];
-  const watch = u.match(/[?&]v=([\w-]{6,})/);
-  if (watch) return watch[1];
-  const embed = u.match(/\/embed\/([\w-]{6,})/);
-  if (embed) return embed[1];
-  return '';
+  const safe = safeMusicUrl(url);
+  if (!safe) return '';
+  const u = new URL(safe);
+  const host = u.hostname.toLowerCase();
+  let id = '';
+  if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+  if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'www.youtube-nocookie.com'].includes(host)) {
+    id = u.searchParams.get('v') || u.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/)?.[1] || '';
+  }
+  return /^[\w-]{11}$/.test(id) ? id : '';
 }
 
 /**
@@ -76,7 +89,7 @@ export function youtubeEmbedUrl(url: string): string {
 
 /** 音源ファイルの直リンク（押した瞬間に鳴る。いちばん確実） */
 export function isAudioFileUrl(url: string): boolean {
-  return /\.(mp3|m4a|aac|wav|ogg|opus)(\?|$)/i.test(url.trim());
+  return audioSource(url).kind === 'audio';
 }
 
 /** その曲をどう鳴らすか */
@@ -99,7 +112,8 @@ export function playPlan(cue: MusicCue | null): PlayPlan {
   const youtube = cue.youtubeUrl.trim();
 
   // 1. 音源ファイルなら、その場で鳴らせる
-  for (const url of [apple, youtube]) {
+  const other = cue.otherUrl?.trim() ?? '';
+  for (const url of [apple, youtube, other]) {
     if (isAudioFileUrl(url)) return { kind: 'audio', url, label: '▶ 入場曲を流す' };
   }
 
@@ -108,7 +122,11 @@ export function playPlan(cue: MusicCue | null): PlayPlan {
   if (embed !== '') return { kind: 'youtube', embedUrl: embed, label: '▶ 入場曲を流す' };
 
   // 3. Apple Music はブラウザから鳴らせない。アプリが開くだけ、と正直に書く
-  if (apple !== '') return { kind: 'open', url: apple, label: 'Apple Music を開く' };
+  for (const raw of [apple, youtube, other]) {
+    const source = audioSource(raw);
+    if (source.kind === 'external') return { kind: 'open', url: source.url, label: source.label };
+  }
+  if ([apple, youtube, other].some(Boolean)) return { kind: 'none', label: 'リンクを確認してください' };
 
   return { kind: 'none', label: '入場曲が登録されていません' };
 }

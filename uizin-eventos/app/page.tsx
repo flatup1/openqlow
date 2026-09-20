@@ -12,6 +12,11 @@ import { ConnectionBadge } from './components/TimerBar.tsx';
 
 const SCREENS = [
   {
+    href: './dj/', title: '大会DJデスク', role: '音響・リングアナウンサー・進行担当',
+    body: 'RED / BLUE、選手詳細、アナウンス、入場曲、Winner BGM、サンプラーを1画面に。',
+    tone: 'border-indigo-500 bg-indigo-950/40',
+  },
+  {
     href: './live/',
     title: 'かんたん進行',
     role: '当日の進行担当（初めての人）',
@@ -22,7 +27,7 @@ const SCREENS = [
     href: './op/',
     title: 'ダッシュボード',
     role: '操作者（あなただけ）',
-    body: '現在の試合・次の試合・意気込み・「次へ」・「停止」。ここだけが操作できます。',
+    body: '現在の試合・次の試合・意気込み・「次へ」・「停止」。詳細な進行設定を操作できます。',
     tone: 'border-emerald-600 bg-emerald-950/30',
   },
   {

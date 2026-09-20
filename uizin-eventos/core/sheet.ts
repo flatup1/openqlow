@@ -83,7 +83,14 @@ function fighterFrom(row: Row, side: 'red' | 'blue'): Match['red'] {
   const jp = side === 'red' ? '赤' : '青';
   return {
     name: pick(row, side + '_name', jp + '_名前', jp + '_選手名', jp + 'コーナー'),
-    team: pick(row, side + '_team', jp + '_所属', jp + '_チーム'),
+    team: pick(row, side + '_team', side + '_gym_name', jp + '_所属', jp + '_チーム'),
+    kana: pick(row, side + '_kana', side + '_name_kana', jp + '_ふりがな'),
+    age: pick(row, side + '_age', jp + '_年齢'),
+    height: pick(row, side + '_height', jp + '_身長'),
+    weight: pick(row, side + '_weight', jp + '_体重'),
+    category: pick(row, side + '_category', jp + '_カテゴリー'),
+    stance: pick(row, side + '_stance', jp + '_構え'),
+    musicUrl: pick(row, side + '_music_url', side + '_entrance_music_url', jp + '_入場曲'),
     record: pick(row, side + '_record', jp + '_戦績', jp + '_プロフィール'),
     comment: pick(row, side + '_comment', jp + '_意気込み', jp + '_コメント'),
     // 共有リンクのままでは <img> で出ないので、取り込みのときに直す。
@@ -124,7 +131,7 @@ function parseMatches(csv: string, warnings: string[]): Match[] {
   const seen = new Set<number>();
 
   rows.forEach((row, index) => {
-    const no = pickNumber(row, index + 1, 'no', '番号', '試合番号', '試合no');
+    const no = pickNumber(row, index + 1, 'no', 'match_number', '番号', '試合番号', '試合no');
     const red = fighterFrom(row, 'red');
     const blue = fighterFrom(row, 'blue');
     if (red.name === '' && blue.name === '') {
@@ -132,7 +139,8 @@ function parseMatches(csv: string, warnings: string[]): Match[] {
       return;
     }
     if (seen.has(no)) {
-      warnings.push('試合番号 ' + no + ' が重複しています。番組表を直してください。');
+      warnings.push('試合番号 ' + no + ' が重複しています。重複行は取り込みませんでした。番組表を直してください。');
+      return;
     }
     seen.add(no);
 
@@ -231,6 +239,9 @@ function parseCues(csv: string, warnings: string[]): MusicCue[] {
       otherUrl: routed.otherUrl,
       seconds: Math.max(0, parseSeconds(pick(row, 'seconds', '秒数', '尺', '長さ'), 0)),
       note: pick(row, 'note', '備考', 'メモ'),
+      receiptNo: pick(row, 'receipt_no', '受付番号'),
+      fighterName: pick(row, 'fighter_name', '選手名', 'リングネーム'),
+      photoUrl: pick(row, 'photo_url', '顔写真url', '写真url'),
     });
   });
 

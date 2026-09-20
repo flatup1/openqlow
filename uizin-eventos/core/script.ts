@@ -24,10 +24,10 @@ function roundText(rounds: number, roundSeconds: number): string {
   return time + ' ' + rounds + 'ラウンド';
 }
 
-function fighterLine(side: '赤' | '青', f: { name: string; team: string; record: string }): string {
+function fighterLine(side: '赤' | '青', f: { name: string; team: string; record: string; kana?: string }): string {
   const parts = [side + 'コーナー'];
   if (f.team) parts.push(f.team + '所属');
-  parts.push(f.name + '選手');
+  parts.push(f.name + '選手（' + (f.kana || '読み方未登録') + '）');
   const head = parts.join('、');
   return f.record ? head + '。' + f.record + '。' : head + '。';
 }

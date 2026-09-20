@@ -20,6 +20,9 @@
 const API = (process.env.EVENTOS_API ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
 const KEY = process.env.OPERATOR_KEY ?? 'local-dev-key';
 const WS = API.replace(/^http/, 'ws') + '/ws';
+if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(API).hostname)) {
+  throw new Error('このリハーサルは番組表を上書きします。ローカル専用です。本番には実行できません。');
+}
 
 let failures = 0;
 function check(ok, label, detail = '') {
@@ -28,6 +31,10 @@ function check(ok, label, detail = '') {
 }
 
 async function post(path, body, key = KEY) {
+  if (path === '/api/command' || path === '/api/undo') {
+    const snapshot = await fetch(API + '/api/state').then(r => r.json());
+    body = { ...body, expectedVersion: snapshot.state.version };
+  }
   const res = await fetch(API + path, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-operator-key': key },

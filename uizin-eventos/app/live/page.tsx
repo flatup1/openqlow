@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEventState, useTick } from '../lib/useEventState.ts';
 import { sendCommand } from '../lib/client.ts';
+import { canOperate, createOperationGate } from '../../core/operatorSafety.ts';
 import { getOperatorKey, setOperatorKey } from '../lib/config.ts';
 import { TimerBar } from '../components/TimerBar.tsx';
 import { Loading } from '../components/Loading.tsx';
@@ -54,7 +55,7 @@ function PlayButton({
   if (plan.kind === 'none') {
     return (
       <p className="flex min-h-[88px] items-center justify-center rounded-2xl border-2 border-dashed border-white/20 px-4 text-center text-base font-bold text-slate-400">
-        {sideLabel(side)}の入場曲は登録されていません
+        {plan.label}
       </p>
     );
   }
@@ -69,7 +70,7 @@ function PlayButton({
   const label = playing
     ? '■ 止める'
     : plan.kind === 'open'
-      ? sideLabel(side) + '：Apple Music を開く'
+      ? sideLabel(side) + '：' + plan.label
       : '▶ ' + sideLabel(side) + 'の入場曲を流す';
 
   return (
@@ -218,12 +219,19 @@ export default function LivePage() {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const gate = useRef(createOperationGate());
+  const generation = useRef(0);
+  const bus = useRef<BroadcastChannel | null>(null);
+  const [uncertain, setUncertain] = useState(false);
+  const [externalOpen, setExternalOpen] = useState(false);
+  const ready = !uncertain && canOperate(store.connection, hasKey, store.lastMessageAt, tick);
 
   useEffect(() => {
     setHasKey(getOperatorKey() !== '');
   }, []);
 
   const stopMusic = useCallback(() => {
+    generation.current++;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -233,6 +241,13 @@ export default function LivePage() {
     setEmbedUrl('');
     setPlaying(null);
   }, []);
+
+  useEffect(() => {
+    try { bus.current = new BroadcastChannel('uizin.eventos.audio'); bus.current.onmessage = stopMusic; } catch { /* Single-tab fallback. */ }
+    return () => { bus.current?.close(); generation.current++; audioRef.current?.pause(); };
+  }, [stopMusic]);
+
+  useEffect(() => { if (store.snapshot?.state.hold.active) stopMusic(); }, [store.snapshot?.state.hold.active, stopMusic]);
 
   const match = store.snapshot ? currentMatch(store.snapshot.program, store.snapshot.state) : null;
   const matchNo = match ? match.no : -1;
@@ -251,20 +266,25 @@ export default function LivePage() {
       }
       if (plan.kind === 'none') return;
 
+      if (externalOpen && !window.confirm('外部アプリの曲を停止してから切り替えてください。停止しましたか？')) return;
+      stopMusic();
+      bus.current?.postMessage('stop');
       if (plan.kind === 'open') {
         // Apple Music はブラウザの中では鳴らせない。アプリを開くだけ、と最初から書いてある。
         window.open(plan.url, '_blank', 'noopener,noreferrer');
-        setNote('Apple Music アプリが開きます。そちらで再生を押してください。');
+        setExternalOpen(true);
+        setNote('外部アプリが開きます。再生・停止は外部側で操作してください。');
         return;
       }
 
-      stopMusic();
+      setExternalOpen(false);
       if (plan.kind === 'audio') {
         const audio = audioRef.current;
         if (!audio) return;
         audio.src = plan.url;
-        setPlaying(side);
-        void audio.play().catch(() => {
+        const token = generation.current;
+        void audio.play().then(() => { if (token === generation.current) setPlaying(side); }).catch(() => {
+          if (token !== generation.current) return;
           setPlaying(null);
           setNote('この端末で音を出せませんでした。もう一度押してください。');
         });
@@ -273,7 +293,7 @@ export default function LivePage() {
       setEmbedUrl(plan.embedUrl);
       setPlaying(side);
     },
-    [playing, stopMusic],
+    [playing, stopMusic, externalOpen],
   );
 
   if (!hasKey) return <KeySetup onSaved={() => setHasKey(true)} />;
@@ -290,18 +310,22 @@ export default function LivePage() {
 
   const advance = async () => {
     if (action.kind !== 'start' && action.kind !== 'next') return;
+    if (!ready || !window.confirm(action.label + 'に進みますか？\n' + (playing ? 'OS内の音楽を停止します。\n' : '') + (externalOpen ? '外部アプリの音楽は外部側で停止してください。' : '')) || !gate.current.acquire(Date.now())) return;
     setBusy(true);
     setNote(null);
     stopMusic();
-    const res = await sendCommand(action.command);
-    if (!res.ok) setNote('進められませんでした: ' + (res.reason ?? '理由が分かりません'));
-    setBusy(false);
+    try {
+      const res = await sendCommand(action.command, state.version);
+      if (!res.ok) setNote('進められませんでした: ' + (res.reason ?? '理由が分かりません'));
+      if (res.uncertain || !await store.refresh()) setUncertain(true);
+    } finally { gate.current.release(Date.now()); setBusy(false); }
   };
 
   return (
     <div className="flex min-h-screen flex-col" data-tick={tick}>
       <TimerBar state={state} program={program} now={now} connection={store.connection} />
 
+      {!ready && <p role="status" className="p-4 text-amber-200">最新状態を確認するまで進行できません。<button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button></p>}
       <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-4">
         {match ? (
           <>
@@ -374,7 +398,7 @@ export default function LivePage() {
             <button
               type="button"
               onClick={() => void advance()}
-              disabled={busy}
+              disabled={busy || !ready}
               className={TAP + ' min-h-[104px] bg-emerald-600 text-2xl hover:bg-emerald-500 disabled:bg-emerald-900 sm:text-3xl'}
             >
               {busy ? '送信中…' : action.label}
@@ -388,7 +412,7 @@ export default function LivePage() {
       </main>
 
       {/* 音源ファイルの再生口。画面には出さない（操作するのは上のボタンだけ） */}
-      <audio ref={audioRef} onEnded={() => setPlaying(null)} className="hidden" />
+      <audio ref={audioRef} onError={() => { stopMusic(); setNote('音源を読み込めませんでした。URLを確認してください。'); }} onEnded={() => setPlaying(null)} className="hidden" />
     </div>
   );
 }

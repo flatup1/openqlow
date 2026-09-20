@@ -18,7 +18,7 @@ import type {
   ServerMessage,
   Snapshot,
 } from '../core/types.ts';
-import { EMPTY_PROGRAM, applyProgram, initialState, reduce } from '../core/state.ts';
+import { EMPTY_PROGRAM, applyProgram, currentMatch, initialState, reduce } from '../core/state.ts';
 import { LOG_LIMIT, commit, newHistory, undo } from '../core/history.ts';
 import type { History } from '../core/history.ts';
 import { parseProgram } from '../core/sheet.ts';
@@ -157,11 +157,38 @@ export class EventRoom {
       return json({ serverNow: Date.now(), log: this.history.log });
     }
 
+    const photoMatch = path.match(/^\/photos\/([A-Z0-9-]+)$/i);
+    if (photoMatch && request.method === 'GET') {
+      const key = 'photo:' + photoMatch[1].toUpperCase();
+      const stored = await this.ctx.storage.get<{ bytes: ArrayBuffer; contentType: string }>(key);
+      if (!stored) return json({ ok: false, reason: '写真がありません。' }, 404);
+      return new Response(stored.bytes, {
+        headers: {
+          'content-type': stored.contentType,
+          'cache-control': 'public, max-age=3600',
+          'x-content-type-options': 'nosniff',
+        },
+      });
+    }
+
+    if (photoMatch && request.method === 'PUT') {
+      const bytes = await request.arrayBuffer();
+      const contentType = request.headers.get('content-type') ?? 'image/jpeg';
+      const key = 'photo:' + photoMatch[1].toUpperCase();
+      await this.ctx.storage.put(key, { bytes, contentType });
+      return json({ ok: true, receiptNo: photoMatch[1].toUpperCase(), size: bytes.byteLength });
+    }
+
     if (path === '/command' && request.method === 'POST') {
-      const body = (await request.json()) as { command?: Command };
+      const body = (await request.json()) as { command?: Command; expectedVersion?: number };
       const command = body.command;
       if (!command || typeof command.type !== 'string') {
         return json({ ok: false, reason: '操作の中身がありません。' }, 400);
+      }
+      // Emergency hold remains available even to an old client. All progression
+      // requires the exact state the operator saw; two tabs cannot advance it twice.
+      if (command.type !== 'hold' && body.expectedVersion !== this.history.current.version) {
+        return json({ ok: false, reason: '別の操作で状態が更新されています。画面を読み込み直してから操作してください。', state: this.history.current }, 409);
       }
       const now = Date.now();
       const result = reduce(this.history.current, this.program, command, now);
@@ -175,6 +202,13 @@ export class EventRoom {
     }
 
     if (path === '/undo' && request.method === 'POST') {
+      if (this.history.current.hold.active) {
+        return json({ ok: false, reason: '停止中は元に戻せません。安全確認後に再開してください。' }, 409);
+      }
+      const body = await request.json().catch(() => ({})) as { expectedVersion?: number };
+      if (body.expectedVersion !== this.history.current.version) {
+        return json({ ok: false, reason: '最新状態を確認してから元に戻してください。', state: this.history.current }, 409);
+      }
       const now = Date.now();
       const result = undo(this.history, now);
       if (!result.changed) {
@@ -197,20 +231,24 @@ export class EventRoom {
       // 走っている大会から対戦カードが消えるのは、最も避けたい壊れ方。
       if (
         next.matches.length === 0 &&
-        previous.matches.length > 0 &&
-        this.history.current.phase !== 'before'
+        previous.matches.length > 0
       ) {
         return json(
           {
             ok: false,
             kept: true,
             reason:
-              '取り込んだ番組表に試合が1件もありません。大会が進行中のため、今の番組表を残しました。シートを確認してください。',
+              '取り込んだ番組表に試合が1件もありません。今の番組表を残しました。シートを確認してください。',
             serverNow: now,
             state: this.history.current,
           },
           409,
         );
+      }
+      const activeMatch = currentMatch(previous, this.history.current);
+      if (this.history.current.phase !== 'before' && this.history.current.phase !== 'finished' && activeMatch &&
+        !next.matches.some(m => m.no === activeMatch.no)) {
+        return json({ ok: false, kept: true, reason: '現在の試合が更新データにありません。今の番組表を残しました。試合番号を確認してください。' }, 409);
       }
       this.program = next;
       const entry: LogEntry = {
@@ -221,7 +259,8 @@ export class EventRoom {
       };
       this.history = {
         current: applyProgram(this.history.current, next, previous, now),
-        previous: this.history.current,
+        // A state-only Undo cannot restore the previous program. Prevent mismatched revisions.
+        previous: null,
         log: [entry, ...this.history.log].slice(0, LOG_LIMIT),
       };
       // 取り込み直しで、前回の到達確認は無効にする（古い赤/緑を残さない）

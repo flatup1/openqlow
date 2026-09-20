@@ -17,8 +17,8 @@ export const MATCHES_CSV = [
 ].join('\n');
 
 export const MUSIC_CSV = [
-  'no,match_no,kind,title,artist,apple_music_url,youtube_url,seconds,note',
-  '1,,opening,オープニング,テストアーティスト,https://music.apple.com/jp/album/x/1,,90,',
+  'no,match_no,kind,title,artist,apple_music_url,youtube_url,seconds,note,receipt_no,fighter_name,photo_url',
+  '1,,opening,オープニング,テストアーティスト,https://music.apple.com/jp/album/x/1,,90,,UZ23-TEST0001,山田 太郎,https://example.com/yamada.jpg',
   '2,1,walkout_red,赤入場曲,テスト,,https://www.youtube.com/watch?v=aaaaaaaaaaa,60,',
   '3,1,walkout_blue,青入場曲,テスト,,,60,',
   '4,2,walkout_red,メイン入場,テスト,https://music.apple.com/jp/album/y/2,,0,',

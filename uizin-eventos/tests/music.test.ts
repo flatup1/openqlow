@@ -16,6 +16,9 @@ function cue(over: Partial<MusicCue>): MusicCue {
     otherUrl: '',
     seconds: 60,
     note: '',
+    receiptNo: '',
+    fighterName: '',
+    photoUrl: '',
     ...over,
   };
 }
@@ -42,6 +45,17 @@ test('両方あるときは Apple Music を使う', () => {
   );
   assert.equal(v.source, 'apple');
   assert.equal(v.playUrl, 'https://music.apple.com/jp/album/x/1');
+});
+
+test('選手ごとに、その選手自身の音源URLを返す', () => {
+  const firstUrl = 'https://music.apple.com/jp/album/first/1?i=11';
+  const secondUrl = 'https://youtu.be/abcdefghijk';
+  const first = judgeCue(cue({ no: 1, receiptNo: 'ENTRY-1', fighterName: '選手A', appleMusicUrl: firstUrl }), []);
+  const second = judgeCue(cue({ no: 2, receiptNo: 'ENTRY-2', fighterName: '選手B', youtubeUrl: secondUrl }), []);
+
+  assert.equal(first.playUrl, firstUrl);
+  assert.equal(second.playUrl, secondUrl);
+  assert.notEqual(first.playUrl, second.playUrl);
 });
 
 test('URLが1つも無ければ赤', () => {
