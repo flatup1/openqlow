@@ -430,6 +430,27 @@ export default function OperatorPage() {
           </div>
         </section>
 
+        <section className="mt-6 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4" aria-labelledby="reset-event-title">
+          <h2 id="reset-event-title" className="text-base font-bold text-amber-100">リハーサル後の初期化</h2>
+          <p id="reset-event-description" className="mt-2 text-sm text-slate-300">
+            対戦カード・曲一覧を残して、進行・タイマー・曲の位置を開始前に戻します。
+            押し間違えた場合は、直後の「元に戻す」で取り消せます。
+          </p>
+          <button
+            type="button"
+            disabled={busy || held || !hasKey}
+            aria-describedby="reset-event-description"
+            onClick={() => {
+              if (!window.confirm('大会を開始前に戻しますか？\n\n進行・すべてのタイマー・曲の位置が最初に戻ります。\n対戦カード・曲一覧は消えません。')) return;
+              void dispatch({ type: 'reset_event' }, '開始前に戻しました');
+            }}
+            className="mt-3 rounded-lg border border-amber-400/60 px-4 py-3 font-bold text-amber-100 transition hover:bg-amber-900/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            開始前へ戻す
+          </button>
+          {held ? <p className="mt-2 text-sm text-amber-200">停止中です。「再開」してから開始前へ戻してください。</p> : null}
+        </section>
+
         {/* ---- 操作ログ ---- */}
         <section className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4">
           <p className="mb-2 text-xs font-bold tracking-widest text-slate-400">操作ログ（自動保存・保存ボタンはありません）</p>
