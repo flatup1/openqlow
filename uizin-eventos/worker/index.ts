@@ -29,6 +29,8 @@ export type Env = {
   EVENT_ID?: string;
   /** 画面を置くオリジン。カンマ区切り。* は全許可 */
   ALLOWED_ORIGINS?: string;
+  /** 顔写真登録専用キー。通常の操作キーとは分離する */
+  PHOTO_UPLOAD_KEY?: string;
 };
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -42,7 +44,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   return {
     'access-control-allow-origin': allowOrigin,
     'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers': 'content-type,x-operator-key',
+    'access-control-allow-headers': 'content-type,x-operator-key,x-photo-upload-key',
     'access-control-max-age': '86400',
     vary: 'Origin',
   };
@@ -191,6 +193,35 @@ export default {
       return withCors(await forward(env, '/log'), request, env);
     }
 
+    const photoMatch = path.match(/^\/api\/photos\/([A-Z0-9-]+)$/i);
+    if (photoMatch && request.method === 'GET') {
+      return withCors(await forward(env, '/photos/' + photoMatch[1].toUpperCase()), request, env);
+    }
+
+    if (photoMatch && request.method === 'PUT') {
+      const supplied = request.headers.get('x-photo-upload-key') ?? '';
+      if (!env.PHOTO_UPLOAD_KEY || supplied !== env.PHOTO_UPLOAD_KEY) {
+        return withCors(json({ ok: false, reason: '写真登録キーが違います。' }, 401), request, env);
+      }
+      const contentType = request.headers.get('content-type') ?? '';
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+        return withCors(json({ ok: false, reason: 'JPEG・PNG・WebPのみ登録できます。' }, 415), request, env);
+      }
+      const body = await request.arrayBuffer();
+      if (body.byteLength === 0 || body.byteLength > 2_000_000) {
+        return withCors(json({ ok: false, reason: '写真は1バイト以上2MB以下にしてください。' }, 413), request, env);
+      }
+      return withCors(
+        await forward(env, '/photos/' + photoMatch[1].toUpperCase(), {
+          method: 'PUT',
+          body,
+          headers: { 'content-type': contentType },
+        }),
+        request,
+        env,
+      );
+    }
+
     if (path === '/ws' || path === '/api/ws') {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return withCors(json({ ok: false, reason: 'WebSocket でつないでください。' }, 426), request, env);
@@ -229,7 +260,7 @@ export default {
     }
 
     if (path === '/api/undo') {
-      return withCors(await forward(env, '/undo', { method: 'POST' }), request, env);
+      return withCors(await forward(env, '/undo', { method: 'POST', body: await request.text(), headers: JSON_HEADERS }), request, env);
     }
 
     if (path === '/api/program/reload') {

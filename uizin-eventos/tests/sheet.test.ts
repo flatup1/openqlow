@@ -18,6 +18,9 @@ test('スプレッドシートのCSVから番組表を組み立てる', () => {
   assert.equal(p.cues.length, 4);
   assert.equal(p.cues[1].kind, 'walkout_red');
   assert.equal(p.cues[1].matchNo, 1);
+  assert.equal(p.cues[0].receiptNo, 'UZ23-TEST0001');
+  assert.equal(p.cues[0].fighterName, '山田 太郎');
+  assert.equal(p.cues[0].photoUrl, 'https://example.com/yamada.jpg');
 });
 
 test('日本語の見出しでも取り込める', () => {

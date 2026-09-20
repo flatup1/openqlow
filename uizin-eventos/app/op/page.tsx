@@ -7,7 +7,7 @@
  * 迷わないために、いちばん大きいボタンは「次へ」と「停止」の2つだけにしてある。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEventState, useTick } from '../lib/useEventState.ts';
 import { checkMusic, reloadProgram, sendCommand, sendUndo } from '../lib/client.ts';
 import { getApiBase, getOperatorKey, setApiBase, setOperatorKey } from '../lib/config.ts';
@@ -18,6 +18,7 @@ import { formatDuration, displayMs } from '../../core/timer.ts';
 import { judgeCue, summarizeMusic } from '../../core/music.ts';
 import { cueKindLabel } from '../../core/sheet.ts';
 import type { Command, Fighter, Match } from '../../core/types.ts';
+import { canOperate, createOperationGate, shortcut } from '../../core/operatorSafety.ts';
 
 function FighterCard({ side, fighter }: { side: 'red' | 'blue'; fighter: Fighter }) {
   const tone = side === 'red' ? 'border-rose-600/70 bg-rose-950/30' : 'border-sky-600/70 bg-sky-950/30';
@@ -73,7 +74,12 @@ export default function OperatorPage() {
   const [keyInput, setKeyInput] = useState('');
   const [apiInput, setApiInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [hasKey, setHasKey] = useState(true);
+  const [hasKey, setHasKey] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const gate = useRef(createOperationGate());
+  const ready = canOperate(store.connection, hasKey, store.lastMessageAt, Date.now()) && !uncertain;
+  const readyRef = useRef(false);
+  readyRef.current = ready;
 
   useEffect(() => {
     const key = getOperatorKey();
@@ -91,35 +97,38 @@ export default function OperatorPage() {
   }, []);
 
   const run = useCallback(
-    async (fn: () => Promise<{ ok: boolean; reason?: string; label?: string }>, okText: string) => {
+    async (fn: () => Promise<{ ok: boolean; reason?: string; label?: string; uncertain?: boolean }>, okText: string) => {
+      if (!readyRef.current || !gate.current.acquire(Date.now())) return;
       setBusy(true);
       try {
         const res = await fn();
         notify(res.ok ? res.label ?? okText : '実行できません: ' + (res.reason ?? '理由不明'));
+        if (res.uncertain) setUncertain(true);
+        if (!res.uncertain && !await store.refresh()) setUncertain(true);
+      } catch {
+        setUncertain(true);
+        notify('結果を確認できません。再送せず、最新状態を確認してください。');
       } finally {
+        gate.current.release(Date.now());
         setBusy(false);
       }
     },
-    [notify],
+    [notify, store.refresh],
   );
 
-  const dispatch = useCallback((command: Command, okText: string) => run(() => sendCommand(command), okText), [run]);
+  const dispatch = useCallback((command: Command, okText: string) => run(() => sendCommand(command, store.snapshot?.state.version ?? -1), okText), [run, store.snapshot]);
 
-  // キーボードでも操作できるようにする（スペース = 次へ / Esc = 停止・再開）
+  // Esc is stop-only: repeating it must NEVER resume an emergency hold.
   const snapshot = store.snapshot;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       if (!snapshot) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        void dispatch({ type: 'next' }, '次へ');
-      }
-      if (e.code === 'Escape') {
-        e.preventDefault();
-        void dispatch(snapshot.state.hold.active ? { type: 'resume' } : { type: 'hold' }, '停止/再開');
-      }
+      const interactive = Boolean(target?.closest('input, textarea, select, button, a, [contenteditable="true"], [role="button"]'));
+      const action = shortcut(e.code, e.repeat, interactive, snapshot.state.hold.active);
+      if (!action) return;
+      e.preventDefault();
+      void dispatch({ type: action }, action === 'hold' ? '停止' : '次へ');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -139,6 +148,8 @@ export default function OperatorPage() {
   const upcomingCue = nextCue(program, state);
   const cueVerdict = cue ? judgeCue(cue, store.snapshot.musicReport?.links ?? []) : null;
   const held = state.hold.active;
+  const offline = !canOperate(store.connection, true, store.lastMessageAt, Date.now());
+  const controlsDisabled = busy || !ready;
 
   return (
     <div className="min-h-screen pb-24">
@@ -151,6 +162,21 @@ export default function OperatorPage() {
           </p>
         ) : null}
 
+        {offline ? (
+          <p className="mb-4 rounded-lg border-2 border-rose-500 bg-rose-950 px-4 py-3 text-base font-black text-rose-100">
+            同期を確認できません。表示・時計は参考です。接続が戻るまで操作できません。会場では口頭連絡と予備の時計に切り替えてください。
+          </p>
+        ) : null}
+
+        {uncertain ? (
+          <section className="mb-4 rounded-lg border-2 border-amber-400 bg-amber-950 p-4 text-amber-100" role="alert">
+            <p>操作結果が不明です。処理済みの可能性があるため、同じ操作を繰り返さないでください。</p>
+            <button type="button" disabled={busy} className="mt-3 rounded bg-amber-200 p-3 font-bold text-black" onClick={async () => {
+              if (await store.refresh()) { setUncertain(false); notify('最新状態を取得しました。試合・段階を確認してから続けてください。'); }
+            }}>最新状態を確認して操作を再開</button>
+          </section>
+        ) : null}
+
         {message ? (
           <p className="mb-4 rounded-lg bg-slate-800 px-4 py-3 text-base font-semibold text-slate-100">{message}</p>
         ) : null}
@@ -158,7 +184,7 @@ export default function OperatorPage() {
         {musicSummary && !musicSummary.ready && state.phase === 'before' ? (
           <p className="mb-4 rounded-lg border border-rose-600 bg-rose-950/60 px-4 py-3 text-base font-bold text-rose-100">
             音源チェックに赤が {musicSummary.red} 件あります。赤がゼロになるまで大会を開始しない運用です。
-            <a className="ml-2 underline" href="./check/">
+            <a className="ml-2 underline" href="../check/">
               音源チェック画面を見る
             </a>
           </p>
@@ -168,7 +194,7 @@ export default function OperatorPage() {
         <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
           <button
             type="button"
-            disabled={busy || held}
+            disabled={controlsDisabled || held}
             onClick={() => void dispatch({ type: 'next' }, '次へ')}
             className="op-button rounded-2xl bg-emerald-600 px-6 py-6 text-left text-white transition disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           >
@@ -180,8 +206,11 @@ export default function OperatorPage() {
 
           <button
             type="button"
-            disabled={busy}
-            onClick={() => void dispatch(held ? { type: 'resume' } : { type: 'hold' }, held ? '再開' : '停止')}
+            disabled={controlsDisabled}
+            onClick={() => {
+              if (held && !window.confirm('スタッフ全員の準備を確認しましたか？停止を解除して再開します。')) return;
+              void dispatch(held ? { type: 'resume' } : { type: 'hold' }, held ? '再開' : '停止');
+            }}
             className={
               'op-button rounded-2xl px-6 py-6 text-left text-white transition ' +
               (held ? 'bg-sky-600' : 'bg-rose-700')
@@ -189,7 +218,7 @@ export default function OperatorPage() {
           >
             <span className="block text-4xl font-black sm:text-5xl">{held ? '再開' : '停止'}</span>
             <span className="mt-1 block text-sm font-semibold opacity-90">
-              {held ? '全画面の停止表示を消す（Esc）' : '全画面を止めて待たせる（Esc）'}
+              {held ? '準備確認後、このボタンで再開' : '全画面を止めて待たせる（Esc）'}
             </span>
           </button>
         </div>
@@ -197,8 +226,8 @@ export default function OperatorPage() {
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <button
             type="button"
-            disabled={busy}
-            onClick={() => void run(sendUndo, '元に戻しました')}
+            disabled={controlsDisabled || held}
+            onClick={() => void run(() => sendUndo(state.version), '元に戻しました')}
             className="rounded-xl border border-white/20 bg-white/5 px-4 py-4 text-lg font-bold text-slate-100"
           >
             元に戻す
@@ -208,7 +237,7 @@ export default function OperatorPage() {
           </button>
           <button
             type="button"
-            disabled={busy || held}
+            disabled={controlsDisabled || held}
             onClick={() =>
               void dispatch(
                 state.roundTimer.mode === 'running' ? { type: 'round_pause' } : { type: 'round_start' },
@@ -224,7 +253,7 @@ export default function OperatorPage() {
           </button>
           <button
             type="button"
-            disabled={busy || held}
+            disabled={controlsDisabled || held}
             onClick={() => void dispatch({ type: 'round_reset' }, 'ラウンドタイマーを戻しました')}
             className="rounded-xl border border-white/20 bg-white/5 px-4 py-4 text-lg font-bold text-slate-100"
           >
@@ -282,7 +311,7 @@ export default function OperatorPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={busy || held}
+                    disabled={controlsDisabled || held}
                     onClick={() => void dispatch({ type: 'cue_start' }, '再生開始')}
                     className="rounded-lg bg-slate-700 px-4 py-2 font-bold text-white"
                   >
@@ -290,7 +319,7 @@ export default function OperatorPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={busy || held}
+                    disabled={controlsDisabled || held}
                     onClick={() => void dispatch({ type: 'cue_next' }, '次の曲へ')}
                     className="rounded-lg bg-slate-700 px-4 py-2 font-bold text-white"
                   >
@@ -298,7 +327,7 @@ export default function OperatorPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={busy || held}
+                    disabled={controlsDisabled || held}
                     onClick={() => void dispatch({ type: 'cue_prev' }, '前の曲へ')}
                     className="rounded-lg bg-slate-700 px-4 py-2 font-bold text-white"
                   >
@@ -320,7 +349,7 @@ export default function OperatorPage() {
               <button
                 key={m.no}
                 type="button"
-                disabled={busy || held}
+                disabled={controlsDisabled || held}
                 onClick={() => {
                   if (!window.confirm('第' + m.no + '試合（' + m.red.name + ' vs ' + m.blue.name + '）の入場に移動します。よろしいですか？')) return;
                   void dispatch({ type: 'jump_match', matchNo: m.no }, '第' + m.no + '試合へ移動');
@@ -345,8 +374,11 @@ export default function OperatorPage() {
             </p>
             <button
               type="button"
-              disabled={busy}
-              onClick={() => void run(reloadProgram, '番組表を取り込みました')}
+              disabled={controlsDisabled}
+              onClick={() => {
+                if (!window.confirm('シートの最新版を取り込みます。大会中は担当者と変更内容を確認してください。よろしいですか？')) return;
+                void run(reloadProgram, '番組表を取り込みました');
+              }}
               className="mt-3 w-full rounded-lg bg-slate-700 px-4 py-3 font-bold text-white"
             >
               取り込み直す
@@ -370,13 +402,13 @@ export default function OperatorPage() {
             ) : null}
             <button
               type="button"
-              disabled={busy}
+              disabled={controlsDisabled}
               onClick={() => void run(checkMusic, '音源チェックを実行しました')}
               className="mt-3 w-full rounded-lg bg-slate-700 px-4 py-3 font-bold text-white"
             >
               リンク切れを検査する
             </button>
-            <a className="mt-2 block text-center text-sm text-slate-300 underline" href="./check/">
+            <a className="mt-2 block text-center text-sm text-slate-300 underline" href="../check/">
               チェック画面を開く
             </a>
           </div>
@@ -438,7 +470,7 @@ export default function OperatorPage() {
           </p>
           <button
             type="button"
-            disabled={busy || held || !hasKey}
+            disabled={controlsDisabled || held}
             aria-describedby="reset-event-description"
             onClick={() => {
               if (!window.confirm('大会を開始前に戻しますか？\n\n進行・すべてのタイマー・曲の位置が最初に戻ります。\n対戦カード・曲一覧は消えません。')) return;

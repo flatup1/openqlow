@@ -26,7 +26,7 @@ export type EventStore = {
   error: string | null;
   /** この端末で「今のサーバー時刻」を出す */
   serverNow: () => number;
-  refresh: () => void;
+  refresh: () => Promise<boolean>;
 };
 
 const FAST_POLL_MS = 800;
@@ -46,6 +46,9 @@ export function useEventState(): EventStore {
   const socketRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
   const closedRef = useRef(false);
+  const receivedAtRef = useRef(0);
+  const connectionRef = useRef<Connection>('connecting');
+  connectionRef.current = connection;
 
   const applySnapshot = useCallback((next: Snapshot) => {
     const current = snapshotRef.current;
@@ -53,7 +56,8 @@ export function useEventState(): EventStore {
     if (current && next.state.version < current.state.version) return;
     snapshotRef.current = next;
     setSnapshot(next);
-    setLastMessageAt(Date.now());
+    receivedAtRef.current = Date.now();
+    setLastMessageAt(receivedAtRef.current);
   }, []);
 
   const patchState = useCallback(
@@ -88,7 +92,8 @@ export function useEventState(): EventStore {
     const base = getApiBase();
     try {
       const sentAt = Date.now();
-      const res = await fetch(base + '/api/time', { cache: 'no-store' });
+      const res = await fetch(base + '/api/time', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
+      if (!res.ok) return;
       const receivedAt = Date.now();
       const data = (await res.json()) as { serverNow: number };
       // 往復の真ん中をこの端末の「その瞬間」とみなす
@@ -103,14 +108,16 @@ export function useEventState(): EventStore {
   const pull = useCallback(async () => {
     const base = getApiBase();
     try {
-      const res = await fetch(base + '/api/state', { cache: 'no-store' });
+      const res = await fetch(base + '/api/state', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = (await res.json()) as Snapshot;
       applySnapshot(data);
+      setConnection(socketRef.current?.readyState === WebSocket.OPEN ? 'live' : 'polling');
       setError(null);
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setConnection('offline');
       return false;
     }
   }, [applySnapshot]);
@@ -133,24 +140,27 @@ export function useEventState(): EventStore {
 
       socket.onopen = () => {
         retryRef.current = 0;
-        setConnection('live');
-        setError(null);
+        // A socket opening alone does not prove the state is synchronized.
       };
       socket.onmessage = (event) => {
         try {
-          patchState(JSON.parse(String(event.data)) as ServerMessage);
-          setConnection('live');
+          const message = JSON.parse(String(event.data)) as ServerMessage;
+          patchState(message);
+          if (['sync', 'state', 'program', 'music'].includes(message.t) && snapshotRef.current) {
+            setConnection('live');
+            setError(null);
+          }
         } catch {
           // 壊れたメッセージは捨てる
         }
       };
       socket.onerror = () => {
-        setConnection((c) => (c === 'live' ? 'polling' : c));
+        setConnection('offline');
       };
       socket.onclose = () => {
         socketRef.current = null;
         if (closedRef.current) return;
-        setConnection('polling');
+        setConnection('offline');
         scheduleRetry();
       };
     };
@@ -190,7 +200,7 @@ export function useEventState(): EventStore {
       if (!live) {
         const ok = await pull();
         if (!stopped) setConnection(ok ? 'polling' : 'offline');
-      } else if (Date.now() - lastMessageAt > STALE_MS) {
+      } else if (Date.now() - receivedAtRef.current > STALE_MS / 2) {
         // つながっているはずなのに何も来ない → 念のため取りに行く
         await pull();
       }
@@ -202,29 +212,34 @@ export function useEventState(): EventStore {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [pull, lastMessageAt]);
+  }, [pull]);
 
   // --- タブに戻ってきたら即座に追いつく ---------------------------------------
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
+        setConnection('connecting');
         void pull();
         void measureOffset();
       }
     };
+    const onOffline = () => setConnection('offline');
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('online', onVisible);
+    window.addEventListener('offline', onOffline);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', onVisible);
+      window.removeEventListener('offline', onOffline);
     };
   }, [pull, measureOffset]);
 
-  const serverNow = useCallback(() => Date.now() + offsetRef.current, []);
-  const refresh = useCallback(() => {
-    void pull();
-    void measureOffset();
-  }, [pull, measureOffset]);
+  const serverNow = useCallback(() => {
+    const fresh = (connectionRef.current === 'live' || connectionRef.current === 'polling') &&
+      Date.now() - receivedAtRef.current < STALE_MS;
+    return fresh ? Date.now() + offsetRef.current : snapshotRef.current?.serverNow ?? Date.now();
+  }, []);
+  const refresh = pull;
 
   return { snapshot, connection, offsetMs, lastMessageAt, error, serverNow, refresh };
 }

@@ -17,6 +17,35 @@ import { displayMs, formatDuration, remainingMs } from '../../core/timer.ts';
 import { colorClass, judgeCue } from '../../core/music.ts';
 import { cueKindLabel } from '../../core/sheet.ts';
 
+function FighterPhoto({ url, name, compact = false }: { url: string; name: string; compact?: boolean }) {
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt={name ? name + ' 選手' : '選手写真'}
+      loading={compact ? 'lazy' : 'eager'}
+      className={
+        compact
+          ? 'h-12 w-12 shrink-0 rounded-lg bg-slate-800 object-cover'
+          : 'h-44 w-44 shrink-0 rounded-2xl bg-slate-800 object-cover sm:h-56 sm:w-56'
+      }
+    />
+  );
+}
+
+function cueTitle(title: string, fighterName: string): string {
+  const prefix = fighterName ? fighterName + ' ' : '';
+  return prefix && title.startsWith(prefix) ? title.slice(prefix.length) : title;
+}
+
+function playableCueUrl(verdict: ReturnType<typeof judgeCue>): string | null {
+  return verdict.status === 'dead' ? null : verdict.playUrl;
+}
+
+function musicLinkLabel(source: ReturnType<typeof judgeCue>['source']): string {
+  return source === 'apple' ? 'Apple Music' : 'YouTube';
+}
+
 export default function MixPage() {
   const store = useEventState();
   const tick = useTick(200);
@@ -32,6 +61,7 @@ export default function MixPage() {
   const upcomingVerdict = upcoming ? judgeCue(upcoming, links) : null;
   const left = remainingMs(state.cueTimer, now);
   const nearEnd = left !== null && left <= 15_000;
+  const currentPlayUrl = verdict ? playableCueUrl(verdict) : null;
 
   if (state.hold.active) {
     return (
@@ -53,10 +83,16 @@ export default function MixPage() {
             {verdict ? <span className={'h-3 w-3 rounded-full ' + colorClass(verdict.color)} aria-hidden /> : null}
             {cue ? <span className="text-slate-500">{cueKindLabel(cue.kind)}</span> : null}
           </p>
-          <p className="text-[clamp(2rem,6vw,5rem)] font-black leading-tight text-white">
-            {cue ? cue.title : '曲が登録されていません'}
-          </p>
-          {cue?.artist ? <p className="mt-2 text-2xl font-semibold text-slate-300">{cue.artist}</p> : null}
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            {cue ? <FighterPhoto url={cue.photoUrl} name={cue.fighterName} /> : null}
+            <div>
+              {cue?.fighterName ? <p className="text-2xl font-black text-white">{cue.fighterName}</p> : null}
+              <p className="text-[clamp(2rem,6vw,5rem)] font-black leading-tight text-white">
+                {cue ? cueTitle(cue.title, cue.fighterName) : '曲が登録されていません'}
+              </p>
+              {cue?.artist ? <p className="mt-2 text-2xl font-semibold text-slate-300">{cue.artist}</p> : null}
+            </div>
+          </div>
 
           <div className="mt-8 flex flex-wrap items-end gap-8">
             <div>
@@ -78,14 +114,14 @@ export default function MixPage() {
               ) : null}
             </div>
 
-            {verdict?.playUrl ? (
+            {verdict && currentPlayUrl ? (
               <a
-                href={verdict.playUrl}
+                href={currentPlayUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="rounded-2xl bg-slate-700 px-8 py-5 text-2xl font-black text-white"
               >
-                {verdict.source === 'apple' ? 'Apple Music を開く' : 'YouTube を開く'}
+                {musicLinkLabel(verdict.source)} を開く
               </a>
             ) : (
               <p className="rounded-2xl bg-rose-950 px-8 py-5 text-xl font-bold text-rose-200">
@@ -121,6 +157,8 @@ export default function MixPage() {
         <ol className="mt-6 space-y-1 text-sm text-slate-400">
           {program.cues.map((c, i) => {
             const v = judgeCue(c, links);
+            const playUrl = playableCueUrl(v);
+            const displayName = c.fighterName || cueTitle(c.title, c.fighterName) || `No.${c.no}`;
             return (
               <li
                 key={c.no}
@@ -130,9 +168,34 @@ export default function MixPage() {
                 }
               >
                 <span className={'h-2.5 w-2.5 shrink-0 rounded-full ' + colorClass(v.color)} aria-hidden />
+                <FighterPhoto url={c.photoUrl} name={c.fighterName} compact />
                 <span className="tabular w-8 shrink-0 text-right">{c.no}</span>
-                <span className="truncate">{c.title}</span>
-                <span className="ml-auto shrink-0 text-xs text-slate-500">{cueKindLabel(c.kind)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {c.fighterName ? c.fighterName + '／' : ''}{cueTitle(c.title, c.fighterName)}
+                </span>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  {playUrl ? (
+                    <a
+                      href={playUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`${displayName}選手の${musicLinkLabel(v.source)}を開く`}
+                      className={
+                        'inline-flex min-h-11 items-center rounded-xl border px-3 py-2 text-xs font-black text-white transition active:scale-95 ' +
+                        (v.source === 'apple'
+                          ? 'border-pink-400/50 bg-pink-600 hover:bg-pink-500'
+                          : 'border-red-400/50 bg-red-600 hover:bg-red-500')
+                      }
+                    >
+                      {musicLinkLabel(v.source)}
+                    </a>
+                  ) : (
+                    <span className="inline-flex min-h-11 items-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-500">
+                      {v.status === 'dead' ? 'リンク切れ' : 'リンクなし'}
+                    </span>
+                  )}
+                  <span className="hidden shrink-0 text-xs text-slate-500 sm:inline">{cueKindLabel(c.kind)}</span>
+                </div>
               </li>
             );
           })}

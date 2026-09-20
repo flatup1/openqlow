@@ -225,6 +225,9 @@ function parseCues(csv: string, warnings: string[]): MusicCue[] {
       otherUrl: routed.otherUrl,
       seconds: Math.max(0, parseSeconds(pick(row, 'seconds', '秒数', '尺', '長さ'), 0)),
       note: pick(row, 'note', '備考', 'メモ'),
+      receiptNo: pick(row, 'receipt_no', '受付番号'),
+      fighterName: pick(row, 'fighter_name', '選手名', 'リングネーム'),
+      photoUrl: pick(row, 'photo_url', '顔写真url', '写真url'),
     });
   });
 

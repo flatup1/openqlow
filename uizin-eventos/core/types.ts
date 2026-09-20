@@ -71,6 +71,12 @@ export type MusicCue = {
   /** 尺（秒）。0 は未設定 */
   seconds: number;
   note: string;
+  /** 申込者との照合キー。画面には通常表示しない */
+  receiptNo: string;
+  /** 入場する選手名 */
+  fighterName: string;
+  /** 広報利用同意済みの表示用写真URL。未登録なら空文字 */
+  photoUrl: string;
 };
 
 export type EventMeta = {
