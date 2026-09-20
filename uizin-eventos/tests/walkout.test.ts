@@ -11,6 +11,7 @@ import {
   cueForFighter,
   isAudioFileUrl,
   liveNextAction,
+  livePrevAction,
   playPlan,
   youtubeEmbedUrl,
   youtubeVideoId,
@@ -181,12 +182,85 @@ test('/live/ は、初めての人が押し間違えない作りになってい�
   // C1: 指1本で押せる大きさ
   assert.ok(src.includes('min-h-[88px]'), 'ボタンは最低88px四方');
 
-  // B1: 進行中に置くボタンは ▶赤 / ▶青 / 次の試合 の3つだけ。
-  //     停止・元に戻す・取り込み直しは /op/ の担当（ここに増やさない）
+  // B1: 進行中に置くボタンは ▶赤 / ▶青 / 次の試合 / ←前の試合 の4つだけ。
+  //     「戻る」は発注者の指示（2026-09-20）で足した。進めすぎを直せないと、かえって大会が止まる。
+  //     元に戻す・ラウンド操作・取り込み直し・停止は /op/ の担当（ここに増やさない）
   for (const forbidden of ['sendUndo', 'reloadProgram', 'checkMusic', "type: 'hold'", "type: 'round_"]) {
     assert.ok(!src.includes(forbidden), forbidden + ' を /live/ に置かない');
   }
 
+  // 設定は、ふだんロックしてある（合言葉が消えると進行そのものが止まる）
+  assert.ok(src.includes('settingsLock.ts'), '設定ロックを通していること');
+  assert.ok(src.includes("canRun('change_key'"), '合言葉の変更はロックの判定を通す');
+
+  // 明るい配色は、この画面だけに閉じる（/screen/ と /mix/ は暗いまま）
+  assert.ok(src.includes("data-theme"), '配色の切り替えはこの画面の中だけで行う');
+
   // A1: 写真が読めなくても対戦カードは出す
   assert.ok(src.includes('onError'), '写真が読めなかったときの逃げ道');
+});
+
+// --- 「← 前の試合」ボタン（発注者の指示 2026-09-20） -------------------------
+
+test('まだ始まっていないときは、戻るボタンを出さない', () => {
+  const program = buildProgram(NOW);
+  const back = livePrevAction(program, initialState(NOW, program));
+  assert.equal(back.kind, 'none');
+  assert.ok(back.label.includes('まだ'), back.label);
+});
+
+test('第1試合にいるときは、戻り先が無いことを文字で出す', () => {
+  const program = buildProgram(NOW);
+  const state = reduce(initialState(NOW, program), program, { type: 'jump_match', matchNo: 1 }, NOW).state;
+  const back = livePrevAction(program, state);
+  assert.equal(back.kind, 'none');
+  assert.ok(back.label.includes('最初'), back.label);
+});
+
+test('第2試合にいるときは、1回で第1試合へ戻れる', () => {
+  const program = buildProgram(NOW);
+  const state = reduce(initialState(NOW, program), program, { type: 'jump_match', matchNo: 2 }, NOW).state;
+  assert.equal(currentMatch(program, state)?.no, 2);
+
+  const back = livePrevAction(program, state);
+  assert.equal(back.kind, 'prev');
+  if (back.kind !== 'prev') return;
+  assert.deepEqual(back.command, { type: 'jump_match', matchNo: 1 });
+  assert.ok(back.label.includes('第1試合'), back.label);
+
+  // ボタンの文字どおり、押したら第1試合に戻る（文字と動きを一致させる）
+  const moved = reduce(state, program, back.command, NOW).state;
+  assert.equal(currentMatch(program, moved)?.no, 1);
+});
+
+test('停止中は、戻るボタンを押せるように見せない', () => {
+  const program = buildProgram(NOW);
+  const jumped = reduce(initialState(NOW, program), program, { type: 'jump_match', matchNo: 2 }, NOW).state;
+  const held = reduce(jumped, program, { type: 'hold', message: '中断' }, NOW).state;
+  const back = livePrevAction(program, held);
+  assert.equal(back.kind, 'none');
+  assert.ok(back.label.includes('止ま'), back.label);
+});
+
+test('試合が0件なら、戻るボタンを出さずに理由を出す', () => {
+  const program = parseProgram({ event: EVENT_CSV, matches: 'no,red_name,blue_name\n', music: 'no,title\n' }, NOW);
+  const back = livePrevAction(program, initialState(NOW, program));
+  assert.equal(back.kind, 'none');
+  assert.ok(back.label.includes('試合'), back.label);
+});
+
+test('前へ戻ってから次へ進めば、同じ試合に戻ってくる（往復して迷子にならない）', () => {
+  const program = buildProgram(NOW);
+  const atTwo = reduce(initialState(NOW, program), program, { type: 'jump_match', matchNo: 2 }, NOW).state;
+
+  const back = livePrevAction(program, atTwo);
+  assert.equal(back.kind, 'prev');
+  if (back.kind !== 'prev') return;
+  const atOne = reduce(atTwo, program, back.command, NOW).state;
+
+  const forward = liveNextAction(program, atOne);
+  assert.equal(forward.kind, 'next');
+  if (forward.kind !== 'next') return;
+  const again = reduce(atOne, program, forward.command, NOW).state;
+  assert.equal(currentMatch(program, again)?.no, 2);
 });

@@ -26,6 +26,22 @@ body {
   overscroll-behavior: none;
 }
 
+/*
+  明るい配色（`/live/` 用）
+
+  大型モニター（/screen/）と音響席（/mix/）は暗いままにする。
+  会場を暗くして映す画面なので、白背景にすると客席側がまぶしい。
+  明るくするのは「手元で操作する画面」だけ、というのがこの分け方の理由。
+
+  切り替えは <html data-theme="light"> で行う。画面を離れると元に戻る。
+*/
+html[data-theme='light'],
+html[data-theme='light'] body {
+  color-scheme: light;
+  background-color: #eef2f8;
+  color: #0f172a;
+}
+
 /* タイマーの数字は幅が動かないようにする（見ていて落ち着く） */
 .tabular {
   font-variant-numeric: tabular-nums;

@@ -13,7 +13,7 @@
  */
 
 import type { Command, EventState, Match, MusicCue, Program } from './types.ts';
-import { nextMatch } from './state.ts';
+import { currentMatch, nextMatch } from './state.ts';
 import { safeMusicUrl, audioSource } from './audio.ts';
 
 /** 比べる前に、ゆらぎを吸収する（全角空白・半角空白・記号を落とす） */
@@ -171,5 +171,39 @@ export function liveNextAction(program: Program, state: EventState): LiveNextAct
     kind: 'next',
     label: '次の試合へ　→　第' + following.no + '試合',
     command: { type: 'jump_match', matchNo: following.no },
+  };
+}
+
+/**
+ * 「← 前の試合」ボタンの中身。
+ *
+ * 進行担当が1つ先に進めすぎたときに、声を出さずに戻せるようにする。
+ * `next` と同じく `jump_match` を使う（1段ずつ戻す `undo` ではない）。
+ * `undo` は直前の一手しか戻せず、「前の試合へ」という言葉と意味が合わない。
+ *
+ * 最初の試合にいるときは戻り先が無いので、ボタンを出さずに理由を出す。
+ */
+export type LivePrevAction =
+  | { kind: 'prev'; label: string; command: Command }
+  | { kind: 'none'; label: string };
+
+export function livePrevAction(program: Program, state: EventState): LivePrevAction {
+  if (state.hold.active) return { kind: 'none', label: '進行が止まっています' };
+  if (program.matches.length === 0) return { kind: 'none', label: '試合が登録されていません' };
+
+  // まだ始まっていないときは、戻る先そのものが無い。
+  if (state.phase === 'before') return { kind: 'none', label: 'まだ始まっていません' };
+
+  const current = currentMatch(program, state);
+  if (!current) return { kind: 'none', label: '前の試合はありません' };
+
+  const index = program.matches.findIndex((m) => m.no === current.no);
+  if (index <= 0) return { kind: 'none', label: 'これが最初の試合です' };
+
+  const previous = program.matches[index - 1];
+  return {
+    kind: 'prev',
+    label: '←　第' + previous.no + '試合',
+    command: { type: 'jump_match', matchNo: previous.no },
   };
 }
