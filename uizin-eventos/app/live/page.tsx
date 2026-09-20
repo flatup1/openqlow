@@ -29,13 +29,13 @@ import { useEventState, useTick } from '../lib/useEventState.ts';
 import { sendCommand } from '../lib/client.ts';
 import { canOperate, createOperationGate } from '../../core/operatorSafety.ts';
 import { getApiBase, getOperatorKey, setOperatorKey } from '../lib/config.ts';
-import { TimerBar } from '../components/TimerBar.tsx';
 import { Loading } from '../components/Loading.tsx';
-import { currentMatch } from '../../core/state.ts';
+import { currentMatch, phaseLabel } from '../../core/state.ts';
 import { cueForFighter, liveNextAction, livePrevAction, playPlan } from '../../core/walkout.ts';
 import type { PlayPlan } from '../../core/walkout.ts';
 import { canRun, isUnlocked, unlockCountdownLabel } from '../../core/settingsLock.ts';
-import type { Fighter, MusicCue } from '../../core/types.ts';
+import type { EventState, Fighter, MusicCue, Program } from '../../core/types.ts';
+import type { Connection } from '../lib/useEventState.ts';
 
 /** 指1本で確実に押せる大きさ（88px）を、全部のボタンで守る */
 const TAP =
@@ -62,11 +62,18 @@ function PlayButton({
   disabled: boolean;
   onPress: () => void;
 }) {
+  // 曲が無い／鳴らせないときは、押せないボタンとして出す。
+  // 消してしまうと左右の形が変わって、どちらの話か分からなくなる。
   if (plan.kind === 'none') {
     return (
-      <p className="flex min-h-[88px] items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white px-4 text-center text-base font-bold text-slate-500">
+      <button
+        type="button"
+        disabled
+        aria-disabled="true"
+        className="flex min-h-[88px] w-full cursor-not-allowed items-center justify-center rounded-2xl border-2 border-slate-300 bg-slate-100 px-4 text-center text-base font-bold text-slate-500"
+      >
         {plan.label}
-      </p>
+      </button>
     );
   }
 
@@ -126,10 +133,26 @@ function Corner({
     <div className="flex flex-col gap-3">
       <div
         className={
-          'flex flex-1 flex-col overflow-hidden rounded-3xl border-4 bg-white shadow-sm ' + border
+          'flex flex-1 flex-col overflow-hidden rounded-3xl border-4 bg-white shadow-sm ' +
+          border +
+          (playing ? ' ring-4 ring-emerald-400' : '')
         }
       >
-        <div className={'relative aspect-[4/5] w-full ' + (showPhoto ? 'bg-slate-900' : 'bg-slate-100')}>
+        {/* 写真は大きく。ただし PC では1画面に収まる高さで止める（スクロールさせない） */}
+        <div
+          className={
+            'relative aspect-[4/5] w-full sm:aspect-[4/3] sm:max-h-[36vh] ' +
+            (showPhoto ? 'bg-slate-900' : 'bg-slate-100')
+          }
+        >
+          {!showPhoto ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="rounded-xl border-2 border-dashed border-slate-300 px-4 py-2 text-base font-bold text-slate-400">
+                画像なし
+              </span>
+            </div>
+          ) : null}
+
           {showPhoto ? (
             <>
               <img
@@ -180,14 +203,115 @@ function Corner({
           <p className="mt-3 border-t border-slate-200 pt-3 text-lg font-bold leading-relaxed text-slate-900 sm:text-xl">
             {fighter.comment ? '「' + fighter.comment + '」' : '（意気込み未入力）'}
           </p>
-          <p className="mt-3 text-sm text-slate-500">
-            入場曲: {cue ? cue.title + (cue.artist ? '／' + cue.artist : '') : '未登録'}
+          <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span>入場曲: {cue ? cue.title + (cue.artist ? '／' + cue.artist : '') : '未登録'}</span>
+            {/* いま鳴っているのがどちらの曲か、文字でも分かるようにする */}
+            <span
+              className={
+                'rounded-full px-2 py-0.5 text-xs font-bold ' +
+                (playing ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500')
+              }
+            >
+              {playing ? '▶ 再生中' : '停止中'}
+            </span>
           </p>
         </div>
       </div>
 
       <PlayButton side={side} plan={plan} playing={playing} disabled={disabled} onPress={onPress} />
     </div>
+  );
+}
+
+const CONNECTION_TEXT: Record<Connection, string> = {
+  connecting: '接続中',
+  live: '同期中',
+  polling: '低速同期',
+  offline: '未接続',
+};
+
+const CONNECTION_DOT: Record<Connection, string> = {
+  connecting: 'bg-slate-400',
+  live: 'bg-emerald-500',
+  polling: 'bg-amber-400',
+  offline: 'bg-rose-600',
+};
+
+/**
+ * 画面いちばん上の帯。出すのは3つだけ。
+ *   1. 大会名
+ *   2. いま何試合目か（全何試合か）
+ *   3. 編集ロックがかかっているか
+ *
+ * タイマーは出さない。`/live/` は「誰でも進行できる画面」で、
+ * 時間を見て判断するのはオペレーター（`/op/`）の仕事だから。
+ * 代わりに、進行状況と接続状態だけ小さく添える（止まっていないかを見るため）。
+ */
+function LiveHeader({
+  program,
+  state,
+  matchNo,
+  unlocked,
+  connection,
+  onOpenSettings,
+  settingsOpen,
+}: {
+  program: Program;
+  state: EventState;
+  matchNo: number | null;
+  unlocked: boolean;
+  connection: Connection;
+  onOpenSettings: () => void;
+  settingsOpen: boolean;
+}) {
+  const total = program.matches.length;
+  return (
+    <header className="sticky top-0 z-40 border-b-2 border-slate-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-xl font-black text-slate-900 sm:text-2xl">
+            {program.meta.title || 'UIZIN EventOS'}
+          </span>
+          <span className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+            {program.meta.venue ? <span className="truncate">{program.meta.venue}</span> : null}
+            <span>{phaseLabel(state.phase)}</span>
+            <span className="inline-flex items-center gap-1">
+              <span className={'h-2 w-2 rounded-full ' + CONNECTION_DOT[connection]} aria-hidden />
+              {CONNECTION_TEXT[connection]}
+            </span>
+          </span>
+        </div>
+
+        {/* いま何試合目か。画面のどこを見ても分かるように、いちばん上に置く */}
+        <p className="text-2xl font-black text-slate-900 sm:text-3xl">
+          {matchNo === null ? '開始前' : '第' + matchNo + '試合'}
+          <span className="ml-2 text-base font-bold text-slate-500 sm:text-lg">
+            / 全{total}試合
+          </span>
+        </p>
+
+        <div className="ml-auto flex items-center gap-2">
+          {/* 編集できる状態かどうかは、ひと目で分かる必要がある */}
+          <span
+            className={
+              'rounded-full px-3 py-1.5 text-sm font-black ' +
+              (unlocked ? 'bg-amber-400 text-amber-950' : 'bg-slate-200 text-slate-700')
+            }
+          >
+            {unlocked ? '🔓 編集可能' : '🔒 編集ロック中'}
+          </span>
+          {/* 設定はふだん使わないので、わざと小さく端に置く */}
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-expanded={settingsOpen}
+            className="min-h-12 rounded-xl border-2 border-slate-300 bg-white px-4 text-sm font-bold text-slate-600 hover:bg-slate-100"
+          >
+            設定
+          </button>
+        </div>
+      </div>
+    </header>
   );
 }
 
@@ -217,14 +341,14 @@ function SettingsPanel({
   return (
     <section className="mt-6 rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-black text-slate-900">設定</h2>
+        <h2 className="text-xl font-black text-slate-900">設定（編集）</h2>
         <span
           className={
             'rounded-full px-3 py-1 text-sm font-bold ' +
             (open ? 'bg-amber-100 text-amber-900' : 'bg-slate-200 text-slate-700')
           }
         >
-          {open ? '🔓 ' + unlockCountdownLabel(unlockedAt, now) : '🔒 ロック中'}
+          {open ? '🔓 編集可能 · ' + unlockCountdownLabel(unlockedAt, now) : '🔒 編集ロック中'}
         </span>
         <button
           type="button"
@@ -257,7 +381,7 @@ function SettingsPanel({
             onClick={onLock}
             className="min-h-[72px] rounded-2xl border-2 border-slate-300 px-5 text-lg font-black text-slate-800 hover:bg-slate-100"
           >
-            🔒 いますぐロックする
+            🔒 いますぐ再ロックする
           </button>
         </div>
       ) : (
@@ -265,14 +389,14 @@ function SettingsPanel({
           <p className="text-base leading-relaxed text-slate-700">
             曲の再生・停止と、前／次の試合は、ロック中でもそのまま使えます。
             <br />
-            ロックしているのは、合言葉と接続先だけです。
+            ロックしているのは、設定とデータの変更だけです。
           </p>
           <button
             type="button"
             onClick={onUnlock}
             className="min-h-[72px] rounded-2xl border-2 border-slate-300 px-5 text-lg font-black text-slate-800 hover:bg-slate-100"
           >
-            🔓 ロックを解除する
+            🔓 編集ロックを解除する
           </button>
         </div>
       )}
@@ -421,7 +545,6 @@ export default function LivePage() {
   if (!store.snapshot) return <Loading connection={store.connection} error={store.error} />;
 
   const { state, program } = store.snapshot;
-  const now = store.serverNow();
   const action = liveNextAction(program, state);
   const back = livePrevAction(program, state);
 
@@ -456,31 +579,26 @@ export default function LivePage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[#eef2f8]" data-tick={tick}>
-      <TimerBar state={state} program={program} now={now} connection={store.connection} />
+      <LiveHeader
+        program={program}
+        state={state}
+        matchNo={match ? match.no : null}
+        unlocked={isUnlocked(unlockedAt, tick)}
+        connection={store.connection}
+        settingsOpen={settingsOpen}
+        onOpenSettings={() => setSettingsOpen((v) => !v)}
+      />
 
       {!ready && <p role="status" className="bg-amber-100 p-4 font-bold text-amber-900">最新状態を確認するまで進行できません。<button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button></p>}
       <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-4">
         {match ? (
           <>
-            <div className="mb-3 flex flex-wrap items-center justify-center gap-3">
-              <p className="text-center text-2xl font-black tracking-wide text-slate-900 sm:text-3xl">
-                第{match.no}試合
-                <span className="ml-3 text-lg font-bold text-slate-500 sm:text-xl">
-                  {[match.className, match.rule, match.rounds + 'R'].filter(Boolean).join('　/　')}
-                </span>
-              </p>
-              {/* 設定の入口。ふだん使わないので、わざと小さく端に置く */}
-              <button
-                type="button"
-                onClick={() => setSettingsOpen((v) => !v)}
-                aria-expanded={settingsOpen}
-                className="ml-auto min-h-12 rounded-xl border-2 border-slate-300 bg-white px-4 text-sm font-bold text-slate-600 hover:bg-slate-100"
-              >
-                {isUnlocked(unlockedAt, tick) ? '🔓 設定' : '🔒 設定'}
-              </button>
-            </div>
+            <p className="mb-3 text-center text-base font-bold text-slate-500 sm:text-lg">
+              {[match.className, match.rule, match.rounds + 'R'].filter(Boolean).join('　/　')}
+            </p>
 
-            <div className="grid flex-1 grid-cols-2 gap-3 sm:gap-5">
+            {/* 赤 / VS / 青。VS は幅のあるときだけ出す（スマホでは場所を食うだけ） */}
+            <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-5">
               <Corner
                 side="red"
                 fighter={match.red}
@@ -490,6 +608,11 @@ export default function LivePage() {
                 disabled={busy || state.hold.active}
                 onPress={() => press('red', redPlan)}
               />
+
+              <div className="hidden items-center justify-center sm:flex">
+                <span className="text-3xl font-black tracking-widest text-slate-400 lg:text-5xl">VS</span>
+              </div>
+
               <Corner
                 side="blue"
                 fighter={match.blue}
@@ -537,7 +660,7 @@ export default function LivePage() {
         ) : null}
 
         {/* 誤タップ防止に、上のボタンから離す。戻るは小さく、次へは大きく、色も分ける */}
-        <div className="mt-8 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row">
+        <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:mt-4 sm:flex-row">
           {back.kind === 'prev' ? (
             <button
               type="button"

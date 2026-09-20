@@ -200,6 +200,32 @@ test('/live/ は、初めての人が押し間違えない作りになってい�
   assert.ok(src.includes('onError'), '写真が読めなかったときの逃げ道');
 });
 
+test('/live/ は、指示書（2026-09-20 完成版）の受け入れ条件を満たす形をしている', () => {
+  const src = readFileSync(new URL('../app/live/page.tsx', import.meta.url), 'utf8');
+
+  // 3: 画像が無いときは「画像なし」と分かる
+  assert.ok(src.includes('画像なし'), '写真が無いときの表示');
+
+  // 7 + 曲なしの扱い: 曲が無くても左右の形を変えず、押せないボタンとして出す
+  assert.ok(src.includes('cursor-not-allowed'), '曲が無いときは押せないボタンにする');
+  assert.ok(src.includes('aria-disabled'), '押せないことを支援技術にも伝える');
+
+  // 上部に出すのは「大会名 / 第◯試合 全◯試合 / 編集状態」だけ
+  assert.ok(src.includes('全{total}試合'), '全何試合かを上部に出す');
+  assert.ok(src.includes('🔒 編集ロック中'), 'ロック中の表示');
+  assert.ok(src.includes('🔓 編集可能'), '解除中の表示');
+
+  // 進行担当が見るのは選手カード。タイマーは /op/ の担当なので置かない
+  assert.ok(!src.includes('TimerBar'), '/live/ にタイマー帯は置かない');
+
+  // 完成イメージどおり、赤と青のあいだに VS を出す
+  assert.ok(src.includes('VS'), '赤と青のあいだの VS');
+
+  // いま鳴っているのがどちらか、文字でも分かる
+  assert.ok(src.includes('▶ 再生中'), '再生中が文字で分かる');
+  assert.ok(src.includes('停止中'), '停止中が文字で分かる');
+});
+
 // --- 「← 前の試合」ボタン（発注者の指示 2026-09-20） -------------------------
 
 test('まだ始まっていないときは、戻るボタンを出さない', () => {

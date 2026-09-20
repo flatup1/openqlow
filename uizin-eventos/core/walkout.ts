@@ -106,7 +106,7 @@ export type PlayPlan =
  * 「同じ見た目なのに、押すと違うことが起きる」が当日いちばん危ない。
  */
 export function playPlan(cue: MusicCue | null): PlayPlan {
-  if (!cue) return { kind: 'none', label: '入場曲が登録されていません' };
+  if (!cue) return { kind: 'none', label: '曲なし（入場曲が未登録）' };
 
   const apple = cue.appleMusicUrl.trim();
   const youtube = cue.youtubeUrl.trim();
@@ -126,9 +126,9 @@ export function playPlan(cue: MusicCue | null): PlayPlan {
     const source = audioSource(raw);
     if (source.kind === 'external') return { kind: 'open', url: source.url, label: source.label };
   }
-  if ([apple, youtube, other].some(Boolean)) return { kind: 'none', label: 'リンクを確認してください' };
+  if ([apple, youtube, other].some(Boolean)) return { kind: 'none', label: '曲を再生できません（リンクを確認）' };
 
-  return { kind: 'none', label: '入場曲が登録されていません' };
+  return { kind: 'none', label: '曲なし（入場曲が未登録）' };
 }
 
 // ---------------------------------------------------------------------------
