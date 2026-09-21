@@ -150,10 +150,10 @@ function Corner({
   const rule = isRed ? 'bg-rose-500' : 'bg-sky-500';
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-col gap-3">
       <div
         className={
-          'flex flex-1 flex-col overflow-hidden rounded-3xl border-4 bg-white shadow-sm ' +
+          'flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border-4 bg-white shadow-sm ' +
           border +
           (playing ? ' ring-4 ring-emerald-400' : '')
         }
@@ -173,7 +173,7 @@ function Corner({
         */}
         <div
           className={
-            'relative aspect-[4/5] w-full sm:max-h-[24vh] ' +
+            'relative min-h-[80px] w-full flex-1 ' +
             (showPhoto ? 'bg-slate-900' : 'bg-slate-100')
           }
         >
@@ -210,7 +210,7 @@ function Corner({
           </span>
         </div>
 
-        <div className="p-4">
+        <div className="shrink-0 p-4">
           {/* 画面でいちばん大きい文字は選手名。写真に重ねないので、顔が隠れない */}
           <p className="text-[clamp(1.6rem,4.2vw,3.2rem)] font-black leading-none text-slate-900">
             {fighter.name || '（未入力）'}
@@ -600,8 +600,12 @@ export default function LivePage() {
     await move(back.label, back.command);
   };
 
+  // 画面の高さに固定する。あふれさせない。
+  // 意気込みや曲名の長さは試合ごとに違うので、写真の高さを vh で決め打ちにすると
+  // ある試合だけスクロールが出る（実測: 45試合のほとんどで 14〜79px あふれていた）。
+  // そこで「余った高さを写真が受け取る」作りにして、どの試合でも1画面に収める。
   return (
-    <div className="flex min-h-screen flex-col bg-[#eef2f8]" data-tick={tick}>
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#eef2f8]" data-tick={tick}>
       <LiveHeader
         program={program}
         state={state}
@@ -613,7 +617,7 @@ export default function LivePage() {
       />
 
       {!ready && <p role="status" className="bg-amber-100 p-4 font-bold text-amber-900">最新状態を確認するまで進行できません。<button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button></p>}
-      <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-4">
+      <main className="mx-auto flex w-full min-h-0 max-w-[1400px] flex-1 flex-col overflow-hidden px-4 py-4">
         {match ? (
           <>
             <p className="mb-3 text-center text-base font-bold text-slate-500 sm:text-lg">
@@ -627,7 +631,7 @@ export default function LivePage() {
             </p>
 
             {/* 赤 / VS / 青。VS は幅のあるときだけ出す（スマホでは場所を食うだけ） */}
-            <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-5">
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-5">
               <Corner
                 side="red"
                 fighter={match.red}
