@@ -32,6 +32,7 @@ import { getApiBase, getOperatorKey, setOperatorKey } from '../lib/config.ts';
 import { Loading } from '../components/Loading.tsx';
 import { currentMatch, phaseLabel } from '../../core/state.ts';
 import { cueForFighter, liveNextAction, livePrevAction, playPlan } from '../../core/walkout.ts';
+import { pairCommentSizeClass, pairPhotoHeightClass } from '../../core/layout.ts';
 import { formatKg, matchWeights } from '../../core/weight.ts';
 import type { PlayPlan } from '../../core/walkout.ts';
 import { canRun, isUnlocked, unlockCountdownLabel } from '../../core/settingsLock.ts';
@@ -129,6 +130,8 @@ function Corner({
   plan,
   playing,
   disabled,
+  commentClass,
+  photoClass,
   onPress,
 }: {
   side: Side;
@@ -137,6 +140,10 @@ function Corner({
   plan: PlayPlan;
   playing: boolean;
   disabled: boolean;
+  /** 意気込みの文字の大きさ。赤青で同じ値を渡して、左右を不揃いにしない */
+  commentClass: string;
+  /** 写真の枠の高さ。赤青で同じ値を渡して、左右を同じ形にする */
+  photoClass: string;
   onPress: () => void;
 }) {
   const isRed = side === 'red';
@@ -173,7 +180,11 @@ function Corner({
         */}
         <div
           className={
-            'relative min-h-[80px] w-full flex-1 ' +
+            // 写真の枠は「余りをもらう」のではなく、決め打ちの高さにする。
+            // 余りをもらう作りだと、意気込みが長い側だけ写真が小さくなり、
+            // 赤と青で大きさが揃わない（実測で 160px 対 202px になった）。
+            // 対戦カードは左右が同じ形で並んでいないと、一目で見比べられない。
+            'relative w-full shrink-0 ' + photoClass + ' ' +
             (showPhoto ? 'bg-slate-900' : 'bg-slate-100')
           }
         >
@@ -210,7 +221,14 @@ function Corner({
           </span>
         </div>
 
-        <div className="shrink-0 p-4">
+        {/*
+          文字は縮めない、が原則。ただし高さが足りないときに
+          ページ全体をあふれさせる（＝「次の試合へ」が押せなくなる）よりは、
+          このカードの中だけでスクロールさせる方が安全なので、
+          最後の逃げ道として min-h-0 + overflow-y-auto を置いてある。
+          意気込みの文字を長さに応じて小さくしているので、ここはほぼ発動しない。
+        */}
+        <div className="min-h-0 shrink overflow-y-auto p-4">
           {/* 画面でいちばん大きい文字は選手名。写真に重ねないので、顔が隠れない */}
           <p className="text-[clamp(1.6rem,4.2vw,3.2rem)] font-black leading-none text-slate-900">
             {fighter.name || '（未入力）'}
@@ -219,10 +237,6 @@ function Corner({
 
           <p className="text-base font-semibold text-slate-600 sm:text-lg">
             {[fighter.team, fighter.record].filter(Boolean).join('　/　') || '—'}
-          </p>
-          {/* 意気込みは省略しない。MCが読む文章なので、全文が出ていないと意味がない */}
-          <p className="mt-3 border-t border-slate-200 pt-3 text-lg font-bold leading-relaxed text-slate-900 sm:text-xl">
-            {fighter.comment ? '「' + fighter.comment + '」' : '（意気込み未入力）'}
           </p>
           <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
             <span>入場曲: {cue ? cue.title + (cue.artist ? '／' + cue.artist : '') : '未登録'}</span>
@@ -235,6 +249,19 @@ function Corner({
             >
               {playing ? '▶ 再生中' : '停止中'}
             </span>
+          </p>
+          {/*
+            意気込みは、長い試合ではこの枠の中でスクロールする。
+            全文が要るのはMC。MC画面（/mc/）と表示画面（/screen/）が全文を持っているので、
+            この画面では「顔・名前・曲」を先に出し、意気込みを最後に置く。
+            曲名が意気込みに押し出されて見えなくなる方が、進行担当には困る。
+          */}
+          <p
+            className={
+              'mt-3 border-t border-slate-200 pt-3 font-bold leading-relaxed text-slate-900 ' + commentClass
+            }
+          >
+            {fighter.comment ? '「' + fighter.comment + '」' : '（意気込み未入力）'}
           </p>
         </div>
       </div>
@@ -575,6 +602,10 @@ export default function LivePage() {
   const blueCue = cueForFighter(program, match, 'blue');
   const redPlan = playPlan(redCue);
   const bluePlan = playPlan(blueCue);
+  // 意気込みの文字の大きさは、赤青の長い方に合わせて1つに決める。
+  // 左右で別々に決めると、写真の大きさまで左右で変わって不揃いになる。
+  const commentClass = pairCommentSizeClass(match?.red.comment ?? '', match?.blue.comment ?? '');
+  const photoClass = pairPhotoHeightClass(match?.red.comment ?? '', match?.blue.comment ?? '');
 
   /** 試合を動かす。前へも次へも、通るのはこの1本だけにする（二重送信を1か所で止める） */
   const move = async (label: string, command: Parameters<typeof sendCommand>[0]) => {
@@ -639,6 +670,8 @@ export default function LivePage() {
                 plan={redPlan}
                 playing={playing === 'red'}
                 disabled={busy || state.hold.active}
+                commentClass={commentClass}
+                photoClass={photoClass}
                 onPress={() => press('red', redPlan)}
               />
 
@@ -668,6 +701,8 @@ export default function LivePage() {
                 plan={bluePlan}
                 playing={playing === 'blue'}
                 disabled={busy || state.hold.active}
+                commentClass={commentClass}
+                photoClass={photoClass}
                 onPress={() => press('blue', bluePlan)}
               />
             </div>
