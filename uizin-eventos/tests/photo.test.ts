@@ -70,3 +70,22 @@ test('日本語の列名でも読める（赤_写真 / 青_画像）', () => {
   assert.equal(p.matches[0].red.photo, 'https://drive.google.com/thumbnail?id=' + ID + '&sz=w1200');
   assert.equal(p.matches[0].blue.photo, 'https://example.com/x.jpg');
 });
+
+// --- EventOS 自身が配る写真（2026-09-21 に追加） -----------------------------
+
+test('Worker の /api/photos/ は拡張子が無くても写真として使う', () => {
+  // 実測（2026-09-21）: content-type は image/jpeg で、<img> にそのまま入れて出る。
+  // ここを弾くと、進行表の写真75枚のうち36枚が消える。
+  const url = 'https://uizin-eventos-api.flatupgym.workers.dev/api/photos/UZ23-4C622F4F';
+  assert.equal(normalizePhotoUrl(url), url);
+  assert.equal(photoStatus(url), 'ok');
+});
+
+test('/api/photos/ に似ていても、別物は通さない', () => {
+  // http（暗号化なし）は通さない
+  assert.equal(normalizePhotoUrl('http://example.com/api/photos/abc'), '');
+  // 受付番号の先が無いものは通さない
+  assert.equal(normalizePhotoUrl('https://example.com/api/photos/'), '');
+  // さらに階層があるものは通さない（想定外の形を黙って通さない）
+  assert.equal(normalizePhotoUrl('https://example.com/api/photos/a/b'), '');
+});

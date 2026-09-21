@@ -15,6 +15,9 @@ const DRIVE_ID = /[-\w]{25,}/;
 /** 画像として直接読める拡張子 */
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif)(\?|$)/i;
 
+/** EventOS の Worker が配る写真（拡張子が無い）。例: https://…workers.dev/api/photos/UZ23-XXXX */
+const WORKER_PHOTO = /^https:\/\/[^/]+\/api\/photos\/[^/?#]+$/;
+
 /** セルの中から最初のURLを取り出す（曲URLと同じ考え方。文章が混ざっていても拾う） */
 export function extractUrl(text: string): string {
   const m = text.match(/https?:\/\/[^\s"'<>（）「」『』【】]+/);
@@ -56,6 +59,11 @@ export function normalizePhotoUrl(raw: string, width = 1200): string {
     // 共有設定が「リンクを知っている全員」でないと出ないので、出なければ写真なしで進む。
     return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + width;
   }
+
+  // EventOS の Worker 自身が配る写真は、拡張子を持たない（/api/photos/<受付番号>）。
+  // ここで弾くと、せっかく自前で配っている写真が1枚も出なくなる。
+  // 2026-09-21 に実測: content-type は image/jpeg で、<img> にそのまま入れて表示できる。
+  if (WORKER_PHOTO.test(url)) return url;
 
   // 拡張子が画像ならそのまま使う
   if (IMAGE_EXT.test(url)) return url;
