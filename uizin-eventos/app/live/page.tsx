@@ -138,10 +138,11 @@ function Corner({
           (playing ? ' ring-4 ring-emerald-400' : '')
         }
       >
-        {/* 写真は大きく。ただし PC では1画面に収まる高さで止める（スクロールさせない） */}
+        {/* 写真は大きく。ただし PC では1画面に収まる高さで止める（スクロールさせない）。
+            32vh は、意気込みがいちばん長い第19・第43試合でも収まる値として実測で決めた。 */}
         <div
           className={
-            'relative aspect-[4/5] w-full sm:aspect-[4/3] sm:max-h-[36vh] ' +
+            'relative aspect-[4/5] w-full sm:aspect-[4/3] sm:max-h-[32vh] ' +
             (showPhoto ? 'bg-slate-900' : 'bg-slate-100')
           }
         >
