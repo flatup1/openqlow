@@ -66,7 +66,7 @@ import { fighterWeight, recordWithoutWeight, weightFromRecord } from '../core/we
 test('戦績の先頭に書いた体重を取り出せる', () => {
   assert.equal(weightFromRecord('16.5kg・2戦1勝1敗'), '16.5kg');
   assert.equal(weightFromRecord('70.0kg'), '70.0kg');
-  assert.equal(weightFromRecord('31.0kg・RISE NOVA三戦三敗'), '31.0kg');
+  assert.equal(weightFromRecord('31.0kg・サンプルジム三戦三敗'), '31.0kg');
   assert.equal(weightFromRecord('４１.０ｋｇ・キック1戦1勝'), '41.0kg');
 });
 

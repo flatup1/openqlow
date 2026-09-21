@@ -190,7 +190,10 @@ function Corner({
             // 余りをもらう作りだと、意気込みが長い側だけ写真が小さくなり、
             // 赤と青で大きさが揃わない（実測で 160px 対 202px になった）。
             // 対戦カードは左右が同じ形で並んでいないと、一目で見比べられない。
-            'relative w-full shrink-0 ' + photoClass + ' ' +
+            // 高さが足りないときに譲るのは写真。名前・所属・入場曲・意気込みの方が先に要る。
+            // shrink-0 にしていたため、iPad とスマホでカードの中身が切れていた（実測）。
+            // 下限 72px は「人型が人型に見える」大きさとして置いた。
+            'relative w-full shrink min-h-[72px] ' + photoClass + ' ' +
             (showPhoto ? 'bg-slate-900' : 'bg-slate-100')
           }
         >
@@ -687,6 +690,12 @@ export default function LivePage() {
             </p>
 
             {/* 赤 / VS / 青。VS は幅のあるときだけ出す（スマホでは場所を食うだけ） */}
+            {/*
+              スマホ（幅390px）では、実データを入れると1枚あたり約185pxしかなく、
+              名前が半分に切れ、所属・入場曲・意気込みが出ない（2026-09-22 実測）。
+              縦積みも試したが、今度は高さが足りずカードが潰れた。
+              スマホは /live/ の対象外とし、PC か iPad を使う。
+            */}
             <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-5">
               <Corner
                 side="red"

@@ -48,7 +48,7 @@ test('/live/ の写真は、赤青で必ず同じ大きさになる作りをし�
   // 写真の枠は決め打ちの高さにする。余りをもらう作りだと、
   // 意気込みが長い側だけ写真が小さくなり、赤と青で大きさが揃わない。
   assert.ok(src.includes('pairPhotoHeightClass'), '写真の高さを赤青で1つに決めていない');
-  assert.ok(src.includes("shrink-0 ' + photoClass"), '写真の枠が余りをもらう作りに戻っている');
+  assert.ok(src.includes("shrink min-h-[72px] ' + photoClass"), '写真が縮めない作りに戻っている（カードの中身が切れる）');
   assert.ok(src.includes('pairCommentSizeClass'), '意気込みの文字の大きさを長さで決めること');
 });
 
