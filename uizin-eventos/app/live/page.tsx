@@ -218,7 +218,7 @@ function Corner({
           <div className={'mb-3 mt-2 h-1.5 w-24 rounded-full ' + rule} />
 
           <p className="text-base font-semibold text-slate-600 sm:text-lg">
-            {[fighter.team, fighter.weight, fighter.record].filter(Boolean).join('　/　') || '—'}
+            {[fighter.team, fighter.record].filter(Boolean).join('　/　') || '—'}
           </p>
           {/* 意気込みは省略しない。MCが読む文章なので、全文が出ていないと意味がない */}
           <p className="mt-3 border-t border-slate-200 pt-3 text-lg font-bold leading-relaxed text-slate-900 sm:text-xl">
@@ -621,7 +621,7 @@ export default function LivePage() {
               {/* スマホでは VS を出していないので、契約体重をこちらに出す */}
               {weights ? (
                 <span className="tabular ml-3 text-slate-700 sm:hidden">
-                  契約 {formatKg(weights.contract)}（差 {formatKg(weights.diff)}）
+                  契約 {formatKg(weights.contract)}
                 </span>
               ) : null}
             </p>
@@ -639,26 +639,19 @@ export default function LivePage() {
               />
 
               {/*
-                VS の下に契約体重。
-                赤青で体重が違うと安全に関わるので、重い方に合わせた値と、
-                両者の体重、その差をここにまとめて出す（2026-09-21 発注者の指示）。
+                VS の下は契約体重だけ。重い方に合わせた1つの値を出す。
+
+                両者の体重を並べたり差を出したりはしない（2026-09-21 発注者の指示）。
+                選手ごとの体重も出さない。並べられると結局そこが目につくため。
                 どちらかの体重が読めない試合では、間違った値を出さないよう何も出さない。
               */}
               <div className="hidden flex-col items-center justify-center gap-3 px-1 sm:flex">
                 <span className="text-3xl font-black tracking-widest text-slate-400 lg:text-5xl">VS</span>
                 {weights ? (
                   <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2 text-center">
-                    <p className="text-[0.7rem] font-bold tracking-widest text-slate-500">契約体重</p>
+                    <p className="text-[0.7rem] font-bold tracking-widest text-slate-500">契約</p>
                     <p className="tabular text-xl font-black leading-tight text-slate-900 lg:text-2xl">
                       {formatKg(weights.contract)}
-                    </p>
-                    <p className="tabular mt-1 whitespace-nowrap text-xs font-semibold text-slate-600">
-                      {formatKg(weights.red)}
-                      <span className="mx-1 text-slate-400">/</span>
-                      {formatKg(weights.blue)}
-                    </p>
-                    <p className="tabular mt-1 whitespace-nowrap text-xs font-bold text-slate-500">
-                      差 {formatKg(weights.diff)}
                     </p>
                   </div>
                 ) : null}
