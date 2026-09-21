@@ -54,3 +54,31 @@ export function matchWeights(redText: string, blueText: string): MatchWeights | 
     diff: Math.abs(red - blue),
   };
 }
+
+/**
+ * 戦績欄の先頭に置いた体重を取り出す（「16.5kg・2戦1勝1敗」→ 16.5kg）。
+ *
+ * なぜこんな持ち方をするのか:
+ * 本番の Worker は進行表の `red_weight` 列を読まない古い版で、差し替えると
+ * 写真配信（/api/photos/）が止まるため入れ替えられない（2026-09-22 実測）。
+ * Worker が確実に読む `red_record` の先頭に体重を書いておき、画面側で取り出す。
+ * 表示のときは体重を取り除くので、選手の行に体重は出ない。
+ */
+const RECORD_WEIGHT = /^\s*(\d+(?:\.\d+)?)\s*kg\s*[・･,、/／]?\s*/i;
+
+/** 戦績欄から体重だけを取り出す。無ければ空文字 */
+export function weightFromRecord(record: string): string {
+  const m = String(record ?? '').normalize('NFKC').match(RECORD_WEIGHT);
+  return m ? m[1] + 'kg' : '';
+}
+
+/** 画面に出す戦績（先頭の体重を取り除いたもの） */
+export function recordWithoutWeight(record: string): string {
+  return String(record ?? '').normalize('NFKC').replace(RECORD_WEIGHT, '').trim();
+}
+
+/** 体重は列から、無ければ戦績の先頭から取る */
+export function fighterWeight(weight: string | undefined, record: string | undefined): string {
+  const w = (weight ?? '').trim();
+  return w !== '' ? w : weightFromRecord(record ?? '');
+}

@@ -33,7 +33,7 @@ import { Loading } from '../components/Loading.tsx';
 import { currentMatch, phaseLabel } from '../../core/state.ts';
 import { cueForFighter, liveNextAction, livePrevAction, playPlan } from '../../core/walkout.ts';
 import { pairCommentSizeClass, pairPhotoHeightClass } from '../../core/layout.ts';
-import { formatKg, matchWeights } from '../../core/weight.ts';
+import { fighterWeight, formatKg, matchWeights, recordWithoutWeight } from '../../core/weight.ts';
 import type { PlayPlan } from '../../core/walkout.ts';
 import { canRun, isUnlocked, unlockCountdownLabel } from '../../core/settingsLock.ts';
 import type { EventState, Fighter, MusicCue, Program } from '../../core/types.ts';
@@ -147,10 +147,16 @@ function Corner({
   onPress: () => void;
 }) {
   const isRed = side === 'red';
-  // 写真が読めなくても対戦カードは必ず出す。黙って名前だけに戻す。
+  // 写真の出どころは2つある。
+  //   1. 進行表の red_photo / blue_photo（本来の置き場）
+  //   2. 曲一覧の photo_url（申込時の写真。こちらは本番の Worker も必ず返す）
+  // 本番の Worker は進行表の写真列を読まない古い版で、差し替えると写真配信が
+  // 止まるため入れ替えられない（2026-09-22 実測）。だから 2 を予備に使う。
+  const photo = fighter.photo || (cue?.photoUrl ?? '');
+  // 写真が読めなくても対戦カードは必ず出す。黙って人型に戻す。
   const [photoBroken, setPhotoBroken] = useState(false);
-  useEffect(() => setPhotoBroken(false), [fighter.photo]);
-  const showPhoto = fighter.photo !== '' && !photoBroken;
+  useEffect(() => setPhotoBroken(false), [photo]);
+  const showPhoto = photo !== '' && !photoBroken;
 
   const border = isRed ? 'border-rose-500' : 'border-sky-500';
   const badge = isRed ? 'bg-rose-600' : 'bg-sky-600';
@@ -195,7 +201,7 @@ function Corner({
 
           {showPhoto ? (
             <img
-              src={fighter.photo}
+              src={photo}
               alt=""
               aria-hidden="true"
               referrerPolicy="no-referrer"
@@ -238,7 +244,7 @@ function Corner({
           <div className={'mb-3 mt-2 h-1.5 w-24 rounded-full ' + rule} />
 
           <p className="text-base font-semibold text-slate-600 sm:text-lg">
-            {[fighter.team, fighter.record].filter(Boolean).join('　/　') || '—'}
+            {[fighter.team, recordWithoutWeight(fighter.record)].filter(Boolean).join('　/　') || '—'}
           </p>
           <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
             <span>入場曲: {cue ? cue.title + (cue.artist ? '／' + cue.artist : '') : '未登録'}</span>
@@ -494,6 +500,7 @@ export default function LivePage() {
   const tick = useTick(500);
 
   const [hasKey, setHasKey] = useState(true);
+  const [editingKey, setEditingKey] = useState(false);
   const [playing, setPlaying] = useState<Side | null>(null);
   const [embedUrl, setEmbedUrl] = useState('');
   const [note, setNote] = useState<string | null>(null);
@@ -590,14 +597,23 @@ export default function LivePage() {
     [playing, stopMusic, externalOpen],
   );
 
-  if (!hasKey) return <KeySetup onSaved={() => setHasKey(true)} />;
+  // 合言葉が無くても画面は出す。
+  // このURLは進行担当だけでなく、関係者みんなで同じ画面を見るために配る。
+  // 最初に合言葉を求めると、配られた人が誰も開けない（2026-09-22 実際に起きた）。
+  // 試合を進める操作だけが合言葉を要る（canOperate が hasKey を見ている）。
+  if (editingKey) return <KeySetup onSaved={() => { setHasKey(true); setEditingKey(false); }} />;
   if (!store.snapshot) return <Loading connection={store.connection} error={store.error} />;
 
   const { state, program } = store.snapshot;
   const action = liveNextAction(program, state);
   const back = livePrevAction(program, state);
 
-  const weights = match ? matchWeights(match.red.weight ?? '', match.blue.weight ?? '') : null;
+  const weights = match
+    ? matchWeights(
+        fighterWeight(match.red.weight, match.red.record),
+        fighterWeight(match.blue.weight, match.blue.record),
+      )
+    : null;
 
   const redCue = cueForFighter(program, match, 'red');
   const blueCue = cueForFighter(program, match, 'blue');
@@ -648,7 +664,15 @@ export default function LivePage() {
         onOpenSettings={() => setSettingsOpen((v) => !v)}
       />
 
-      {!ready && <p role="status" className="bg-amber-100 p-4 font-bold text-amber-900">最新状態を確認するまで進行できません。<button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button></p>}
+      {!hasKey ? (
+        <p role="status" className="bg-slate-200 px-4 py-2 text-center text-sm font-bold text-slate-700">
+          この端末は見るだけです。試合を進めるには合言葉が要ります。
+          <button className="ml-3 min-h-10 underline" onClick={() => setEditingKey(true)}>
+            合言葉を入れる
+          </button>
+        </p>
+      ) : null}
+      {hasKey && !ready && <p role="status" className="bg-amber-100 p-4 font-bold text-amber-900">最新状態を確認するまで進行できません。<button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button></p>}
       <main className="mx-auto flex w-full min-h-0 max-w-[1400px] flex-1 flex-col overflow-hidden px-4 py-4">
         {match ? (
           <>
@@ -788,6 +812,7 @@ export default function LivePage() {
               setUnlockedAt(null);
               setSettingsOpen(false);
               setHasKey(false);
+              setEditingKey(true);
             }}
             onClose={() => setSettingsOpen(false)}
           />

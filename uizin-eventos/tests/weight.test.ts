@@ -57,3 +57,33 @@ test('掲示は小数第1位までで揃える', () => {
   assert.equal(formatKg(16.5), '16.5kg');
   assert.equal(formatKg(70), '70.0kg');
 });
+
+// --- 戦績欄に入れた体重の取り出し（2026-09-22 追加） -------------------------
+// 本番 Worker が red_weight 列を読まないための回避策。詳細は core/weight.ts のコメント。
+
+import { fighterWeight, recordWithoutWeight, weightFromRecord } from '../core/weight.ts';
+
+test('戦績の先頭に書いた体重を取り出せる', () => {
+  assert.equal(weightFromRecord('16.5kg・2戦1勝1敗'), '16.5kg');
+  assert.equal(weightFromRecord('70.0kg'), '70.0kg');
+  assert.equal(weightFromRecord('31.0kg・RISE NOVA三戦三敗'), '31.0kg');
+  assert.equal(weightFromRecord('４１.０ｋｇ・キック1戦1勝'), '41.0kg');
+});
+
+test('体重が書かれていない戦績からは取り出さない', () => {
+  assert.equal(weightFromRecord('2戦1勝1敗'), '');
+  assert.equal(weightFromRecord(''), '');
+  assert.equal(weightFromRecord('キック3戦2勝'), '');
+});
+
+test('画面に出す戦績からは体重を取り除く', () => {
+  assert.equal(recordWithoutWeight('16.5kg・2戦1勝1敗'), '2戦1勝1敗');
+  assert.equal(recordWithoutWeight('70.0kg'), '');
+  assert.equal(recordWithoutWeight('2戦1勝1敗'), '2戦1勝1敗');
+});
+
+test('体重は列を優先し、無ければ戦績から取る', () => {
+  assert.equal(fighterWeight('55.0kg', '16.5kg・2戦'), '55.0kg');
+  assert.equal(fighterWeight('', '16.5kg・2戦'), '16.5kg');
+  assert.equal(fighterWeight(undefined, '2戦'), '');
+});
