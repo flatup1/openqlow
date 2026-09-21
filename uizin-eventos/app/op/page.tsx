@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEventState, useTick } from '../lib/useEventState.ts';
-import { checkMusic, reloadProgram, sendCommand, sendUndo } from '../lib/client.ts';
+import { checkMusic, reloadProgram, sendCommand, sendUndo, uploadProgram } from '../lib/client.ts';
 import { getApiBase, getOperatorKey, setApiBase, setOperatorKey } from '../lib/config.ts';
 import { TimerBar } from '../components/TimerBar.tsx';
 import { Loading } from '../components/Loading.tsx';
@@ -17,7 +17,8 @@ import { currentMatch, nextActionLabel, nextCue, nextMatch, currentCue, phaseLab
 import { formatDuration, displayMs } from '../../core/timer.ts';
 import { judgeCue, summarizeMusic } from '../../core/music.ts';
 import { cueKindLabel } from '../../core/sheet.ts';
-import type { Command, Fighter, Match } from '../../core/types.ts';
+import type { Command, Fighter, Match, Program } from '../../core/types.ts';
+import { previewImport } from '../../core/importPreview.ts';
 import { canOperate, createOperationGate, shortcut } from '../../core/operatorSafety.ts';
 
 function FighterCard({ side, fighter }: { side: 'red' | 'blue'; fighter: Fighter }) {
@@ -63,6 +64,156 @@ function MatchSummary({ match, heading }: { match: Match | null; heading: string
         <p className="text-slate-400">なし</p>
       )}
     </section>
+  );
+}
+
+
+/**
+ * CSVを直接貼って番組表を入れ替える口。
+ *
+ * ふだんは Google スプレッドシートの「取り込み直す」を使う。
+ * これはその予備で、Googleにログインできない日でも大会を開けるようにするためのもの。
+ * 貼り付けはシートより事故りやすいので、必ず「下見 → 数字を見せる → 確認」の順に通す。
+ */
+function PasteImportPanel({
+  current,
+  disabled,
+  onDone,
+}: {
+  current: Program;
+  disabled: boolean;
+  onDone: (text: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [event, setEvent] = useState('');
+  const [matches, setMatches] = useState('');
+  const [music, setMusic] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const touched = matches.trim() !== '' || event.trim() !== '' || music.trim() !== '';
+  const preview = useMemo(
+    // 下見は貼られた文字だけで決まる。現在の番組表は件数の比較にしか使わない。
+    () => (touched ? previewImport({ event, matches, music }, current, Date.now()) : null),
+    [event, matches, music, touched, current],
+  );
+
+  const send = async () => {
+    if (!preview || !preview.ok || busy) return;
+    const lines = [
+      '番組表を入れ替えます。',
+      '',
+      '大会名: ' + preview.title,
+      '試合: ' + preview.matches + '件' + (preview.matchDelta === null ? '' : '（いま ' + current.matches.length + '件）'),
+      '曲: ' + preview.cues + '件（うち音源URLあり ' + preview.music + '件）',
+      '意気込み: ' + preview.comments + '枠 / 写真: ' + preview.photos + '枠',
+      '',
+      ...preview.cautions,
+      '',
+      'この内容で取り込んでよろしいですか？',
+    ];
+    if (!window.confirm(lines.join('\n'))) return;
+    setBusy(true);
+    try {
+      const res = await uploadProgram({ event, matches, music });
+      if (res.ok) {
+        onDone('番組表を取り込みました（試合 ' + preview.matches + '件 / 曲 ' + preview.cues + '件）。');
+        setEvent('');
+        setMatches('');
+        setMusic('');
+        setOpen(false);
+      } else {
+        // 404 は「画面は新しいのに、裏側（Worker）が古い」ときに出る。
+        // 担当者が自分で直せるように、直し方まで書く。
+        const hint = (res.reason ?? '').includes('404')
+          ? '（裏側のプログラムが古いままです。npm run worker:deploy で入れ直してください）'
+          : '（いまの番組表はそのままです）';
+        onDone('取り込めません: ' + (res.reason ?? '理由不明') + hint);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const box = 'mt-1 h-24 w-full rounded bg-black/40 p-2 font-mono text-xs text-slate-100';
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <p className="text-xs font-bold tracking-widest text-slate-400">CSVを貼って取り込む（シートが使えないとき）</p>
+      <p className="mt-1 text-sm text-slate-300">
+        Google にログインできなくても、ここに貼れば番組表が入ります。
+      </p>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="mt-3 w-full rounded-lg bg-slate-700 px-4 py-3 font-bold text-white"
+      >
+        {open ? '閉じる' : '貼り付けて取り込む'}
+      </button>
+
+      {open ? (
+        <div className="mt-3 space-y-2">
+          <label className="block text-xs text-slate-400">
+            matches（対戦カード・必須）
+            <textarea className={box} value={matches} onChange={(e) => setMatches(e.target.value)}
+              placeholder="no,class,rule,rounds,round_seconds,break_seconds,red_name,…" />
+          </label>
+          <label className="block text-xs text-slate-400">
+            music（曲・任意）
+            <textarea className={box} value={music} onChange={(e) => setMusic(e.target.value)} />
+          </label>
+          <label className="block text-xs text-slate-400">
+            event（大会名など・任意）
+            <textarea className={box} value={event} onChange={(e) => setEvent(e.target.value)} />
+          </label>
+
+          {preview ? (
+            <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm">
+              <p className="font-bold text-slate-100">
+                取り込むと: 試合 {preview.matches}件／曲 {preview.cues}件（音源URLあり {preview.music}件）
+              </p>
+              <p className="mt-1 text-slate-300">
+                意気込み {preview.comments}枠／写真 {preview.photos}枠／大会名「{preview.title}」
+                {preview.matchDelta === null ? null : (
+                  <span className="ml-2 text-slate-400">
+                    いま {current.matches.length}件（{preview.matchDelta >= 0 ? '+' : ''}
+                    {preview.matchDelta}）
+                  </span>
+                )}
+              </p>
+              {preview.blockers.map((b) => (
+                <p key={b} className="mt-2 font-bold text-rose-300">取り込めません: {b}</p>
+              ))}
+              {preview.cautions.map((c) => (
+                <p key={c} className="mt-2 text-amber-300">確認: {c}</p>
+              ))}
+              {preview.warnings.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs text-amber-200/80">
+                  {preview.warnings.slice(0, 5).map((w) => (<li key={w}>・{w}</li>))}
+                  {preview.warnings.length > 5 ? (
+                    <li className="text-slate-400">ほか {preview.warnings.length - 5} 件</li>
+                  ) : null}
+                </ul>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">matches を貼ると、取り込む前に件数がここに出ます。</p>
+          )}
+
+          <button
+            type="button"
+            disabled={disabled || busy || !preview || !preview.ok}
+            onClick={() => void send()}
+            className="w-full rounded-lg bg-emerald-600 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          >
+            {busy ? '取り込み中…' : 'この内容で取り込む'}
+          </button>
+          <p className="text-xs text-slate-500">
+            取り込みに失敗したときは、いまの番組表がそのまま残ります。大会は止まりません。
+          </p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -369,7 +520,7 @@ export default function OperatorPage() {
         </section>
 
         {/* ---- 番組表・音源・接続 ---- */}
-        <section className="mt-6 grid gap-3 md:grid-cols-3">
+        <section className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <p className="text-xs font-bold tracking-widest text-slate-400">番組表（Google スプレッドシート）</p>
             <p className="mt-1 text-sm text-slate-300">
@@ -394,6 +545,8 @@ export default function OperatorPage() {
               </ul>
             ) : null}
           </div>
+
+          <PasteImportPanel current={program} disabled={controlsDisabled} onDone={notify} />
 
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <p className="text-xs font-bold tracking-widest text-slate-400">音源チェック</p>

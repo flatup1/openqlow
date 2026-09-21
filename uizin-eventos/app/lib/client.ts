@@ -7,6 +7,7 @@
 
 import type { Command, EventState, MusicReport, Program } from '../../core/types.ts';
 import { getApiBase, getOperatorKey } from './config.ts';
+import { fetchWithDeadline } from '../../core/net.ts';
 
 export type CommandResponse = {
   ok: boolean;
@@ -23,11 +24,12 @@ async function post(path: string, body?: unknown): Promise<CommandResponse> {
   const base = getApiBase();
   const key = getOperatorKey();
   try {
-    const res = await fetch(base + path, {
+    // 古い Safari には AbortSignal.timeout が無い。
+    // 直接書くとここで TypeError になり、この端末からは一度も操作できなくなる。
+    const res = await fetchWithDeadline(fetch, base + path, path === '/api/music/check' ? 120_000 : 15_000, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-operator-key': key },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(path === '/api/music/check' ? 120_000 : 15_000),
     });
     const data = (await res.json().catch(() => ({}))) as CommandResponse;
     if (!res.ok) {
@@ -49,6 +51,15 @@ export function sendUndo(expectedVersion: number): Promise<CommandResponse> {
 
 export function reloadProgram(): Promise<CommandResponse> {
   return post('/api/program/reload');
+}
+
+/**
+ * CSVを直接貼って番組表を入れ替える。
+ * Google スプレッドシートに届かない日（ログインできない・公開できない）でも
+ * 大会を開けるようにするための、もう1つの入口。
+ */
+export function uploadProgram(csv: { event: string; matches: string; music: string }): Promise<CommandResponse> {
+  return post('/api/program/upload', csv);
 }
 
 export function checkMusic(): Promise<CommandResponse> {

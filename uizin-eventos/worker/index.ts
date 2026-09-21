@@ -281,7 +281,14 @@ export default {
     // スプレッドシートに届かない日でも大会を止めないための、手貼り取り込み口。
     // 3枚のCSVをそのまま貼れば、Google が落ちていても番組表を入れ替えられる。
     if (path === '/api/program/upload') {
-      const body = (await request.json()) as Partial<{ event: string; matches: string; music: string }>;
+      // 壊れた本文で 500 を返すと、画面には「原因不明」としか出ない。
+      // 何を直せばいいかが分かる言葉で返す。
+      let body: Partial<{ event: string; matches: string; music: string }>;
+      try {
+        body = (await request.json()) as Partial<{ event: string; matches: string; music: string }>;
+      } catch {
+        return withCors(json({ ok: false, reason: '送られてきた内容を読めませんでした。貼り直してもう一度お試しください。' }, 400), request, env);
+      }
       const csv = {
         event: typeof body.event === 'string' ? body.event : '',
         matches: typeof body.matches === 'string' ? body.matches : '',

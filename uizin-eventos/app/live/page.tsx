@@ -28,6 +28,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEventState, useTick } from '../lib/useEventState.ts';
 import { sendCommand } from '../lib/client.ts';
 import { canOperate, createOperationGate } from '../../core/operatorSafety.ts';
+import { canQueue, decidePending, waitCountdownLabel } from '../../core/pendingCommand.ts';
+import type { PendingCommand } from '../../core/pendingCommand.ts';
 import { getApiBase, getOperatorKey, setOperatorKey } from '../lib/config.ts';
 import { Loading } from '../components/Loading.tsx';
 import { currentMatch, phaseLabel } from '../../core/state.ts';
@@ -459,7 +461,16 @@ export default function LivePage() {
   // 設定ロック。ふだんは null（＝ロック中）。解除しても時間で自動的に閉じる。
   const [unlockedAt, setUnlockedAt] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 通信が切れている間に押された操作を、取り消せる形で1つだけ預かる。
+  // 預かっても安全装置は外していない（core/pendingCommand.ts に理由を書いてある）。
+  const [pending, setPending] = useState<PendingCommand | null>(null);
+  const [pendingNote, setPendingNote] = useState<string | null>(null);
+  const sending = useRef(false);
   const ready = !uncertain && canOperate(store.connection, hasKey, store.lastMessageAt, tick);
+  // store は毎回作り直されるので、依存に入れずに最新版だけ持っておく
+  const refreshRef = useRef(store.refresh);
+  refreshRef.current = store.refresh;
+  const held = store.snapshot?.state.hold.active ?? false;
 
   useEffect(() => {
     setHasKey(getOperatorKey() !== '');
@@ -475,6 +486,13 @@ export default function LivePage() {
       else root.setAttribute('data-theme', before);
     };
   }, []);
+
+  // 緊急停止がかかったら、預かっている操作は捨てる。止めている最中に進めない。
+  useEffect(() => {
+    if (!held || !pending) return;
+    setPendingNote('緊急停止のため「' + pending.label + '」の予約を取り消しました。');
+    setPending(null);
+  }, [held, pending]);
 
   const stopMusic = useCallback(() => {
     generation.current++;
@@ -494,6 +512,46 @@ export default function LivePage() {
   }, [stopMusic]);
 
   useEffect(() => { if (store.snapshot?.state.hold.active) stopMusic(); }, [store.snapshot?.state.hold.active, stopMusic]);
+
+  // 通信が戻った瞬間に、預かっていた操作を1回だけ送る。
+  // tick（0.5秒ごと）で見直すので、時間切れも復帰も取りこぼさない。
+  useEffect(() => {
+    if (!pending || sending.current) return;
+    const decision = decidePending(pending, ready, Date.now());
+    if (decision.kind === 'expired') {
+      setPending(null);
+      setPendingNote(
+        '通信が戻らなかったので「' + pending.label + '」は送っていません。いまの試合を確かめてから、もう一度押してください。',
+      );
+      return;
+    }
+    if (decision.kind !== 'send') return;
+    if (!gate.current.acquire(Date.now())) return; // 別の送信中。次の tick でやり直す
+    sending.current = true;
+    setBusy(true);
+    void (async () => {
+      try {
+        // 実際に進む今、鳴っている曲を止める（予約した時点では止めない）。
+        stopMusic();
+        // 押した時点の版のまま送る。別の端末が先に進めていれば、サーバーが拒否する。
+        const res = await sendCommand(pending.command, pending.expectedVersion);
+        setPending(null);
+        if (res.ok) {
+          setPendingNote('通信が戻ったので「' + pending.label + '」を送りました。');
+        } else {
+          setPendingNote(
+            '「' + pending.label + '」は送れませんでした: ' + (res.reason ?? '理由が分かりません') +
+              '。いまの試合を確かめてください。',
+          );
+        }
+        if (res.uncertain || !(await refreshRef.current())) setUncertain(true);
+      } finally {
+        gate.current.release(Date.now());
+        sending.current = false;
+        setBusy(false);
+      }
+    })();
+  }, [pending, ready, tick, stopMusic]);
 
   const match = store.snapshot ? currentMatch(store.snapshot.program, store.snapshot.state) : null;
   const matchNo = match ? match.no : -1;
@@ -546,6 +604,9 @@ export default function LivePage() {
   if (!store.snapshot) return <Loading connection={store.connection} error={store.error} />;
 
   const { state, program } = store.snapshot;
+  // 通信が切れている今、「予約しますか？」と申し出てよいか
+  const offerQueue = canQueue({ hasKey, uncertain, held: state.hold.active, canSendNow: ready, pending });
+  const pendingWait = pending ? decidePending(pending, false, tick) : null;
   const action = liveNextAction(program, state);
   const back = livePrevAction(program, state);
 
@@ -556,7 +617,25 @@ export default function LivePage() {
 
   /** 試合を動かす。前へも次へも、通るのはこの1本だけにする（二重送信を1か所で止める） */
   const move = async (label: string, command: Parameters<typeof sendCommand>[0]) => {
-    if (!ready || !window.confirm(label + 'に進みますか？\n' + (playing ? 'OS内の音楽を停止します。\n' : '') + (externalOpen ? '外部アプリの音楽は外部側で停止してください。' : '')) || !gate.current.acquire(Date.now())) return;
+    // 通信が切れているときは、送らずに預かる。押しても何も起きない画面を作らない。
+    if (!ready) {
+      if (!offerQueue) return;
+      const ask = [
+        label + 'を予約しますか？',
+        '',
+        'いま通信が切れています。すぐには進みません。',
+        '通信が戻ったら、この操作を自動で1回だけ送ります。',
+        '90秒たっても戻らないときは、送らずに取り消します。',
+        '',
+        '（取り消しは下のボタンでいつでもできます）',
+      ].join('\n');
+      if (!window.confirm(ask)) return;
+      setNote(null);
+      setPendingNote(null);
+      setPending({ command, label, expectedVersion: state.version, queuedAt: Date.now() });
+      return;
+    }
+    if (!window.confirm(label + 'に進みますか？\n' + (playing ? 'OS内の音楽を停止します。\n' : '') + (externalOpen ? '外部アプリの音楽は外部側で停止してください。' : '')) || !gate.current.acquire(Date.now())) return;
     setBusy(true);
     setNote(null);
     stopMusic();
@@ -590,7 +669,46 @@ export default function LivePage() {
         onOpenSettings={() => setSettingsOpen((v) => !v)}
       />
 
-      {!ready && <p role="status" className="bg-amber-100 p-4 font-bold text-amber-900">最新状態を確認するまで進行できません。<button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button></p>}
+      {/* 預かっている操作。いちばん上に、いちばん大きく出す（忘れさせない） */}
+      {pending ? (
+        <div role="status" className="border-b-4 border-amber-500 bg-amber-100 px-4 py-4">
+          <p className="text-xl font-black text-amber-900 sm:text-2xl">
+            「{pending.label}」を預かっています
+          </p>
+          <p className="mt-1 text-base font-bold text-amber-900">
+            通信が戻ったら自動で送ります。まだ試合は進んでいません。
+            {pendingWait && pendingWait.kind === 'wait' ? '（' + waitCountdownLabel(pendingWait.remainingMs) + '）' : null}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setPending(null);
+              setPendingNote('予約を取り消しました。試合は進んでいません。');
+            }}
+            className="mt-3 min-h-[56px] rounded-2xl border-2 border-amber-700 bg-white px-5 text-lg font-black text-amber-900"
+          >
+            予約を取り消す
+          </button>
+        </div>
+      ) : null}
+
+      {pendingNote ? (
+        <p role="status" className="border-b-2 border-slate-300 bg-white px-4 py-3 text-base font-bold text-slate-800">
+          {pendingNote}
+          <button type="button" className="ml-4 min-h-12 underline" onClick={() => setPendingNote(null)}>
+            閉じる
+          </button>
+        </p>
+      ) : null}
+
+      {!ready && !pending && (
+        <p role="status" className="bg-amber-100 p-4 font-bold text-amber-900">
+          {offerQueue
+            ? '通信が切れています。いま「次の試合へ」を押すと、通信が戻ったときに送る予約になります。'
+            : '最新状態を確認するまで進行できません。'}
+          <button className="ml-4 min-h-12 underline" onClick={async () => { if (await store.refresh()) setUncertain(false); }}>最新状態を確認</button>
+        </p>
+      )}
       <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-4">
         {match ? (
           <>
@@ -666,7 +784,7 @@ export default function LivePage() {
             <button
               type="button"
               onClick={() => void goBack()}
-              disabled={busy || !ready}
+              disabled={busy || pending !== null || (!ready && !offerQueue)}
               className="flex min-h-[88px] w-full items-center justify-center rounded-2xl border-2 border-slate-300 bg-white px-3 text-lg font-black text-slate-700 transition hover:bg-slate-100 active:scale-[0.99] disabled:text-slate-300 sm:w-[32%] sm:max-w-[240px] sm:text-xl"
             >
               {busy ? '…' : back.label}
@@ -677,10 +795,10 @@ export default function LivePage() {
             <button
               type="button"
               onClick={() => void advance()}
-              disabled={busy || !ready}
+              disabled={busy || pending !== null || (!ready && !offerQueue)}
               className={TAP + ' min-h-[104px] flex-1 bg-emerald-600 text-2xl shadow-sm hover:bg-emerald-500 disabled:bg-emerald-200 sm:text-3xl'}
             >
-              {busy ? '送信中…' : action.label}
+              {busy ? '送信中…' : !ready && offerQueue ? action.label + '（通信待ちで予約）' : action.label}
             </button>
           ) : (
             <p className="flex min-h-[104px] flex-1 items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white px-4 text-center text-xl font-bold text-slate-500">

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Snapshot, ServerMessage } from '../../core/types.ts';
 import { getApiBase, wsUrl } from './config.ts';
 import { readSnapshotCache, snapshotCacheKey } from '../../core/snapshotCache.ts';
+import { fetchWithDeadline } from '../../core/net.ts';
 
 export type Connection = 'connecting' | 'live' | 'polling' | 'offline';
 
@@ -96,7 +97,7 @@ export function useEventState(): EventStore {
     const base = getApiBase();
     try {
       const sentAt = Date.now();
-      const res = await fetch(base + '/api/time', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
+      const res = await fetchWithDeadline(fetch, base + '/api/time', 5_000, { cache: 'no-store' });
       if (!res.ok) return;
       const receivedAt = Date.now();
       const data = (await res.json()) as { serverNow: number };
@@ -112,7 +113,7 @@ export function useEventState(): EventStore {
   const pull = useCallback(async () => {
     const base = getApiBase();
     try {
-      const res = await fetch(base + '/api/state', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
+      const res = await fetchWithDeadline(fetch, base + '/api/state', 5_000, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = (await res.json()) as Snapshot;
       applySnapshot(data);
