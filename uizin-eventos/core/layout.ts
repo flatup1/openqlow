@@ -51,8 +51,13 @@ export function pairCommentSizeClass(red: string, blue: string): string {
  * 下限は 160px。これ以上小さいと、誰の顔か分からなくなる。
  */
 export function photoHeightClass(pairLength: number): string {
-  // 値は 1280x900 での実測から決めた。これより大きくすると意気込みが枠から切れ、
-  // 小さくすると顔が分からなくなる。収まる範囲は 160〜196px だった。
+  // 値は実測で決めた。これより大きいと意気込みの見える量が減り、
+  // 小さいと顔が分からなくなる。下限の 160px は必ず守る。
+  //
+  // 一度この値を vh（画面の高さに対する割合）にしたが、やめた。
+  // 画面の低い端末で入場曲の行が隠れる問題は、写真の大きさではなく
+  // 「曲名がスクロールする側に入っていた」ことが原因で、そちらを直したため。
+  // vh にすると 900px の画面で 153px まで下がり、この下限を割ってしまう。
   if (pairLength <= 60) return 'h-[192px]';
   if (pairLength <= 140) return 'h-[176px]';
   return 'h-[160px]';

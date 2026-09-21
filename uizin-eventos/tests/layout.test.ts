@@ -55,11 +55,30 @@ test('/live/ の写真は、赤青で必ず同じ大きさになる作りをし�
 test('写真の高さは、意気込みが長いほど下がるが 160px を下回らない', () => {
   let previous = 9999;
   for (let len = 0; len <= 500; len += 5) {
-    const px = Number(photoHeightClass(len).match(/(\d+)/)![1]);
+    const cls = photoHeightClass(len);
+    const px = Number(cls.match(/(\d+)px/)![1]);
     assert.ok(px <= previous, len + '文字で写真が大きくなった');
     assert.ok(px >= 160, len + '文字で写真が ' + px + 'px まで小さくなった');
     previous = px;
   }
+});
+
+test('写真の高さに、160px を下回りうる書き方を混ぜない', () => {
+  // vh を混ぜると 900px の画面で 153px まで下がり、下限を割った（実測）。
+  // 数字がそのまま高さになる書き方だけにして、下限を必ず守る。
+  for (const len of [0, 100, 300]) {
+    const cls = photoHeightClass(len);
+    assert.match(cls, /^h-\[\d+px\]$/, len + '文字のとき、高さが読み取れない書き方: ' + cls);
+  }
+});
+
+test('/live/ は、進行担当が必ず見るもの（名前・所属・入場曲）をスクロールさせない', () => {
+  // 曲名がスクロールする側に入っていたため、iPad とスマホで隠れていた（実測）。
+  const src = readFileSync(new URL('../app/live/page.tsx', import.meta.url), 'utf8');
+  const scroll = src.indexOf('overflow-y-auto');
+  const song = src.indexOf('入場曲:');
+  assert.ok(scroll > 0 && song > 0, '入場曲の行とスクロール枠が見つからない');
+  assert.ok(song < scroll, '入場曲の行がスクロールする枠の中にある');
 });
 
 test('写真の高さは、赤青で必ず同じ値になる', () => {

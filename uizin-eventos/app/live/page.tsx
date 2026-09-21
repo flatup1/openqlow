@@ -222,13 +222,15 @@ function Corner({
         </div>
 
         {/*
-          文字は縮めない、が原則。ただし高さが足りないときに
-          ページ全体をあふれさせる（＝「次の試合へ」が押せなくなる）よりは、
-          このカードの中だけでスクロールさせる方が安全なので、
-          最後の逃げ道として min-h-0 + overflow-y-auto を置いてある。
-          意気込みの文字を長さに応じて小さくしているので、ここはほぼ発動しない。
+          進行担当が必ず見るもの（名前・所属・入場曲）は、絶対にスクロールさせない。
+          スクロールするのは意気込みだけ。
+
+          以前はこの4つを1つの枠に入れてスクロールさせていたため、
+          画面の低い端末（iPad 768px・スマホ）で入場曲の行が下に隠れていた（実測）。
+          曲名が見えないと、進行担当は何を流せばいいか分からなくなる。
         */}
-        <div className="min-h-0 shrink overflow-y-auto p-4">
+        <div className="flex min-h-0 flex-1 flex-col p-4">
+          <div className="shrink-0">
           {/* 画面でいちばん大きい文字は選手名。写真に重ねないので、顔が隠れない */}
           <p className="text-[clamp(1.6rem,4.2vw,3.2rem)] font-black leading-none text-slate-900">
             {fighter.name || '（未入力）'}
@@ -250,19 +252,18 @@ function Corner({
               {playing ? '▶ 再生中' : '停止中'}
             </span>
           </p>
+          </div>
+
           {/*
-            意気込みは、長い試合ではこの枠の中でスクロールする。
+            意気込みだけがスクロールする。
             全文が要るのはMC。MC画面（/mc/）と表示画面（/screen/）が全文を持っているので、
-            この画面では「顔・名前・曲」を先に出し、意気込みを最後に置く。
-            曲名が意気込みに押し出されて見えなくなる方が、進行担当には困る。
+            この画面では「顔・名前・曲」を必ず見せることを優先する。
           */}
-          <p
-            className={
-              'mt-3 border-t border-slate-200 pt-3 font-bold leading-relaxed text-slate-900 ' + commentClass
-            }
-          >
-            {fighter.comment ? '「' + fighter.comment + '」' : '（意気込み未入力）'}
-          </p>
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto border-t border-slate-200 pt-3">
+            <p className={'font-bold leading-relaxed text-slate-900 ' + commentClass}>
+              {fighter.comment ? '「' + fighter.comment + '」' : '（意気込み未入力）'}
+            </p>
+          </div>
         </div>
       </div>
 
