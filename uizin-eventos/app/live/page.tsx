@@ -102,6 +102,25 @@ function PlayButton({
   );
 }
 
+/**
+ * 写真が無いときに出す人型。
+ *
+ * 画像ファイルではなく SVG を直接書いている。
+ * 会場のネットが切れても、この形だけは必ず出したいため
+ * （写真が出ない枠で、さらに読み込み待ちの空白が出るのを避ける）。
+ */
+function FighterSilhouette() {
+  return (
+    <svg viewBox="0 0 120 120" className="h-2/3 w-2/3 max-h-[160px] text-slate-500" aria-hidden="true">
+      <ellipse cx="60" cy="41" rx="20.5" ry="24.5" fill="currentColor" />
+      <path
+        d="M60 69c-23.5 0-38 13.8-41.2 31.4-.8 4.4 2.6 8.6 7.1 8.6h68.2c4.5 0 7.9-4.2 7.1-8.6C98 82.8 83.5 69 60 69z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function Corner({
   side,
   fighter,
@@ -138,40 +157,47 @@ function Corner({
           (playing ? ' ring-4 ring-emerald-400' : '')
         }
       >
-        {/* 写真は大きく。ただし PC では1画面に収まる高さで止める（スクロールさせない）。
-            32vh は、意気込みがいちばん長い第19・第43試合でも収まる値として実測で決めた。 */}
+        {/*
+          写真の枠。
+
+          実測（2026-09-21・75枚）: 申込写真の93%が縦長 3:4。
+          これを横長の枠に object-cover で入れると、写真の上56%しか映らず、
+          さらに名前の帯が下を覆うため、実際に見えるのは「額から上」だけになる。
+          顔が出ないと、誰の試合か分からない画面になってしまう。
+
+          そこで:
+            - 枠を縦長 4:5 にして、切り落とす量そのものを減らす
+            - object-position を 50% 22% にして、顔が来る高さを枠の中に入れる
+            - 名前は写真の上に重ねず、下に置く（顔を隠さない）
+        */}
         <div
           className={
-            'relative aspect-[4/5] w-full sm:aspect-[4/3] sm:max-h-[32vh] ' +
+            'relative aspect-[4/5] w-full sm:max-h-[24vh] ' +
             (showPhoto ? 'bg-slate-900' : 'bg-slate-100')
           }
         >
-          {!showPhoto ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="rounded-xl border-2 border-dashed border-slate-300 px-4 py-2 text-base font-bold text-slate-400">
-                画像なし
-              </span>
-            </div>
-          ) : null}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-100 p-4">
+            <FighterSilhouette />
+            {!showPhoto ? <span className="text-sm font-bold text-slate-400">画像なし</span> : null}
+          </div>
 
           {showPhoto ? (
-            <>
-              <img
-                src={fighter.photo}
-                alt=""
-                aria-hidden="true"
-                referrerPolicy="no-referrer"
-                onError={() => setPhotoBroken(true)}
-                className="absolute inset-0 h-full w-full object-cover object-top"
-              />
-              <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 30%, rgba(0,0,0,0.3) 60%, rgba(0,0,0,0) 100%)',
-                }}
-              />
-            </>
+            <img
+              src={fighter.photo}
+              alt=""
+              aria-hidden="true"
+              referrerPolicy="no-referrer"
+              onError={() => setPhotoBroken(true)}
+              // object-cover（切り取り）にしない。
+              // 実測（2026-09-21・75枚）で申込写真の93%が縦長 3:4 なのに対し、
+              // ここに使える枠は横長になる。切り取ると必ずどこかが欠け、
+              // 実際に「額から上だけ」「目元だけ」になった写真があった。
+              // 顔が欠けると誰の試合か分からなくなるので、全体を必ず映す。
+              //
+              // 写真の27枚は外部サイトにあり、1枚5〜8秒かかることがある（同日実測）。
+              // 読み込みを待つ間も人型を見せたいので、下のシルエットの上に重ねている。
+              className="absolute inset-0 h-full w-full object-contain"
+            />
           ) : null}
 
           <span
@@ -181,22 +207,15 @@ function Corner({
           >
             {sideLabel(side)}
           </span>
-
-          <div className="absolute inset-x-0 bottom-0 p-4">
-            {/* 画面でいちばん大きい文字は選手名。写真が無いときは白文字だと読めないので黒にする */}
-            <p
-              className={
-                'text-[clamp(1.7rem,4.6vw,3.6rem)] font-black leading-none ' +
-                (showPhoto ? 'text-white drop-shadow-lg' : 'text-slate-900')
-              }
-            >
-              {fighter.name || '（未入力）'}
-            </p>
-            <div className={'mt-2 h-1.5 w-24 rounded-full ' + rule} />
-          </div>
         </div>
 
         <div className="p-4">
+          {/* 画面でいちばん大きい文字は選手名。写真に重ねないので、顔が隠れない */}
+          <p className="text-[clamp(1.6rem,4.2vw,3.2rem)] font-black leading-none text-slate-900">
+            {fighter.name || '（未入力）'}
+          </p>
+          <div className={'mb-3 mt-2 h-1.5 w-24 rounded-full ' + rule} />
+
           <p className="text-base font-semibold text-slate-600 sm:text-lg">
             {[fighter.team, fighter.record].filter(Boolean).join('　/　') || '—'}
           </p>
