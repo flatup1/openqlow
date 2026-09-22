@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>UIZIN 2026 ルール ショート</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  /* UIZIN 2026 みんなのルールブック → 縦型ショート（1080x1920 / 約56秒）
+     原本: UIZIN 2026 ルールブック PAGE1-4 ＋ 確認用PDF（2026.09.20）
+     ※ 旧版ポスターの「そのラウンドは終了」は使わず、2026版「試合全体で2回目のダウンで終了」を採用 */
+  :root{
+    --bg:#101217; --ink:#fff; --sub:#b9bdc8;
+    --pink:#ff2d87; --cyan:#00d1f0; --lime:#d4ff2e; --card:#1b1e26;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1080px;height:1920px;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans JP","IPAGothic",sans-serif;font-weight:900}
+  #stage{position:relative;width:1080px;height:1920px;overflow:hidden;
+    background:radial-gradient(1200px 900px at 80% 10%,#23192a 0%,transparent 60%),
+               radial-gradient(900px 900px at 0% 100%,#0f2229 0%,transparent 60%),var(--bg)}
+  /* 背景の斜めライン */
+  .slash{position:absolute;height:46px;background:var(--pink);transform:rotate(-18deg);opacity:.9}
+  #s1{width:900px;left:520px;top:140px}
+  #s2{width:700px;left:-260px;top:1780px;background:var(--cyan);height:22px}
+
+  /* 共通ヘッダー・フッター */
+  #hdr{position:absolute;left:72px;top:96px;font-family:Oswald,sans-serif;font-size:34px;letter-spacing:.14em;color:var(--sub)}
+  #hdr b{color:var(--pink)}
+  #bar{position:absolute;left:72px;right:72px;top:160px;height:10px;background:#2a2e38;border-radius:5px;overflow:hidden}
+  #bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pink),var(--cyan))}
+  #note{position:absolute;left:0;right:0;bottom:70px;text-align:center;font-size:30px;font-weight:500;color:#7d8290}
+
+  .scene{position:absolute;inset:0;opacity:0}
+  /* Shortsの下部UI・右側ボタンに被らない範囲で上下中央 */
+  .wrap{position:absolute;left:72px;right:110px;top:230px;bottom:430px;display:flex;flex-direction:column;justify-content:center}
+  .no{font-family:Oswald,sans-serif;font-size:150px;line-height:1;color:var(--pink);font-style:italic}
+  .no.c{color:var(--cyan)} .no.l{color:var(--lime)}
+  .ttl{font-size:92px;line-height:1.2;margin-top:10px}
+  .big{font-size:170px;line-height:1.05;letter-spacing:-.02em}
+  .big em{font-style:normal;color:var(--pink)}
+  .mid{font-size:64px;line-height:1.35}
+  .txt{font-size:48px;line-height:1.6;font-weight:700;color:#e8eaf0}
+  .hl{background:linear-gradient(transparent 62%,rgba(212,255,46,.55) 62%)}
+  .pink{color:var(--pink)} .cyan{color:var(--cyan)} .lime{color:var(--lime)}
+  .card{background:var(--card);border-radius:28px;padding:40px 44px;border-left:14px solid var(--cyan)}
+  .card.p{border-left-color:var(--pink)} .card.l{border-left-color:var(--lime)}
+  .row{display:flex;gap:28px}
+  .chip{display:inline-block;padding:14px 30px;border-radius:999px;font-size:44px;background:#262a34}
+  .ok{display:flex;align-items:center;gap:26px;font-size:62px;margin:26px 0}
+  .ok .ic{width:92px;height:92px;border-radius:50%;border:16px solid var(--cyan);flex:none}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px}
+  .ng{background:var(--card);border-radius:22px;padding:34px 10px 30px;text-align:center;font-size:40px;position:relative}
+  .ng .x{font-family:Oswald,sans-serif;font-size:84px;line-height:1;color:var(--pink);display:block;margin-bottom:6px}
+  .step{display:flex;align-items:center;gap:26px;margin:22px 0}
+  .step .n{width:96px;height:96px;border-radius:50%;background:#fff;color:var(--bg);font-family:Oswald,sans-serif;
+    font-size:60px;display:flex;align-items:center;justify-content:center;flex:none}
+  .step .t{font-size:72px}
+  .arrow{font-size:60px;color:var(--sub);margin-left:32px}
+  .stop{width:420px;height:420px;margin:0 auto;background:var(--pink);
+    clip-path:polygon(29% 0,71% 0,100% 29%,100% 71%,71% 100%,29% 100%,0 71%,0 29%);
+    display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:130px}
+  .clock{width:230px;height:230px;border-radius:50%;border:16px solid var(--cyan);position:relative}
+  .clock:before,.clock:after{content:"";position:absolute;left:50%;top:50%;width:16px;background:var(--cyan);border-radius:8px;transform-origin:50% 0}
+  .clock:before{height:78px;transform:translate(-50%,0) rotate(180deg)}
+  .clock:after{height:60px;transform:translate(-50%,0) rotate(-90deg)}
+  .center{text-align:center}
+  .logo{font-family:Oswald,sans-serif;font-size:210px;letter-spacing:.02em;line-height:1;font-style:italic}
+  .logo span{color:var(--pink)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="slash" id="s1"></div>
+  <div class="slash" id="s2"></div>
+  <div id="hdr">UIZIN <b>2026</b> / RULE BOOK</div>
+  <div id="bar"><i></i></div>
+
+  <!-- 0 オープニング -->
+  <section class="scene" data-dur="3.6">
+    <div class="wrap">
+      <div class="a mid" data-at=".1" style="color:var(--sub)">試合の前に</div>
+      <div class="a big" data-at=".35">親子で<br><em>60秒</em><br>チェック。</div>
+      <div class="a txt" data-at="1.1" style="margin-top:60px">UIZIN 2026<br>みんなのルールブック</div>
+      <div class="a row" data-at="1.6" style="margin-top:50px">
+        <span class="chip pink">あんぜん</span><span class="chip cyan">チャレンジ</span><span class="chip lime">リスペクト</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 試合時間 -->
+  <section class="scene" data-dur="4.2">
+    <div class="wrap">
+      <div class="a no c" data-at="0">01</div>
+      <div class="a ttl" data-at=".15">しあいの時間</div>
+      <div class="a row" data-at=".45" style="align-items:center;margin-top:70px">
+        <div class="clock"></div>
+        <div class="big" style="font-size:150px"><em>90</em>秒<br>×<em>2</em>R</div>
+      </div>
+      <div class="a card" data-at="1.2" style="margin-top:70px">
+        <div class="mid">休けい <span class="cyan">60秒</span></div>
+        <div class="txt">全年齢共通・延長なし</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 顔への攻撃 -->
+  <section class="scene" data-dur="3.6">
+    <div class="wrap">
+      <div class="a no l" data-at="0">02</div>
+      <div class="a ttl" data-at=".15">顔への攻撃</div>
+      <div class="a big" data-at=".45" style="font-size:300px;margin-top:40px"><em>あり</em></div>
+      <div class="a card l" data-at="1.1" style="margin-top:60px">
+        <div class="mid">年れいに関係なく<br>みんな同じ</div>
+        <div class="txt">ヘッドギアをつけて たたかいます</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 できること -->
+  <section class="scene" data-dur="4.4">
+    <div class="wrap">
+      <div class="a no c" data-at="0">03</div>
+      <div class="a ttl" data-at=".15"><span class="cyan">〇</span> できること</div>
+      <div style="margin-top:50px">
+        <div class="a ok" data-at=".4"><span class="ic"></span>パンチ</div>
+        <div class="a ok" data-at=".6"><span class="ic"></span>キック</div>
+        <div class="a ok" data-at=".8"><span class="ic"></span>首相撲（くびずもう）</div>
+      </div>
+      <div class="a card" data-at="1.4" style="margin-top:40px">
+        <div class="txt">首をつかんで保持 <span class="cyan">OK</span><br>ヒザは <span class="pink">1回まで</span></div>
+        <div class="mid" style="margin-top:10px">顔へのヒザは<span class="pink">ダメ</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 できないこと -->
+  <section class="scene" data-dur="5">
+    <div class="wrap">
+      <div class="a no" data-at="0">04</div>
+      <div class="a ttl" data-at=".15"><span class="pink">✕</span> できないこと</div>
+      <div class="grid" style="margin-top:50px">
+        <div class="a ng" data-at=".4"><span class="x">✕</span>顔へのヒザ</div>
+        <div class="a ng" data-at=".5"><span class="x">✕</span>ヒジ打ち</div>
+        <div class="a ng" data-at=".6"><span class="x">✕</span>頭突き</div>
+        <div class="a ng" data-at=".7"><span class="x">✕</span>投げ</div>
+        <div class="a ng" data-at=".8"><span class="x">✕</span>関節技</div>
+        <div class="a ng" data-at=".9"><span class="x">✕</span>タックル</div>
+        <div class="a ng" data-at="1.0"><span class="x">✕</span>関節蹴り</div>
+        <div class="a ng" data-at="1.1"><span class="x">✕</span>足かけ<br>払って倒す</div>
+        <div class="a ng" data-at="1.2"><span class="x">✕</span>首をつかんで<br>振り回す</div>
+      </div>
+      <div class="a txt" data-at="1.9" style="margin-top:44px">レフェリーが<span class="hl">危ない</span>と判断した<br>行為もダメ</div>
+    </div>
+  </section>
+
+  <!-- 5 2ダウン制 -->
+  <section class="scene" data-dur="4.4">
+    <div class="wrap">
+      <div class="a no l" data-at="0">05</div>
+      <div class="a ttl" data-at=".15">2ダウン制</div>
+      <div class="a big" data-at=".45" style="margin-top:50px;font-size:140px">試合全体で<br><em>2回目</em>の<br>ダウンで終了</div>
+      <div class="a card p" data-at="1.5" style="margin-top:60px">
+        <div class="txt"><span class="pink">10カウント</span>以内に ファイティング<br>ポーズがとれないと <span class="pink">KO</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 判定 -->
+  <section class="scene" data-dur="4.6">
+    <div class="wrap">
+      <div class="a no c" data-at="0">06</div>
+      <div class="a ttl" data-at=".15">判定のきまり</div>
+      <div class="a mid" data-at=".4" style="margin-top:36px">ジャッジ<span class="cyan">3名</span>・<span class="pink">2票以上</span>で勝ち<br><span class="lime">ドロー（引き分け）</span>もあり</div>
+      <div class="a txt" data-at="1.1" style="margin-top:60px;color:var(--sub)">見るポイント（大事な順）</div>
+      <div class="a step" data-at="1.3"><span class="n">1</span><span class="t">ダウン</span></div>
+      <div class="a step" data-at="1.5"><span class="n">2</span><span class="t">ダメージ</span></div>
+      <div class="a step" data-at="1.7"><span class="n">3</span><span class="t">クリーンヒット</span></div>
+    </div>
+  </section>
+
+  <!-- 7 防具 -->
+  <section class="scene" data-dur="4.8">
+    <div class="wrap">
+      <div class="a no l" data-at="0">07</div>
+      <div class="a ttl" data-at=".15">レガース<span style="font-size:60px">（すねあて）</span></div>
+      <div class="a card" data-at=".45" style="margin-top:44px">
+        <div class="mid">小・中学生</div>
+        <div class="txt">点検済みパッド入りの<span class="cyan">布製もOK</span></div>
+      </div>
+      <div class="a card p" data-at=".75" style="margin-top:24px">
+        <div class="mid">高校生以上</div>
+        <div class="txt"><span class="pink">革・合皮</span>が必須</div>
+      </div>
+      <div class="a card l" data-at="1.4" style="margin-top:24px">
+        <div class="mid">胴当て（どうあて）</div>
+        <div class="txt">未就学児・幼児・60代以上は<br>希望すれば使える（両選手が着用）</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 STOP -->
+  <section class="scene" data-dur="4.4">
+    <div class="wrap">
+      <div class="a no" data-at="0">08</div>
+      <div class="a stop" data-at=".25" style="margin-top:30px">STOP</div>
+      <div class="a big center" data-at=".8" style="font-size:118px;margin-top:60px">レフェリーが<br>止めたら<br><em>すぐ止まる。</em></div>
+      <div class="a txt center" data-at="1.6" style="margin-top:40px">危ないときは カウントやダウン数に<br>関係なく 試合を止めます</div>
+    </div>
+  </section>
+
+  <!-- 9 言っていい -->
+  <section class="scene" data-dur="4.6">
+    <div class="wrap">
+      <div class="a no c" data-at="0">09</div>
+      <div class="a big" data-at=".25" style="font-size:128px;margin-top:40px"><span class="cyan">「いたい」</span><br><span class="cyan">「こわい」</span><br><span class="cyan">「やめたい」</span></div>
+      <div class="a mid" data-at=".9" style="margin-top:30px">と言っていい。</div>
+      <div class="a card" data-at="1.5" style="margin-top:60px">
+        <div class="txt">がまんはさせません。<br>レフェリーやセコンドに<br>すぐ伝えてね。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 反則・マナー -->
+  <section class="scene" data-dur="4.6">
+    <div class="wrap">
+      <div class="a no l" data-at="0">10</div>
+      <div class="a ttl" data-at=".15">反則とマナー</div>
+      <div style="margin-top:40px">
+        <div class="a step" data-at=".4"><span class="n">1</span><span class="t">うっかり → <span class="lime">注意</span></span></div>
+        <div class="a step" data-at=".65"><span class="n">2</span><span class="t">くり返し → <span class="cyan">減点</span></span></div>
+        <div class="a step" data-at=".9"><span class="n">3</span><span class="t">わざと・危険 → <span class="pink">失格</span></span></div>
+      </div>
+      <div class="a card p" data-at="1.6" style="margin-top:50px">
+        <div class="txt">相手を尊重しよう。<br>挑発・「効いてる」などの煽りは<span class="pink">NG</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 救護 -->
+  <section class="scene" data-dur="3.4">
+    <div class="wrap">
+      <div class="a no c" data-at="0">11</div>
+      <div class="a big" data-at=".25" style="font-size:132px">救急救命士が<br><em>全試合</em><br>いつもいます</div>
+      <div class="a txt" data-at="1" style="margin-top:50px">大会当日、1名が常駐します</div>
+    </div>
+  </section>
+
+  <!-- 12 エンディング -->
+  <section class="scene" data-dur="4.4">
+    <div class="wrap center">
+      <div class="a big" data-at=".1" style="font-size:132px">安全が<br><em>いちばん。</em></div>
+      <div class="a mid" data-at=".8" style="margin-top:50px"><span class="hl">やめる勇気</span>も、<br>強さのひとつ。</div>
+      <div class="a logo" data-at="1.5" style="margin-top:110px">UI<span>Z</span>IN</div>
+      <div class="a txt" data-at="1.9" style="color:var(--sub)">だれでも、どこからでも、強くなれる。</div>
+    </div>
+  </section>
+
+  <div id="note">※確認用・配布前｜主催者・審判の最終確認後に公開</div>
+</div>
+
+<script>
+  // 時刻 t（秒）を渡すと、その瞬間の絵になる。書き出しスクリプトが1フレームずつ呼ぶ。
+  const scenes=[...document.querySelectorAll('.scene')];
+  const FADE=.28; let T=0; const spans=[];
+  const anims=[];
+  const ease='cubic-bezier(.2,.9,.25,1.15)';
+  scenes.forEach(s=>{
+    const d=+s.dataset.dur; spans.push([T,T+d]);
+    anims.push(s.animate([{opacity:0,transform:'translateY(30px)'},{opacity:1,transform:'none',offset:FADE/d},
+      {opacity:1,transform:'none',offset:1-FADE/d},{opacity:0,transform:'translateY(-30px)'}],
+      {duration:d*1000,delay:T*1000,fill:'both'}));
+    s.querySelectorAll('.a').forEach(el=>{
+      const at=T+(+el.dataset.at||0)+.12;
+      const kf=el.classList.contains('stop')||el.classList.contains('ng')
+        ?[{opacity:0,transform:'scale(.4) rotate(-8deg)'},{opacity:1,transform:'none'}]
+        :[{opacity:0,transform:'translateX(-60px)'},{opacity:1,transform:'none'}];
+      anims.push(el.animate(kf,{duration:520,delay:at*1000,fill:'both',easing:ease}));
+    });
+    T+=d;
+  });
+  const TOTAL=T;
+  const bar=document.querySelector('#bar i');
+  anims.push(bar.animate([{width:'0%'},{width:'100%'}],{duration:TOTAL*1000,fill:'both'}));
+  anims.push(document.getElementById('s1').animate([{transform:'rotate(-18deg) translateX(0)'},{transform:'rotate(-18deg) translateX(-160px)'}],{duration:TOTAL*1000,fill:'both'}));
+  anims.push(document.getElementById('s2').animate([{transform:'rotate(-18deg) translateX(0)'},{transform:'rotate(-18deg) translateX(220px)'}],{duration:TOTAL*1000,fill:'both'}));
+  anims.forEach(a=>a.pause());
+  window.TOTAL=TOTAL;
+  window.seek=t=>{anims.forEach(a=>a.currentTime=t*1000)};
+  seek(new URLSearchParams(location.search).get('t')||0);
+</script>
+</body>
+</html>
