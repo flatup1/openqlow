@@ -277,7 +277,7 @@ function buildA() {
     ※ご記入いただいた情報は、本大会の運営・緊急連絡の目的にのみ使用します。　※「支払い済み」「受付済み」「計量済み」は別の状態です。混同しないでください。
   </div>
 </div>`;
-  return page(`${CONFIG.eventName} メディカルチェック／参加誓約書／保護者同意書`, css, body);
+  return { title: `${CONFIG.eventName} メディカルチェック／参加誓約書／保護者同意書`, css, body };
 }
 
 /* ==================================================================
@@ -350,7 +350,7 @@ function buildB() {
     <b>「支払い済み」「受付済み」「計量済み」は別の状態。</b>混同しないでください。　※当日追加・変更の選手は空欄行または裏面に追記。
   </div>
 </div>`;
-  return page(`${CONFIG.eventName} 計量チェックリスト`, css, body);
+  return { title: `${CONFIG.eventName} 計量チェックリスト`, css, body };
 }
 
 /* ==================================================================
@@ -419,7 +419,7 @@ function buildC() {
   <div class="grid">${dCells.join('')}</div>
 </div>`);
 
-  return page(`${CONFIG.eventName} 計量完了シール（${CONFIG.stickerPrefix}1〜${CONFIG.athletes}）`, css, sheets.join('\n'));
+  return { title: `${CONFIG.eventName} 計量完了シール（${CONFIG.stickerPrefix}1〜${CONFIG.athletes}）`, css, body: sheets.join('\n') };
 }
 
 /* ==================================================================
@@ -510,17 +510,44 @@ function buildD() {
     計量済みと言えるのは、精算確認 → 書類提出 → 計量実施 → 減点の確認 → 計量表に✓ まで終わった時点です。その後にシールを使います。
   </div>
 </div>`;
-  return page(`${CONFIG.eventName} 受付スタッフ用・5ステップ`, css, body);
+  return { title: `${CONFIG.eventName} 受付スタッフ用・5ステップ`, css, body };
+}
+
+/* ==================================================================
+   統合版｜A〜Dを1ファイル（全6ページ）にまとめる
+   書類ごとにCSSの名前が重なるため、各書類を .dx0 .dx1 … で包んで切り分ける。
+   ================================================================== */
+function scopeCss(css, scope) {
+  return css.replace(/([^{}]+)\{([^{}]*)\}/g, (_m, sel, decls) => {
+    const scoped = sel.split(',').map((x) => x.trim()).filter(Boolean)
+      .map((x) => `${scope} ${x}`).join(', ');
+    return `${scoped} { ${decls} }`;
+  });
+}
+
+function buildCombined(docs) {
+  const parts = docs.map((d, i) => ({ ...d, scope: `dx${i}` }));
+  const css = parts.map((d) => scopeCss(d.css, `.${d.scope}`)).join('\n')
+    + `\n@media print {
+      .sheet { page-break-after: always !important; break-after: page !important; }
+      body > div:last-child .sheet:last-child { page-break-after: auto !important; break-after: auto !important; }
+    }`;
+  const body = parts.map((d) => `<div class="${d.scope}">\n${d.body}\n</div>`).join('\n');
+  return page(`${CONFIG.eventName} 大会当日 印刷一式`, css, body);
 }
 
 /* ---------- 出力 ---------- */
-const outputs = [
+const docs = [
   ['A_メディカル_誓約_保護者同意.html', buildA()],
   ['B_計量チェックリスト.html', buildB()],
   ['C_計量完了シール_あお1-88.html', buildC()],
   ['D_受付スタッフ5ステップ.html', buildD()],
 ];
-for (const [file, html] of outputs) {
+for (const [file, d] of docs) {
+  const html = page(d.title, d.css, d.body);
   writeFileSync(join(OUT, file), html, 'utf8');
   console.log(`wrote print/${file} (${html.length} bytes)`);
 }
+const all = buildCombined(docs.map(([, d]) => d));
+writeFileSync(join(OUT, 'UIZIN_印刷一式_全6ページ.html'), all, 'utf8');
+console.log(`wrote print/UIZIN_印刷一式_全6ページ.html (${all.length} bytes)`);

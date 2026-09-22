@@ -17,6 +17,9 @@
 | C | `print/C_計量完了シール_あお1-88.pdf` | 3枚（青1-48／青49-88＋予備／減点シール）→ 切り分ける |
 | D | `print/D_受付スタッフ5ステップ.pdf` | 3〜5枚（受付卓・計量台・入口） |
 
+**まとめて1ファイルで刷る場合**は `print/UIZIN_印刷一式_全6ページ.pdf`（A→B→C×3→D の順で全6ページ）。
+運用ルールの読み物版PDFは `print/UIZIN_大会当日オペレーション_引き継ぎ.pdf`（当日は不要。事前共有用）。
+
 白黒プリンターでも全て読める。青シールだけは、青い紙に印刷するか枠を青ペンでなぞると識別しやすい。
 
 ## 名簿・開催日を差し替える
@@ -28,7 +31,8 @@
 3. ビルドする
 
 ```bash
-node docs/uizin-2026/build.mjs          # print/*.html を作り直す
+node docs/uizin-2026/build.mjs          # 印刷物（A〜D＋統合版）の HTML を作り直す
+node docs/uizin-2026/build-md.mjs docs/uizin-2026/UIZIN_大会当日オペレーション_引き継ぎ.md   # 引き継ぎ資料の HTML
 ```
 
 PDFも作り直す場合（Chrome / Chromium が必要）:
