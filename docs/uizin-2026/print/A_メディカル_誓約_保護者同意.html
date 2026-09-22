@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UIZIN メディカルチェック／参加誓約書／保護者同意書</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Meiryo",
+                 "Noto Sans JP", "IPAPGothic", "IPAGothic", sans-serif;
+    color: #000; background: #eee;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .sheet {
+    width: 210mm; height: 297mm; padding: 9mm 11mm;
+    margin: 0 auto; background: #fff; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .head { display: flex; align-items: flex-end; justify-content: space-between;
+          border-bottom: 2.4px solid #000; padding-bottom: 2mm; flex: 0 0 auto; }
+  .brand { font-size: 10.5pt; font-weight: 700; letter-spacing: .2em; }
+  .doc-title { font-size: 16pt; font-weight: 700; letter-spacing: .06em; margin-top: .6mm; }
+  .head-right { font-size: 8pt; text-align: right; line-height: 1.6; white-space: nowrap; }
+  .head-right .big { font-size: 10pt; font-weight: 700; }
+  .fillbox { display: inline-block; min-width: 26mm; border-bottom: 1px solid #555; }
+  .sec-title { font-size: 9.6pt; font-weight: 700; background: #000; color: #fff;
+               padding: .9mm 2.4mm; letter-spacing: .05em; }
+  .sec-title .sub { font-weight: 400; font-size: 7.8pt; letter-spacing: 0; }
+  .sec-body { border: 1px solid #000; border-top: none; padding: 2mm 2.6mm 1.2mm; }
+  .chk { list-style: none; }
+  .chk li { display: flex; align-items: flex-start; gap: 2mm; margin-bottom: 1.3mm;
+            font-size: 8.8pt; line-height: 1.35; }
+  .chk li::before { content: ""; flex: 0 0 auto; width: 3.4mm; height: 3.4mm;
+                    border: 1.3px solid #000; margin-top: .4mm; }
+  .chk.plain li::before { display: none; }
+  @media print { body { background: #fff; } .sheet { margin: 0; box-shadow: none; page-break-after: always; } .sheet:last-child { page-break-after: auto; } }
+  @media screen { .sheet { box-shadow: 0 2px 14px rgba(0,0,0,.25); margin: 7mm auto; } }
+
+    .sheet { font-size: 8.8pt; line-height: 1.38; }
+    .lead { font-size: 8.6pt; margin: 1.8mm 0 1.8mm; }
+    .sec { margin-top: 2mm; }
+    .row { display: flex; gap: 3mm; }
+    .fld { flex: 1; margin-bottom: 1.4mm; }
+    .fld .name { font-size: 7.4pt; color: #333; }
+    .fld .line { border-bottom: 1px solid #333; height: 5.8mm; }
+    .fld.w2 { flex: 2; }
+    .fld.sm { flex: .7; }
+    .chk li { margin-bottom: 1.1mm; }
+    .grp { font-size: 8.4pt; font-weight: 700; border-bottom: 1.2px solid #000;
+           margin: 0 0 1.2mm; padding-bottom: .4mm; }
+    .grp.second { margin-top: 2mm; }
+    .note { font-size: 7.8pt; margin-top: .8mm; }
+    .warn { font-weight: 700; }
+    .wbar { margin-top: 2mm; border: 1.6px solid #000; padding: 1.4mm 2.4mm; font-size: 8.2pt; line-height: 1.45; }
+    .wbar .h { font-weight: 700; font-size: 8.8pt; }
+    .wbar .p { font-weight: 700; }
+    .sign { margin-top: 2.2mm; border: 2px solid #000; padding: 1.8mm 3mm 1.4mm; }
+    .sign p { font-size: 8.8pt; margin-bottom: 1.4mm; }
+    .sign .must { font-weight: 700; }
+    .sign-row { display: flex; gap: 4mm; align-items: flex-end; }
+    .inline { display: flex; align-items: flex-end; border-bottom: 1px solid #333; height: 8.4mm; font-size: 9pt; padding-bottom: .6mm; }
+    .inline .gap { display: inline-block; min-width: 9mm; }
+    .inline .gap.s { min-width: 6mm; }
+    .sign .line { height: 8.4mm; border-bottom: 1px solid #333; }
+    .staffbox { margin-top: 2.2mm; border: 1.6px solid #000; }
+    .staffbox .t { font-size: 8.4pt; font-weight: 700; background: #000; color: #fff; padding: .7mm 2.4mm; }
+    .staffbox .b { display: flex; }
+    .staffbox .c { flex: 1; border-left: 1px solid #000; padding: 1.2mm 2mm; font-size: 7.8pt; line-height: 1.5; }
+    .staffbox .c:first-child { border-left: none; }
+    .sq { display: inline-block; width: 3mm; height: 3mm; border: 1.2px solid #000; vertical-align: -.3mm; margin-right: .8mm; }
+    .foot { margin-top: auto; flex: 0 0 auto; padding-top: 1.4mm; border-top: 1px solid #999; font-size: 7pt; color: #333; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="head">
+    <div>
+      <div class="brand">UIZIN</div>
+      <div class="doc-title">メディカルチェック／参加誓約書／保護者同意書</div>
+    </div>
+    <div class="head-right">
+      <div class="big">2026年9月23日</div>
+      <div>受付No. <span class="fillbox" style="min-width:18mm"></span></div>
+    </div>
+  </div>
+
+  <p class="lead">
+    この用紙1枚で「体調の確認」「参加の誓約」「保護者の同意」を確認します。<br>
+    <span class="warn">保護者の方は内容をお読みいただき、最後の欄にご署名をお願いします。</span>署名がない場合、試合に出場できません。
+  </p>
+
+  <div class="sec">
+    <div class="sec-title">選手・保護者</div>
+    <div class="sec-body">
+      <div class="row">
+        <div class="fld w2"><div class="name">選手名（ふりがな）</div><div class="line"></div></div>
+        <div class="fld w2"><div class="name">所属ジム</div><div class="line"></div></div>
+        <div class="fld sm"><div class="name">学年／年齢</div><div class="line"></div></div>
+      </div>
+      <div class="row">
+        <div class="fld w2"><div class="name">保護者氏名</div><div class="line"></div></div>
+        <div class="fld sm"><div class="name">続柄</div><div class="line"></div></div>
+        <div class="fld w2"><div class="name">当日つながる電話番号</div><div class="line"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">① メディカルチェック <span class="sub">／ 当てはまらない項目の□にチェックしてください</span></div>
+    <div class="sec-body">
+      <ul class="chk"><li>発熱はありません（37.5℃以上ではない）。</li><li>強い体調不良（頭痛・吐き気・めまい・腹痛など）はありません。</li><li>試合に支障がある痛み・ケガ（骨折・捻挫・打撲など）はありません。</li><li>頭部の強い打撲や脳の異常について、医師から運動を止められていません。</li><li>治療中の病気・服薬について、医師から運動を止められていません。</li><li>食事・水分・睡眠がとれています。無理な減量はしていません。</li></ul>
+      <p class="note warn">1つでも当てはまる場合は、チェックせずスタッフへお伝えください。主催者・レフェリーが確認します。</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">② 参加にあたっての確認事項 <span class="sub">／ 内容を読んで□にチェック</span></div>
+    <div class="sec-body">
+      <div class="grp">ルール・判定について</div>
+      <ul class="chk"><li>大会ルールと、スタッフ・主催者の指示に従います。</li><li>レフェリーの判断、ジャッジの判定、ダウン判定、減点、試合停止、勝敗、大会運営上の最終判断に従います。</li><li>安全を理由とする試合の停止・中止の判断に従います。</li><li>公平で安全な大会運営のため、試合終了後に判定を変更するための異議・不服申し立ては行いません。</li></ul>
+      <div class="grp second">ケガの可能性について</div>
+      <ul class="chk"><li>キックボクシングは打撃をともなう競技です。安全対策を行っても、打撲・鼻血・捻挫・骨折・頭部への衝撃などのケガが起こる可能性を理解しています。</li><li>競技に通常ともなうリスクを理解した上で、本人を参加させます。</li><li>なお、主催者・スタッフの故意または重大な過失による場合は、この確認の対象ではありません。</li></ul>
+      <div class="grp second">写真・映像の利用について（肖像権）</div>
+      <ul class="chk"><li>大会会場内で撮影された写真・映像が、大会記録・SNS・Web・YouTube・広報などに利用されることに同意します。</li><li>イベント全体を撮影するため、特定の選手だけを撮影しない個別対応はできない場合があることを理解しています。</li><li>利用の範囲は、大会運営・大会記録・広報に必要な範囲に限られます（肖像権の全面的な放棄ではありません）。</li></ul>
+    </div>
+  </div>
+
+  <div class="wbar">
+    <span class="h">③ 計量について</span>　着衣計量です。契約体重は<b>最終対戦カードの数値</b>です（申込時の自己申告体重ではありません）。<br>
+    <span class="p">＋500g以内＝減点なし／＋501g〜999g＝1点減点／＋1.0kg〜1.999kg＝2点減点／＋2kg以上＝要相談</span>
+    　＋500g以内はキッズ大会・着衣計量の許容範囲で、体重オーバー扱いにはなりません。＋2kg以上も失格ではなく、安全面・体格差を確認して主催者が判断します。
+  </div>
+
+  <div class="sign">
+    <p>上記①〜③の内容を確認し、本人の大会参加に同意します。</p>
+    <div class="sign-row">
+      <div style="flex:1.1">
+        <div style="font-size:7.4pt;color:#333">日付</div>
+        <div class="inline"><span class="gap"></span>年<span class="gap s"></span>月<span class="gap s"></span>日</div>
+      </div>
+      <div style="flex:1.8">
+        <div style="font-size:7.4pt;color:#333">保護者署名（自署）<span class="must">※未成年の選手は必須</span></div>
+        <div class="line"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="staffbox">
+    <div class="t">スタッフ記入欄（受付・計量）　※選手・保護者の記入は不要です</div>
+    <div class="b">
+      <div class="c">
+        <span class="sq"></span>参加費 精算確認<br>
+        <span class="sq"></span>書類 確認・受領
+      </div>
+      <div class="c">
+        <span class="sq"></span>計量 実施<br>
+        実測（任意）<span class="fillbox" style="min-width:15mm"></span>kg
+      </div>
+      <div class="c">
+        判定：<span class="sq"></span>減点なし　<span class="sq"></span>1点<br>
+        <span class="sq"></span>2点　<span class="sq"></span>要相談（主催者確認）
+      </div>
+      <div class="c">
+        計量済シール　あお <span class="fillbox" style="min-width:12mm"></span> 番<br>
+        担当者 <span class="fillbox" style="min-width:17mm"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    ※判定・減点・試合停止などの最終判断は、公平で安全な大会運営のために主催者・レフェリー・ジャッジが行います。<br>
+    ※ご記入いただいた情報は、本大会の運営・緊急連絡の目的にのみ使用します。　※「支払い済み」「受付済み」「計量済み」は別の状態です。混同しないでください。
+  </div>
+</div>
+</body>
+</html>
