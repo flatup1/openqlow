@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>UIZIN 2026 ルール v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  /* UIZIN 2026 ルール 縦型ショート v2（わかりやすさ最優先）
+     - 1画面1つ・同じ配置・大きい文字・文字はすぐ出して読む時間を長くとる
+     - セーフエリア: 上250 / 下420 / 左右60（brand-film-series/01_TECHNICAL_SPECS.md）
+     - 原本: 確認用PDF「まず、これだけ。6つの基本」(2026.09.20) ＋ 2026ルールブック PAGE2（禁止技）
+     - イラスト: 旧ポスターの絵だけを使用（旧ポスターの文言は使わない） */
+  :root{
+    --bg:#111318; --ink:#fff; --sub:#e3e6ee; --dim:#8b909c;
+    --pink:#ff2d87; --cyan:#00d1f0; --lime:#d4ff2e; --card:#1d2029; --gray:#5b6070;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1080px;height:1920px;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans JP","IPAGothic",sans-serif;font-weight:900}
+  #stage{position:relative;width:1080px;height:1920px;overflow:hidden;
+    background:radial-gradient(900px 700px at 50% 34%,#1c1f2a 0%,transparent 70%),var(--bg)}
+  #accent{position:absolute;right:-120px;top:120px;width:520px;height:34px;background:var(--pink);transform:rotate(-16deg)}
+
+  /* ヘッダー（上のセーフエリア直下） */
+  #hdr{position:absolute;left:60px;top:258px;font-size:36px;letter-spacing:.06em;color:var(--dim);font-weight:700}
+  #hdr b{font-family:Oswald,sans-serif;color:var(--ink);font-weight:700;letter-spacing:.08em}
+  #prog{position:absolute;left:60px;right:60px;top:318px;display:flex;gap:10px}
+  #prog i{flex:1;height:12px;border-radius:6px;background:#2c303b}
+  #prog i.done{background:var(--pink)}
+  #prog i.now{background:#fff}
+
+  .scene{position:absolute;inset:0;opacity:0}
+  .vis{position:absolute;left:60px;right:60px;top:400px;height:500px;display:flex;justify-content:center}
+  .txt{position:absolute;left:60px;right:60px;top:950px;text-align:center}
+  .head{font-size:120px;line-height:1.18;letter-spacing:-.01em}
+  .sub{margin-top:26px;font-size:54px;line-height:1.5;font-weight:700;color:var(--sub)}
+  em{font-style:normal;color:var(--pink)} .c{color:var(--cyan)} .l{color:var(--lime)}
+  rt{font-size:.36em;font-weight:700;color:var(--sub);letter-spacing:.02em}
+
+  /* イラストカード＋番号バッジ */
+  .pic{position:relative;width:720px;height:500px}
+  .pic .frame{position:absolute;inset:0;border-radius:36px;overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.55)}
+  .pic img{width:100%;height:100%;object-fit:cover;display:block}
+  .badge{position:absolute;left:-52px;top:-46px;width:140px;height:140px;border-radius:50%;background:var(--pink);
+    display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:92px;line-height:1;
+    box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:2}
+
+  /* はじめ */
+  .hero{width:500px;height:500px;border-radius:50%;overflow:hidden;border:12px solid var(--pink)}
+  .hero img{width:100%;height:118%;object-fit:cover;object-position:50% 0}
+
+  /* ルール1：時間の図 */
+  .tl{position:relative;display:flex;gap:12px;width:940px;height:420px;margin-top:40px}
+  .blk{position:relative;border-radius:30px;border:8px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+  .blk .fill{position:absolute;inset:0;transform-origin:0 50%;transform:scaleX(0)}
+  .blk span{position:relative;z-index:1}
+  .blk .lb{font-size:44px;font-weight:900}
+  .blk .vl{font-family:Oswald,sans-serif;font-size:150px;line-height:1.05}
+  .blk .vl small{font-family:"Noto Sans JP",sans-serif;font-size:52px;font-weight:900;margin-left:4px}
+  .blk.a{width:350px;border-color:var(--pink);background:rgba(255,45,135,.14)} .blk.a .fill{background:var(--pink)}
+  .blk.r{width:216px;border-color:var(--gray);background:rgba(91,96,112,.18)} .blk.r .fill{background:var(--gray)}
+  .blk.r .vl{font-size:110px}
+  .blk.b{width:350px;border-color:var(--cyan);background:rgba(0,209,240,.14)} .blk.b .fill{background:var(--cyan)}
+  .tl .badge{left:-40px;top:-60px}
+
+  /* ルール3：ダメな技 */
+  .head.top{position:absolute;left:60px;right:60px;top:392px;text-align:center;font-size:112px}
+  .head.top .badge{position:relative;display:inline-flex;left:auto;top:auto;vertical-align:middle;margin-right:24px;width:128px;height:128px;font-size:84px}
+  .grid{position:absolute;left:60px;right:60px;top:560px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .ng{background:var(--card);border-radius:26px;height:196px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    font-size:42px;line-height:1.2;text-align:center}
+  .ng .x{width:70px;height:70px;border-radius:50%;background:var(--pink);display:flex;align-items:center;justify-content:center;flex:none}
+  .ng .x svg{width:40px;height:40px}
+  .sub.low{position:absolute;left:60px;right:60px;top:1232px;text-align:center;margin:0}
+
+  /* ルール4：ダウン数 */
+  .pips{position:absolute;right:-30px;bottom:-40px;display:flex;gap:14px;background:#fff;color:var(--bg);border-radius:999px;padding:16px 24px;align-items:center;z-index:2;
+    font-size:38px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .pips b{width:64px;height:64px;border-radius:50%;border:6px solid var(--pink);display:flex;align-items:center;justify-content:center;
+    font-family:Oswald,sans-serif;font-size:40px;color:var(--pink)}
+  .pips b.on{background:var(--pink);color:#fff}
+
+  /* ルール6：STOP */
+  .stop{position:absolute;right:-40px;top:-50px;width:210px;height:210px;background:var(--pink);z-index:2;
+    clip-path:polygon(29% 0,71% 0,100% 29%,100% 71%,71% 100%,29% 100%,0 71%,0 29%);
+    display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:64px;letter-spacing:.02em}
+
+  /* ルール7：ふきだし */
+  .bub{position:absolute;right:-50px;background:#fff;color:var(--bg);border-radius:28px;padding:14px 34px;font-size:60px;z-index:2;
+    box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .bub:before{content:"";position:absolute;left:-22px;top:50%;margin-top:-16px;border:16px solid transparent;border-right:24px solid #fff;border-left:0}
+
+  /* まとめ */
+  .sumttl{position:absolute;left:60px;right:60px;top:380px;text-align:center}
+  .chip{display:inline-block;padding:10px 34px;border-radius:999px;background:var(--lime);color:var(--bg);font-size:40px}
+  .sumttl .t{font-size:100px;margin-top:14px;line-height:1.1}
+  .list{position:absolute;left:70px;right:60px;top:640px}
+  .list div{display:flex;align-items:center;gap:22px;font-size:44px;line-height:1.25;margin-bottom:20px}
+  .list div b{width:62px;height:62px;border-radius:50%;background:var(--pink);flex:none;display:flex;align-items:center;justify-content:center;
+    font-family:Oswald,sans-serif;font-size:40px}
+  .foot{position:absolute;left:60px;right:60px;top:1250px;text-align:center}
+  .foot .save{font-size:46px;color:var(--lime)}
+  .foot .more{font-size:36px;color:var(--dim);font-weight:700;margin-top:10px}
+  .foot .logo{font-family:Oswald,sans-serif;font-style:italic;font-size:104px;line-height:1;margin-top:26px;letter-spacing:.02em}
+  .foot .logo span{color:var(--pink)}
+
+  #note{position:absolute;left:0;right:0;bottom:60px;text-align:center;font-size:30px;font-weight:500;color:#737885}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="accent"></div>
+  <div id="hdr"><b>UIZIN 2026</b>　キックボクシング大会のルール</div>
+  <div id="prog"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+  <!-- はじめ -->
+  <section class="scene" data-dur="3.5" data-step="0">
+    <div class="vis a" data-at="0"><div class="hero"><img class="kb" src="assets/hook_hero.jpg" alt=""></div></div>
+    <div class="txt">
+      <div class="head a" data-at=".2"><ruby>試合<rt>しあい</rt></ruby>の前に<br>親子で<em>チェック！</em></div>
+      <div class="sub a" data-at=".45" style="font-size:64px">大事なルール <em>7つ</em></div>
+    </div>
+  </section>
+
+  <!-- 1 時間 -->
+  <section class="scene" data-dur="5" data-step="1">
+    <div class="vis a" data-at="0">
+      <div class="tl">
+        <div class="badge">1</div>
+        <div class="blk a"><i class="fill f1"></i><span class="lb">1ラウンド</span><span class="vl">90<small>秒</small></span></div>
+        <div class="blk r"><i class="fill f2"></i><span class="lb">休けい</span><span class="vl">60<small>秒</small></span></div>
+        <div class="blk b"><i class="fill f3"></i><span class="lb">2ラウンド</span><span class="vl">90<small>秒</small></span></div>
+      </div>
+    </div>
+    <div class="txt">
+      <div class="head a" data-at=".2" style="font-size:106px"><em>90</em>秒 × <em>2</em>ラウンド</div>
+      <div class="sub a" data-at=".45"><ruby>延長<rt>えんちょう</rt></ruby>はなし。<br>みんな おなじ時間だよ</div>
+    </div>
+  </section>
+
+  <!-- 2 顔への攻撃 -->
+  <section class="scene" data-dur="5" data-step="2">
+    <div class="vis a" data-at="0"><div class="pic"><div class="badge">2</div><div class="frame"><img class="kb" src="assets/r2_headgear.jpg" alt=""></div></div></div>
+    <div class="txt">
+      <div class="head a" data-at=".2">顔への<ruby>攻撃<rt>こうげき</rt></ruby>も<br><span class="c">あり</span></div>
+      <div class="sub a" data-at=".45">ヘッドギアで 頭を守るよ<br>幼児から大人まで おなじルール</div>
+    </div>
+  </section>
+
+  <!-- 3 ダメな技 -->
+  <section class="scene" data-dur="7" data-step="3">
+    <div class="head top a" data-at="0"><span class="badge">3</span>これは <em>ダメ！</em></div>
+    <div class="grid">
+      <div class="ng a pop" data-at=".25"><span class="x"></span><span class="lbl">ヒジ打ち</span></div>
+      <div class="ng a pop" data-at=".32"><span class="x"></span><span class="lbl"><ruby>頭突<rt>ずつ</rt></ruby>き</span></div>
+      <div class="ng a pop" data-at=".39"><span class="x"></span><span class="lbl">顔へのヒザ</span></div>
+      <div class="ng a pop" data-at=".46"><span class="x"></span><span class="lbl">投げ</span></div>
+      <div class="ng a pop" data-at=".53"><span class="x"></span><span class="lbl">タックル</span></div>
+      <div class="ng a pop" data-at=".60"><span class="x"></span><span class="lbl">足をかけて<br>たおす</span></div>
+      <div class="ng a pop" data-at=".67"><span class="x"></span><span class="lbl"><ruby>関節技<rt>かんせつわざ</rt></ruby></span></div>
+      <div class="ng a pop" data-at=".74"><span class="x"></span><span class="lbl"><ruby>関節蹴<rt>かんせつげ</rt></ruby>り</span></div>
+      <div class="ng a pop" data-at=".81"><span class="x"></span><span class="lbl">首をつかんで<br>ふり回す</span></div>
+    </div>
+    <div class="sub low a" data-at=".9">レフェリーが「危ない」と<br>判断した動きも ダメ</div>
+  </section>
+
+  <!-- 4 2ダウン -->
+  <section class="scene" data-dur="4.5" data-step="4">
+    <div class="vis a" data-at="0"><div class="pic"><div class="badge">4</div><div class="frame"><img class="kb" src="assets/r4_down.jpg" alt=""></div>
+      <div class="pips">ダウン <b class="p1">1</b><b class="p2">2</b></div></div></div>
+    <div class="txt">
+      <div class="head a" data-at=".2">ダウン<em>2回</em>で<br><ruby>試合<rt>しあい</rt></ruby>おわり</div>
+      <div class="sub a" data-at=".45">2ラウンド 合わせて 2回だよ</div>
+    </div>
+  </section>
+
+  <!-- 5 引き分け -->
+  <section class="scene" data-dur="4.5" data-step="5">
+    <div class="vis a" data-at="0"><div class="pic"><div class="badge">5</div><div class="frame"><img class="kb" src="assets/r5_draw.jpg" alt=""></div></div></div>
+    <div class="txt">
+      <div class="head a" data-at=".2"><span class="c">引き分け</span>も<br>あるよ</div>
+      <div class="sub a" data-at=".45">ジャッジ3人で <ruby>判定<rt>はんてい</rt></ruby>。<br>2票以上で 勝ち</div>
+    </div>
+  </section>
+
+  <!-- 6 ストップ -->
+  <section class="scene" data-dur="5" data-step="6">
+    <div class="vis a" data-at="0"><div class="pic"><div class="badge">6</div><div class="frame"><img class="kb" src="assets/r6_stop.jpg" alt=""></div>
+      <div class="stop a stamp" data-at=".35">STOP</div></div></div>
+    <div class="txt">
+      <div class="head a" data-at=".2">「ストップ」で<br><em>すぐ止まる</em></div>
+      <div class="sub a" data-at=".45">危ないときは<br>レフェリーが 試合を止めるよ</div>
+    </div>
+  </section>
+
+  <!-- 7 言っていい -->
+  <section class="scene" data-dur="6" data-step="7">
+    <div class="vis a" data-at="0"><div class="pic"><div class="badge">7</div><div class="frame"><img class="kb" src="assets/r7_voice.jpg" alt=""></div>
+      <div class="bub a pop" data-at=".3" style="top:28px">いたい</div>
+      <div class="bub a pop" data-at=".5" style="top:190px">こわい</div>
+      <div class="bub a pop" data-at=".7" style="top:352px">やめたい</div></div></div>
+    <div class="txt">
+      <div class="head a" data-at=".2">がまんせず<br><span class="c">言っていいよ</span></div>
+      <div class="sub a" data-at=".45">レフェリーや セコンドに 伝えてね<br>安全のために 試合を止めます</div>
+    </div>
+  </section>
+
+  <!-- まとめ -->
+  <section class="scene" data-dur="8" data-step="8">
+    <div class="sumttl a" data-at="0"><span class="chip">まとめ</span><div class="t">安全が <em>いちばん。</em></div></div>
+    <div class="list">
+      <div class="a" data-at=".2"><b>1</b>90秒 × 2ラウンド</div>
+      <div class="a" data-at=".3"><b>2</b>顔への攻撃あり（ヘッドギア）</div>
+      <div class="a" data-at=".4"><b>3</b>ヒジ・頭突き・投げ などはダメ</div>
+      <div class="a" data-at=".5"><b>4</b>ダウン2回で 試合おわり</div>
+      <div class="a" data-at=".6"><b>5</b>引き分けも ある</div>
+      <div class="a" data-at=".7"><b>6</b>「ストップ」で すぐ止まる</div>
+      <div class="a" data-at=".8"><b>7</b>いたい・こわい・やめたい は言っていい</div>
+    </div>
+    <div class="foot a" data-at="1.0">
+      <div class="save">保存して、試合の前に 見返してね</div>
+      <div class="more">くわしくは ルールブックを見てね</div>
+      <div class="logo">UI<span>Z</span>IN</div>
+    </div>
+  </section>
+
+  <div id="note">※確認用・配布前｜主催者・審判の最終確認後に公開</div>
+</div>
+
+<script>
+  // seek(t) で「t秒時点の絵」になる。書き出しスクリプトが1フレームずつ呼ぶ。
+  const X='<svg viewBox="0 0 24 24"><path d="M6 6L18 18M18 6L6 18" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg>';
+  document.querySelectorAll('.ng .x').forEach(e=>e.innerHTML=X);
+
+  const scenes=[...document.querySelectorAll('.scene')];
+  const anims=[], spans=[]; let T=0;
+  const FADE=.25, ease='cubic-bezier(.2,.8,.2,1)', back='cubic-bezier(.3,1.5,.5,1)';
+  const add=(el,kf,o)=>anims.push(el.animate(kf,{fill:'both',...o}));
+  scenes.forEach((s,idx)=>{
+    const d=+s.dataset.dur; spans.push([T,T+d,+s.dataset.step]);
+    // 最初の場面は1コマ目から全部見せる（サムネイル・最初の1秒用）。最後のまとめは消さずに止めておく。
+    const first=idx===0, last=idx===scenes.length-1;
+    const kf=[{opacity:first?1:0},{opacity:1,offset:FADE/d},{opacity:1,offset:1-FADE/d},{opacity:last?1:0}];
+    add(s,kf,{duration:d*1000,delay:T*1000});
+    if(!first) s.querySelectorAll('.a').forEach(el=>{
+      const at=(T+(+el.dataset.at||0))*1000;
+      if(el.classList.contains('stamp')) add(el,[{opacity:0,transform:'scale(1.8) rotate(-12deg)'},{opacity:1,transform:'none'}],{duration:380,delay:at,easing:back});
+      else if(el.classList.contains('pop')) add(el,[{opacity:0,transform:'scale(.6)'},{opacity:1,transform:'none'}],{duration:320,delay:at,easing:back});
+      else add(el,[{opacity:0,transform:'translateY(36px)'},{opacity:1,transform:'none'}],{duration:420,delay:at,easing:ease});
+    });
+    // イラストはゆっくりズーム（動きは控えめ）
+    s.querySelectorAll('img.kb').forEach(el=>add(el,[{transform:'scale(1)'},{transform:'scale(1.06)'}],{duration:d*1000,delay:T*1000}));
+    // ルール1：1R → 休けい → 2R の順に色がたまる
+    const f=(sel,a,b)=>{const el=s.querySelector(sel); if(el) add(el,[{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:(b-a)*1000,delay:(T+a)*1000});};
+    f('.f1',.5,1.9); f('.f2',1.9,2.6); f('.f3',2.6,4.0);
+    // ルール4：ダウン1 → 2
+    const p=(sel,a)=>{const el=s.querySelector(sel); if(el) add(el,[{background:'transparent',color:'#ff2d87'},{background:'#ff2d87',color:'#fff'}],{duration:200,delay:(T+a)*1000});};
+    p('.p1',.7); p('.p2',1.5);
+    T+=d;
+  });
+  const TOTAL=T;
+  anims.forEach(a=>a.pause());
+
+  const segs=[...document.querySelectorAll('#prog i')];
+  window.TOTAL=TOTAL;
+  window.SPANS=spans;
+  window.seek=t=>{
+    anims.forEach(a=>a.currentTime=t*1000);
+    const cur=spans.find(([a,b])=>t>=a&&t<b)||spans[spans.length-1];
+    const step=cur[2];
+    segs.forEach((g,i)=>{g.className = step===8||i+1<step ? 'done' : (i+1===step ? 'now' : '');});
+  };
+  seek(+(new URLSearchParams(location.search).get('t')||0));
+</script>
+</body>
+</html>
