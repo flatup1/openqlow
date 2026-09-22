@@ -49,8 +49,11 @@ cd ~/Desktop/"OPENQLOW HelMES"      # openqlow を置いている場所
 
 1. 右上の「Projects」→「Create your first project」
 2. 左上「Import」から素材を選ぶ（ドラッグ＆ドロップも可）
-3. 素材を下のタイムラインに置いて、切る・並べる・文字を足す
-4. 右上「Export」で書き出す
+3. 素材にマウスを乗せると出る **「＋」ボタン**を押す。これでタイムラインに乗る
+4. 下のタイムラインで切る・並べる。左端の「T」で文字を足す
+5. 右上「Export」で形式と画質を選んで書き出す
+
+**注意: ステップ3で素材をダブルクリックしてもタイムラインに乗らない。** マウスを乗せたときにサムネイル中央に出る「＋」を押すのが正解。ここで時間を溶かしやすい。
 
 ## 6. 確認済みのこと（このセッションで実際に動かした）
 
@@ -59,10 +62,13 @@ cd ~/Desktop/"OPENQLOW HelMES"      # openqlow を置いている場所
 - `bun dev:web` → http://localhost:3000 が HTTP 200、`/api/health` も 200
 - プロジェクト新規作成 → `/editor/<ID>` に遷移し、編集画面（素材パネル・プレビュー・タイムライン・Export）が表示
 - テスト用の動画ファイルを Import → 素材パネルにサムネイルと長さ「0:03」が出た
+- 「＋」ボタンでタイムラインに配置 → プレビューに映像が表示され、尺が `00:00:03:04` になった
+- **Export（WebM形式）→ 動画ファイルの書き出しに成功**。生成物は 3.16秒 / 640x360 / 76KB で、再生できることを確認した
 
 ## 7. 未確認のこと（正直に書く）
 
 - **Dockerでの起動は未確認**。検証したコンテナではDockerイメージの取得が組織のネットワーク方針で拒否されたため、PostgreSQLとRedisはMacと同じ構成ではなく、そのコンテナに元から入っていたものを使った。Mac側でDocker Desktopを使う手順そのものは本家READMEの通りで、`setup.sh` は各段階で止まって理由を出すようにしてある。
+- **MP4形式での書き出しは未確認**。検証環境のヘッドレスブラウザに H.264 のエンコード機能が無く失敗した。ブラウザ側の制約であり、OpenCutの不具合ではない。WebM形式では成功しているので、書き出し機能そのものは動く。
 - **本番ビルド（`bun run build:web`）は未確認**。検証環境では Google Fonts への接続が遮断され、フォント取得の失敗だけでビルドが落ちた。通常のネット環境なら通るはずだが、断定はしない。普段使いは `start.sh`（開発モード）で足りる。
 
 ## 8. 既知の不具合と回避策
@@ -72,6 +78,7 @@ cd ~/Desktop/"OPENQLOW HelMES"      # openqlow を置いている場所
 | `bun run db:push:local` が `No schema files found` で失敗 | 本家 `drizzle.config.ts` のパス指定ミス（実体は `src/db/schema.ts`、設定は `src/lib/db/schema.ts`） | `bun run db:migrate` を使う。`setup.sh` はこちらを使っている |
 | フォントが標準のものに見える | Google Fonts に繋がらなかった | 表示だけの問題。編集機能に影響なし |
 | `docker compose up` で止まる | Docker Desktop が起動していない | Docker Desktop を起動してから再実行 |
+| Export で `Export failed` と出て、`avc1...is not supported by this browser` と書かれている | そのブラウザに H.264（MP4用）のエンコード機能が無い | Export画面の「Format」を開いて **WebM (VP9)** を選ぶと書き出せる。検証環境ではこれで成功した。MacのChromeは通常H.264を持っているのでMP4で書き出せるはず |
 
 ## 9. ファイル
 
