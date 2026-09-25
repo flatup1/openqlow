@@ -5,12 +5,17 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP="$HERE/opencut-classic"
 
-[ -d "$APP" ] || { echo "[中止] まだセットアップしていません。先に ./opencut-studio/setup.sh を実行してください。" >&2; exit 1; }
-docker info >/dev/null 2>&1 || { echo "[中止] Docker Desktop を起動してください。" >&2; exit 1; }
+[ -d "$APP" ] || { echo "[中止] まだセットアップしていません。先に setup.sh を実行してください。" >&2; exit 1; }
 
 cd "$APP"
-echo "== データベースとRedisを起動"
-docker compose up -d db redis serverless-redis-http
+
+# Docker があれば一緒に起動する。無くても編集と書き出しはできる。
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  echo "== データベースとRedisを起動"
+  docker compose up -d db redis serverless-redis-http
+else
+  echo "== Docker なしで起動（編集と書き出しは使えます）"
+fi
 
 echo "== 画面を起動（初回の表示は1〜2分かかる）"
 echo "   起動したら http://localhost:3000 を開く"

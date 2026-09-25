@@ -11,11 +11,20 @@ say() { printf '\n== %s\n' "$1"; }
 die() { printf '\n[中止] %s\n' "$1" >&2; exit 1; }
 
 say "前提コマンドを確認"
-command -v git  >/dev/null || die "git がありません。Xcode Command Line Tools を入れてください: xcode-select --install"
-command -v bun  >/dev/null || die "bun がありません。入れてください: curl -fsSL https://bun.sh/install | bash"
-command -v docker >/dev/null || die "docker がありません。Docker Desktop を入れて起動してください: https://docs.docker.com/desktop/"
-docker info >/dev/null 2>&1 || die "Docker が起動していません。Docker Desktop を起動してから、もう一度実行してください。"
-echo "OK: git / bun / docker"
+command -v git >/dev/null || die "git がありません。入れてください: xcode-select --install"
+command -v bun >/dev/null || die "bun がありません。入れてください: curl -fsSL https://bun.sh/install | bash"
+echo "OK: git / bun"
+
+# Docker は任意。動画の編集と書き出しだけなら無くても動く（検証済み）。
+USE_DB=0
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  USE_DB=1
+  echo "OK: docker（ログイン機能も使える状態）"
+else
+  echo "情報: Docker が無い、または起動していません。"
+  echo "      編集と書き出しは Docker 無しでできます。このまま続けます。"
+  echo "      使えないのはログイン・フィードバック送信など、サーバーが要る機能だけです。"
+fi
 
 say "OpenCut本体を取得"
 if [ -d "$APP/.git" ]; then
@@ -32,29 +41,34 @@ else
   echo "作成した: apps/web/.env.local（ローカル用の初期値のまま動く）"
 fi
 
-say "データベースとRedisを起動（Docker）"
 cd "$APP"
-docker compose up -d db redis serverless-redis-http
 
-say "データベースの接続を待つ"
-for i in $(seq 1 60); do
-  if docker compose exec -T db pg_isready -U opencut >/dev/null 2>&1; then echo "OK: データベース応答"; break; fi
-  [ "$i" = 60 ] && die "データベースが起動しませんでした。docker compose logs db を見てください。"
-  sleep 2
-done
+if [ "$USE_DB" = 1 ]; then
+  say "データベースとRedisを起動（Docker）"
+  docker compose up -d db redis serverless-redis-http
+
+  say "データベースの接続を待つ"
+  for i in $(seq 1 60); do
+    if docker compose exec -T db pg_isready -U opencut >/dev/null 2>&1; then echo "OK: データベース応答"; break; fi
+    [ "$i" = 60 ] && die "データベースが起動しませんでした。docker compose logs db を見てください。"
+    sleep 2
+  done
+fi
 
 say "依存パッケージを導入（数分かかる）"
 bun install
 
-say "データベースの表を作成"
-# 注意: bun run db:push:local は本家の設定ミス（schema のパス違い）で失敗する。migrate を使う。
-( cd apps/web && bun run db:migrate )
+if [ "$USE_DB" = 1 ]; then
+  say "データベースの表を作成"
+  # 注意: bun run db:push:local は本家の設定ミス（schema のパス違い）で失敗する。migrate を使う。
+  ( cd apps/web && bun run db:migrate )
+fi
 
 say "完了"
 cat <<'MSG'
 次は起動です。
 
-  ./opencut-studio/start.sh
+  <このフォルダ>/start.sh
 
 ブラウザで http://localhost:3000 を開きます。
 MSG
