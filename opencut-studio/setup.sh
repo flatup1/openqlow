@@ -69,10 +69,11 @@ if [ "$USE_DB" = 1 ]; then
 fi
 
 say "完了"
-cat <<'MSG'
+cat <<MSG
 次は起動です。
 
-  <このフォルダ>/start.sh
+  $HERE/start.sh
 
-ブラウザで http://localhost:3000 を開きます。
+起動したらブラウザで http://localhost:3000 を開きます。
+止めるときは、そのターミナルで Ctrl + C です。
 MSG
