@@ -7,6 +7,10 @@ APP="$HERE/opencut-classic"
 
 [ -d "$APP" ] || { echo "[中止] まだセットアップしていません。先に setup.sh を実行してください。" >&2; exit 1; }
 
+# bun が PATH に無くても、既定の場所にあれば使う。
+if [ -x "$HOME/.bun/bin/bun" ]; then PATH="$HOME/.bun/bin:$PATH"; fi
+command -v bun >/dev/null || { echo "[中止] bun が見つかりません。先に setup.sh を実行してください。" >&2; exit 1; }
+
 cd "$APP"
 
 # Docker があれば一緒に起動する。無くても編集と書き出しはできる。

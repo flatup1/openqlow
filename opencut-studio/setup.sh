@@ -11,9 +11,13 @@ say() { printf '\n== %s\n' "$1"; }
 die() { printf '\n[中止] %s\n' "$1" >&2; exit 1; }
 
 say "前提コマンドを確認"
+# bun を入れた直後は PATH が通っていないことがあるので、既定の場所を自分で見に行く。
+if [ -x "$HOME/.bun/bin/bun" ]; then PATH="$HOME/.bun/bin:$PATH"; fi
 command -v git >/dev/null || die "git がありません。入れてください: xcode-select --install"
-command -v bun >/dev/null || die "bun がありません。入れてください: curl -fsSL https://bun.sh/install | bash"
-echo "OK: git / bun"
+command -v bun >/dev/null || die "bun がありません。次の2行を実行してから、もう一度このスクリプトを実行してください:
+  curl -fsSL https://bun.sh/install | bash
+  export PATH=\"\$HOME/.bun/bin:\$PATH\""
+echo "OK: git / bun ($(bun --version))"
 
 # Docker は任意。動画の編集と書き出しだけなら無くても動く（検証済み）。
 USE_DB=0
