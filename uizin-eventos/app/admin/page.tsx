@@ -10,8 +10,30 @@ import { EMPTY_ENTRY_CONFIG, validateEntryConfig } from '../../core/entry.ts';
 import type { DraftMatch, MatchBuilderFighter } from '../../core/matchBuilder.ts';
 import { draftEventCsv, draftMatchesCsv, draftMusicCsv, moveDraftMatch, swapDraftCorners, validateDraftMatches } from '../../core/matchBuilder.ts';
 
+const STEPS = [
+  { no: 1, icon: '🏆', short: '大会を決める', color: 'bg-amber-100 text-amber-900' },
+  { no: 2, icon: '📝', short: '募集を書く', color: 'bg-pink-100 text-pink-900' },
+  { no: 3, icon: '🔌', short: '最初だけ接続', color: 'bg-violet-100 text-violet-900' },
+  { no: 4, icon: '👥', short: '選手を読む', color: 'bg-cyan-100 text-cyan-900' },
+  { no: 5, icon: '🥊', short: '対戦を作る', color: 'bg-emerald-100 text-emerald-900' },
+];
+
+function CoachIllustration() {
+  return <svg aria-hidden="true" viewBox="0 0 240 170" className="mx-auto h-auto w-full max-w-[220px]">
+    <path d="M27 144c9-41 35-60 75-60s66 19 75 60" fill="#dbeafe" />
+    <circle cx="100" cy="58" r="34" fill="#f8c9a4" /><path d="M67 54c2-30 61-45 67 5-18-7-33-21-40-31-4 13-13 23-27 26Z" fill="#334155" />
+    <circle cx="88" cy="61" r="3" fill="#334155" /><circle cx="111" cy="61" r="3" fill="#334155" /><path d="M89 74c8 7 16 7 23 0" fill="none" stroke="#9f1239" strokeWidth="3" strokeLinecap="round" />
+    <path d="M63 104c20-18 54-18 75 0v48H63Z" fill="#4f46e5" /><path d="M91 103l9 13 10-13" fill="#fff" />
+    <rect x="145" y="31" width="70" height="93" rx="10" fill="#fff" stroke="#94a3b8" strokeWidth="3" /><path d="M160 52h39M160 72h39M160 92h27" stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />
+    <path d="m151 51 5 5 9-11m-14 27 5 5 9-11m-14 27 5 5 9-11" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M137 111c16-13 23-18 32-16" fill="none" stroke="#f8c9a4" strokeWidth="13" strokeLinecap="round" />
+    <circle cx="203" cy="136" r="21" fill="#fb7185" /><path d="M190 136h26M203 123v26" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
+  </svg>;
+}
+
 function StepTitle({ no, title, done }: { no: number; title: string; done: boolean }) {
-  return <div className="flex items-center gap-3"><span className={'grid h-10 w-10 place-items-center rounded-full text-lg font-black ' + (done ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-800')}>{done ? '✓' : no}</span><h2 className="text-2xl font-black">{title}</h2></div>;
+  const step = STEPS[no - 1];
+  return <div className="flex items-center gap-3"><span aria-hidden="true" className={'grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-3xl shadow-sm ' + step.color}>{step.icon}</span><div><p className="text-sm font-black text-slate-500">ステップ {no} {done ? '・できました ✓' : ''}</p><h2 className="text-xl font-black sm:text-2xl">{title}</h2></div></div>;
 }
 
 export default function AdminPage() {
@@ -117,12 +139,13 @@ export default function AdminPage() {
     setMessage(view === 'os' ? '大会運営用の名簿を保存しました。電話番号とメールは入っていません。' : '申し込み原本を保存しました。個人情報なので他の人へ送らないでください。');
   };
 
-  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900"><div className="mx-auto max-w-3xl">
-    <p className="text-sm font-bold text-indigo-700">TOURNAMENT OS</p>
-    <h1 className="mt-1 text-3xl font-black">大会をはじめから準備する</h1>
-    <p className="mt-3 text-lg leading-relaxed text-slate-700">むずかしい知識はいりません。<b>番号どおりに、上から下へ</b>進めてください。分からない場所は想像で埋めず、AIまたは大会責任者へ確認します。</p>
+  return <main className="min-h-screen bg-gradient-to-b from-indigo-50 via-slate-50 to-emerald-50 px-4 py-8 text-slate-900"><div className="mx-auto max-w-3xl">
+    <header className="overflow-hidden rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm sm:grid sm:grid-cols-[1fr_220px] sm:items-center sm:p-8"><div><p className="text-sm font-bold text-indigo-700">TOURNAMENT OS</p>
+    <h1 className="mt-1 text-3xl font-black">絵を見ながら、大会を作ろう</h1>
+    <p className="mt-3 text-lg leading-relaxed text-slate-700">パソコンが苦手でも大丈夫です。<b>番号どおりに、上から下へ</b>進めます。分からない場所は想像で埋めず、AIまたは大会責任者へ確認します。</p><p className="mt-4 inline-flex rounded-full bg-emerald-100 px-4 py-2 font-black text-emerald-900">全部で5ステップです</p></div><CoachIllustration /></header>
+    <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="大会作りの道順">{STEPS.map((step, index) => <div key={step.no} className={'relative rounded-2xl p-3 text-center ' + step.color}><span aria-hidden="true" className="block text-3xl">{step.icon}</span><b className="mt-1 block text-sm">{step.no}. {step.short}</b>{index < STEPS.length - 1 ? <span aria-hidden="true" className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-xl text-slate-400 sm:block">→</span> : null}</div>)}</div>
     <aside className="mt-6 rounded-2xl bg-indigo-50 p-5"><p className="font-black text-indigo-950">まず覚えることは3つだけ</p><ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed"><li>大会ごとに「大会ID」という名前を1つ作ります。</li><li>参加者に渡すのは「募集ページ」のリンクです。</li><li>大会当日にスタッフが開くのは「大会当日の画面」のリンクです。</li></ol></aside>
-    <nav className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="準備の進み具合">{[[1, '大会ID', idReady], [2, '募集内容', entryReady], [3, '接続', connectionReady], [4, '原本', fighters.length > 0], [5, '対戦カード', draftMatches.length > 0]].map(([no, label, done]) => <a key={String(no)} href={'#step-' + no} className={'rounded-xl p-3 text-center text-sm font-bold ' + (done ? 'bg-emerald-100 text-emerald-900' : 'bg-white text-slate-600')}>{done ? '✓ ' : no + '. '}{String(label)}</a>)}</nav>
+    <nav className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="準備の進み具合">{[[1, '大会ID', idReady], [2, '募集内容', entryReady], [3, '接続', connectionReady], [4, '原本', fighters.length > 0], [5, '対戦カード', draftMatches.length > 0]].map(([no, label, done]) => <a key={String(no)} href={'#step-' + no} className={'rounded-xl border p-3 text-center text-sm font-bold shadow-sm ' + (done ? 'border-emerald-200 bg-emerald-100 text-emerald-900' : 'border-slate-200 bg-white text-slate-600')}>{done ? '✓ ' : no + '. '}{String(label)}</a>)}</nav>
     {message ? <p role="status" className="sticky top-2 z-10 mt-5 rounded-xl border border-amber-300 bg-amber-100 p-4 font-bold text-amber-950 shadow">{message}</p> : null}
 
     <section id="step-1" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><StepTitle no={1} title="大会の名前を決める" done={idReady} /><p className="mt-3 text-slate-600">大会IDは、この大会だけの整理番号です。英語が分からなくても「自動で作る」を押せば大丈夫です。</p><label className="mt-5 block font-bold">大会ID<input value={eventId} onChange={(e) => updateEventId(e.target.value.toLowerCase())} className={input} placeholder="例: narita-kick-2027" /><span className="mt-1 block text-sm font-normal text-slate-500">使える文字は半角英数字と「-」だけです。あとから変えないでください。</span></label><button type="button" onClick={makeId} className="mt-3 rounded-xl border border-indigo-300 px-4 py-2 font-bold text-indigo-800">大会名から自動で作る</button></section>
