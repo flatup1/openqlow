@@ -72,6 +72,8 @@ export default function AdminPage() {
   const errors = useMemo(() => validateNewEvent(eventId, sheet), [eventId, sheet]);
   const entryUrl = origin + '/entry/?event=' + encodeURIComponent(normalizedId);
   const liveUrl = origin + '/live/?event=' + encodeURIComponent(normalizedId);
+  const adminUrl = origin + '/admin/?event=' + encodeURIComponent(normalizedId);
+  const helpPrompt = `Tournament OSで大会を作ります。次の管理画面を確認しながら手伝ってください。\n${adminUrl}\n\n今あるデータを消さず、勝手に公開せず、私が次に押す場所を小学生にも分かる日本語で1つずつ教えてください。リンクを直接開けない場合は、画面のスクリーンショットを送るよう案内してください。`;
   const setupPrompt = `Tournament OSの初回接続を設定してください。\n大会ID: ${normalizedId || '未設定'}\n私はパソコン操作に慣れていません。既存データを消さず、公開前に確認を取り、接続先URLと管理用パスワードをこの画面へ設定してください。`;
   const input = 'mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-base focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100';
 
@@ -143,6 +145,7 @@ export default function AdminPage() {
   };
 
   return <main className="min-h-screen bg-gradient-to-b from-indigo-50 via-slate-50 to-emerald-50 px-4 py-8 text-slate-900"><div className="mx-auto max-w-3xl">
+    <section className="mb-5 rounded-3xl border-4 border-amber-300 bg-amber-50 p-5 shadow-md sm:p-6"><div className="flex items-start gap-4"><span aria-hidden="true" className="text-5xl">🤖</span><div><p className="text-sm font-black text-amber-800">作業を始める前に</p><h1 className="text-2xl font-black sm:text-3xl">最初にAIを開いてください</h1></div></div><p className="mt-4 text-lg font-bold leading-relaxed text-slate-800">この画面は、AIに見てもらいながら進めると簡単です。Codex・Claude Code・ChatGPTなど、普段使っているAIを開き、この管理画面のリンクとお願い文を送ります。</p><ol className="mt-4 space-y-3"><li className="flex gap-3 rounded-xl bg-white p-3"><b className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-400">1</b><span><b>AIを開く</b><br /><span className="text-sm text-slate-600">Codex、Claude Code、ChatGPTなどを開きます。</span></span></li><li className="flex gap-3 rounded-xl bg-white p-3"><b className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-400">2</b><span><b>下のボタンで文章とリンクをコピー</b><br /><span className="text-sm text-slate-600">コピーした内容をAIへ貼り付けます。</span></span></li><li className="flex gap-3 rounded-xl bg-white p-3"><b className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-400">3</b><span><b>この画面を閉じず、AIの案内どおりに進める</b><br /><span className="text-sm text-slate-600">AIがリンクを開けない場合は、画面のスクリーンショットを送ります。</span></span></li></ol><button type="button" onClick={() => void copy('help', helpPrompt)} className="mt-4 w-full rounded-xl bg-amber-500 p-4 text-lg font-black text-slate-950 shadow-sm">{copied === 'help' ? 'コピーしました ✓ AIへ貼り付けてください' : 'AIに送る文章とリンクをコピー'}</button></section>
     <header className="overflow-hidden rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm sm:grid sm:grid-cols-[1fr_220px] sm:items-center sm:p-8"><div><p className="text-sm font-bold text-indigo-700">TOURNAMENT OS</p>
     <h1 className="mt-1 text-3xl font-black">絵を見ながら、大会を作ろう</h1>
     <p className="mt-3 text-lg leading-relaxed text-slate-700">パソコンが苦手でも大丈夫です。<b>番号どおりに、上から下へ</b>進めます。分からない場所は想像で埋めず、AIまたは大会責任者へ確認します。</p><p className="mt-4 inline-flex rounded-full bg-emerald-100 px-4 py-2 font-black text-emerald-900">全部で5ステップです</p></div><CoachIllustration /></header>

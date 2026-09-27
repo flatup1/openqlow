@@ -70,6 +70,9 @@ test('beginner admin screen avoids unexplained technical labels in the normal pa
   assert.match(source, /接続できています/);
   assert.match(source, /AI・詳しい人だけが開く接続設定/);
   assert.doesNotMatch(source, />② 操作キー/);
+  assert.match(source, /最初にAIを開いてください/);
+  assert.match(source, /AIに送る文章とリンクをコピー/);
+  assert.match(source, /画面のスクリーンショットを送ります/);
 });
 
 test('entry form makes the fighter photo unmistakable and required', () => {
