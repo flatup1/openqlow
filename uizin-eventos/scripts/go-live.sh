@@ -179,11 +179,16 @@ ok "画面を組み立てました（裏側のURLも入っています）"
 PAGES_OUT=""
 PAGES_OUT="$($WRANGLER pages deploy out --project-name "$PROJECT_NAME" --branch main --commit-dirty=true 2>&1)" \
   || { printf '%s\n' "$PAGES_OUT"; die "画面を公開できませんでした。"; }
-# 出力には2種類のURLが出る:
-#   https://uizin-eventos.pages.dev            ← 毎回同じ。スタッフに配るのはこっち
-#   https://<毎回変わる>.uizin-eventos.pages.dev ← デプロイごとに変わる。配ってはいけない
-# 配ったURLが次の公開で変わると、当日に「開かない」が起きる。必ず固定のほうを取る。
-STABLE_URL="https://${PROJECT_NAME}.pages.dev"
+# Pages の名前は世界全体で重複できない。希望名が既に使われている場合は
+# Cloudflare が tournament-os-2vx.pages.dev のような固定ドメインを割り当てる。
+# 推測したURLではなく、作成済みプロジェクトの一覧から実際の固定ドメインを読む。
+PROJECTS_OUT="$($WRANGLER pages project list 2>/dev/null || true)"
+PROJECT_DOMAIN="$(printf '%s\n' "$PROJECTS_OUT" | grep -F "│ $PROJECT_NAME " | grep -oE '[A-Za-z0-9._-]+\.pages\.dev' | head -1 || true)"
+if [ -n "$PROJECT_DOMAIN" ]; then
+  STABLE_URL="https://${PROJECT_DOMAIN}"
+else
+  STABLE_URL="https://${PROJECT_NAME}.pages.dev"
+fi
 if printf '%s' "$PAGES_OUT" | grep -qF "$STABLE_URL"; then
   APP_URL="$STABLE_URL"
 else
