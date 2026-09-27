@@ -103,6 +103,8 @@ if [ -z "$SHEET_ID" ]; then
   if [ -n "${CURRENT:-}" ]; then
     SHEET_ID="$CURRENT"
     ok "設定済みのIDを使います: $SHEET_ID"
+  elif [ "${ALLOW_EMPTY_SHEET:-false}" = "true" ]; then
+    warn "進行表はまだ接続しません。公開後、管理画面からGoogle原本を設定できます。"
   else
     printf '\n  進行表のURLの /d/ と /edit の間の文字列です。\n'
     printf '  例: docs.google.com/spreadsheets/d/%sここ%s/edit\n\n' "$BOLD" "$RESET"
@@ -113,9 +115,15 @@ if [ -z "$SHEET_ID" ]; then
 fi
 
 set_var "$CONFIG" SHEET_ID "$SHEET_ID" || die "シートIDを書き込めませんでした。"
-ok "シートIDを設定しました"
+if [ -n "$SHEET_ID" ]; then
+  ok "シートIDを設定しました"
+else
+  ok "進行表は未接続のまま安全に公開します"
+fi
 
-warn "進行表の共有を「リンクを知っている全員／閲覧者」にしてください（あとで必要になります）。"
+if [ -n "$SHEET_ID" ]; then
+  warn "進行表の共有を「リンクを知っている全員／閲覧者」にしてください（あとで必要になります）。"
+fi
 warn "申込の原本（メール・電話番号入り）は絶対に公開しないでください。"
 
 # ---------------------------------------------------------------- 3. 操作キー
