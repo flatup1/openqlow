@@ -231,7 +231,7 @@ AIは「連続した自然な動き」が得意な一方、**時間を意図的�
 ```text
 [Duration]s | 16:9 | 2K
 
-[Reference]
+[Reference]   ← 番号は「そのカットでアップロードした順」。キャラシートの通し番号とは別物
 @image1 = strict character identity lock (face, hair, body, uniform, exact colors). Never alter.
 @image2 = charged-up expression reference
 @image3 = environment style lock

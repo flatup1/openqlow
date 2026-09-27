@@ -246,15 +246,36 @@ Bust-up only for this sheet. Consistent line weight across all four.
 
 ## 8. 使い方（動画プロンプトへの接続）
 
-採用した9枚を保存し、以後すべての動画プロンプトの `[Reference]` ブロックで役割を明記します。
+### 8-1. 番号は「保管用の通し番号」と「そのカットでの番号」で別物（重要）
+
+**§6 の @image1〜@image9 は、シートを保管するための通し番号です。動画プロンプトの番号とは別物**として扱ってください。混同すると、構えのつもりで斜め45度の絵を渡すことになります。
+
+| | 意味 |
+|---|---|
+| **シートの番号**（§6の@image1〜9） | ファイルの通し番号。保管・呼び出し用 |
+| **動画プロンプトの番号** | **そのカットでアップロードした順**に @image1, @image2… と振り直す |
+
+1カットで9枚すべてを渡す必要はありません。必要な数枚だけ選んで渡します。
+
+### 8-2. 実際の渡し方（例）
+
+ストレートの教則カットなら、シートから3枚を選んで、その順に番号を振り直します。
+
+| アップロード順 | 渡すシート | プロンプトでの番号 |
+|---|---|---|
+| 1枚目 | §6-1 正面 | `@image1` |
+| 2枚目 | §6-7 構え | `@image2` |
+| 3枚目 | §6-8 技の途中 | `@image3` |
 
 ```text
 [Reference]
 @image1 = strict character identity lock (face, hair, body proportions, uniform, exact colors).
           Never alter.
-@image7 = stance reference
-@image8 = mid-technique reference
+@image2 = stance reference
+@image3 = mid-technique reference
 ```
+
+各ガイドのテンプレートに出てくる `@image1 / @image2 / @image3` も、この**アップロード順の番号**です。
 
 **@image9（表情4面）の扱いに注意**: 4面グリッドを動画生成の参照にそのまま渡すと、モデルが「4人いる」と解釈して人数が増えることがあります。**@image9 は表情の設計確認用**とし、動画プロンプトの `[Reference]` には渡さないでください。表情を指定したいときは、グリッドから1面だけを切り出した単独画像を作って渡します。
 
@@ -264,7 +285,29 @@ Bust-up only for this sheet. Consistent line weight across all four.
 
 ---
 
-## 9. この先の手順
+## 9. 2人目（生徒役）が必要な場合
+
+教則ガイド §6-5「ミット打ちの受け方」は **2人のカット** です。このシートは指導者1人分しか定義していないため、**生徒役のシートを別途作る必要があります**。
+
+作り方は簡単で、§5 の Subject を次のように差し替えて、§6-1（正面）と §6-7（構え）の **2枚だけ** 作れば足ります。
+
+```text
+[Subject — 生徒役]
+A beginner student, 6.5 to 7 head-body anime proportions, early twenties,
+black hair in a different length and style from the instructor,
+softer and less athletic build, slightly shorter than the instructor,
+slightly nervous but willing expression,
+wearing a plain grey t-shirt (no logo), muay thai shorts,
+red boxing gloves (wrist-length, no exposed fingers), barefoot.
+```
+
+**指導者と見分けがつくようにする**のが目的です。canon の制約（黒髪・赤グローブ・ムエタイショーツ・裸足）は守りつつ、**髪の長さ／毛質・体格・ウェアの色**の3点で差をつけます。ロゴTは指導者だけにすると、役割が一目で分かります。
+
+2人カットのプロンプトでは、必ず `Never swap or blend the two.` を入れてください。入れないと途中で顔が入れ替わります。
+
+---
+
+## 10. この先の手順
 
 1. **本シート §3 をオーナーが確定**（名前・性別・年齢感）※ 未確定でも 2 は進められる
 2. **9枚を生成し、§7 で合否判定**
@@ -275,7 +318,7 @@ Bust-up only for this sheet. Consistent line weight across all four.
 
 ---
 
-## 10. 承認ゲート
+## 11. 承認ゲート
 
 - AIだけで進めてよい: プロンプト作成、試作生成、社内確認
 - **オーナー承認が必要**: キャラクター設定の確定、有料クレジットの購入、SNS・LP・YouTube等への公開、ブランド映像への採用、commit / push / PR

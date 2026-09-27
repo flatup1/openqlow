@@ -84,7 +84,7 @@ FLATUP は「世界一初心者に優しい格闘技ジム」です。教則動�
 ```text
 [Duration]s | 16:9 or 9:16 | 2K
 
-[Reference]
+[Reference]   ← 番号は「そのカットでアップロードした順」。キャラシートの通し番号とは別物
 @image1 = strict character identity lock (face, hair, body proportions, uniform, exact colors). Never alter.
 @image2 = stance reference (optional)
 @image3 = environment style lock (dojo / gym)
@@ -218,6 +218,8 @@ Constraints: no swinging the leg without lifting the knee, no dropped hands, no 
 **教則ポイント**: 「まず膝を上げる。蹴ってから膝を戻す、が正しい順番。」
 
 ### 6-5. ミット打ちの受け方（2人・安全表現）
+
+**このカットだけ2人分のキャラシートが必要です。** 生徒役の作り方は `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` §9 を参照。
 
 ```text
 10s | 16:9 | 2K
