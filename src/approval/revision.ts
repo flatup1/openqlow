@@ -1,7 +1,5 @@
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
 import { checkDraftSafety } from "../safety/check.js";
-import { loadRecord, saveRecord } from "../state/file_store.js";
+import { loadRecord, readRecord, saveRecord } from "../state/file_store.js";
 import type { DraftRecord, PlatformDraft } from "../types.js";
 import { resolveCurrentDraftId } from "./shortcut.js";
 import { formatApprovalMessage } from "./message.js";
@@ -28,23 +26,6 @@ export function parseLineRevisionCommand(text: string): LineRevisionCommand | un
   if (withoutId) return { body: withoutId[1].trim() };
 
   return undefined;
-}
-
-async function loadStateRecords(root: string): Promise<DraftRecord[]> {
-  const dir = path.join(root, "state");
-  const files = await readdir(dir).catch(() => []);
-  const records: DraftRecord[] = [];
-  for (const file of files) {
-    if (!/^FG-\d{8}-\d{3}\.json$/.test(file)) continue;
-    const text = await readFile(path.join(dir, file), "utf8").catch(() => "");
-    if (!text) continue;
-    try {
-      records.push(JSON.parse(text) as DraftRecord);
-    } catch {
-      // Ignore malformed state files; revision must fail closed.
-    }
-  }
-  return records;
 }
 
 /**
@@ -76,6 +57,18 @@ export async function applyLineRevisionCommand(root: string, text: string, now =
   const command = parseLineRevisionCommand(text);
   if (!command) {
     return { ok: false, message: "修正は `修正 新しい本文` または `修正 FG-YYYYMMDD-NNN: 新しい本文` で送ってください。" };
+  }
+
+  if (command.id) {
+    // 読めなかっただけなのに「ありません」と答えると、JINはIDを間違えたと思う。
+    const read = await readRecord(root, command.id);
+    if (read.status === "unreadable") {
+      return {
+        ok: false,
+        id: command.id,
+        message: `${command.id} の下書きを読めませんでした（${read.reason}）。修正は反映していません。`,
+      };
+    }
   }
 
   const target = command.id
