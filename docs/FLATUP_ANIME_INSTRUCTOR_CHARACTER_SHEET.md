@@ -28,7 +28,9 @@ FLATUP には現在2つの映像シリーズがある。**キャラクターを�
 | シリーズ | 頭身 | キャラクター | 正本 |
 |---|---|---|---|
 | ブランドアニメ13話 | **2.5頭身ちび** | フラットちゃん、サンドバッグ、ミット、各話の子ども | `FLATUP_GYM_ANIME_ART_BIBLE.md` |
-| **教則・アクション（本シート）** | **6.5〜7頭身の通常アニメ体型** | 教則インストラクター（本シートで定義） | 本ファイル |
+| **教則・アクション（本シート）** | **6.5〜7頭身の通常アニメ体型** | 教則インストラクター（本シートで定義） | 外見canon = art bible / 本シリーズ固有の仕様 = 本ファイル |
+
+**正本の関係**: 髪色・グローブ・ウェア・裸足といった **外見のcanonは `FLATUP_GYM_ANIME_ART_BIBLE.md` が正本**（§4）。本ファイルが定義するのは、頭身・ポーズ・用途など **本シリーズ固有の仕様** だけです。両者が食い違った場合は art bible を優先します。
 
 **なぜ等身を上げるのか**: 教則動画は「体重移動・膝の角度・軸足の向き」を見せるのが目的。2.5頭身のちび体型では関節の位置が読み取れず、教則として機能しない。ブランドアニメの優しさは、体型ではなく**表情とトーン**で引き継ぐ。
 
@@ -91,7 +93,17 @@ wearing shoes, wearing earrings, long gloves with fingers, blood, injury,
 cropped feet, busy background, text, watermark.
 ```
 
-**グローブを外したい枚がある場合**は Subject の `red boxing gloves (...)` を `bare hands with hand wraps` に置き換えます（§6-8, §6-9 で使用）。
+### 5-1. ブロックの差し替えが必要な枚（重要）
+
+共通ブロックをそのまま貼ると**矛盾する枚が1つだけ**あります。必ず差し替えてください。
+
+| 枚 | 差し替え内容 | 理由 |
+|---|---|---|
+| **§6-9（表情4面）** | Common Style から `Full body visible from head to feet, feet not cropped.` の1行を削除し、Negative から `cropped feet` を削除する | バストアップ指定と全身指定が同じプロンプト内で衝突し、生成が破綻するため |
+
+その他8枚（§6-1〜§6-8）は共通ブロックをそのまま使えます。
+
+**手にテーピングを見せたい派生カットを作る場合**（教則で拳の握りを説明する等）は、Subject の `red boxing gloves (wrist-length, no exposed fingers)` を `bare hands with white hand wraps` に置き換えます。ただし **§6-1〜§6-9 の9枚は全てグローブ着用で統一** してください。ここを混ぜると identity lock が弱くなります。
 
 ---
 
@@ -101,12 +113,30 @@ cropped feet, busy background, text, watermark.
 
 ### 6-1. 正面（@image1 — 最重要・identity lock の基準）
 
+**この1枚だけ完全展開版を載せます。** 組み立て後の形はこうなる、という見本です。§6-2 以降は同じ要領で、共通ブロックの後ろに個別指定を続けてください。
+
 ```text
-[Common Style] + [Subject]
-Standing straight, facing the camera directly, arms relaxed at the sides,
-feet shoulder-width apart, calm neutral expression looking at the viewer.
-T-pose is not required. Full body, head to bare feet.
-[Negative]
+High-quality Japanese anime character sheet, cel-shaded 2D illustration,
+clean hand-inked line art with consistent line weight, flat colour fills,
+hard-edged graphic shadows, no 3D shading, no photoreal skin.
+Full body visible from head to feet, feet not cropped.
+Plain light grey background, even neutral lighting, no cast shadows on the background.
+Character centred, no text, no watermark, no logo other than the shirt print.
+
+A martial arts instructor, 6.5 to 7 head-body anime proportions, late twenties to
+early thirties, black hair, calm and gentle eyes, relaxed friendly expression,
+athletic but not exaggerated build, wearing a black FLATUP GYM t-shirt with a simple
+white logo print, muay thai shorts, red boxing gloves (wrist-length, no exposed fingers),
+barefoot.
+
+Standing straight, facing the camera directly, arms relaxed and hanging at the sides,
+feet shoulder-width apart, weight evenly on both feet,
+calm neutral expression looking at the viewer.
+
+Negative: chibi proportions, oversized head, extra limbs, extra fingers, distorted anatomy,
+photorealistic, 3D render, CGI, angry or aggressive expression, shouting,
+wearing shoes, wearing earrings, long gloves with fingers, blood, injury,
+cropped feet, busy background, text, watermark.
 ```
 
 ### 6-2. 斜め45度（右）（@image2）
@@ -183,14 +213,16 @@ Anatomically correct at every joint. Full body, head to bare feet.
 
 ### 6-9. 表情バリエーション（@image9 — バストアップ4面）
 
+**この枚だけ共通ブロックを差し替えます**（§5-1）: Common Style から全身指定の1行を削除し、Negative から `cropped feet` を削除してから貼ってください。
+
 ```text
-[Common Style] + [Subject]
+[Common Style — 全身指定の1行を削除したもの] + [Subject]
 Character sheet of four bust-up expressions of the same face, arranged in a 2x2 grid,
 all facing the camera, identical hairstyle and identical face structure across all four:
 top-left = calm neutral, top-right = warm gentle smile,
 bottom-left = focused and serious (not angry), bottom-right = encouraging nod with soft eyes.
 Bust-up only for this sheet. Consistent line weight across all four.
-[Negative] （+ angry, sad, crying, exaggerated comedic faces, different faces between panels）
+[Negative — cropped feet を削除したもの] （+ angry, sad, crying, exaggerated comedic faces, different faces between panels）
 ```
 
 ---
@@ -223,6 +255,8 @@ Bust-up only for this sheet. Consistent line weight across all four.
 @image7 = stance reference
 @image8 = mid-technique reference
 ```
+
+**@image9（表情4面）の扱いに注意**: 4面グリッドを動画生成の参照にそのまま渡すと、モデルが「4人いる」と解釈して人数が増えることがあります。**@image9 は表情の設計確認用**とし、動画プロンプトの `[Reference]` には渡さないでください。表情を指定したいときは、グリッドから1面だけを切り出した単独画像を作って渡します。
 
 **保存場所**: ブランド映像の既存構成に合わせ、`brand-film-*/` と同じ命名規則でフォルダを作って保存する。会員が写った素材は入れない（`docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md` §3）。
 
