@@ -24,7 +24,9 @@ die() {
 }
 
 WRANGLER="npx --yes wrangler@4"
-CONFIG="worker/wrangler.toml"
+CONFIG="${WORKER_CONFIG:-worker/wrangler.toml}"
+PROJECT_NAME="${PROJECT_NAME:-uizin-eventos}"
+APP_TITLE="${APP_TITLE:-UIZIN EventOS}"
 
 # wrangler.toml の [vars] を1行だけ書き換える。
 # node -e のとき process.argv は [nodeのパス, 引数...] なので slice(1) で取る。
@@ -39,7 +41,7 @@ set_var() {
   ' "$1" "$2" "$3"
 }
 
-printf '%s\n' "${BOLD}=== UIZIN EventOS 本番公開 ===${RESET}"
+printf '%s\n' "${BOLD}=== ${APP_TITLE} 本番公開 ===${RESET}"
 printf '%s\n' "${DIM}6画面と裏側のシステムを Cloudflare に公開します。費用はかかりません。${RESET}"
 
 # ---------------------------------------------------------------- 0. 前提確認
@@ -148,7 +150,7 @@ ok "裏側: $API_URL"
 # ---------------------------------------------------------------- 5. 画面を公開
 step "5/6  5つの画面（Pages）を公開"
 
-$WRANGLER pages project create uizin-eventos --production-branch main >/dev/null 2>&1 || true
+$WRANGLER pages project create "$PROJECT_NAME" --production-branch main >/dev/null 2>&1 || true
 
 # 前回のビルドの残骸が混ざると、裏側のURLが焼き込まれていない画面ができる。
 # それを公開すると、画面は開くのに「サーバーに届いていません(HTTP 404)」になる
@@ -167,13 +169,13 @@ fi
 ok "画面を組み立てました（裏側のURLも入っています）"
 
 PAGES_OUT=""
-PAGES_OUT="$($WRANGLER pages deploy out --project-name uizin-eventos --branch main --commit-dirty=true 2>&1)" \
+PAGES_OUT="$($WRANGLER pages deploy out --project-name "$PROJECT_NAME" --branch main --commit-dirty=true 2>&1)" \
   || { printf '%s\n' "$PAGES_OUT"; die "画面を公開できませんでした。"; }
 # 出力には2種類のURLが出る:
 #   https://uizin-eventos.pages.dev            ← 毎回同じ。スタッフに配るのはこっち
 #   https://<毎回変わる>.uizin-eventos.pages.dev ← デプロイごとに変わる。配ってはいけない
 # 配ったURLが次の公開で変わると、当日に「開かない」が起きる。必ず固定のほうを取る。
-STABLE_URL="https://uizin-eventos.pages.dev"
+STABLE_URL="https://${PROJECT_NAME}.pages.dev"
 if printf '%s' "$PAGES_OUT" | grep -qF "$STABLE_URL"; then
   APP_URL="$STABLE_URL"
 else
@@ -233,4 +235,3 @@ printf '    5. 当日の進行担当には %s/live/ を渡す（ボタン3つだ
 
 printf '  %sもし「サーバーに届いていません」と出たら%s\n' "$DIM" "$RESET"
 printf '    %s/op/?api=%s を一度開くと、その端末が接続先を覚えます。\n\n' "$APP_URL" "$API_URL"
-

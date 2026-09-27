@@ -6,11 +6,16 @@
  */
 
 import { useEffect, useState } from 'react';
-import { getApiBase } from './lib/config.ts';
+import { getApiBase, getEventId } from './lib/config.ts';
 import { useEventState } from './lib/useEventState.ts';
 import { ConnectionBadge } from './components/TimerBar.tsx';
 
 const SCREENS = [
+  {
+    href: './admin/', title: '大会を準備する', role: '主催者（大会前）',
+    body: '新しい大会IDを作り、Googleスプレッドシートまたは予備CSVを取り込みます。',
+    tone: 'border-indigo-500 bg-indigo-950/40',
+  },
   {
     href: './dj/', title: '大会DJデスク', role: '音響・リングアナウンサー・進行担当',
     body: 'RED / BLUE、選手詳細、アナウンス、入場曲、Winner BGM、サンプラーを1画面に。',
@@ -63,16 +68,18 @@ const SCREENS = [
 export default function HomePage() {
   const store = useEventState();
   const [api, setApi] = useState('');
+  const [eventId, setCurrentEventId] = useState('');
 
   useEffect(() => {
     setApi(getApiBase());
+    setCurrentEventId(getEventId());
   }, []);
 
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10">
       <div className="flex flex-wrap items-center gap-4">
-        <h1 className="text-4xl font-black text-white">UIZIN EventOS</h1>
-        <span className="rounded-full bg-white/10 px-3 py-1 text-sm font-bold text-slate-300">v1.0</span>
+        <h1 className="text-4xl font-black text-white">Tournament OS</h1>
+        <span className="rounded-full bg-white/10 px-3 py-1 text-sm font-bold text-slate-300">汎用格闘技大会版</span>
         <div className="ml-auto">
           <ConnectionBadge connection={store.connection} />
         </div>
@@ -81,10 +88,11 @@ export default function HomePage() {
         {store.snapshot ? store.snapshot.program.meta.title : '大会を止めないための進行システム'}
         {store.snapshot?.program.meta.venue ? '　/　' + store.snapshot.program.meta.venue : ''}
       </p>
+      <p className="mt-2 text-sm font-bold text-indigo-300">大会ID: {eventId || '読み込み中'}</p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {SCREENS.map((s) => (
-          <a key={s.href} href={s.href} className={'rounded-2xl border p-6 transition hover:brightness-125 ' + s.tone}>
+          <a key={s.href} href={s.href + (eventId ? '?event=' + encodeURIComponent(eventId) : '')} className={'rounded-2xl border p-6 transition hover:brightness-125 ' + s.tone}>
             <p className="text-xs font-bold tracking-widest text-slate-400">{s.role}</p>
             <p className="mt-1 text-2xl font-black text-white">{s.title}</p>
             <p className="mt-2 text-sm leading-relaxed text-slate-300">{s.body}</p>

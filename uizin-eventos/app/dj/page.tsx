@@ -110,7 +110,7 @@ export default function DjPage() {
     <TimerBar state={state} program={program} now={store.serverNow()} connection={store.connection} />
     <main className="mx-auto max-w-[1500px] space-y-5 px-4 py-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><p className="text-sm tracking-[0.3em] text-slate-400">UIZIN TOURNAMENT OS</p><h1 className="text-3xl font-black">大会DJデスク</h1></div>
+        <div><p className="text-sm tracking-[0.3em] text-slate-400">TOURNAMENT OS</p><h1 className="text-3xl font-black">大会DJデスク</h1></div>
         <div className="flex flex-wrap gap-2"><button className={BUTTON} onClick={() => setSettings(!settings)}>{settings ? '運営画面へ' : '音源・音量設定'}</button>
           </div>
       </div>

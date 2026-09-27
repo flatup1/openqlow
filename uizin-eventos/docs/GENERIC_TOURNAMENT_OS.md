@@ -204,3 +204,16 @@ Google スプレッドシートと管理画面の両方に対応する。
 - Apple Musicの自動操作
 
 まずは「別の格闘技大会でも、安全に同じ運営体験を再利用できること」に集中する。
+
+## 実装状況
+
+汎用版v1では、次を実装済みとする。
+
+- 大会IDをURLの `?event=` で指定
+- 大会IDごとにDurable Object、オフライン保存、音声設定を分離
+- `/admin/` からGoogleスプレッドシートを指定して取り込み
+- Google Sheets障害時の `event` / `matches` / `music` CSV手貼り取り込み
+- 既存UIZIN端末の接続設定とオフライン保存を引き継ぐ互換処理
+- 既存UIZINとは別の `tournament-os` Cloudflare Pages／Workerへ公開できるスクリプト
+
+本番公開は、別大会のテストデータによるブラウザ確認とユーザー承認後に行う。

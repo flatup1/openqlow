@@ -1,0 +1,23 @@
+name = "tournament-os-api"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+EVENT_ID = "tournament-default"
+SHEET_ID = ""
+SHEET_EVENT = "event"
+SHEET_MATCHES = "matches"
+SHEET_MUSIC = "music"
+ALLOWED_ORIGINS = "https://tournament-os.pages.dev"
+
+[[durable_objects.bindings]]
+name = "EVENT_ROOM"
+class_name = "EventRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["EventRoom"]
+
+[observability]
+enabled = true

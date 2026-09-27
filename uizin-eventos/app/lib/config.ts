@@ -7,8 +7,12 @@
  * URL の ?api= で上書きでき、その内容をこの端末に覚えさせる。
  */
 
+import { DEFAULT_EVENT_ID, normalizeEventId } from '../../core/eventId.ts';
+
+// 既存UIZIN端末の接続先・操作キーを消さないため、旧キーをそのまま引き継ぐ。
 const API_KEY_STORAGE = 'uizin.eventos.api';
 const OPERATOR_KEY_STORAGE = 'uizin.eventos.operatorKey';
+const EVENT_ID_STORAGE = 'tournament.os.eventId';
 
 const BUILD_TIME_API = process.env.NEXT_PUBLIC_EVENTOS_API ?? '';
 
@@ -68,7 +72,39 @@ export function setOperatorKey(value: string): void {
   }
 }
 
+export function getEventId(): string {
+  if (typeof window === 'undefined') return DEFAULT_EVENT_ID;
+  const fromUrl = readSearchParam('event');
+  if (fromUrl) {
+    const eventId = normalizeEventId(fromUrl);
+    setEventId(eventId);
+    return eventId;
+  }
+  try {
+    return normalizeEventId(window.localStorage.getItem(EVENT_ID_STORAGE));
+  } catch {
+    return DEFAULT_EVENT_ID;
+  }
+}
+
+export function setEventId(value: string): void {
+  try {
+    window.localStorage.setItem(EVENT_ID_STORAGE, normalizeEventId(value));
+  } catch {
+    // 無視
+  }
+}
+
+export function apiUrl(base: string, path: string): string {
+  if (!base.trim()) return path + '?event=' + encodeURIComponent(getEventId());
+  const url = new URL(base.replace(/\/+$/, '') + path);
+  url.searchParams.set('event', getEventId());
+  return url.toString();
+}
+
 export function wsUrl(base: string): string {
   const url = base.startsWith('http') ? base : 'https://' + base;
-  return url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/ws';
+  const target = new URL(url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/ws');
+  target.searchParams.set('event', getEventId());
+  return target.toString();
 }

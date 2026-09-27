@@ -12,8 +12,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Snapshot, ServerMessage } from '../../core/types.ts';
-import { getApiBase, wsUrl } from './config.ts';
-import { readSnapshotCache, snapshotCacheKey } from '../../core/snapshotCache.ts';
+import { apiUrl, getApiBase, getEventId, wsUrl } from './config.ts';
+import { legacySnapshotCacheKey, readSnapshotCache, snapshotCacheKey } from '../../core/snapshotCache.ts';
+import { DEFAULT_EVENT_ID } from '../../core/eventId.ts';
 
 export type Connection = 'connecting' | 'live' | 'polling' | 'offline';
 
@@ -57,7 +58,7 @@ export function useEventState(): EventStore {
     // 古いメッセージが後から届いても、進んだ状態を巻き戻さない
     if (!cachedRef.current && current && next.state.version < current.state.version) return;
     cachedRef.current = false;
-    try { localStorage.setItem(snapshotCacheKey(getApiBase()), JSON.stringify(next)); } catch { /* Storage unavailable: keep server state. */ }
+    try { localStorage.setItem(snapshotCacheKey(getApiBase(), getEventId()), JSON.stringify(next)); } catch { /* Storage unavailable: keep server state. */ }
     snapshotRef.current = next;
     setSnapshot(next);
     receivedAtRef.current = Date.now();
@@ -96,7 +97,7 @@ export function useEventState(): EventStore {
     const base = getApiBase();
     try {
       const sentAt = Date.now();
-      const res = await fetch(base + '/api/time', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
+      const res = await fetch(apiUrl(base, '/api/time'), { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
       if (!res.ok) return;
       const receivedAt = Date.now();
       const data = (await res.json()) as { serverNow: number };
@@ -112,7 +113,7 @@ export function useEventState(): EventStore {
   const pull = useCallback(async () => {
     const base = getApiBase();
     try {
-      const res = await fetch(base + '/api/state', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
+      const res = await fetch(apiUrl(base, '/api/state'), { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = (await res.json()) as Snapshot;
       applySnapshot(data);
@@ -128,7 +129,11 @@ export function useEventState(): EventStore {
 
   useEffect(() => {
     try {
-      const cached = readSnapshotCache(localStorage.getItem(snapshotCacheKey(getApiBase())));
+      const base = getApiBase();
+      const currentEvent = getEventId();
+      const current = localStorage.getItem(snapshotCacheKey(base, currentEvent));
+      const legacy = currentEvent === DEFAULT_EVENT_ID ? localStorage.getItem(legacySnapshotCacheKey(base)) : null;
+      const cached = readSnapshotCache(current ?? legacy);
       if (cached && !snapshotRef.current) {
         cachedRef.current = true;
         snapshotRef.current = cached;

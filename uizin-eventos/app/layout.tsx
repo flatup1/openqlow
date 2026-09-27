@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'UIZIN EventOS',
-  description: '大会を止めないための進行システム（v1.0）',
+  title: 'Tournament OS',
+  description: '格闘技大会を簡単・安全に進行する汎用システム',
 };
 
 export const viewport: Viewport = {

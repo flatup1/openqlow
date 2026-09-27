@@ -63,6 +63,23 @@ npm run build       # 画面を out/ に静的書き出し
 npm run typecheck   # tsc 単体（Next の型が要るので build のあとに実行する）
 ```
 
+## 別大会で使う（Tournament OS）
+
+1. `/admin/` を開く
+2. 大会ごとに違う大会IDを入力する（例 `narita-kick-2027`）
+3. 個人の連絡先を除いた進行表スプレッドシートを指定する
+4. 「進行表を取り込む」を押す
+5. 表示された大会別URLをスタッフへ渡す
+
+大会IDごとに、現在試合・番組表・画像・音声設定・オフライン保存が分離されます。
+汎用版を既存UIZINと別のCloudflareサイトへ公開するときだけ、次を使用します。
+
+```bash
+npm run go-live:tournament -- <最初の大会の進行表シートID>
+```
+
+既定の公開先は `https://tournament-os.pages.dev`、Workerは `tournament-os-api` です。既存の `uizin-eventos` は上書きしません。
+
 ローカルで通しで動かす（3端末同期の実機確認）:
 
 ```bash

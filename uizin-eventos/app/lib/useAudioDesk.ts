@@ -3,10 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioSource, DEFAULT_VOLUMES, defaultPads, readPads, readVolumes } from '../../core/audio.ts';
 import type { Pad, Volumes } from '../../core/audio.ts';
-import { getApiBase } from './config.ts';
+import { getApiBase, getEventId } from './config.ts';
 
 export type Track = { id: string; title: string; url: string; channel: 'red' | 'blue' | 'pads'; local?: boolean };
-const STOP_CHANNEL = 'uizin.eventos.audio';
+const deskKey = () => 'tournament.os.desk:' + getApiBase() + ':' + getEventId();
+const externalKey = () => 'tournament.os.external:' + getApiBase() + ':' + getEventId();
+const legacyDeskKey = () => 'uizin.eventos.desk:' + getApiBase();
+const legacyExternalKey = () => 'uizin.eventos.external:' + getApiBase();
+const stopChannel = () => 'tournament.os.audio:' + getEventId();
 
 /** One media element per desk. A generation id prevents late play() promises reviving stopped audio. */
 export function useAudioDesk() {
@@ -46,14 +50,14 @@ export function useAudioDesk() {
     audio.ontimeupdate = () => setPosition(audio.currentTime);
     audio.ondurationchange = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     try {
-      const bus = new BroadcastChannel(STOP_CHANNEL);
+      const bus = new BroadcastChannel(stopChannel());
       bus.onmessage = () => stopLocal();
       channel.current = bus;
     } catch { /* Single-tab fallback. */ }
     try {
-      const saved = JSON.parse(localStorage.getItem('uizin.eventos.desk:' + getApiBase()) ?? 'null');
+      const saved = JSON.parse(localStorage.getItem(deskKey()) ?? localStorage.getItem(legacyDeskKey()) ?? 'null');
       setVolumes(readVolumes(saved?.volumes)); setPads(readPads(saved?.pads));
-      const opened = JSON.parse(sessionStorage.getItem('uizin.eventos.external:' + getApiBase()) ?? 'null');
+      const opened = JSON.parse(sessionStorage.getItem(externalKey()) ?? sessionStorage.getItem(legacyExternalKey()) ?? 'null');
       if (opened && typeof opened.title === 'string' && typeof opened.url === 'string' && audioSource(opened.url).kind === 'external') setExternal(opened);
     } catch { setError('設定を復元できませんでした。音量を確認してください。'); }
     setLoaded(true);
@@ -68,7 +72,7 @@ export function useAudioDesk() {
 
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem('uizin.eventos.desk:' + getApiBase(), JSON.stringify({ volumes, pads })); }
+    try { localStorage.setItem(deskKey(), JSON.stringify({ volumes, pads })); }
     catch { setError('この端末に設定を保存できません。再読込後は再設定してください。'); }
   }, [loaded, volumes, pads]);
   useEffect(() => {
@@ -77,7 +81,7 @@ export function useAudioDesk() {
 
   useEffect(() => {
     if (!loaded) return;
-    try { sessionStorage.setItem('uizin.eventos.external:' + getApiBase(), JSON.stringify(external)); } catch { /* Still show the external status for this page. */ }
+    try { sessionStorage.setItem(externalKey(), JSON.stringify(external)); } catch { /* Still show the external status for this page. */ }
   }, [loaded, external]);
 
   const play = useCallback(async (track: Track) => {

@@ -6,7 +6,7 @@
  */
 
 import type { Command, EventState, MusicReport, Program } from '../../core/types.ts';
-import { getApiBase, getOperatorKey } from './config.ts';
+import { apiUrl, getApiBase, getOperatorKey } from './config.ts';
 
 export type CommandResponse = {
   ok: boolean;
@@ -23,7 +23,7 @@ async function post(path: string, body?: unknown): Promise<CommandResponse> {
   const base = getApiBase();
   const key = getOperatorKey();
   try {
-    const res = await fetch(base + path, {
+    const res = await fetch(apiUrl(base, path), {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-operator-key': key },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -47,8 +47,12 @@ export function sendUndo(expectedVersion: number): Promise<CommandResponse> {
   return post('/api/undo', { expectedVersion });
 }
 
-export function reloadProgram(): Promise<CommandResponse> {
-  return post('/api/program/reload');
+export function reloadProgram(sheetId?: string): Promise<CommandResponse> {
+  return post('/api/program/reload', sheetId ? { sheetId } : {});
+}
+
+export function uploadProgram(csv: { event: string; matches: string; music: string }): Promise<CommandResponse> {
+  return post('/api/program/upload', csv);
 }
 
 export function checkMusic(): Promise<CommandResponse> {

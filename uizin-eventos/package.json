@@ -15,12 +15,14 @@
     "lint": "next lint",
     "verify": "npm run test && npm run build",
     "go-live": "bash scripts/go-live.sh",
+    "go-live:tournament": "bash scripts/go-live-tournament.sh",
     "worker:dev": "wrangler dev --config worker/wrangler.toml",
     "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
+    "worker:deploy:tournament": "wrangler deploy --config worker/wrangler.tournament.toml",
     "pages:deploy": "wrangler pages deploy out --project-name uizin-eventos"
   },
   "dependencies": {
-    "next": "16.3.2",
+    "next": "16.3.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

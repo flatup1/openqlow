@@ -34,6 +34,10 @@ export function readSnapshotCache(raw: string | null): Snapshot | null {
   } catch { return null; }
 }
 
-export function snapshotCacheKey(apiBase: string): string {
+export function snapshotCacheKey(apiBase: string, eventId = ''): string {
+  return 'tournament.os.snapshot.v1:' + apiBase + ':' + eventId;
+}
+
+export function legacySnapshotCacheKey(apiBase: string): string {
   return 'uizin.eventos.snapshot.v1:' + apiBase;
 }

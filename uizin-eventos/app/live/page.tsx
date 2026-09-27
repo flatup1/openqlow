@@ -28,7 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEventState, useTick } from '../lib/useEventState.ts';
 import { sendCommand } from '../lib/client.ts';
 import { canOperate, createOperationGate } from '../../core/operatorSafety.ts';
-import { getApiBase, getOperatorKey, setOperatorKey } from '../lib/config.ts';
+import { getApiBase, getEventId, getOperatorKey, setOperatorKey } from '../lib/config.ts';
 import { Loading } from '../components/Loading.tsx';
 import { currentMatch, phaseLabel } from '../../core/state.ts';
 import { cueForFighter, liveNextAction, livePrevAction, playPlan } from '../../core/walkout.ts';
@@ -328,7 +328,7 @@ function LiveHeader({
       <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
         <div className="flex min-w-0 flex-col leading-tight">
           <span className="truncate text-xl font-black text-slate-900 sm:text-2xl">
-            {program.meta.title || 'UIZIN EventOS'}
+            {program.meta.title || 'Tournament OS'}
           </span>
           <span className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             {program.meta.venue ? <span className="truncate">{program.meta.venue}</span> : null}
@@ -547,7 +547,7 @@ export default function LivePage() {
   }, []);
 
   useEffect(() => {
-    try { bus.current = new BroadcastChannel('uizin.eventos.audio'); bus.current.onmessage = stopMusic; } catch { /* Single-tab fallback. */ }
+    try { bus.current = new BroadcastChannel('tournament.os.audio:' + getEventId()); bus.current.onmessage = stopMusic; } catch { /* Single-tab fallback. */ }
     return () => { bus.current?.close(); generation.current++; audioRef.current?.pause(); };
   }, [stopMusic]);
 

@@ -12,6 +12,7 @@
 import { looksLikeHtml, sheetCsvUrl } from '../core/sheet.ts';
 import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
+import { normalizeEventId } from '../core/eventId.ts';
 
 export { EventRoom } from './event-do.ts';
 
@@ -71,13 +72,17 @@ function isOperator(request: Request, env: Env): boolean {
   return diff === 0;
 }
 
-function room(env: Env): DurableObjectStub {
-  const id = env.EVENT_ROOM.idFromName(env.EVENT_ID ?? 'uizin-default');
+function eventId(request: Request, env: Env): string {
+  return normalizeEventId(new URL(request.url).searchParams.get('event'), normalizeEventId(env.EVENT_ID));
+}
+
+function room(env: Env, request: Request): DurableObjectStub {
+  const id = env.EVENT_ROOM.idFromName(eventId(request, env));
   return env.EVENT_ROOM.get(id);
 }
 
-function forward(env: Env, path: string, init?: RequestInit): Promise<Response> {
-  return room(env).fetch(new Request('https://event-room' + path, init));
+function forward(env: Env, request: Request, path: string, init?: RequestInit): Promise<Response> {
+  return room(env, request).fetch(new Request('https://event-room' + path, init));
 }
 
 /** タイムアウト付きの取得。大会当日にここで固まらないことが最優先 */
@@ -91,8 +96,14 @@ async function fetchWithTimeout(url: string, ms: number, init?: RequestInit): Pr
   }
 }
 
-async function loadSheets(env: Env): Promise<{ event: string; matches: string; music: string }> {
-  const sheetId = env.SHEET_ID ?? '';
+function validSheetId(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  return /^[A-Za-z0-9_-]{20,100}$/.test(trimmed) ? trimmed : '';
+}
+
+async function loadSheets(env: Env, requestedSheetId = ''): Promise<{ event: string; matches: string; music: string }> {
+  const sheetId = validSheetId(requestedSheetId) || validSheetId(env.SHEET_ID);
   if (sheetId === '') throw new Error('SHEET_ID が設定されていません。');
   const names = {
     event: env.SHEET_EVENT ?? 'event',
@@ -175,7 +186,7 @@ export default {
     // --- 全画面が見る（読み取り専用） -------------------------------------
     if (path === '/api/health') {
       return withCors(
-        json({ ok: true, serverNow: Date.now(), eventId: env.EVENT_ID ?? 'uizin-default', hasSheet: Boolean(env.SHEET_ID) }),
+        json({ ok: true, serverNow: Date.now(), eventId: eventId(request, env), hasSheet: Boolean(env.SHEET_ID) }),
         request,
         env,
       );
@@ -186,16 +197,16 @@ export default {
     }
 
     if (path === '/api/state') {
-      return withCors(await forward(env, '/snapshot'), request, env);
+      return withCors(await forward(env, request, '/snapshot'), request, env);
     }
 
     if (path === '/api/log') {
-      return withCors(await forward(env, '/log'), request, env);
+      return withCors(await forward(env, request, '/log'), request, env);
     }
 
     const photoMatch = path.match(/^\/api\/photos\/([A-Z0-9-]+)$/i);
     if (photoMatch && request.method === 'GET') {
-      return withCors(await forward(env, '/photos/' + photoMatch[1].toUpperCase()), request, env);
+      return withCors(await forward(env, request, '/photos/' + photoMatch[1].toUpperCase()), request, env);
     }
 
     if (photoMatch && request.method === 'PUT') {
@@ -212,7 +223,7 @@ export default {
         return withCors(json({ ok: false, reason: '写真は1バイト以上2MB以下にしてください。' }, 413), request, env);
       }
       return withCors(
-        await forward(env, '/photos/' + photoMatch[1].toUpperCase(), {
+        await forward(env, request, '/photos/' + photoMatch[1].toUpperCase(), {
           method: 'PUT',
           body,
           headers: { 'content-type': contentType },
@@ -226,7 +237,7 @@ export default {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return withCors(json({ ok: false, reason: 'WebSocket でつないでください。' }, 426), request, env);
       }
-      return room(env).fetch(new Request('https://event-room/ws', request));
+      return room(env, request).fetch(new Request('https://event-room/ws', request));
     }
 
     // --- 操作者だけ（書き込み） -------------------------------------------
@@ -253,21 +264,22 @@ export default {
     if (path === '/api/command') {
       const body = await request.text();
       return withCors(
-        await forward(env, '/command', { method: 'POST', body, headers: JSON_HEADERS }),
+        await forward(env, request, '/command', { method: 'POST', body, headers: JSON_HEADERS }),
         request,
         env,
       );
     }
 
     if (path === '/api/undo') {
-      return withCors(await forward(env, '/undo', { method: 'POST', body: await request.text(), headers: JSON_HEADERS }), request, env);
+      return withCors(await forward(env, request, '/undo', { method: 'POST', body: await request.text(), headers: JSON_HEADERS }), request, env);
     }
 
     if (path === '/api/program/reload') {
       try {
-        const csv = await loadSheets(env);
+        const body = (await request.json().catch(() => ({}))) as { sheetId?: unknown };
+        const csv = await loadSheets(env, typeof body.sheetId === 'string' ? body.sheetId : '');
         return withCors(
-          await forward(env, '/program', { method: 'POST', body: JSON.stringify(csv), headers: JSON_HEADERS }),
+          await forward(env, request, '/program', { method: 'POST', body: JSON.stringify(csv), headers: JSON_HEADERS }),
           request,
           env,
         );
@@ -291,18 +303,18 @@ export default {
         return withCors(json({ ok: false, reason: 'matches のCSVが空です。' }, 400), request, env);
       }
       return withCors(
-        await forward(env, '/program', { method: 'POST', body: JSON.stringify(csv), headers: JSON_HEADERS }),
+        await forward(env, request, '/program', { method: 'POST', body: JSON.stringify(csv), headers: JSON_HEADERS }),
         request,
         env,
       );
     }
 
     if (path === '/api/music/check') {
-      const cuesRes = await forward(env, '/cues');
+      const cuesRes = await forward(env, request, '/cues');
       const { cues } = (await cuesRes.json()) as { cues: MusicCue[] };
       const links = await verifyLinks(cues);
       return withCors(
-        await forward(env, '/music-report', { method: 'POST', body: JSON.stringify({ links }), headers: JSON_HEADERS }),
+        await forward(env, request, '/music-report', { method: 'POST', body: JSON.stringify({ links }), headers: JSON_HEADERS }),
         request,
         env,
       );
