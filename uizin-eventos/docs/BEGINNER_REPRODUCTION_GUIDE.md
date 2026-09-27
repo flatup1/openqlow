@@ -28,7 +28,7 @@ Node.jsやGitが入っているか分からなくても大丈夫です。AIが�
 ### 1. 次のリンクをコピーする
 
 ```text
-https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-eventos-v1-6f2l8p/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
+https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/claude/uizin-eventos-v1-6f2l8p/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
 ```
 
 ### 2. CodexまたはClaude Codeへ送る
@@ -37,7 +37,7 @@ https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-eventos-v1-6f2l8
 
 ```text
 このリンクの説明を読んで、Tournament OSをこのパソコンで再現してください。
-https://raw.githubusercontent.com/flatup1/openqlow/claude/uizin-eventos-v1-6f2l8p/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
+https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/claude/uizin-eventos-v1-6f2l8p/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
 ```
 
 ### 3. AIの作業が終わるまで待つ
