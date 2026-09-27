@@ -4,9 +4,9 @@ import { normalizeEntryConfig, normalizeEntryInput, validateEntry, validateEntry
 import { readFileSync } from 'node:fs';
 
 const valid = {
-  fighterName: '選手A', fighterKana: 'せんしゅえー', gym: 'テストジム', gender: '男性', age: '12',
-  category: 'キッズ', weight: '35.0', experience: '1〜3試合', record: '2戦1勝1敗', canFightTwice: '可能',
-  comment: '最後まで頑張ります', musicUrl: 'https://music.apple.com/jp/song/123', contactName: '保護者A',
+  fighterName: '選手A', fighterKana: 'せんしゅえー', gym: 'テストジム', gender: '男性', grade: '小学6年', age: '12',
+  category: 'キッズ', height: '150.5', weight: '35.0', experience: '1〜3試合', record: '2戦1勝1敗', canFightTwice: '可能',
+  comment: '最後まで頑張ります', musicChoice: 'あり', musicUrl: 'https://music.apple.com/jp/song/123', contactName: '保護者A',
   contactPhone: '090-1234-5678', contactEmail: 'test@example.com', consentPublicity: true, consentRules: true,
   website: '',
 };
@@ -16,9 +16,17 @@ test('entry validation accepts a complete reusable tournament entry', () => {
 });
 
 test('entry validation rejects impossible measurements, missing consent and unsafe music hosts', () => {
-  const entry = normalizeEntryInput({ ...valid, age: '2', weight: '500', musicUrl: 'https://example.com/song', consentRules: false });
+  const entry = normalizeEntryInput({ ...valid, age: '2', height: '500', weight: '500', musicUrl: 'https://example.com/song', consentRules: false });
   const errors = validateEntry(entry).join('\n');
-  assert.match(errors, /年齢/); assert.match(errors, /体重/); assert.match(errors, /Apple Music/); assert.match(errors, /同意/);
+  assert.match(errors, /年齢/); assert.match(errors, /身長/); assert.match(errors, /体重/); assert.match(errors, /Apple Music/); assert.match(errors, /同意/);
+});
+
+test('walkout music can be disabled per event and an enabled choice requires its URL', () => {
+  const withoutUrl = normalizeEntryInput({ ...valid, musicChoice: 'あり', musicUrl: '' });
+  assert.match(validateEntry(withoutUrl).join('\n'), /曲のURL/);
+  const config = normalizeEntryConfig({ title: '大会A', organizer: '主催A', date: '日', venue: '会場', deadline: '締切', usesWalkoutMusic: false });
+  assert.equal(config.usesWalkoutMusic, false);
+  assert.equal(normalizeEntryConfig({}).usesWalkoutMusic, true);
 });
 
 test('entry text is trimmed and bounded before it reaches storage', () => {

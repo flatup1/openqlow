@@ -13,9 +13,9 @@ const ENTRY_SECRET = 'ここをAIが作った長い秘密の文字へ変更';
 const SHEET_NAME = 'entries';
 
 const HEADERS = [
-  '受付番号', '所属GYM', '選手名（リングネーム）', 'ふりがな', '性別', '年齢', '参加区分',
-  '試合時の希望体重（kg）', '試合経験', '戦績・競技歴', '2試合可能か', '試合への意気込み',
-  '入場曲URL（Apple Music推奨）', '顔写真URL', '広報利用同意', '連絡先氏名',
+  '受付番号', '所属GYM', '選手名（リングネーム）', 'ふりがな', '性別', '学年', '年齢', '参加区分',
+  '身長（cm）', '試合時の希望体重（kg）', '試合経験', '戦績・競技歴', '2試合可能か', '試合への意気込み',
+  '入場曲の有無', '入場曲URL（Apple Music推奨）', '顔写真URL', '広報利用同意', '連絡先氏名',
   '連絡先電話番号', '連絡先メールアドレス', '申込日時', '大会ID',
 ];
 
@@ -33,8 +33,9 @@ function doPost(e) {
     if (receipts.indexOf(String(entry.receiptNo || '')) >= 0) return reply({ ok: true, duplicate: true });
     sheet.appendRow([
       safe(entry.receiptNo), safe(entry.gym), safe(entry.fighterName), safe(entry.fighterKana), safe(entry.gender),
-      safe(entry.age), safe(entry.category), safe(entry.weight), safe(entry.experience), safe(entry.record),
-      safe(entry.canFightTwice), safe(entry.comment), safe(entry.musicUrl), safe(entry.photoUrl),
+      safe(entry.grade), safe(entry.age), safe(entry.category), safe(entry.height), safe(entry.weight),
+      safe(entry.experience), safe(entry.record), safe(entry.canFightTwice), safe(entry.comment),
+      safe(entry.musicChoice), safe(entry.musicUrl), safe(entry.photoUrl),
       entry.consentPublicity === true ? '同意' : '不同意', safe(entry.contactName), safe(entry.contactPhone),
       safe(entry.contactEmail), new Date(Number(entry.submittedAt) || Date.now()), safe(body.eventId),
     ]);

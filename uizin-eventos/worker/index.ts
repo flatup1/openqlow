@@ -240,7 +240,7 @@ export default {
 
     if (path === '/api/entries' && request.method === 'POST') {
       const configRes = await forward(env, request, '/entry-config');
-      const configBody = await configRes.json() as { config?: { published?: boolean; deadline?: string } };
+      const configBody = await configRes.json() as { config?: { published?: boolean; deadline?: string; usesWalkoutMusic?: boolean } };
       if (!configBody.config?.published) return withCors(json({ ok: false, reason: '現在は募集していません。' }, 403), request, env);
       const type = request.headers.get('content-type') ?? '';
       let raw: unknown = {};
@@ -254,6 +254,9 @@ export default {
         raw = await request.json().catch(() => ({}));
       } else return withCors(json({ ok: false, reason: '送信形式が正しくありません。' }, 415), request, env);
       const input = normalizeEntryInput(raw);
+      if (configBody.config?.usesWalkoutMusic === false) {
+        input.musicChoice = 'なし'; input.musicUrl = '';
+      }
       if (input.website) return withCors(json({ ok: true, receiptNo: 'RECEIVED' }), request, env);
       const errors = validateEntry(input);
       if (errors.length) return withCors(json({ ok: false, reason: errors[0], errors }, 400), request, env);
@@ -347,9 +350,10 @@ export default {
         const origin = url.origin;
         const publicRows = entries.map((entry) => ({
           receiptNo: entry.receiptNo, fighterName: entry.fighterName, fighterKana: entry.fighterKana,
-          gym: entry.gym, gender: entry.gender, age: entry.age, category: entry.category, weight: entry.weight,
+          gym: entry.gym, gender: entry.gender, grade: entry.grade, age: entry.age, category: entry.category,
+          height: entry.height, weight: entry.weight,
           experience: entry.experience, record: entry.record, canFightTwice: entry.canFightTwice,
-          comment: entry.comment, musicUrl: entry.musicUrl,
+          comment: entry.comment, musicChoice: entry.musicChoice, musicUrl: entry.musicUrl,
           photoUrl: entry.photoStatus === 'uploaded' && entry.consentPublicity === true ? origin + '/api/photos/' + entry.receiptNo + '?event=' + encodeURIComponent(eventId(request, env)) : '',
           consentPublicity: entry.consentPublicity, submittedAt: entry.submittedAt,
           sheetSync: entry.sheetSync,

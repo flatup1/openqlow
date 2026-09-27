@@ -25,7 +25,7 @@ import { parseProgram } from '../core/sheet.ts';
 import type { SheetCsv } from '../core/sheet.ts';
 import { summarizeMusic } from '../core/music.ts';
 import type { EntryRecord, EntrySiteConfig } from '../core/entry.ts';
-import { EMPTY_ENTRY_CONFIG } from '../core/entry.ts';
+import { EMPTY_ENTRY_CONFIG, normalizeEntryConfig } from '../core/entry.ts';
 
 type StoredHistory = {
   current: EventState;
@@ -71,7 +71,7 @@ export class EventRoom {
         log: stored.history.log ?? [],
       };
       this.musicReport = stored.musicReport ?? null;
-      this.entryConfig = stored.entryConfig ?? EMPTY_ENTRY_CONFIG;
+      this.entryConfig = stored.entryConfig ? normalizeEntryConfig(stored.entryConfig) : EMPTY_ENTRY_CONFIG;
     } else {
       this.program = EMPTY_PROGRAM;
       this.history = newHistory(initialState(Date.now(), EMPTY_PROGRAM));
