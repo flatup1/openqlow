@@ -44,6 +44,13 @@ test('Google Sheets master template prevents duplicate receipts and formula inje
   assert.match(source, /receipts\.indexOf/);
   assert.match(source, /\^\[=\+\\-@\]/);
   assert.match(source, /LockService\.getScriptLock/);
+  assert.match(source, /body\.action === 'list'/);
+});
+
+test('matchmaking source is operator-only and never exposes a photo without publicity consent', () => {
+  const source = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+  assert.match(source, /entryOperatorPath[^\n]+\/api\/entries\/source/);
+  assert.match(source, /photoUrl: entry\.consentPublicity === true/);
 });
 
 test('beginner admin screen avoids unexplained technical labels in the normal path', () => {

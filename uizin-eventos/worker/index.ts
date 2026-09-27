@@ -124,12 +124,42 @@ async function appendEntryToMasterSheet(env: Env, event: string, entry: Record<s
   try {
     const response = await fetchWithTimeout(target, 10_000, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ secret, eventId: event, entry: { ...entry, photoUrl } }),
+      body: JSON.stringify({ action: 'append', secret, eventId: event, entry: { ...entry, photoUrl } }),
     });
     if (!response.ok) return false;
     const body = await response.json().catch(() => ({})) as { ok?: boolean };
     return body.ok === true;
   } catch { return false; }
+}
+
+async function loadEntriesFromMasterSheet(env: Env, event: string): Promise<Array<Record<string, unknown>> | null> {
+  const target = env.ENTRY_SHEET_WEBHOOK_URL?.trim() ?? '';
+  const secret = env.ENTRY_SHEET_WEBHOOK_SECRET?.trim() ?? '';
+  if (!target || !secret) return null;
+  try {
+    const response = await fetchWithTimeout(target, 15_000, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'list', secret, eventId: event }),
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as { ok?: boolean; entries?: Array<Record<string, unknown>> };
+    return body.ok === true && Array.isArray(body.entries) ? body.entries : null;
+  } catch { return null; }
+}
+
+function publicEntryRows(entries: Array<Record<string, unknown>>, origin: string, event: string): Array<Record<string, unknown>> {
+  return entries.map((entry) => ({
+    receiptNo: entry.receiptNo, fighterName: entry.fighterName, fighterKana: entry.fighterKana,
+    gym: entry.gym, gender: entry.gender, grade: entry.grade, age: entry.age, category: entry.category,
+    height: entry.height, weight: entry.weight, experience: entry.experience, record: entry.record,
+    canFightTwice: entry.canFightTwice, comment: entry.comment, musicChoice: entry.musicChoice, musicUrl: entry.musicUrl,
+    photoUrl: entry.consentPublicity === true
+      ? (entry.photoStatus === 'uploaded'
+        ? origin + '/api/photos/' + entry.receiptNo + '?event=' + encodeURIComponent(event)
+        : (entry.photoUrl ?? ''))
+      : '',
+    consentPublicity: entry.consentPublicity, submittedAt: entry.submittedAt, sheetSync: entry.sheetSync,
+  }));
 }
 
 async function loadSheets(env: Env, requestedSheetId = ''): Promise<{ event: string; matches: string; music: string }> {
@@ -320,7 +350,7 @@ export default {
       path === '/api/program/upload' ||
       path === '/api/music/check';
 
-    const entryOperatorPath = path === '/api/entry-config' || path === '/api/entries/export';
+    const entryOperatorPath = path === '/api/entry-config' || path === '/api/entries/export' || path === '/api/entries/source';
 
     if (needsOperator || entryOperatorPath) {
       if ((!entryOperatorPath && request.method !== 'POST') || (entryOperatorPath && !['GET', 'PUT'].includes(request.method))) {
@@ -347,20 +377,19 @@ export default {
       const body = await response.json() as { entries?: Array<Record<string, unknown>> };
       const entries = body.entries ?? [];
       if (url.searchParams.get('view') === 'os') {
-        const origin = url.origin;
-        const publicRows = entries.map((entry) => ({
-          receiptNo: entry.receiptNo, fighterName: entry.fighterName, fighterKana: entry.fighterKana,
-          gym: entry.gym, gender: entry.gender, grade: entry.grade, age: entry.age, category: entry.category,
-          height: entry.height, weight: entry.weight,
-          experience: entry.experience, record: entry.record, canFightTwice: entry.canFightTwice,
-          comment: entry.comment, musicChoice: entry.musicChoice, musicUrl: entry.musicUrl,
-          photoUrl: entry.photoStatus === 'uploaded' && entry.consentPublicity === true ? origin + '/api/photos/' + entry.receiptNo + '?event=' + encodeURIComponent(eventId(request, env)) : '',
-          consentPublicity: entry.consentPublicity, submittedAt: entry.submittedAt,
-          sheetSync: entry.sheetSync,
-        }));
+        const publicRows = publicEntryRows(entries, url.origin, eventId(request, env));
         return withCors(json({ ok: true, entries: publicRows }), request, env);
       }
       return withCors(json({ ok: true, entries }), request, env);
+    }
+
+    if (path === '/api/entries/source' && request.method === 'GET') {
+      const selectedEvent = eventId(request, env);
+      const master = await loadEntriesFromMasterSheet(env, selectedEvent);
+      if (master) return withCors(json({ ok: true, source: 'google-sheet', entries: publicEntryRows(master, url.origin, selectedEvent) }), request, env);
+      const response = await forward(env, request, '/entries');
+      const body = await response.json() as { entries?: Array<Record<string, unknown>> };
+      return withCors(json({ ok: true, source: 'backup', entries: publicEntryRows(body.entries ?? [], url.origin, selectedEvent) }), request, env);
     }
 
     if (path === '/api/command') {

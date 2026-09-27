@@ -7,6 +7,7 @@
 
 import type { Command, EventState, MusicReport, Program } from '../../core/types.ts';
 import type { EntrySiteConfig } from '../../core/entry.ts';
+import type { MatchBuilderFighter } from '../../core/matchBuilder.ts';
 import { apiUrl, getApiBase, getOperatorKey } from './config.ts';
 
 export type CommandResponse = {
@@ -69,4 +70,13 @@ export async function saveEntryConfig(config: EntrySiteConfig): Promise<{ ok: bo
     });
     return await res.json() as { ok: boolean; reason?: string };
   } catch { return { ok: false, reason: '保存結果を確認できません。再送前に画面を読み込み直してください。' }; }
+}
+
+export async function loadEntryFighters(): Promise<{ ok: boolean; entries: MatchBuilderFighter[]; source?: string; reason?: string }> {
+  const base = getApiBase();
+  try {
+    const res = await fetch(apiUrl(base, '/api/entries/source'), { headers: { 'x-operator-key': getOperatorKey() }, signal: AbortSignal.timeout(20_000) });
+    const body = await res.json() as { ok?: boolean; entries?: MatchBuilderFighter[]; source?: string; reason?: string };
+    return { ok: res.ok && body.ok === true, entries: body.entries ?? [], source: body.source, reason: body.reason };
+  } catch { return { ok: false, entries: [], reason: '選手一覧を読み込めませんでした。通信を確認してください。' }; }
 }

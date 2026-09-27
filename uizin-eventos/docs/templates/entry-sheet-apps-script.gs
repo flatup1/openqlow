@@ -24,11 +24,17 @@ function doPost(e) {
   try {
     lock.waitLock(10000);
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (!body || body.secret !== ENTRY_SECRET || !body.entry) return reply({ ok: false, reason: '認証できません' });
-    const entry = body.entry;
+    if (!body || body.secret !== ENTRY_SECRET) return reply({ ok: false, reason: '認証できません' });
     const book = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = book.getSheetByName(SHEET_NAME) || book.insertSheet(SHEET_NAME);
     if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
+    if (body.action === 'list') {
+      const values = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADERS.length).getDisplayValues() : [];
+      const entries = values.filter((row) => !body.eventId || row[HEADERS.indexOf('大会ID')] === body.eventId).map(rowToEntry);
+      return reply({ ok: true, entries: entries });
+    }
+    if (!body.entry) return reply({ ok: false, reason: '申込内容がありません' });
+    const entry = body.entry;
     const receipts = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getDisplayValues().flat() : [];
     if (receipts.indexOf(String(entry.receiptNo || '')) >= 0) return reply({ ok: true, duplicate: true });
     sheet.appendRow([
@@ -45,6 +51,18 @@ function doPost(e) {
   } finally {
     try { lock.releaseLock(); } catch (_) {}
   }
+}
+
+function rowToEntry(row) {
+  const value = name => row[HEADERS.indexOf(name)] || '';
+  return {
+    receiptNo: value('受付番号'), gym: value('所属GYM'), fighterName: value('選手名（リングネーム）'),
+    fighterKana: value('ふりがな'), gender: value('性別'), grade: value('学年'), age: value('年齢'),
+    category: value('参加区分'), height: value('身長（cm）'), weight: value('試合時の希望体重（kg）'),
+    experience: value('試合経験'), record: value('戦績・競技歴'), canFightTwice: value('2試合可能か'),
+    comment: value('試合への意気込み'), musicChoice: value('入場曲の有無'), musicUrl: value('入場曲URL（Apple Music推奨）'),
+    photoUrl: value('顔写真URL'), consentPublicity: value('広報利用同意') === '同意', submittedAt: value('申込日時'), sheetSync: 'synced',
+  };
 }
 
 function safe(value) {
