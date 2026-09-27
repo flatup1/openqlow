@@ -28,3 +28,13 @@ test('unsafe event ids cannot escape into another room', async () => {
   const body = await response.json() as { eventId: string };
   assert.equal(body.eventId, 'uizin-2026');
 });
+
+test('entry config and entry form use the same event room', async () => {
+  const names: string[] = [];
+  const environment = env(names);
+  await worker.fetch(new Request('https://example.test/api/entry-config?event=event-a'), environment);
+  await worker.fetch(new Request('https://example.test/api/entries?event=event-a', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+  }), environment);
+  assert.deepEqual(names, ['event-a', 'event-a']);
+});

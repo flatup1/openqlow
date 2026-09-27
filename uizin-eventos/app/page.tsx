@@ -12,6 +12,11 @@ import { ConnectionBadge } from './components/TimerBar.tsx';
 
 const SCREENS = [
   {
+    href: './entry/', title: 'エントリーサイト', role: '選手・保護者',
+    body: 'スマホで選手情報、意気込み、入場曲、連絡先を申し込みます。大会ごとに内容を変更できます。',
+    tone: 'border-cyan-500 bg-cyan-950/30',
+  },
+  {
     href: './admin/', title: '大会を準備する', role: '主催者（大会前）',
     body: '新しい大会IDを作り、Googleスプレッドシートまたは予備CSVを取り込みます。',
     tone: 'border-indigo-500 bg-indigo-950/40',

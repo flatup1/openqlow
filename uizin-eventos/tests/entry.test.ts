@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizeEntryConfig, normalizeEntryInput, validateEntry, validateEntryConfig } from '../core/entry.ts';
+
+const valid = {
+  fighterName: '選手A', fighterKana: 'せんしゅえー', gym: 'テストジム', gender: '男性', age: '12',
+  category: 'キッズ', weight: '35.0', experience: '1〜3試合', record: '2戦1勝1敗', canFightTwice: '可能',
+  comment: '最後まで頑張ります', musicUrl: 'https://music.apple.com/jp/song/123', contactName: '保護者A',
+  contactPhone: '090-1234-5678', contactEmail: 'test@example.com', consentPublicity: true, consentRules: true,
+  website: '',
+};
+
+test('entry validation accepts a complete reusable tournament entry', () => {
+  assert.deepEqual(validateEntry(normalizeEntryInput(valid)), []);
+});
+
+test('entry validation rejects impossible measurements, missing consent and unsafe music hosts', () => {
+  const entry = normalizeEntryInput({ ...valid, age: '2', weight: '500', musicUrl: 'https://example.com/song', consentRules: false });
+  const errors = validateEntry(entry).join('\n');
+  assert.match(errors, /年齢/); assert.match(errors, /体重/); assert.match(errors, /Apple Music/); assert.match(errors, /同意/);
+});
+
+test('entry text is trimmed and bounded before it reaches storage', () => {
+  const entry = normalizeEntryInput({ ...valid, fighterName: '  A  ', comment: 'x'.repeat(700) });
+  assert.equal(entry.fighterName, 'A'); assert.equal(entry.comment.length, 500);
+});
+
+test('generic entry site config requires only event-specific facts', () => {
+  const config = normalizeEntryConfig({ title: '大会A', organizer: '主催A', date: '2027-09-23', venue: '会場A', deadline: '2027-09-01', published: true });
+  assert.deepEqual(validateEntryConfig(config), []); assert.equal(config.published, true);
+});

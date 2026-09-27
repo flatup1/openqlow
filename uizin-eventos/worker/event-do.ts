@@ -24,6 +24,8 @@ import type { History } from '../core/history.ts';
 import { parseProgram } from '../core/sheet.ts';
 import type { SheetCsv } from '../core/sheet.ts';
 import { summarizeMusic } from '../core/music.ts';
+import type { EntryRecord, EntrySiteConfig } from '../core/entry.ts';
+import { EMPTY_ENTRY_CONFIG } from '../core/entry.ts';
 
 type StoredHistory = {
   current: EventState;
@@ -43,6 +45,7 @@ export class EventRoom {
   private program: Program = EMPTY_PROGRAM;
   private history: History = newHistory(initialState(0, EMPTY_PROGRAM));
   private musicReport: MusicReport | null = null;
+  private entryConfig: EntrySiteConfig = EMPTY_ENTRY_CONFIG;
   private loaded = false;
 
   constructor(ctx: DurableObjectState, _env: unknown) {
@@ -58,6 +61,7 @@ export class EventRoom {
       program: Program;
       history: StoredHistory;
       musicReport: MusicReport | null;
+      entryConfig?: EntrySiteConfig;
     }>('room');
     if (stored) {
       this.program = stored.program ?? EMPTY_PROGRAM;
@@ -67,6 +71,7 @@ export class EventRoom {
         log: stored.history.log ?? [],
       };
       this.musicReport = stored.musicReport ?? null;
+      this.entryConfig = stored.entryConfig ?? EMPTY_ENTRY_CONFIG;
     } else {
       this.program = EMPTY_PROGRAM;
       this.history = newHistory(initialState(Date.now(), EMPTY_PROGRAM));
@@ -80,6 +85,7 @@ export class EventRoom {
       program: this.program,
       history: this.history,
       musicReport: this.musicReport,
+      entryConfig: this.entryConfig,
     });
   }
 
@@ -155,6 +161,41 @@ export class EventRoom {
 
     if (path === '/log') {
       return json({ serverNow: Date.now(), log: this.history.log });
+    }
+
+    if (path === '/entry-config' && request.method === 'GET') {
+      return json({ ok: true, config: this.entryConfig });
+    }
+
+    if (path === '/entry-config' && request.method === 'PUT') {
+      this.entryConfig = await request.json() as EntrySiteConfig;
+      await this.persist();
+      return json({ ok: true, config: this.entryConfig });
+    }
+
+    if (path === '/entries' && request.method === 'POST') {
+      const body = await request.json() as { entry?: EntryRecord; requestKey?: string };
+      const entry = body.entry;
+      if (!entry?.receiptNo) return json({ ok: false, reason: '申込内容がありません。' }, 400);
+      const requestKey = typeof body.requestKey === 'string' ? body.requestKey.slice(0, 64) : '';
+      if (requestKey) {
+        const rateKey = 'entry-rate:' + requestKey;
+        const current = await this.ctx.storage.get<{ startedAt: number; count: number }>(rateKey);
+        const now = Date.now();
+        const rate = current && now - current.startedAt < 60 * 60 * 1000 ? current : { startedAt: now, count: 0 };
+        if (rate.count >= 5) return json({ ok: false, reason: '短時間に送信回数が多すぎます。1時間後にお試しください。' }, 429);
+        await this.ctx.storage.put(rateKey, { startedAt: rate.startedAt, count: rate.count + 1 });
+      }
+      await this.ctx.storage.put('entry:' + entry.receiptNo, entry);
+      const index = await this.ctx.storage.get<string[]>('entry:index') ?? [];
+      if (!index.includes(entry.receiptNo)) await this.ctx.storage.put('entry:index', [entry.receiptNo, ...index]);
+      return json({ ok: true, receiptNo: entry.receiptNo });
+    }
+
+    if (path === '/entries' && request.method === 'GET') {
+      const index = await this.ctx.storage.get<string[]>('entry:index') ?? [];
+      const records = (await Promise.all(index.map((id) => this.ctx.storage.get<EntryRecord>('entry:' + id)))).filter(Boolean);
+      return json({ ok: true, entries: records });
     }
 
     const photoMatch = path.match(/^\/photos\/([A-Z0-9-]+)$/i);

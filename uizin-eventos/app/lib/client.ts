@@ -6,6 +6,7 @@
  */
 
 import type { Command, EventState, MusicReport, Program } from '../../core/types.ts';
+import type { EntrySiteConfig } from '../../core/entry.ts';
 import { apiUrl, getApiBase, getOperatorKey } from './config.ts';
 
 export type CommandResponse = {
@@ -57,4 +58,15 @@ export function uploadProgram(csv: { event: string; matches: string; music: stri
 
 export function checkMusic(): Promise<CommandResponse> {
   return post('/api/music/check');
+}
+
+export async function saveEntryConfig(config: EntrySiteConfig): Promise<{ ok: boolean; reason?: string }> {
+  const base = getApiBase();
+  try {
+    const res = await fetch(apiUrl(base, '/api/entry-config'), {
+      method: 'PUT', headers: { 'content-type': 'application/json', 'x-operator-key': getOperatorKey() },
+      body: JSON.stringify(config), signal: AbortSignal.timeout(15_000),
+    });
+    return await res.json() as { ok: boolean; reason?: string };
+  } catch { return { ok: false, reason: '保存結果を確認できません。再送前に画面を読み込み直してください。' }; }
 }

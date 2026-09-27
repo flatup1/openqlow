@@ -13,6 +13,7 @@ import { looksLikeHtml, sheetCsvUrl } from '../core/sheet.ts';
 import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
 import { normalizeEventId } from '../core/eventId.ts';
+import { normalizeEntryConfig, normalizeEntryInput, validateEntry, validateEntryConfig } from '../core/entry.ts';
 
 export { EventRoom } from './event-do.ts';
 
@@ -100,6 +101,16 @@ function validSheetId(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
   return /^[A-Za-z0-9_-]{20,100}$/.test(trimmed) ? trimmed : '';
+}
+
+function receiptNo(): string {
+  return 'ENT-' + crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
+}
+
+async function anonymousRequestKey(request: Request, event: string): Promise<string> {
+  const ip = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for') ?? 'local';
+  const bytes = new TextEncoder().encode(event + ':' + ip);
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).slice(0, 12).map((n) => n.toString(16).padStart(2, '0')).join('');
 }
 
 async function loadSheets(env: Env, requestedSheetId = ''): Promise<{ event: string; matches: string; music: string }> {
@@ -204,6 +215,41 @@ export default {
       return withCors(await forward(env, request, '/log'), request, env);
     }
 
+    if (path === '/api/entry-config' && request.method === 'GET') {
+      return withCors(await forward(env, request, '/entry-config'), request, env);
+    }
+
+    if (path === '/api/entries' && request.method === 'POST') {
+      const configRes = await forward(env, request, '/entry-config');
+      const configBody = await configRes.json() as { config?: { published?: boolean; deadline?: string } };
+      if (!configBody.config?.published) return withCors(json({ ok: false, reason: '現在は募集していません。' }, 403), request, env);
+      const type = request.headers.get('content-type') ?? '';
+      let raw: unknown = {};
+      let photo: File | null = null;
+      if (type.includes('multipart/form-data')) {
+        const data = await request.formData().catch(() => null);
+        raw = JSON.parse(String(data?.get('entry') ?? '{}')) as unknown;
+        const supplied = data?.get('photo');
+        photo = supplied instanceof File && supplied.size > 0 ? supplied : null;
+      } else if (type.includes('application/json')) {
+        raw = await request.json().catch(() => ({}));
+      } else return withCors(json({ ok: false, reason: '送信形式が正しくありません。' }, 415), request, env);
+      const input = normalizeEntryInput(raw);
+      if (input.website) return withCors(json({ ok: true, receiptNo: 'RECEIVED' }), request, env);
+      const errors = validateEntry(input);
+      if (errors.length) return withCors(json({ ok: false, reason: errors[0], errors }, 400), request, env);
+      if (photo && (!['image/jpeg', 'image/png', 'image/webp'].includes(photo.type) || photo.size > 2_000_000)) {
+        return withCors(json({ ok: false, reason: '顔写真はJPEG・PNG・WebPの2MB以下にしてください。' }, 413), request, env);
+      }
+      const id = receiptNo();
+      const record = { ...input, receiptNo: id, submittedAt: Date.now(), photoStatus: photo ? 'uploaded' as const : 'none' as const };
+      const requestKey = await anonymousRequestKey(request, eventId(request, env));
+      const saved = await forward(env, request, '/entries', { method: 'POST', body: JSON.stringify({ entry: record, requestKey }), headers: JSON_HEADERS });
+      if (!saved.ok) return withCors(saved, request, env);
+      if (photo) await forward(env, request, '/photos/' + id, { method: 'PUT', body: await photo.arrayBuffer(), headers: { 'content-type': photo.type } });
+      return withCors(json({ ok: true, receiptNo: id }), request, env);
+    }
+
     const photoMatch = path.match(/^\/api\/photos\/([A-Z0-9-]+)$/i);
     if (photoMatch && request.method === 'GET') {
       return withCors(await forward(env, request, '/photos/' + photoMatch[1].toUpperCase()), request, env);
@@ -248,9 +294,11 @@ export default {
       path === '/api/program/upload' ||
       path === '/api/music/check';
 
-    if (needsOperator) {
-      if (request.method !== 'POST') {
-        return withCors(json({ ok: false, reason: 'POST で送ってください。' }, 405), request, env);
+    const entryOperatorPath = path === '/api/entry-config' || path === '/api/entries/export';
+
+    if (needsOperator || entryOperatorPath) {
+      if ((!entryOperatorPath && request.method !== 'POST') || (entryOperatorPath && !['GET', 'PUT'].includes(request.method))) {
+        return withCors(json({ ok: false, reason: '操作方法が正しくありません。' }, 405), request, env);
       }
       if (!isOperator(request, env)) {
         return withCors(
@@ -259,6 +307,32 @@ export default {
           env,
         );
       }
+    }
+
+    if (path === '/api/entry-config' && request.method === 'PUT') {
+      const config = normalizeEntryConfig(await request.json().catch(() => ({})));
+      const errors = validateEntryConfig(config);
+      if (errors.length) return withCors(json({ ok: false, reason: errors[0], errors }, 400), request, env);
+      return withCors(await forward(env, request, '/entry-config', { method: 'PUT', body: JSON.stringify(config), headers: JSON_HEADERS }), request, env);
+    }
+
+    if (path === '/api/entries/export' && request.method === 'GET') {
+      const response = await forward(env, request, '/entries');
+      const body = await response.json() as { entries?: Array<Record<string, unknown>> };
+      const entries = body.entries ?? [];
+      if (url.searchParams.get('view') === 'os') {
+        const origin = url.origin;
+        const publicRows = entries.map((entry) => ({
+          receiptNo: entry.receiptNo, fighterName: entry.fighterName, fighterKana: entry.fighterKana,
+          gym: entry.gym, gender: entry.gender, age: entry.age, category: entry.category, weight: entry.weight,
+          experience: entry.experience, record: entry.record, canFightTwice: entry.canFightTwice,
+          comment: entry.comment, musicUrl: entry.musicUrl,
+          photoUrl: entry.photoStatus === 'uploaded' && entry.consentPublicity === true ? origin + '/api/photos/' + entry.receiptNo + '?event=' + encodeURIComponent(eventId(request, env)) : '',
+          consentPublicity: entry.consentPublicity, submittedAt: entry.submittedAt,
+        }));
+        return withCors(json({ ok: true, entries: publicRows }), request, env);
+      }
+      return withCors(json({ ok: true, entries }), request, env);
     }
 
     if (path === '/api/command') {
