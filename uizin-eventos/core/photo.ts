@@ -16,7 +16,7 @@ const DRIVE_ID = /[-\w]{25,}/;
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif)(\?|$)/i;
 
 /** EventOS の Worker が配る写真（拡張子が無い）。例: https://…workers.dev/api/photos/UZ23-XXXX */
-const WORKER_PHOTO = /^https:\/\/[^/]+\/api\/photos\/[^/?#]+$/;
+const WORKER_PHOTO = /^https:\/\/[^/]+\/api\/photos\/[^/?#]+(?:\?event=[a-z0-9][a-z0-9-]{2,63})?$/i;
 
 /** セルの中から最初のURLを取り出す（曲URLと同じ考え方。文章が混ざっていても拾う） */
 export function extractUrl(text: string): string {

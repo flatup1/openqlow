@@ -81,6 +81,12 @@ test('Worker の /api/photos/ は拡張子が無くても写真として使う',
   assert.equal(photoStatus(url), 'ok');
 });
 
+test('大会ID付きの申込写真も対戦カードへ引き継ぐ', () => {
+  const url = 'https://tournament-os-api.flatupgym.workers.dev/api/photos/ENT-1234ABCD?event=narita-kick-2027';
+  assert.equal(normalizePhotoUrl(url), url);
+  assert.equal(photoStatus(url), 'ok');
+});
+
 test('/api/photos/ に似ていても、別物は通さない', () => {
   // http（暗号化なし）は通さない
   assert.equal(normalizePhotoUrl('http://example.com/api/photos/abc'), '');
@@ -88,4 +94,6 @@ test('/api/photos/ に似ていても、別物は通さない', () => {
   assert.equal(normalizePhotoUrl('https://example.com/api/photos/'), '');
   // さらに階層があるものは通さない（想定外の形を黙って通さない）
   assert.equal(normalizePhotoUrl('https://example.com/api/photos/a/b'), '');
+  // 大会ID以外の余計なクエリは通さない
+  assert.equal(normalizePhotoUrl('https://example.com/api/photos/a?token=secret'), '');
 });
