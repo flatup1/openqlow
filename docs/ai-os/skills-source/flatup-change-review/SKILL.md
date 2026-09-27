@@ -1,6 +1,6 @@
 ---
 name: flatup-change-review
-description: Use to independently review proposed code, configuration, copy, or canon changes before integration. Do not use to approve your own release, commit, push, deploy, or bypass the owner gate.
+description: Use when a prepared FLATUP change (code, config, copy, or canon) needs an independent review before it is integrated.
 ---
 
 # FLATUP Change Review
@@ -15,3 +15,7 @@ description: Use to independently review proposed code, configuration, copy, or 
 6. Classify findings by severity and identify all human approval gates.
 
 If there are no findings, state exactly what was checked and which risks remain. Review never equals permission to publish or deploy.
+
+## Not for
+
+Do not use to approve your own release, commit, push, deploy, or bypass the owner gate.

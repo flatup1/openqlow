@@ -1,6 +1,6 @@
 ---
 name: flatup-file-audit
-description: Use to audit a defined FLATUP folder for duplicates, stale facts, naming problems, misplaced files, or canon conflicts. Do not use to delete, move, rename, or overwrite files.
+description: Use to audit a defined FLATUP folder for duplicates, stale facts, naming problems, misplaced files, or canon conflicts.
 ---
 
 # FLATUP File Audit
@@ -15,3 +15,7 @@ description: Use to audit a defined FLATUP folder for duplicates, stale facts, n
 6. Stop before any mutation.
 
 If personal or secret information appears, report only its location and category. Use `docs/ai-os/workflows/file_cleanup.md`.
+
+## Not for
+
+Do not use to delete, move, rename, or overwrite files.

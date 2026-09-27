@@ -24,7 +24,12 @@ Claude Code・Codex・その他のAIがこのプロジェクトを触るとき�
 - 送信・予約確定・料金判断・本番反映・merge は **JIN（オーナー）承認後のみ**。
 - 顧客個人情報・秘密情報を表示・保存・コミットしない。
 - 料金・時間・クラス等の事実は `openqlow/src/shared/canon.ts` を正本とする。推測で書かない。
-- 変更後は `./scripts/validate-ai-os.sh` と関連テストを実行する。
+- AI OS（canon / Skill / hooks）に関わる変更をしたときだけ、親リポジトリの `./scripts/validate-ai-os.sh` を実行する。
+
+## 確認なしで進めてよいこと
+
+読み取り、検索、下書き、ローカルのbuild / lint / typecheck / テスト、開発サーバー起動、モバイル表示確認。
+この範囲は作って動かして直すところまで一度に進める。止まるのは送信・本番反映・merge・料金判断のときだけ。
 
 ## 開発の進め方
 
@@ -34,14 +39,15 @@ Claude Code・Codex・その他のAIがこのプロジェクトを触るとき�
 設計 → 最小実装 → テスト → 採点 → 改善 → 次のPhase
 ```
 
-各Phase終了時に必ず実施:
+各Phase終了時:
 
-- **TEST**: build / lint / typecheck / automated tests / mobile layout /
-  major browser / console errors / broken links（可能な範囲ですべて）
-- **採点**: UX・優しさ・分かりやすさ・スマホ操作性・表示速度・保守性・予約導線・
-  ブランド整合・セキュリティ・完成度で100点満点。90点未満なら問題点を列挙し改善する。
-  ただし採点のために不要な機能を追加しない。
-- **報告**: `DONE / CHANGED / TESTED / SCORE / KNOWN ISSUES / NEXT` の6項目のみで報告する。
+- **TEST**: 変更した範囲に効くものだけ実行する。
+  UIを触ったらモバイル表示とconsoleエラー、ロジックを触ったらtypecheckとtests、
+  リンク・導線を触ったらリンク切れ確認。触っていない層は回さない。
+- **採点**: JINが「採点して」と言ったときだけ行う（UX・優しさ・分かりやすさ・スマホ操作性・
+  表示速度・保守性・予約導線・ブランド整合・セキュリティ・完成度の100点満点）。
+  採点のために不要な機能を追加しない。
+- **報告**: `DONE / CHANGED / TESTED / KNOWN ISSUES / NEXT`。
 
 ## オーナーへの説明ルール
 

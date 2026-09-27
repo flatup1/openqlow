@@ -1,24 +1,22 @@
 # COORDINATION（AI協業ボード）
 
-> このファイルは Claude と Codex が衝突しないように作業領域を分けるための **黒板** です。
-> 作業を始める前に必ず読み、自分の担当外には触らないでください。
+> Claude と Codex の作業領域を分ける **黒板**。
+> **担当領域・ロック・インフラを確認したいときに読む。** 毎回の通読は不要。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-08-29
+最終更新: 2026-09-20
 
 ---
 
-## 0. 最重要ルール（両AI共通）
+## 0. 協業ルール
 
-1. **作業前にこのファイルを読む**。担当外領域は読み取り専用。
-2. **コミットメッセージ先頭に発信元AIを書く**：`claude: ...` または `codex: ...`（共同は `co-ai:`、JIN手作業は `jin:`）。
-3. **push 権限は JIN が持つ**。AIは commit までOK、push は JIN 承認後。
-4. **触りたい領域が他AI担当だったら、JIN に確認**。勝手に解除しない。
-5. **作業切替時はハンドオフ書を書く**：`docs/HANDOFF_<日付>_<from>→<to>.md`
-6. **並列度は L2（分担並列）が基本**。重要決定・本番反映は L1（シーケンシャル）。
-7. **同じファイルを両AIが触ってしまった衝突時は、作業中AIが即停止 → JIN に報告 → JIN が手動マージ**。
+ルール本体は `AGENTS.md` §6（協業）と §3（承認）。ここには重複して書かない。
+このファイルが持つのは **担当表（§1）・ロック（§2）・並列度（§3）・インフラ（§5）** の実データ。
 
-> ※ §0 は `AGENTS.md` の「AI協業ルール（7項）」と整合させること（2026-07-07 に rule6/7 を反映）。ルート直下の `COORDINATION.md` はこのファイルへのシンボリックリンク。
+要点だけ再掲:
+
+- 担当外の領域は読み取り専用。触りたいときは JIN に確認する。
+- 新しいディレクトリを作るときは、**先に §1 へ追記してから**実装する。
 
 ---
 
@@ -30,7 +28,6 @@
 | `openqlow/src/distribution/` | Claude | open | 2026-06-06 |
 | `openqlow/src/generators/` | Claude | open | 2026-06-06 |
 | `openqlow/src/crm/` | Claude | open | 2026-06-11 |
-| `openqlow/src/brand_growth/` | Claude | open | 2026-08-29 |
 | `openqlow/src/scheduler/` | Codex | open | 2026-06-06 |
 | `openqlow/src/monitor/` | Codex | open | 2026-06-06 |
 | `openqlow/src/line_bot/` | Codex | open | 2026-06-06 |
@@ -47,7 +44,7 @@
 | `openqlow/scripts/adapters/` | Codex | open | 2026-06-08 |
 | `openqlow/docs/ai-os/` | Codex | open | 2026-07-18 |
 | `openqlow/docs/flatup-ai-os/` | Codex（設計） | open | 2026-08-14 |
-| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 4最終commit `14aae4b`までpush済み / 2026-08-29 JIN承認により`main`へ統合 / Phase 5以降は未着手 | 2026-08-29 |
+| `openqlow/src/brand_growth/` | Claude Code（実装） | Phase 4まで`main`統合済み・Phase 5以降は未着手 | 2026-08-29 |
 | `openqlow/.agents/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/skills/flatup-*` | Codex | open | 2026-07-18 |
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
@@ -66,6 +63,9 @@
 
 > ※ `flatup-ai-os/*` は6月までの旧AI-OS。AIKA本番の実働は `flatup1/flatup`（AIKA VPS 162.43.90.71）側。詳細は [[project-handoff-v4]]（2026-07-02 確定）。flatup-ai-os を触る前に現行かどうかJINに確認。
 
+> ※ 2026-09-20: JIN の指示により Claude Code が指示書とSkill説明文を整理した。
+> Codex担当の `docs/ai-os/skills-source/` を含むが、削除ではなく移動と圧縮のみ（canon と `approval_matrix.md` は未変更）。
+
 ### ステータスの意味
 
 - `open` ：担当AIが触ってOK、他AIは読み取り専用
@@ -74,35 +74,11 @@
 
 ---
 
+<!-- 次のセクションは start-work.sh / end-work.sh が自動で書き換える。ロック行以外を置かない。 -->
+
 ## 2. 現在のロック（作業中）
 
 なし
-
-### Phase 4 の現在状態（Claude Code 記入 / 2026-08-29）
-
-- 対象: `src/brand_growth/` Phase 4「Quality Guardian and Growth Metadata」
-- branch: `claude/flatup-gym-ai-os-phase4-20260816`
-- branch最終commit: `14aae4b`。`origin/claude/flatup-gym-ai-os-phase4-20260816` へpush済み。
-- 2026-08-29にJINがmergeを承認し、最新`main`との競合を解消して本merge commitで統合した。
-- 経緯: Claude Code の Phase 4 実装 → Codex レビュー反映 `706da60` → `main` を merge `b5c3965`
-  → push → 2026-08-29 の境界仕上げ（ローカル1 commit・未push）。
-  2026-08-16 時点で「ローカルのみ・未push・`971f53e`」と書いていた記述は、この時点で古くなっている。
-- 2026-08-29 の追加作業（Claude Code / `14aae4b`）: 境界と文書整合性の仕上げ。
-  - `src/brand_growth/storage/config.ts` から環境変数と暗黙の作業ディレクトリ依存を除去し、
-    呼び出し側からの明示注入だけで保存先が決まる純関数にした（基準が無ければ fail closed）。
-  - 境界検査の `process.env` 例外を撤廃し、`src/brand_growth` 全体で環境の読み取りを禁止した。
-    fs / path の許可はファイル単位の完全一致のみで、storage に新しいファイルを足しても
-    権限を継承しないことを恒久的な反証テストで固定した。
-  - `docs/flatup-ai-os/adr/ADR-0015-NARROW-LOCAL-EVENT-STORE-BOUNDARY.md` を追加し、
-    `AGENTS.md` の「pure」記述を storage adapter の例外つきへ最小修正した。
-- 引き継ぎ書: `docs/HANDOFF_20260816_claude→codex.md`（§0 に 2026-08-29 の更新注記あり）
-- Codex 承認: **2026-08-29 に Approved**（境界検査のファイル単位例外 / ADR-0015）。
-  absolute root のみで cwd を渡さない経路は、機能OFF・呼び出し元未接続・明示 root が管理側の信頼済み入力である
-  現 Phase 4 では受容。**将来の本番 integration caller は absolute cwd / repositoryRoot を必須で渡す**運用条件付き。
-  部分文字列による境界検査も保守的な fail-closed として承認。→ Codex 側のレビュー事項はクローズ。
-- push / merge: **JIN承認済み・完了**。deployと実データ投入は未実施。
-- JIN 承認が要る事項: deploy、実データ投入の開始
-- Phase 5・Phase 6 は未着手（指示により禁止中）
 
 ## 3. 並列度のレベル
 
@@ -148,7 +124,9 @@
 - Claude Code: 承認された設計に従う `src/brand_growth/` の段階実装とテスト
 - JIN: ブランド、料金、規約、安全、主要KPI、Provider有効化、本番変更の最終承認
 - 既存AIKA、canon、承認、LINE、公開、デプロイの責務は変更しない。Brand Growth側から重複実装しない。
-- branch `claude/flatup-gym-ai-os-phase1-15lytr`で、Phase 1 Router `b941924`、Phase 2 Knowledge Registry `dd82d90`、Phase 3 Director / Prompt IR `fcdb1b6`はpush済み。Phase 4は branch `claude/flatup-gym-ai-os-phase4-20260816` の最終commit `14aae4b`までpushし、2026-08-29にJIN承認のもと`main`へ統合した。本番Runtimeへの接続、外部接続、deployは未着手。
+- Phase 1〜4 は 2026-08-29 に JIN 承認のもと `main` へ統合済み。本番Runtimeへの接続、外部接続、deployは未着手。
+- 未実施で JIN 承認が要るのは deploy と実データ投入。Phase 5・6 は未着手。
+- commit・branch・Codexレビューの経緯は `docs/HANDOFF_20260829_claude→codex_phase4-boundary.md`。
 
 ---
 
@@ -165,6 +143,9 @@
 | 主要 systemd unit | openqlow-webhook, openqlow-monitor.timer, openqlow-daily.timer, openqlow-morning.timer, cloudflared-openqlow |
 | LINE openQLOW | @817nsdhr |
 | LINE AIKA | @jfl0054o（末尾は英字o） |
+
+> ※ このリポジトリは公開。ここに書くのは**公開されても困らない運用情報だけ**にする。
+> 鍵・トークン・顧客情報は `docs/ai-os/private/`（Git管理外）か環境変数へ置く。
 
 ---
 
