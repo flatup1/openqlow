@@ -39,15 +39,14 @@ Claude Code・Codex・その他のAIがこのプロジェクトを触るとき�
 設計 → 最小実装 → テスト → 採点 → 改善 → 次のPhase
 ```
 
-各Phase終了時:
+各Phase終了時に必ず実施:
 
-- **TEST**: 変更した範囲に効くものだけ実行する。
-  UIを触ったらモバイル表示とconsoleエラー、ロジックを触ったらtypecheckとtests、
-  リンク・導線を触ったらリンク切れ確認。触っていない層は回さない。
-- **採点**: JINが「採点して」と言ったときだけ行う（UX・優しさ・分かりやすさ・スマホ操作性・
-  表示速度・保守性・予約導線・ブランド整合・セキュリティ・完成度の100点満点）。
-  採点のために不要な機能を追加しない。
-- **報告**: `DONE / CHANGED / TESTED / KNOWN ISSUES / NEXT`。
+- **TEST**: build / lint / typecheck / automated tests / mobile layout /
+  major browser / console errors / broken links（可能な範囲ですべて）
+- **採点**: UX・優しさ・分かりやすさ・スマホ操作性・表示速度・保守性・予約導線・
+  ブランド整合・セキュリティ・完成度で100点満点。90点未満なら問題点を列挙し改善する。
+  ただし採点のために不要な機能を追加しない。
+- **報告**: `DONE / CHANGED / TESTED / SCORE / KNOWN ISSUES / NEXT` の6項目のみで報告する。
 
 ## オーナーへの説明ルール
 
