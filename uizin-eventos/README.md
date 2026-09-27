@@ -111,6 +111,7 @@ npm run go-live
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | なぜこの作りなのか／v2に回したもの |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | **他のAIや新しい担当者に引き継ぐとき**（発注者の指示の全文＋現在地） |
 | [docs/BEGINNER_REPRODUCTION_GUIDE.md](docs/BEGINNER_REPRODUCTION_GUIDE.md) | **パソコン初心者がCodex／Claude Codeで再現するとき** |
+| [docs/EASY_SETUP_GUIDE.md](docs/EASY_SETUP_GUIDE.md) | **Googleスプレッドシートを原本にして1人で準備するとき** |
 | [docs/AI_REPRODUCTION_PROMPT.md](docs/AI_REPRODUCTION_PROMPT.md) | **AIへリンクを渡して安全に再現させるとき** |
 | [docs/GENERIC_TOURNAMENT_OS.md](docs/GENERIC_TOURNAMENT_OS.md) | **別の格闘技大会でも使える汎用版の仕様** |
 | [START_HERE.md](START_HERE.md) | **引き継いだ人が最初に読む1枚**（現在地・残作業・受け取るもの・逃げ道） |

@@ -33,6 +33,10 @@ export type Env = {
   ALLOWED_ORIGINS?: string;
   /** 顔写真登録専用キー。通常の操作キーとは分離する */
   PHOTO_UPLOAD_KEY?: string;
+  /** 非公開の申込原本へ1行追加するGoogle Apps Script Webアプリ */
+  ENTRY_SHEET_WEBHOOK_URL?: string;
+  /** Webhook本文に入れる共有秘密。公開画面には絶対に渡さない */
+  ENTRY_SHEET_WEBHOOK_SECRET?: string;
 };
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -111,6 +115,21 @@ async function anonymousRequestKey(request: Request, event: string): Promise<str
   const ip = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for') ?? 'local';
   const bytes = new TextEncoder().encode(event + ':' + ip);
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).slice(0, 12).map((n) => n.toString(16).padStart(2, '0')).join('');
+}
+
+async function appendEntryToMasterSheet(env: Env, event: string, entry: Record<string, unknown>, photoUrl: string): Promise<boolean> {
+  const target = env.ENTRY_SHEET_WEBHOOK_URL?.trim() ?? '';
+  const secret = env.ENTRY_SHEET_WEBHOOK_SECRET?.trim() ?? '';
+  if (!target || !secret) return false;
+  try {
+    const response = await fetchWithTimeout(target, 10_000, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ secret, eventId: event, entry: { ...entry, photoUrl } }),
+    });
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => ({})) as { ok?: boolean };
+    return body.ok === true;
+  } catch { return false; }
 }
 
 async function loadSheets(env: Env, requestedSheetId = ''): Promise<{ event: string; matches: string; music: string }> {
@@ -242,12 +261,16 @@ export default {
         return withCors(json({ ok: false, reason: '顔写真はJPEG・PNG・WebPの2MB以下にしてください。' }, 413), request, env);
       }
       const id = receiptNo();
-      const record = { ...input, receiptNo: id, submittedAt: Date.now(), photoStatus: photo ? 'uploaded' as const : 'none' as const };
+      const selectedEvent = eventId(request, env);
+      const photoUrl = photo ? url.origin + '/api/photos/' + id + '?event=' + encodeURIComponent(selectedEvent) : '';
+      const baseRecord = { ...input, receiptNo: id, submittedAt: Date.now(), photoStatus: photo ? 'uploaded' as const : 'none' as const };
+      const synced = await appendEntryToMasterSheet(env, selectedEvent, baseRecord, input.consentPublicity ? photoUrl : '');
+      const record = { ...baseRecord, sheetSync: synced ? 'synced' as const : 'pending' as const };
       const requestKey = await anonymousRequestKey(request, eventId(request, env));
       const saved = await forward(env, request, '/entries', { method: 'POST', body: JSON.stringify({ entry: record, requestKey }), headers: JSON_HEADERS });
       if (!saved.ok) return withCors(saved, request, env);
       if (photo) await forward(env, request, '/photos/' + id, { method: 'PUT', body: await photo.arrayBuffer(), headers: { 'content-type': photo.type } });
-      return withCors(json({ ok: true, receiptNo: id }), request, env);
+      return withCors(json({ ok: true, receiptNo: id, sheetSync: record.sheetSync }), request, env);
     }
 
     const photoMatch = path.match(/^\/api\/photos\/([A-Z0-9-]+)$/i);
@@ -329,6 +352,7 @@ export default {
           comment: entry.comment, musicUrl: entry.musicUrl,
           photoUrl: entry.photoStatus === 'uploaded' && entry.consentPublicity === true ? origin + '/api/photos/' + entry.receiptNo + '?event=' + encodeURIComponent(eventId(request, env)) : '',
           consentPublicity: entry.consentPublicity, submittedAt: entry.submittedAt,
+          sheetSync: entry.sheetSync,
         }));
         return withCors(json({ ok: true, entries: publicRows }), request, env);
       }

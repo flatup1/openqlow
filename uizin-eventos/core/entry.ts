@@ -37,6 +37,7 @@ export type EntryRecord = EntryInput & {
   receiptNo: string;
   submittedAt: number;
   photoStatus: 'none' | 'uploaded';
+  sheetSync: 'synced' | 'pending';
 };
 
 export const EMPTY_ENTRY_CONFIG: EntrySiteConfig = {

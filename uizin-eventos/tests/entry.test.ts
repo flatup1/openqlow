@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeEntryConfig, normalizeEntryInput, validateEntry, validateEntryConfig } from '../core/entry.ts';
+import { readFileSync } from 'node:fs';
 
 const valid = {
   fighterName: '選手A', fighterKana: 'せんしゅえー', gym: 'テストジム', gender: '男性', age: '12',
@@ -28,4 +29,19 @@ test('entry text is trimmed and bounded before it reaches storage', () => {
 test('generic entry site config requires only event-specific facts', () => {
   const config = normalizeEntryConfig({ title: '大会A', organizer: '主催A', date: '2027-09-23', venue: '会場A', deadline: '2027-09-01', published: true });
   assert.deepEqual(validateEntryConfig(config), []); assert.equal(config.published, true);
+});
+
+test('Google Sheets master template prevents duplicate receipts and formula injection', () => {
+  const source = readFileSync(new URL('../docs/templates/entry-sheet-apps-script.gs', import.meta.url), 'utf8');
+  assert.match(source, /receipts\.indexOf/);
+  assert.match(source, /\^\[=\+\\-@\]/);
+  assert.match(source, /LockService\.getScriptLock/);
+});
+
+test('beginner admin screen avoids unexplained technical labels in the normal path', () => {
+  const source = readFileSync(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /番号どおりに、上から下へ/);
+  assert.match(source, /募集ページのリンクをコピー/);
+  assert.doesNotMatch(source, />Worker URL</);
+  assert.doesNotMatch(source, />matches CSV/);
 });

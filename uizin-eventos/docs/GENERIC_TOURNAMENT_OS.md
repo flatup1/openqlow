@@ -215,6 +215,8 @@ Google スプレッドシートと管理画面の両方に対応する。
 - `/entry/` の大会名・日時・会場・料金・締切を管理画面から大会ごとに設定
 - 受付番号を自動発行し、選手情報・意気込み・入場曲・顔写真・同意を収集
 - 申込原本と、連絡先を除いたTournament OS用CSVを分離して出力
+- 非公開のGoogleスプレッドシート原本へ、受付番号をキーに自動追記できるApps Scriptテンプレート
+- Googleへの追記失敗時は申込を消さず、`sheetSync: pending` として復旧可能な形で保持
 - Google Sheets障害時の `event` / `matches` / `music` CSV手貼り取り込み
 - 既存UIZIN端末の接続設定とオフライン保存を引き継ぐ互換処理
 - 既存UIZINとは別の `tournament-os` Cloudflare Pages／Workerへ公開できるスクリプト
