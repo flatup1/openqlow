@@ -12,22 +12,24 @@ import { draftEventCsv, draftMatchesCsv, draftMusicCsv, moveDraftMatch, swapDraf
 
 const STEPS = [
   { no: 1, icon: '🏆', short: '大会を決める', color: 'bg-amber-100 text-amber-900' },
-  { no: 2, icon: '📝', short: '募集を書く', color: 'bg-pink-100 text-pink-900' },
-  { no: 3, icon: '🔌', short: '最初だけ接続', color: 'bg-violet-100 text-violet-900' },
-  { no: 4, icon: '👥', short: '選手を読む', color: 'bg-cyan-100 text-cyan-900' },
-  { no: 5, icon: '🥊', short: '対戦を作る', color: 'bg-emerald-100 text-emerald-900' },
+  { no: 2, icon: '📣', short: '選手を募集', color: 'bg-pink-100 text-pink-900' },
+  { no: 3, icon: '🔗', short: '最初だけ接続', color: 'bg-violet-100 text-violet-900' },
+  { no: 4, icon: '🥋', short: '選手を読む', color: 'bg-cyan-100 text-cyan-900' },
+  { no: 5, icon: '🟥🟦', short: '対戦を作る', color: 'bg-emerald-100 text-emerald-900' },
 ];
 
 function CoachIllustration() {
   return <svg aria-hidden="true" viewBox="0 0 240 170" className="mx-auto h-auto w-full max-w-[220px]">
-    <path d="M27 144c9-41 35-60 75-60s66 19 75 60" fill="#dbeafe" />
-    <circle cx="100" cy="58" r="34" fill="#f8c9a4" /><path d="M67 54c2-30 61-45 67 5-18-7-33-21-40-31-4 13-13 23-27 26Z" fill="#334155" />
-    <circle cx="88" cy="61" r="3" fill="#334155" /><circle cx="111" cy="61" r="3" fill="#334155" /><path d="M89 74c8 7 16 7 23 0" fill="none" stroke="#9f1239" strokeWidth="3" strokeLinecap="round" />
-    <path d="M63 104c20-18 54-18 75 0v48H63Z" fill="#4f46e5" /><path d="M91 103l9 13 10-13" fill="#fff" />
-    <rect x="145" y="31" width="70" height="93" rx="10" fill="#fff" stroke="#94a3b8" strokeWidth="3" /><path d="M160 52h39M160 72h39M160 92h27" stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />
-    <path d="m151 51 5 5 9-11m-14 27 5 5 9-11m-14 27 5 5 9-11" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M137 111c16-13 23-18 32-16" fill="none" stroke="#f8c9a4" strokeWidth="13" strokeLinecap="round" />
-    <circle cx="203" cy="136" r="21" fill="#fb7185" /><path d="M190 136h26M203 123v26" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
+    <rect x="15" y="119" width="210" height="34" rx="8" fill="#f8fafc" stroke="#94a3b8" strokeWidth="3" />
+    <path d="M15 128h210M15 145h210" stroke="#ef4444" strokeWidth="4" /><path d="M25 111v50M215 111v50" stroke="#475569" strokeWidth="5" />
+    <circle cx="120" cy="53" r="29" fill="#f8c9a4" /><path d="M91 49c4-30 55-39 59 7-18-6-29-19-35-27-4 10-12 17-24 20Z" fill="#334155" />
+    <circle cx="109" cy="56" r="3" fill="#334155" /><circle cx="131" cy="56" r="3" fill="#334155" /><path d="M111 68c6 5 12 5 18 0" fill="none" stroke="#9f1239" strokeWidth="3" strokeLinecap="round" />
+    <path d="M91 92c15-17 43-17 58 0l10 48H81Z" fill="#111827" /><path d="m109 84 11 15 11-15" fill="#fff" /><path d="M100 101h40" stroke="#facc15" strokeWidth="5" />
+    <path d="M91 101 68 89M149 101l23-12" fill="none" stroke="#f8c9a4" strokeWidth="13" strokeLinecap="round" />
+    <path d="M52 72c-10 0-18 8-18 18s8 18 18 18c8 0 13-4 17-10l8-12-14-14Z" fill="#ef4444" /><path d="M188 72c10 0 18 8 18 18s-8 18-18 18c-8 0-13-4-17-10l-8-12 14-14Z" fill="#2563eb" />
+    <path d="M45 86h21M174 86h21" stroke="#fff" strokeWidth="4" strokeLinecap="round" />
+    <path d="M20 26h52l-8 14 8 14H20Z" fill="#ef4444" /><path d="M220 26h-52l8 14-8 14h52Z" fill="#2563eb" /><text x="46" y="45" textAnchor="middle" fill="white" fontSize="12" fontWeight="800">RED</text><text x="194" y="45" textAnchor="middle" fill="white" fontSize="12" fontWeight="800">BLUE</text>
+    <circle cx="120" cy="17" r="13" fill="#facc15" /><path d="m114 17 4 4 8-9" fill="none" stroke="#854d0e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
   </svg>;
 }
 

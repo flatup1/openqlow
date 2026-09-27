@@ -61,6 +61,8 @@ test('beginner admin screen avoids unexplained technical labels in the normal pa
   assert.doesNotMatch(source, />matches CSV/);
   assert.match(source, /絵を見ながら、大会を作ろう/);
   assert.match(source, /全部で5ステップです/);
-  for (const label of ['大会を決める', '募集を書く', '最初だけ接続', '選手を読む', '対戦を作る']) assert.match(source, new RegExp(label));
+  for (const label of ['大会を決める', '選手を募集', '最初だけ接続', '選手を読む', '対戦を作る']) assert.match(source, new RegExp(label));
   assert.match(source, /function CoachIllustration/);
+  assert.match(source, />RED<\/text>/);
+  assert.match(source, />BLUE<\/text>/);
 });
