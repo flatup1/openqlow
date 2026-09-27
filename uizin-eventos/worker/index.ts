@@ -283,6 +283,7 @@ export default {
       } else if (type.includes('application/json')) {
         raw = await request.json().catch(() => ({}));
       } else return withCors(json({ ok: false, reason: '送信形式が正しくありません。' }, 415), request, env);
+      if (!photo) return withCors(json({ ok: false, reason: '顔写真を選んでください。' }, 400), request, env);
       const input = normalizeEntryInput(raw);
       if (configBody.config?.usesWalkoutMusic === false) {
         input.musicChoice = 'なし'; input.musicUrl = '';

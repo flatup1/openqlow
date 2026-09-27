@@ -66,3 +66,13 @@ test('beginner admin screen avoids unexplained technical labels in the normal pa
   assert.match(source, />RED<\/text>/);
   assert.match(source, />BLUE<\/text>/);
 });
+
+test('entry form makes the fighter photo unmistakable and required', () => {
+  const page = readFileSync(new URL('../app/entry/page.tsx', import.meta.url), 'utf8');
+  const worker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+  assert.match(page, /選手の顔写真/);
+  assert.match(page, /必須・ここで写真を選びます/);
+  assert.match(page, /alt="選んだ顔写真の確認"/);
+  assert.match(page, /type="file"[^>]+required/);
+  assert.match(worker, /if \(!photo\).*顔写真を選んでください/);
+});
