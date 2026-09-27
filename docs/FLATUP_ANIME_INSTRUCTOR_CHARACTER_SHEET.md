@@ -221,6 +221,7 @@ Character sheet of four bust-up expressions of the same face, arranged in a 2x2 
 all facing the camera, identical hairstyle and identical face structure across all four:
 top-left = calm neutral, top-right = warm gentle smile,
 bottom-left = focused and serious (not angry), bottom-right = encouraging nod with soft eyes.
+(bottom-left は高強度演出の「溜め」表情としても流用できます。使う場合は1面だけ切り出すこと)
 Bust-up only for this sheet. Consistent line weight across all four.
 [Negative — cropped feet を削除したもの] （+ angry, sad, crying, exaggerated comedic faces, different faces between panels）
 ```

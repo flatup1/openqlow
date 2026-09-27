@@ -121,9 +121,18 @@ no pain expression, no shouting coach, no shoes, no text, no watermark.
 Maintain anatomical accuracy for teaching purpose.
 ```
 
-### 5-2. FLATUP準拠の Subject ブロック（ブランド動画用）
+### 5-2. Subject ブロックは用途で使い分ける（取り違え注意）
 
-キャラクター仕様は `FLATUP_GYM_ANIME_ART_BIBLE.md` が正本です。
+FLATUP には体型の異なる2シリーズがあります。**この教則ガイドで作るのは下の表の「教則・アクション」のほうです。**
+
+| 用途 | 頭身 | Subject ブロックの入手先 |
+|---|---|---|
+| **教則・アクション**（このガイドの対象） | 6.5〜7頭身 | **`docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` §5** |
+| ブランド動画13話 | 2.5頭身ちび | 下記のブロック（`FLATUP_GYM_ANIME_ART_BIBLE.md` が正本） |
+
+**教則動画を作るなら、下のちび版は使いません。** 参照先のキャラクターシートから Subject を取ってください。ちび体型では体重移動・膝の角度・軸足の向きが読み取れず、教則として機能しません。
+
+以下はブランド動画13話用のブロックです（参考として掲載）。
 
 ```text
 [Subject]
@@ -139,7 +148,7 @@ adult body proportions, angry expression, wearing shoes, wearing earrings,
 long gloves with fingers, sparring against a person, CGI.
 ```
 
-ブランド動画（13話シリーズ）と教則動画でスタイルを混ぜないこと。教則は等身を上げた通常アニメ体型でも可だが、**1シリーズ内では必ず統一** する。
+ブランド動画（13話シリーズ）と教則動画でスタイルを混ぜないこと。教則の体型は **6.5〜7頭身に確定済み**（キャラクターシート §2）。**1シリーズ内では必ず統一** する。
 
 ---
 

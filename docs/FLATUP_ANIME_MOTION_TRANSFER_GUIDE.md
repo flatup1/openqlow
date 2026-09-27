@@ -195,7 +195,7 @@ Constraints: no opponent, no contact with a person, no identity drift, no floati
 1. 撮影対象を決める（§3。迷ったらJIN本人）
 2. 同意を取得し、記録を残す（会員が写る場合）
 3. 実技動画を撮影し、1技5〜10秒に切る
-4. アニメキャラの参照画像を用意（`FLATUP_GYM_ANIME_ART_BIBLE.md` 準拠）
+4. アニメキャラの参照画像を用意（`docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` の9枚。外見canonは `FLATUP_GYM_ANIME_ART_BIBLE.md` 準拠）
 5. 参照の役割を明記して生成（§5）。1技につき3〜4本
 6. 検証（§9）→ 崩れた箇所のプロンプトだけ強化して再生成
 7. トレーナーがフォームを確認

@@ -233,7 +233,8 @@ AIは「連続した自然な動き」が得意な一方、**時間を意図的�
 
 [Reference]   ← 番号は「そのカットでアップロードした順」。キャラシートの通し番号とは別物
 @image1 = strict character identity lock (face, hair, body, uniform, exact colors). Never alter.
-@image2 = charged-up expression reference
+@image2 = charged-up expression reference (optional — キャラシートに専用の1枚は無い。
+          `..._INSTRUCTOR_CHARACTER_SHEET.md` §6-9 の「focused and serious」を切り出して流用するか、省略する)
 @image3 = environment style lock
 
 [Core Style]
