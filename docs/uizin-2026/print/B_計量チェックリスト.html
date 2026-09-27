@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UIZIN 計量チェックリスト</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Meiryo",
+                 "Noto Sans JP", "IPAPGothic", "IPAGothic", sans-serif;
+    color: #000; background: #eee;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .sheet {
+    width: 210mm; height: 297mm; padding: 9mm 11mm;
+    margin: 0 auto; background: #fff; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .head { display: flex; align-items: flex-end; justify-content: space-between;
+          border-bottom: 2.4px solid #000; padding-bottom: 2mm; flex: 0 0 auto; }
+  .brand { font-size: 10.5pt; font-weight: 700; letter-spacing: .2em; }
+  .doc-title { font-size: 16pt; font-weight: 700; letter-spacing: .06em; margin-top: .6mm; }
+  .head-right { font-size: 8pt; text-align: right; line-height: 1.6; white-space: nowrap; }
+  .head-right .big { font-size: 10pt; font-weight: 700; }
+  .fillbox { display: inline-block; min-width: 26mm; border-bottom: 1px solid #555; }
+  .sec-title { font-size: 9.6pt; font-weight: 700; background: #000; color: #fff;
+               padding: .9mm 2.4mm; letter-spacing: .05em; }
+  .sec-title .sub { font-weight: 400; font-size: 7.8pt; letter-spacing: 0; }
+  .sec-body { border: 1px solid #000; border-top: none; padding: 2mm 2.6mm 1.2mm; }
+  .chk { list-style: none; }
+  .chk li { display: flex; align-items: flex-start; gap: 2mm; margin-bottom: 1.3mm;
+            font-size: 8.8pt; line-height: 1.35; }
+  .chk li::before { content: ""; flex: 0 0 auto; width: 3.4mm; height: 3.4mm;
+                    border: 1.3px solid #000; margin-top: .4mm; }
+  .chk.plain li::before { display: none; }
+  @media print { body { background: #fff; } .sheet { margin: 0; box-shadow: none; page-break-after: always; } .sheet:last-child { page-break-after: auto; } }
+  @media screen { .sheet { box-shadow: 0 2px 14px rgba(0,0,0,.25); margin: 7mm auto; } }
+
+    
+  .ptable { display: flex; border: 1.6px solid #000; }
+  .pcell { flex: 1; border-left: 1px solid #000; text-align: center; padding: 1mm .5mm; }
+  .pcell:first-child { border-left: none; }
+  .pcell .pd { font-size: 8.4pt; font-weight: 700; }
+  .pcell .pr { font-size: 8.6pt; font-weight: 700; margin-top: .3mm; }
+
+    .sheet { font-size: 8.4pt; }
+    .rulebar { margin-top: 2mm; flex: 0 0 auto; }
+    .rulenote { font-size: 7.4pt; margin-top: .8mm; line-height: 1.4; }
+    .rulenote b { font-size: 7.8pt; }
+    .cols { display: flex; gap: 3mm; margin-top: 2mm; flex: 0 0 auto; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: .8px solid #000; height: 4.95mm; padding: 0 1mm; }
+    thead th { background: #000; color: #fff; font-size: 7.2pt; height: 4.6mm; }
+    td.no { text-align: right; font-size: 7.4pt; width: 7mm; }
+    td.nm { font-size: 8.8pt; font-weight: 700; }
+    td.wt { text-align: center; font-size: 8.6pt; font-weight: 700; width: 17mm; }
+    td.ms { width: 14mm; }
+    td.ck { width: 9mm; }
+    .foot { margin-top: auto; padding-top: 1.2mm; border-top: 1px solid #999; font-size: 7.2pt; line-height: 1.45; flex: 0 0 auto; }
+    .foot b { font-size: 7.6pt; }
+  </style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="head">
+    <div>
+      <div class="brand">UIZIN</div>
+      <div class="doc-title">計量チェックリスト</div>
+    </div>
+    <div class="head-right">
+      <div class="big">2026年9月23日</div>
+      <div>担当者 <span class="fillbox" style="min-width:20mm"></span></div>
+    </div>
+  </div>
+
+  <div class="rulebar">
+    <div class="ptable"><div class="pcell"><div class="pd">＋500g以内</div><div class="pr">OK・減点なし</div></div><div class="pcell"><div class="pd">＋501g〜999g</div><div class="pr">1点減点</div></div><div class="pcell"><div class="pd">＋1.0kg〜1.999kg</div><div class="pr">2点減点</div></div><div class="pcell"><div class="pd">＋2kg以上</div><div class="pr">要相談</div></div></div>
+    <div class="rulenote">
+      <b>＋500g以内は減点なし（着衣計量の許容範囲）。体重オーバー扱いにしない。</b>
+      ＋2kg以上は失格ではなく<b>要相談</b>＝主催者・責任者が判断。判断に迷ったらスタッフだけで決めず主催者へ確認。<br>
+      <b>契約体重は最終対戦カードの数値</b>（申込時の自己申告体重ではありません）。計量は<b>精算確認 → 書類提出のあと</b>に行います。
+    </div>
+  </div>
+
+  <div class="cols">
+    <div style="flex:1"><table>
+      <thead><tr><th>No.</th><th>選手名</th><th>契約体重</th><th>実測</th><th>✓</th></tr></thead>
+      <tbody><tr>
+      <td class="no">1</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">2</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">3</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">4</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">5</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">6</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">7</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">8</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">9</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">10</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">11</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">12</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">13</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">14</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">15</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">16</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">17</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">18</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">19</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">20</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">21</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">22</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">23</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">24</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">25</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">26</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">27</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">28</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">29</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">30</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">31</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">32</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">33</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">34</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">35</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">36</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">37</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">38</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">39</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">40</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">41</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">42</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">43</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">44</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr></tbody>
+    </table></div>
+    <div style="flex:1"><table>
+      <thead><tr><th>No.</th><th>選手名</th><th>契約体重</th><th>実測</th><th>✓</th></tr></thead>
+      <tbody><tr>
+      <td class="no">45</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">46</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">47</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">48</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">49</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">50</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">51</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">52</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">53</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">54</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">55</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">56</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">57</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">58</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">59</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">60</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">61</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">62</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">63</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">64</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">65</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">66</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">67</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">68</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">69</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">70</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">71</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">72</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">73</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">74</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">75</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">76</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">77</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">78</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">79</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">80</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">81</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">82</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">83</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">84</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">85</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">86</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">87</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr><tr>
+      <td class="no">88</td>
+      <td class="nm"></td>
+      <td class="wt"></td>
+      <td class="ms"></td>
+      <td class="ck"></td>
+    </tr></tbody>
+    </table></div>
+  </div>
+
+  <div class="foot">
+    <b>✓の条件：</b>① 精算済　② 書類提出済（メディカル・誓約・保護者署名）　③ 計量実施　④ 減点の有無を確認　→ ✓＋<b>「あお○番」シール</b>を渡す。<br>
+    <b>「支払い済み」「受付済み」「計量済み」は別の状態。</b>混同しないでください。　※当日追加・変更の選手は空欄行または裏面に追記。
+  </div>
+</div>
+</body>
+</html>
