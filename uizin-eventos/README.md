@@ -89,6 +89,9 @@ npm run go-live
 | [docs/GO_LIVE_CHECKLIST.md](docs/GO_LIVE_CHECKLIST.md) | **本番投入まで何が残っているか**（実データ検証の結果つき） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | なぜこの作りなのか／v2に回したもの |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | **他のAIや新しい担当者に引き継ぐとき**（発注者の指示の全文＋現在地） |
+| [docs/BEGINNER_REPRODUCTION_GUIDE.md](docs/BEGINNER_REPRODUCTION_GUIDE.md) | **パソコン初心者がCodex／Claude Codeで再現するとき** |
+| [docs/AI_REPRODUCTION_PROMPT.md](docs/AI_REPRODUCTION_PROMPT.md) | **AIへリンクを渡して安全に再現させるとき** |
+| [docs/GENERIC_TOURNAMENT_OS.md](docs/GENERIC_TOURNAMENT_OS.md) | **別の格闘技大会でも使える汎用版の仕様** |
 | [START_HERE.md](START_HERE.md) | **引き継いだ人が最初に読む1枚**（現在地・残作業・受け取るもの・逃げ道） |
 | [docs/WORKORDER_OFFLINE.md](docs/WORKORDER_OFFLINE.md) | ネット断への備え（オフライン進行台本）を作るとき |
 | [docs/WORKORDER_SIMPLE_UI.md](docs/WORKORDER_SIMPLE_UI.md) | PCに不慣れな人でも使える進行画面を作るとき |

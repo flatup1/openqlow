@@ -17,3 +17,8 @@ out-offline/
 # next dev が自動生成する（コミットしない）
 AGENTS.md
 CLAUDE.md
+
+# 選手の写真は公開サイトへ配るだけ。リポジトリには入れない
+public/photos/
+public/_tmp_import/
+public/_headers
