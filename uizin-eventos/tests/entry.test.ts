@@ -55,12 +55,13 @@ test('matchmaking source is operator-only and never exposes a photo without publ
 
 test('beginner admin screen avoids unexplained technical labels in the normal path', () => {
   const source = readFileSync(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /番号どおりに、上から下へ/);
+  // 1画面に「いまやること」は1つだけ。大きな「次へ」「もどる」で進む。
+  assert.match(source, /いまやること/);
+  assert.match(source, /次へ進む →/);
+  assert.match(source, /← もどる/);
   assert.match(source, /募集ページのリンクをコピー/);
   assert.doesNotMatch(source, />Worker URL</);
   assert.doesNotMatch(source, />matches CSV/);
-  assert.match(source, /絵を見ながら、大会を作ろう/);
-  assert.match(source, /全部で5ステップです/);
   for (const label of ['大会を決める', '選手を募集', '最初だけ接続', '選手を読む', '対戦を作る']) assert.match(source, new RegExp(label));
   assert.match(source, /function CoachIllustration/);
   assert.match(source, />RED<\/text>/);
@@ -70,9 +71,9 @@ test('beginner admin screen avoids unexplained technical labels in the normal pa
   assert.match(source, /接続できています/);
   assert.match(source, /AI・詳しい人だけが開く接続設定/);
   assert.doesNotMatch(source, />② 操作キー/);
-  assert.match(source, /最初にAIを開いてください/);
-  assert.match(source, /AIに送る文章とリンクをコピー/);
-  assert.match(source, /画面のスクリーンショットを送ります/);
+  assert.match(source, /この画面は、AIと一緒に大会を作るための画面です/);
+  assert.match(source, /AIに送る文章をコピー/);
+  assert.match(source, /スクリーンショットをAIへ送って/);
 });
 
 test('entry form makes the fighter photo unmistakable and required', () => {
