@@ -253,7 +253,7 @@ export function buildImportPreview(headers: string[], rows: string[][], columns:
       height: numberText(get(row, 'height')), weight: numberText(get(row, 'weight')),
       category: category || className, className, record: recordText, memo: get(row, 'memo'),
       comment: get(row, 'comment'), musicUrl: get(row, 'musicUrl'), photoUrl: get(row, 'photoUrl'),
-      musicChoice: get(row, 'musicUrl') ? 'あり' : '',
+      musicChoice: get(row, 'musicUrl') ? 'あり' : '', canFightTwice: get(row, 'canFightTwice'),
       source: 'google-form', missing: [], sheetRow,
     };
     const checks: Array<[FormField, string]> = [['gym', gym], ['weight', fighter.weight ?? ''], ...wanted.map((f): [FormField, string] => [f, get(row, f)])];

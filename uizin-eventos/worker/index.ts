@@ -12,6 +12,7 @@
 import { looksLikeHtml, sheetCsvUrl } from '../core/sheet.ts';
 import { extractGid, formCsvUrl, readFormCsv, stripSensitiveColumns } from '../core/formImport.ts';
 import { extractSheetId } from '../core/eventConfig.ts';
+import { checkReaderReply, isFormReaderUrl, isValidReaderToken } from '../core/formReader.ts';
 import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
 import { normalizeEventId } from '../core/eventId.ts';
@@ -272,7 +273,7 @@ export default {
 
     if (path === '/api/entries' && request.method === 'POST') {
       const configRes = await forward(env, request, '/entry-config');
-      const configBody = await configRes.json() as { config?: { published?: boolean; deadline?: string; usesWalkoutMusic?: boolean } };
+      const configBody = await configRes.json() as { config?: { published?: boolean; deadline?: string; usesWalkoutMusic?: boolean; usesPhoto?: boolean } };
       if (!configBody.config?.published) return withCors(json({ ok: false, reason: '現在は募集していません。' }, 403), request, env);
       const type = request.headers.get('content-type') ?? '';
       let raw: unknown = {};
@@ -285,7 +286,9 @@ export default {
       } else if (type.includes('application/json')) {
         raw = await request.json().catch(() => ({}));
       } else return withCors(json({ ok: false, reason: '送信形式が正しくありません。' }, 415), request, env);
-      if (!photo) return withCors(json({ ok: false, reason: '顔写真を選んでください。' }, 400), request, env);
+      // 写真を集める大会だけ必須にする。集めない大会で届いた写真は保存しない。
+      if (configBody.config?.usesPhoto === false) photo = null;
+      else if (!photo) return withCors(json({ ok: false, reason: '顔写真を選んでください。' }, 400), request, env);
       const input = normalizeEntryInput(raw);
       if (configBody.config?.usesWalkoutMusic === false) {
         input.musicChoice = 'なし'; input.musicUrl = '';
@@ -448,9 +451,28 @@ export default {
     // 原本を書き換える手段がそもそも無い。取り込んだ内容もここでは保存しない。
     // 個人情報の列（メール・電話・保護者名・住所）は画面へ送る前に外す。
     if (path === '/api/form-import/read') {
-      const body = (await request.json().catch(() => ({}))) as { sheetUrl?: unknown; tab?: unknown };
-      const sheetUrl = typeof body.sheetUrl === 'string' ? body.sheetUrl : '';
+      const body = (await request.json().catch(() => ({}))) as { sheetUrl?: unknown; tab?: unknown; token?: unknown };
+      const sheetUrl = typeof body.sheetUrl === 'string' ? body.sheetUrl.trim() : '';
       const tab = typeof body.tab === 'string' ? body.tab.trim().slice(0, 100) : '';
+      // おすすめの読み方: 会長のGoogleの中で動く「読むだけスクリプト」。回答表の共有を広げなくてよい。
+      // 問い合わせ先は script.google.com の決まった形のURLだけに限る（他のサイトへは行かない）。
+      if (isFormReaderUrl(sheetUrl)) {
+        if (!isValidReaderToken(body.token)) return withCors(json({ ok: false, reason: '合言葉が見つかりません。画面の手順をやり直してください。' }, 400), request, env);
+        try {
+          const res = await fetchWithTimeout(sheetUrl, 20_000, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ token: body.token, tab }) });
+          const text = await res.text();
+          if (!res.ok || looksLikeHtml(text)) {
+            return withCors(json({ ok: false, reason: '読み取り用のしくみに届きませんでした。「アクセスできるユーザー: 全員」でデプロイしたか確認してください。' }, 502), request, env);
+          }
+          const reply = checkReaderReply(JSON.parse(text));
+          if (!reply.ok) return withCors(json({ ok: false, reason: reply.reason, tabs: reply.tabs }, 422), request, env);
+          // スクリプト側でも外しているが、念のためこちらでも個人情報の列を外す（二重の守り）
+          const safe = stripSensitiveColumns(reply.headers, reply.rows);
+          return withCors(json({ ok: true, tabs: reply.tabs, tab: reply.tab, headers: safe.headers, rows: safe.rows, removedColumns: [...reply.removedColumns, ...safe.removed] }), request, env);
+        } catch {
+          return withCors(json({ ok: false, reason: 'Googleにつながりませんでした。少し待ってからもう一度押してください。' }, 502), request, env);
+        }
+      }
       const sheetId = extractSheetId(sheetUrl);
       if (!sheetId) return withCors(json({ ok: false, reason: '回答表のURLを確認してください。' }, 400), request, env);
       try {

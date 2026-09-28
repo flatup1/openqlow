@@ -10,6 +10,10 @@ export type EntrySiteConfig = {
   deadline: string;
   contact: string;
   usesWalkoutMusic: boolean;
+  /** 顔写真を集めるか。OFFなら募集ページに写真欄を出さず、写真なしで申し込める */
+  usesPhoto: boolean;
+  /** 大会画面での体重の出し方 */
+  weightDisplay: 'contract' | 'both' | 'none';
   published: boolean;
 };
 
@@ -46,7 +50,7 @@ export type EntryRecord = EntryInput & {
 
 export const EMPTY_ENTRY_CONFIG: EntrySiteConfig = {
   title: '', organizer: '', description: '', date: '', venue: '', weighInAt: '', startAt: '',
-  fee: '', deadline: '', contact: '', usesWalkoutMusic: true, published: false,
+  fee: '', deadline: '', contact: '', usesWalkoutMusic: true, usesPhoto: true, weightDisplay: 'contract', published: false,
 };
 
 const WEB_URL = /^https:\/\/(?:music\.apple\.com|(?:www\.|m\.)?(?:youtube\.com|youtu\.be))\//i;
@@ -99,7 +103,8 @@ export function normalizeEntryConfig(value: unknown): EntrySiteConfig {
     description: cleanText(raw.description, 1200), date: cleanText(raw.date, 40),
     venue: cleanText(raw.venue, 200), weighInAt: cleanText(raw.weighInAt, 20),
     startAt: cleanText(raw.startAt, 20), fee: cleanText(raw.fee, 40), deadline: cleanText(raw.deadline, 40),
-    contact: cleanText(raw.contact, 300), usesWalkoutMusic: raw.usesWalkoutMusic !== false, published: raw.published === true,
+    contact: cleanText(raw.contact, 300), usesWalkoutMusic: raw.usesWalkoutMusic !== false, usesPhoto: raw.usesPhoto !== false,
+    weightDisplay: raw.weightDisplay === 'both' || raw.weightDisplay === 'none' ? raw.weightDisplay : 'contract', published: raw.published === true,
   };
 }
 

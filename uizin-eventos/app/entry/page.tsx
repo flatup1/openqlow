@@ -13,6 +13,9 @@ const EMPTY_FORM: EntryInput = {
 
 export default function EntryPage() {
   const [config, setConfig] = useState<EntrySiteConfig>(EMPTY_ENTRY_CONFIG);
+  // 大会IDはURLから読むので、画面が開いてから入れる（最初の描画とずれて警告が出るのを防ぐ）
+  const [eventLabel, setEventLabel] = useState('');
+  useEffect(() => { setEventLabel(getEventId()); }, []);
   const [form, setForm] = useState<EntryInput>(EMPTY_FORM);
   const [status, setStatus] = useState('大会情報を読み込んでいます…');
   const [sending, setSending] = useState(false);
@@ -39,10 +42,10 @@ export default function EntryPage() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (sending || receipt) return;
-    if (!photo) { setStatus('顔写真を選んでください。写真がないとエントリーを送信できません。'); return; }
+    if (config.usesPhoto !== false && !photo) { setStatus('顔写真を選んでください。写真がないとエントリーを送信できません。'); return; }
     setSending(true); setStatus('送信しています。画面を閉じないでください…');
     try {
-      const payload = new FormData(); payload.set('entry', JSON.stringify(form)); if (photo) payload.set('photo', photo);
+      const payload = new FormData(); payload.set('entry', JSON.stringify(form)); if (photo && config.usesPhoto !== false) payload.set('photo', photo);
       const res = await fetch(apiUrl(getApiBase(), '/api/entries'), {
         method: 'POST', body: payload, signal: AbortSignal.timeout(20_000),
       });
@@ -72,7 +75,7 @@ export default function EntryPage() {
           <label className="block font-bold">選手名（リングネーム）<span className="text-rose-600"> 必須</span><input className={input} value={form.fighterName} onChange={(e) => set('fighterName', e.target.value)} required /></label>
           <label className="block font-bold">ふりがな<input className={input} value={form.fighterKana} onChange={(e) => set('fighterKana', e.target.value)} /></label>
           <label className="block font-bold">所属ジム<span className="text-rose-600"> 必須</span><input className={input} value={form.gym} onChange={(e) => set('gym', e.target.value)} required /></label>
-          <section className="rounded-2xl border-4 border-cyan-300 bg-cyan-50 p-5 shadow-sm"><div className="flex items-center gap-3"><span aria-hidden="true" className="text-4xl">📸</span><div><h2 className="text-xl font-black">選手の顔写真</h2><p className="font-black text-rose-700">必須・ここで写真を選びます</p></div></div><p className="mt-3 text-sm leading-relaxed text-slate-700">顔全体が正面から分かる、明るい写真を選んでください。帽子・サングラス・集合写真は避けてください。</p><label className="mt-4 block font-black">顔写真ファイルを選ぶ<input className={input} type="file" accept="image/jpeg,image/png,image/webp" required onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /><span className="mt-2 block text-sm font-normal text-slate-600">JPEG・PNG・WebP、2MB以下</span></label>{photoPreview ? <div className="mt-4 rounded-2xl bg-white p-3 text-center"><img src={photoPreview} alt="選んだ顔写真の確認" className="mx-auto h-48 w-48 rounded-2xl object-contain" /><p className="mt-2 font-black text-emerald-700">✓ この写真を送ります</p><p className="mt-1 break-all text-sm text-slate-500">{photo?.name}</p></div> : <p className="mt-4 rounded-xl bg-white p-4 text-center font-black text-amber-800">まだ写真が選ばれていません</p>}</section>
+          {config.usesPhoto !== false ? <section className="rounded-2xl border-4 border-cyan-300 bg-cyan-50 p-5 shadow-sm"><div className="flex items-center gap-3"><span aria-hidden="true" className="text-4xl">📸</span><div><h2 className="text-xl font-black">選手の顔写真</h2><p className="font-black text-rose-700">必須・ここで写真を選びます</p></div></div><p className="mt-3 text-sm leading-relaxed text-slate-700">顔全体が正面から分かる、明るい写真を選んでください。帽子・サングラス・集合写真は避けてください。</p><label className="mt-4 block font-black">顔写真ファイルを選ぶ<input className={input} type="file" accept="image/jpeg,image/png,image/webp" required onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} /><span className="mt-2 block text-sm font-normal text-slate-600">JPEG・PNG・WebP、2MB以下</span></label>{photoPreview ? <div className="mt-4 rounded-2xl bg-white p-3 text-center"><img src={photoPreview} alt="選んだ顔写真の確認" className="mx-auto h-48 w-48 rounded-2xl object-contain" /><p className="mt-2 font-black text-emerald-700">✓ この写真を送ります</p><p className="mt-1 break-all text-sm text-slate-500">{photo?.name}</p></div> : <p className="mt-4 rounded-xl bg-white p-4 text-center font-black text-amber-800">まだ写真が選ばれていません</p>}</section> : null}
           <div className="grid gap-4 sm:grid-cols-2"><label className="block font-bold">性別<select className={input} value={form.gender} onChange={(e) => set('gender', e.target.value)}><option value="">選択</option><option>男性</option><option>女性</option><option>回答しない</option></select></label><label className="block font-bold">学年<input className={input} value={form.grade} onChange={(e) => set('grade', e.target.value)} placeholder="例: 小学5年 / 高校2年 / 社会人" /></label></div>
           <div className="grid gap-4 sm:grid-cols-2"><label className="block font-bold">年齢<span className="text-rose-600"> 必須</span><input className={input} type="number" min="4" max="100" value={form.age} onChange={(e) => set('age', e.target.value)} required /></label><label className="block font-bold">参加区分<input className={input} value={form.category} onChange={(e) => set('category', e.target.value)} placeholder="キッズ / ジュニア / 一般" /></label></div>
           <div className="grid gap-4 sm:grid-cols-2"><label className="block font-bold">身長（cm）<input className={input} type="number" min="70" max="230" step="0.1" value={form.height} onChange={(e) => set('height', e.target.value)} placeholder="例: 145.5" /></label><label className="block font-bold">希望体重（kg）<span className="text-rose-600"> 必須</span><input className={input} type="number" min="10" max="200" step="0.1" value={form.weight} onChange={(e) => set('weight', e.target.value)} required /></label></div>
@@ -92,7 +95,7 @@ export default function EntryPage() {
           <button className="w-full rounded-xl bg-indigo-700 p-4 text-xl font-black text-white disabled:bg-slate-400" disabled={!config.published || sending}>{sending ? '送信中…' : '内容を確認して送信'}</button>
         </fieldset>
       </form>
-      <p className="mt-5 text-center text-sm text-slate-500">主催: {config.organizer || '未設定'}{config.contact ? ' / ' + config.contact : ''}<br />大会ID: {getEventId()}</p>
+      <p className="mt-5 text-center text-sm text-slate-500">主催: {config.organizer || '未設定'}{config.contact ? ' / ' + config.contact : ''}<br />大会ID: {eventLabel}</p>
     </div>
   </main>;
 }

@@ -6,7 +6,7 @@
  */
 
 import { normalizePhotoUrl } from './photo.ts';
-import type { CueKind, EventMeta, Match, MusicCue, Program } from './types.ts';
+import type { CueKind, EventMeta, Match, MusicCue, Program, WeightDisplay } from './types.ts';
 import { fingerprint, parseSeconds, pick, pickNumber, toRows } from './csv.ts';
 import { extractUrl, isAppleMusicUrl, isYouTubeUrl } from './music.ts';
 import type { Row } from './csv.ts';
@@ -53,6 +53,13 @@ const DEFAULT_META: EventMeta = {
   holdMessage: 'しばらくお待ちください',
 };
 
+export function parseWeightDisplay(raw: string): WeightDisplay {
+  const v = raw.trim().toLowerCase();
+  if (v === 'both' || v.includes('両方') || v.includes('並べ')) return 'both';
+  if (v === 'none' || v.includes('出さない') || v.includes('なし')) return 'none';
+  return 'contract';
+}
+
 function parseMeta(csv: string, warnings: string[]): EventMeta {
   const rows = toRows(csv);
   const map = new Map<string, string>();
@@ -74,6 +81,7 @@ function parseMeta(csv: string, warnings: string[]): EventMeta {
     date: get('date', '開催日'),
     startAt: get('start_at', 'start', '開始時刻'),
     holdMessage: get('hold_message', '停止文言') || DEFAULT_META.holdMessage,
+    weightDisplay: parseWeightDisplay(get('weight_display', '体重表示')),
   };
   if (rows.length === 0) warnings.push('event シートが空です。大会名は既定値を使います。');
   return meta;

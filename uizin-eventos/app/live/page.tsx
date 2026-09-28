@@ -611,7 +611,9 @@ export default function LivePage() {
   const action = liveNextAction(program, state);
   const back = livePrevAction(program, state);
 
-  const weights = match
+  // 体重の出し方は大会ごとの設定。既定は契約体重だけ（UIZIN形式）。
+  const weightDisplay = program.meta.weightDisplay ?? 'contract';
+  const weights = match && weightDisplay !== 'none'
     ? matchWeights(
         fighterWeight(match.red.weight, match.red.record),
         fighterWeight(match.blue.weight, match.blue.record),
@@ -724,6 +726,13 @@ export default function LivePage() {
                     <p className="tabular text-xl font-black leading-tight text-slate-900 lg:text-2xl">
                       {formatKg(weights.contract)}
                     </p>
+                    {weightDisplay === 'both' ? (
+                      <p className="tabular mt-1 text-xs font-bold text-slate-600">
+                        <span className="text-rose-700">赤 {formatKg(weights.red)}</span>
+                        {' / '}
+                        <span className="text-blue-700">青 {formatKg(weights.blue)}</span>
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

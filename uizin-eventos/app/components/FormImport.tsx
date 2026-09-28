@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { readFormResponses } from '../lib/client.ts';
 import { extractSheetId } from '../../core/eventConfig.ts';
 import type { ColumnMapping, FormField, ImportedFighter } from '../../core/formImport.ts';
+import { formReaderScript, isFormReaderUrl, newReaderToken } from '../../core/formReader.ts';
 import { FORM_FIELD_LABELS, buildImportPreview, detectColumns, missingRequiredFields, remapColumn } from '../../core/formImport.ts';
 
 const TAB_CANDIDATES = ['フォームの回答 1', 'フォームの回答 2', 'フォームの回答 3'];
@@ -20,7 +21,8 @@ function mappingLabel(c: ColumnMapping): string {
  * 既存Googleフォームの回答表から選手を読む画面。
  * 会長がやることは「URLを貼る → 読み込む → 名前と人数を見て確定」の3つだけ。
  */
-export function FormImport({ disabled, currentCount, onConfirm }: {
+export function FormImport({ eventId, disabled, currentCount, onConfirm }: {
+  eventId: string;
   disabled: boolean;
   currentCount: number;
   onConfirm: (fighters: ImportedFighter[]) => { before: number; after: number; added: number; updated: number };
@@ -34,6 +36,27 @@ export function FormImport({ disabled, currentCount, onConfirm }: {
   const [removed, setRemoved] = useState<string[]>([]);
   const [columns, setColumns] = useState<ColumnMapping[]>([]);
   const [done, setDone] = useState('');
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [token, setToken] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
+
+  // 合言葉は大会ごとにこの端末で1つだけ作って覚える。サーバーには保存しない。
+  // 前に使ったURLも覚えておき、2回目からは「読み込む」を押すだけにする。
+  useEffect(() => {
+    if (!eventId) return;
+    try {
+      const saved = window.localStorage.getItem('tos-reader-token:' + eventId);
+      const next = saved && /^[A-Za-z0-9]{20,64}$/.test(saved) ? saved : newReaderToken();
+      if (!saved) window.localStorage.setItem('tos-reader-token:' + eventId, next);
+      setToken(next);
+      setUrl(window.localStorage.getItem('tos-reader-url:' + eventId) ?? '');
+    } catch { setToken(newReaderToken()); }
+  }, [eventId]);
+  const safeMode = isFormReaderUrl(url);
+  const copyScript = async () => {
+    try { await navigator.clipboard.writeText(formReaderScript(token)); setCopied(true); } catch { setNote('コピーできませんでした。もう一度押してください。'); }
+  };
 
   const preview = useMemo(() => (rows.length && columns.length ? buildImportPreview(headers, rows, columns) : null), [headers, rows, columns]);
   const missingRequired = columns.length ? missingRequiredFields(columns) : [];
@@ -41,12 +64,15 @@ export function FormImport({ disabled, currentCount, onConfirm }: {
 
   const read = async () => {
     setDone('');
-    if (!extractSheetId(url)) return setNote('回答表のURLを貼ってください。「https://docs.google.com/spreadsheets/d/」で始まるものです。');
+    if (!safeMode && !extractSheetId(url)) return setNote('URLを確認してください。「https://script.google.com/」か「https://docs.google.com/spreadsheets/」で始まるものです。');
     setBusy(true); setNote('回答表を読んでいます。元の表は書き換えません…');
-    const result = await readFormResponses(url, tab);
+    const result = await readFormResponses(url.trim(), tab, safeMode ? token : '');
     setBusy(false);
+    if (result.tabs.length) setTabs(result.tabs);
     // 失敗したときは、前に読めていたプレビューも今の選手一覧も消さない。
     if (!result.ok) return setNote('読めませんでした: ' + (result.reason ?? '理由不明'));
+    try { window.localStorage.setItem('tos-reader-url:' + eventId, url.trim()); } catch { /* 覚えられなくても読める */ }
+    if (result.tab) setTab(result.tab);
     setHeaders(result.headers); setRows(result.rows); setRemoved(result.removedColumns);
     setColumns(detectColumns(result.headers));
     setNote(result.rows.length + '件の回答を読みました。下で名前と人数を確認してください。まだ確定していません。');
@@ -65,10 +91,25 @@ export function FormImport({ disabled, currentCount, onConfirm }: {
     <p className="text-lg font-black text-emerald-950">Googleフォームの回答表から読み込む</p>
     <p className="mt-1 text-sm text-slate-700">いまのGoogleフォームはそのまま使えます。元の回答表は<b>読むだけ</b>で、書き換えません。</p>
 
-    <label className="mt-4 block font-bold">① 回答表のURLを貼る<input className={input} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit" /></label>
-    <label className="mt-3 block font-bold">回答のタブ名 <span className="text-sm font-normal text-slate-600">（分からなければ空のままでOK。いちばん左のタブを読みます）</span>
+    <details open={howOpen || !url} onToggle={(e) => setHowOpen((e.target as HTMLDetailsElement).open)} className="mt-4 rounded-xl border-2 border-emerald-200 bg-white p-4">
+      <summary className="cursor-pointer text-lg font-black">はじめての大会だけ：読み取りの準備（5分・1回だけ）</summary>
+      <p className="mt-2 text-sm text-slate-700">回答表の共有設定は<b>今のまま（制限付き）</b>で大丈夫です。回答表の中に「読むだけの小さなプログラム」を1回貼ります。</p>
+      <ol className="mt-3 space-y-3 text-base">
+        <li><b>1.</b> 下の緑のボタンを押す<button type="button" onClick={() => void copyScript()} disabled={!token} className="mt-2 block w-full rounded-xl bg-emerald-600 p-3 font-black text-white disabled:bg-slate-300">{copied ? 'コピーしました ✓' : '読み取り用プログラムをコピー'}</button></li>
+        <li><b>2.</b> Googleで回答表を開き、上の <b>「拡張機能」</b> → <b>「Apps Script」</b> を押す</li>
+        <li><b>3.</b> 最初から入っている文字を全部消して、<b>貼り付け</b>る（⌘ + V）。上の <b>💾 保存</b> を押す</li>
+        <li><b>4.</b> 右上の <b>「デプロイ」</b> → <b>「新しいデプロイ」</b> → 種類は <b>「ウェブアプリ」</b>。<br /><span className="text-sm">「次のユーザーとして実行」は<b>自分</b>、「アクセスできるユーザー」は<b>全員</b>を選んで「デプロイ」。許可を聞かれたら自分のアカウントで<b>許可</b>します。</span></li>
+        <li><b>5.</b> 最後に出る <b>「ウェブアプリのURL」</b> をコピーして、下の欄に貼る</li>
+      </ol>
+      <p className="mt-3 rounded-lg bg-emerald-50 p-2 text-xs text-slate-700">このプログラムは回答表を読むだけです。書き換え・削除はしません。メール・電話・保護者名・住所は送りません。合言葉を知らない人には何も見せません。</p>
+    </details>
+
+    <label className="mt-4 block font-bold">① URLを貼る<span className="block text-sm font-normal text-slate-600">「https://script.google.com/」で始まるURL（おすすめ）</span><input className={input} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/…/exec" /></label>
+    {url && !safeMode && extractSheetId(url) ? <p className="mt-2 rounded-lg bg-amber-100 p-2 text-sm font-bold text-amber-900">⚠ 回答表そのもののURLです。この方法は回答表を「リンクを知っている全員」に共有しないと読めず、メールなどが他の人に見えるおそれがあります。できれば上の「読み取りの準備」を使ってください。</p> : null}
+    {tabs.length > 1 ? <div className="mt-3"><p className="font-bold">回答のタブを選ぶ</p><div className="mt-2 flex flex-wrap gap-2">{tabs.map((t) => <button key={t} type="button" onClick={() => setTab(t)} aria-pressed={tab === t} className={'rounded-lg border-2 px-3 py-2 font-bold ' + (tab === t ? 'border-emerald-600 bg-emerald-100' : 'border-slate-200 bg-white')}>{t}</button>)}</div><p className="mt-1 text-sm text-slate-600">選んだら、もう一度「② 申込者を読み込む」を押してください。</p></div>
+      : <label className="mt-3 block font-bold">回答のタブ名 <span className="text-sm font-normal text-slate-600">（分からなければ空のままでOK。いちばん左のタブを読みます）</span>
       <input className={input} list="form-tab-candidates" value={tab} onChange={(e) => setTab(e.target.value)} placeholder="例: フォームの回答 2" />
-      <datalist id="form-tab-candidates">{TAB_CANDIDATES.map((t) => <option key={t} value={t} />)}</datalist></label>
+      <datalist id="form-tab-candidates">{TAB_CANDIDATES.map((t) => <option key={t} value={t} />)}</datalist></label>}
     <button disabled={disabled || busy} onClick={() => void read()} className="mt-4 w-full rounded-xl bg-emerald-700 p-4 text-xl font-black text-white disabled:bg-slate-300">② 申込者を読み込む</button>
     {note ? <p role="status" className="mt-3 rounded-xl bg-white p-3 font-bold text-slate-800">{note}</p> : null}
 

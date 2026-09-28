@@ -82,14 +82,14 @@ export async function loadEntryFighters(): Promise<{ ok: boolean; entries: Match
 }
 
 /** 既存Googleフォームの回答表を読むだけ。個人情報の列はサーバー側で外れて届く */
-export async function readFormResponses(sheetUrl: string, tab: string): Promise<{ ok: boolean; headers: string[]; rows: string[][]; removedColumns: string[]; reason?: string }> {
+export async function readFormResponses(sheetUrl: string, tab: string, token = ''): Promise<{ ok: boolean; headers: string[]; rows: string[][]; removedColumns: string[]; tabs: string[]; tab?: string; reason?: string }> {
   const base = getApiBase();
   try {
     const res = await fetch(apiUrl(base, '/api/form-import/read'), {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-operator-key': getOperatorKey() },
-      body: JSON.stringify({ sheetUrl, tab }), signal: AbortSignal.timeout(25_000),
+      body: JSON.stringify({ sheetUrl, tab, token }), signal: AbortSignal.timeout(30_000),
     });
-    const body = await res.json().catch(() => ({})) as { ok?: boolean; headers?: string[]; rows?: string[][]; removedColumns?: string[]; reason?: string };
-    return { ok: res.ok && body.ok === true, headers: body.headers ?? [], rows: body.rows ?? [], removedColumns: body.removedColumns ?? [], reason: body.reason };
-  } catch { return { ok: false, headers: [], rows: [], removedColumns: [], reason: '回答表を読めませんでした。通信を確認してください。' }; }
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; headers?: string[]; rows?: string[][]; removedColumns?: string[]; tabs?: string[]; tab?: string; reason?: string };
+    return { ok: res.ok && body.ok === true, headers: body.headers ?? [], rows: body.rows ?? [], removedColumns: body.removedColumns ?? [], tabs: body.tabs ?? [], tab: body.tab, reason: body.reason };
+  } catch { return { ok: false, headers: [], rows: [], removedColumns: [], tabs: [], reason: '回答表を読めませんでした。通信を確認してください。' }; }
 }

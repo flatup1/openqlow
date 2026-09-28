@@ -102,7 +102,11 @@ export type EventMeta = {
   startAt: string;
   /** 停止中にMC画面へ出す文言 */
   holdMessage: string;
+  /** 体重の出し方。contract=重い方に合わせた契約体重だけ（既定・UIZIN形式）/ both=両者の体重も並べる / none=出さない */
+  weightDisplay?: WeightDisplay;
 };
+
+export type WeightDisplay = 'contract' | 'both' | 'none';
 
 export type Program = {
   /** 取り込んだ内容のハッシュ。全画面が同じ番組表を見ているかの照合に使う */

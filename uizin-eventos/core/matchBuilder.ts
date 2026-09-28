@@ -1,7 +1,7 @@
 export type MatchBuilderFighter = {
   receiptNo: string; fighterName: string; fighterKana?: string; gym: string; age?: string; grade?: string;
   height?: string; weight?: string; category?: string; record?: string; comment?: string;
-  musicChoice?: string; musicUrl?: string; photoUrl?: string;
+  musicChoice?: string; musicUrl?: string; photoUrl?: string; canFightTwice?: string; experience?: string;
 };
 
 export type DraftMatch = { id: string; redReceipt: string; blueReceipt: string; className: string; rule: string };
@@ -53,7 +53,67 @@ export function draftMusicCsv(matches: DraftMatch[], fighters: MatchBuilderFight
   return [header.map(cell).join(','), ...rows.map((row) => row.map(cell).join(','))].join('\r\n');
 }
 
-export function draftEventCsv(input: { title: string; venue: string; date: string; startAt: string }): string {
-  return [['key','value'], ['title', input.title], ['venue', input.venue], ['date', input.date], ['start_at', input.startAt], ['hold_message','しばらくお待ちください']]
+export function draftEventCsv(input: { title: string; venue: string; date: string; startAt: string; weightDisplay?: string }): string {
+  return [['key','value'], ['title', input.title], ['venue', input.venue], ['date', input.date], ['start_at', input.startAt], ['hold_message','しばらくお待ちください'], ['weight_display', input.weightDisplay || 'contract']]
     .map((row) => row.map(cell).join(',')).join('\r\n');
+}
+
+export type MatchNote = { level: 'warn' | 'info'; text: string };
+
+/** 体重差の注意の目安。これ以上なら「確認してください」を出す（決めるのは人） */
+export const WEIGHT_GAP_WARN_KG = 3;
+export const WEIGHT_GAP_WARN_RATIO = 0.1;
+
+function kg(value: string | undefined): number | null {
+  const m = String(value ?? '').normalize('NFKC').match(/\d+(?:\.\d+)?/);
+  const n = m ? Number(m[0]) : NaN;
+  return Number.isFinite(n) && n >= 10 && n <= 200 ? n : null;
+}
+
+/** 選手がそれぞれ何試合に入っているか */
+export function boutCounts(matches: DraftMatch[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const m of matches) for (const id of [m.redReceipt, m.blueReceipt]) if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return counts;
+}
+
+/**
+ * 1試合ごとの注意を出す。どれも「止める」のではなく「人が確認する」ための表示。
+ * 勝手に組み替えたり決めたりはしない。
+ */
+export function reviewDraftMatches(matches: DraftMatch[], fighters: MatchBuilderFighter[]): MatchNote[][] {
+  const byId = new Map(fighters.map((f) => [f.receiptNo, f]));
+  const counts = boutCounts(matches);
+  return matches.map((match) => {
+    const notes: MatchNote[] = [];
+    const red = byId.get(match.redReceipt); const blue = byId.get(match.blueReceipt);
+    if (red && blue) {
+      const r = kg(red.weight), b = kg(blue.weight);
+      if (r === null || b === null) notes.push({ level: 'warn', text: '体重が未登録の選手がいます。計量で確認してください。' });
+      else {
+        const gap = Math.abs(r - b);
+        if (gap >= WEIGHT_GAP_WARN_KG || gap / Math.min(r, b) >= WEIGHT_GAP_WARN_RATIO) {
+          notes.push({ level: 'warn', text: '体重差が ' + gap.toFixed(1) + 'kg あります。この組み合わせでよいか確認してください。' });
+        }
+      }
+    }
+    for (const [side, f] of [['赤', red], ['青', blue]] as const) {
+      if (!f) continue;
+      const n = counts.get(f.receiptNo) ?? 0;
+      if (n >= 2) {
+        const no = /不可|いいえ|できない|×/.test(f.canFightTwice ?? '');
+        notes.push({ level: no ? 'warn' : 'info', text: side + 'の' + f.fighterName + 'さんは ' + n + '試合目があります' + (no ? '。申込では「2試合できない」になっています。' : '。') });
+      }
+      const missing = [!f.photoUrl ? '写真' : '', !f.comment ? '意気込み' : ''].filter(Boolean);
+      if (missing.length) notes.push({ level: 'info', text: side + 'の' + f.fighterName + 'さん: ' + missing.join('・') + 'が未登録' });
+    }
+    return notes;
+  });
+}
+
+/** 選手の絞り込み。名前・ふりがな・所属のどれかに含まれれば残す */
+export function filterFighters(fighters: MatchBuilderFighter[], query: string): MatchBuilderFighter[] {
+  const q = query.normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+  if (!q) return fighters;
+  return fighters.filter((f) => [f.fighterName, f.fighterKana ?? '', f.gym].some((v) => v.normalize('NFKC').replace(/\s+/g, '').toLowerCase().includes(q)));
 }
