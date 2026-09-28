@@ -8,6 +8,9 @@ import { isValidEventId, normalizeEventId } from '../../core/eventId.ts';
 import type { EntrySiteConfig } from '../../core/entry.ts';
 import { EMPTY_ENTRY_CONFIG, validateEntryConfig } from '../../core/entry.ts';
 import type { DraftMatch, MatchBuilderFighter } from '../../core/matchBuilder.ts';
+import { FormImport } from '../components/FormImport.tsx';
+import type { ImportedFighter } from '../../core/formImport.ts';
+import { mergeImported } from '../../core/formImport.ts';
 import { draftEventCsv, draftMatchesCsv, draftMusicCsv, moveDraftMatch, swapDraftCorners, validateDraftMatches } from '../../core/matchBuilder.ts';
 
 const STEPS = [
@@ -52,11 +55,16 @@ export default function AdminPage() {
   const [musicCsv, setMusicCsv] = useState('');
   const [entryConfig, setEntryConfig] = useState<EntrySiteConfig>(EMPTY_ENTRY_CONFIG);
   const [copied, setCopied] = useState('');
-  const [fighters, setFighters] = useState<MatchBuilderFighter[]>([]);
+  const [entryFighters, setFighters] = useState<MatchBuilderFighter[]>([]);
+  // 既存Googleフォームから取り込んだ選手。メール・電話は最初から入っていない。
+  // この端末にだけ覚えておき、再読込しても消えないようにする。
+  const [formFighters, setFormFighters] = useState<ImportedFighter[]>([]);
+  const fighters = useMemo(() => mergeImported(entryFighters, formFighters).fighters, [entryFighters, formFighters]);
   const [draftMatches, setDraftMatches] = useState<DraftMatch[]>([]);
 
   useEffect(() => {
     const initialEvent = getEventId(); const initialApi = getApiBase();
+    try { const saved = window.localStorage.getItem('tos-form-fighters:' + initialEvent); if (saved) setFormFighters(JSON.parse(saved) as ImportedFighter[]); } catch { /* 読めなくても画面は動かす */ }
     updateEventId(initialEvent); setApi(initialApi); setKey(getOperatorKey()); setOrigin(window.location.origin);
     fetch(new URL('/api/entry-config?event=' + encodeURIComponent(initialEvent), initialApi || window.location.origin))
       .then((r) => r.json()).then((value: unknown) => {
@@ -117,6 +125,13 @@ export default function AdminPage() {
     setFighters(result.entries);
     setMessage(result.entries.length + '人を読み込みました。' + (result.source === 'backup' ? 'Google原本に接続できなかったため、安全な予備データを表示しています。' : 'Googleスプレッドシート原本の最新版です。'));
   };
+  const confirmFormImport = (incoming: ImportedFighter[]) => {
+    const merged = mergeImported(formFighters, incoming);
+    const next = merged.fighters as ImportedFighter[];
+    setFormFighters(next);
+    try { window.localStorage.setItem('tos-form-fighters:' + normalizedId, JSON.stringify(next)); } catch { /* 保存できなくても今の画面では使える */ }
+    return { ...merged, before: fighters.length, after: mergeImported(entryFighters, next).fighters.length };
+  };
   const addMatch = () => setDraftMatches((matches) => [...matches, { id: crypto.randomUUID(), redReceipt: '', blueReceipt: '', className: '', rule: '' }]);
   const updateMatch = (index: number, values: Partial<DraftMatch>) => setDraftMatches((matches) => matches.map((match, i) => i === index ? { ...match, ...values } : match));
   const saveMatchCards = async () => {
@@ -167,7 +182,7 @@ export default function AdminPage() {
 
     <section id="step-3" className="mt-6 rounded-2xl border border-violet-200 bg-white p-6 shadow-sm"><StepTitle no={3} title="最初の1回だけ、AIにつないでもらう" done={connectionReady} />{connectionReady ? <div className="mt-4 rounded-2xl bg-emerald-50 p-5 text-center"><p className="text-4xl" aria-hidden="true">✅</p><p className="mt-2 text-xl font-black text-emerald-900">接続できています</p><p className="mt-1 text-slate-700">ここでは何もしなくて大丈夫です。ステップ4へ進んでください。</p></div> : <div className="mt-4 rounded-2xl bg-violet-50 p-5"><p className="text-lg font-black text-violet-950">ここは自分で設定しません</p><p className="mt-2 leading-relaxed text-slate-700">下のボタンを押して文章をコピーし、CodexやClaude Codeなど、アプリを作ってくれたAIへ貼り付けてください。AIが接続を準備します。</p><button type="button" onClick={() => void copy('setup', setupPrompt)} className="mt-4 w-full rounded-xl bg-violet-700 p-4 text-lg font-black text-white">{copied === 'setup' ? 'コピーしました ✓ AIへ貼り付けてください' : 'AIへお願いする文章をコピー'}</button></div>}<details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer font-bold text-slate-700">AI・詳しい人だけが開く接続設定</summary><div className="mt-4 space-y-4"><p className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-900">分からない場合は入力しないでください。間違った文字を入れるとデータを読み込めません。</p><label className="block font-bold">保存場所URL<input value={api} onChange={(e) => setApi(e.target.value)} className={input} placeholder="https://○○○.workers.dev" /><span className="mt-1 block text-sm font-normal text-slate-500">Cloudflareに作った、大会データの保存場所です。</span></label><label className="block font-bold">管理用パスワード<input type="password" value={key} onChange={(e) => setKey(e.target.value)} className={input} placeholder="AIが作った管理用パスワード" /><span className="mt-1 block text-sm font-normal text-slate-500">他の人へ送らないでください。このパソコンの中だけに保存されます。</span></label></div></details></section>
 
-    <section id="step-4" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><StepTitle no={4} title="申込選手を原本から読み込む" done={fighters.length > 0} /><p className="mt-3 text-slate-600">ボタンを押すと、非公開のGoogleスプレッドシート原本から最新版の選手一覧を読み込みます。原本を直した後も、もう一度押せば更新されます。</p><button disabled={busy} onClick={() => void loadFighters()} className="mt-4 w-full rounded-xl bg-indigo-700 p-4 text-xl font-black text-white disabled:bg-slate-300">申込選手を読み込む</button>{fighters.length ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 font-bold text-emerald-900">✓ {fighters.length}人の選手を使えます</p> : null}
+    <section id="step-4" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><StepTitle no={4} title="申込選手を原本から読み込む" done={fighters.length > 0} /><p className="mt-3 text-slate-600">ボタンを押すと、非公開のGoogleスプレッドシート原本から最新版の選手一覧を読み込みます。原本を直した後も、もう一度押せば更新されます。</p><FormImport disabled={busy || !connectionReady} currentCount={fighters.length} onConfirm={confirmFormImport} />{!connectionReady ? <p className="mt-2 text-sm font-bold text-amber-800">先に「3」の接続を済ませてください。</p> : null}<p className="mt-5 font-bold text-slate-700">Tournament OSの募集ページで集めた場合は、こちら:</p><button disabled={busy} onClick={() => void loadFighters()} className="mt-4 w-full rounded-xl bg-indigo-700 p-4 text-xl font-black text-white disabled:bg-slate-300">申込選手を読み込む</button>{fighters.length ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 font-bold text-emerald-900">✓ {fighters.length}人の選手を使えます</p> : null}
       <details className="mt-4 rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-bold">すでに対戦表のGoogleスプレッドシートがある場合</summary><p className="mt-3 text-sm text-slate-600">対戦表のURLを貼って取り込めます。電話番号・メール・住所が入った申込原本はここへ貼らないでください。</p><input value={sheet} onChange={(e) => setSheet(e.target.value)} className={input} placeholder="https://docs.google.com/spreadsheets/d/…/edit" /><button disabled={busy || errors.length > 0} onClick={() => void importSheet()} className="mt-3 w-full rounded-xl bg-slate-800 p-3 font-bold text-white disabled:bg-slate-300">完成済みの対戦表を取り込む</button></details>
     </section>
 

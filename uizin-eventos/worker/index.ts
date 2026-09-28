@@ -10,6 +10,8 @@
  */
 
 import { looksLikeHtml, sheetCsvUrl } from '../core/sheet.ts';
+import { extractGid, formCsvUrl, readFormCsv, stripSensitiveColumns } from '../core/formImport.ts';
+import { extractSheetId } from '../core/eventConfig.ts';
 import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
 import { normalizeEventId } from '../core/eventId.ts';
@@ -349,7 +351,8 @@ export default {
       path === '/api/undo' ||
       path === '/api/program/reload' ||
       path === '/api/program/upload' ||
-      path === '/api/music/check';
+      path === '/api/music/check' ||
+      path === '/api/form-import/read';
 
     const entryOperatorPath = path === '/api/entry-config' || path === '/api/entries/export' || path === '/api/entries/source';
 
@@ -439,6 +442,29 @@ export default {
         request,
         env,
       );
+    }
+
+    // 既存Googleフォームの回答表を「読むだけ」。Googleの書き出しURL(GET)しか使わないので、
+    // 原本を書き換える手段がそもそも無い。取り込んだ内容もここでは保存しない。
+    // 個人情報の列（メール・電話・保護者名・住所）は画面へ送る前に外す。
+    if (path === '/api/form-import/read') {
+      const body = (await request.json().catch(() => ({}))) as { sheetUrl?: unknown; tab?: unknown };
+      const sheetUrl = typeof body.sheetUrl === 'string' ? body.sheetUrl : '';
+      const tab = typeof body.tab === 'string' ? body.tab.trim().slice(0, 100) : '';
+      const sheetId = extractSheetId(sheetUrl);
+      if (!sheetId) return withCors(json({ ok: false, reason: '回答表のURLを確認してください。' }, 400), request, env);
+      try {
+        const res = await fetchWithTimeout(formCsvUrl(sheetId, { name: tab, gid: extractGid(sheetUrl) }), 15_000);
+        if (!res.ok) {
+          return withCors(json({ ok: false, reason: '回答表を開けませんでした（' + res.status + '）。共有を「リンクを知っている全員・閲覧者」にしてください。' }, 502), request, env);
+        }
+        const read = readFormCsv(await res.text());
+        if (!read.ok) return withCors(json({ ok: false, reason: read.reason }, 422), request, env);
+        const safe = stripSensitiveColumns(read.headers, read.rows);
+        return withCors(json({ ok: true, headers: safe.headers, rows: safe.rows, removedColumns: safe.removed }), request, env);
+      } catch {
+        return withCors(json({ ok: false, reason: 'Googleにつながりませんでした。少し待ってからもう一度押してください。' }, 502), request, env);
+      }
     }
 
     if (path === '/api/music/check') {
