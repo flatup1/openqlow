@@ -3,8 +3,10 @@
 // SQLite 相当の最小 CRUD を提供する。1オーナー運用前提のため単純なファイル読み書き。
 // created_at / updated_at は自動付与。id は AUTOINCREMENT 相当（max(id)+1）。
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 import {
   normalizeProspectInput,
   type Prospect,
@@ -35,7 +37,8 @@ async function writeAll(filePath: string, list: Prospect[]): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   // 一時ファイルに書き切ってから rename（同一ディレクトリ内なので原子的）。
   // 保存の途中で中断しても本体（名簿）が壊れない。
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  // 名前は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを奪い合って rename が失敗する。
+  const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmpPath, JSON.stringify(list, null, 2) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
@@ -50,18 +53,21 @@ export function openProspectStore(filePath: string, now: () => Date = () => new 
 
   return {
     async create(input) {
-      const list = await readAll(filePath);
-      const nextId = list.reduce((max, p) => Math.max(max, p.id), 0) + 1;
-      const at = stamp();
-      const prospect: Prospect = {
-        id: nextId,
-        ...normalizeProspectInput(input),
-        createdAt: at,
-        updatedAt: at,
-      };
-      list.push(prospect);
-      await writeAll(filePath, list);
-      return prospect;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`prospects:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const nextId = list.reduce((max, p) => Math.max(max, p.id), 0) + 1;
+        const at = stamp();
+        const prospect: Prospect = {
+          id: nextId,
+          ...normalizeProspectInput(input),
+          createdAt: at,
+          updatedAt: at,
+        };
+        list.push(prospect);
+        await writeAll(filePath, list);
+        return prospect;
+      });
     },
 
     async getAll() {
@@ -80,28 +86,34 @@ export function openProspectStore(filePath: string, now: () => Date = () => new 
     },
 
     async update(id, patch) {
-      const list = await readAll(filePath);
-      const index = list.findIndex(p => p.id === id);
-      if (index < 0) return undefined;
-      const current = list[index];
-      const normalized = normalizeProspectInput({ ...current, ...patch });
-      const updated: Prospect = {
-        ...normalized,
-        id: current.id,
-        createdAt: current.createdAt,
-        updatedAt: stamp(),
-      };
-      list[index] = updated;
-      await writeAll(filePath, list);
-      return updated;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`prospects:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const index = list.findIndex(p => p.id === id);
+        if (index < 0) return undefined;
+        const current = list[index];
+        const normalized = normalizeProspectInput({ ...current, ...patch });
+        const updated: Prospect = {
+          ...normalized,
+          id: current.id,
+          createdAt: current.createdAt,
+          updatedAt: stamp(),
+        };
+        list[index] = updated;
+        await writeAll(filePath, list);
+        return updated;
+      });
     },
 
     async remove(id) {
-      const list = await readAll(filePath);
-      const next = list.filter(p => p.id !== id);
-      if (next.length === list.length) return false;
-      await writeAll(filePath, next);
-      return true;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`prospects:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const next = list.filter(p => p.id !== id);
+        if (next.length === list.length) return false;
+        await writeAll(filePath, next);
+        return true;
+      });
     },
   };
 }

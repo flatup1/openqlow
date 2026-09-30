@@ -18,9 +18,10 @@
 //   - 未連携 journey は JOURNEY_TTL_DAYS 経過で自動削除。連携済みは Lead として保持。
 //   - 別ユーザーが同じ journey_id を送っても紐づけ直さない（混線防止・使い捨て）。
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 import { pushLineMessage } from "./notifier.js";
 
 export const JOURNEY_TTL_DAYS = 7;
@@ -104,7 +105,8 @@ async function readJourneys(dataDir: string): Promise<JourneyRecord[]> {
 async function writeJourneys(dataDir: string, list: JourneyRecord[]): Promise<void> {
   const filePath = journeysFile(dataDir);
   await mkdir(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  // 名前は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを奪い合って rename が失敗する。
+  const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmpPath, JSON.stringify(list, null, 2) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
@@ -171,15 +173,18 @@ export async function createJourneyFromWebos(
   const now = opts.now ?? new Date();
   const journeyId = `J-${randomBytes(6).toString("hex")}`;
 
-  const list = purgeExpired(await readJourneys(dataDir), now);
-  list.push({
-    journey_id: journeyId,
-    answers,
-    source: "webos",
-    created_at: now.toISOString(),
-    linked: false,
+  // 「読む→足す→書く」を順番に行う。同時に届くと片方の相談が消える。
+  await withStateLock(`journeys:${dataDir}`, async () => {
+    const list = purgeExpired(await readJourneys(dataDir), now);
+    list.push({
+      journey_id: journeyId,
+      answers,
+      source: "webos",
+      created_at: now.toISOString(),
+      linked: false,
+    });
+    await writeJourneys(dataDir, list);
   });
-  await writeJourneys(dataDir, list);
   return { ok: true, journeyId };
 }
 
@@ -261,13 +266,32 @@ export async function executeLineJourneyLink(
   const now = opts.now ?? new Date();
   const notifyOwner: NotifyOwner = opts.notifyOwner ?? (text => pushLineMessage(text));
 
-  const list = purgeExpired(await readJourneys(dataDir), now);
-  const record = list.find(j => j.journey_id === journeyId);
+  const lockKey = `journeys:${dataDir}`;
 
-  // 見つからない / 期限切れ / 別ユーザーに連携済み（混線防止で使い捨て）は同じ扱い。
-  const takenByOther = record?.linked && record.line_user_id !== opts.lineUserId;
-  if (!record || takenByOther || !opts.lineUserId) {
-    await writeJourneys(dataDir, list); // purge結果は保存しておく
+  // 「読む→変える→書く」を順番に行う（同時に届くと片方の更新が消える）。
+  // 通知（外部への送信）は鍵の外で行い、送信が遅くても他の受付を止めない。
+  const linked = await withStateLock(lockKey, async () => {
+    const list = purgeExpired(await readJourneys(dataDir), now);
+    const record = list.find(j => j.journey_id === journeyId);
+
+    // 見つからない / 期限切れ / 別ユーザーに連携済み（混線防止で使い捨て）は同じ扱い。
+    const takenByOther = record?.linked && record.line_user_id !== opts.lineUserId;
+    if (!record || takenByOther || !opts.lineUserId) {
+      await writeJourneys(dataDir, list); // purge結果は保存しておく
+      return undefined;
+    }
+
+    const alreadyLinked = record.linked && record.line_user_id === opts.lineUserId;
+
+    // 1) 先にLeadとして保存（通知失敗でも情報は失われない）
+    record.linked = true;
+    record.line_user_id = opts.lineUserId;
+    if (!alreadyLinked) record.linked_at = now.toISOString();
+    await writeJourneys(dataDir, list);
+    return { alreadyLinked, record: { ...record } };
+  });
+
+  if (!linked) {
     return {
       handled: true,
       ok: true,
@@ -277,27 +301,27 @@ export async function executeLineJourneyLink(
     };
   }
 
-  const alreadyLinked = record.linked && record.line_user_id === opts.lineUserId;
-
-  // 1) 先にLeadとして保存（通知失敗でも情報は失われない）
-  record.linked = true;
-  record.line_user_id = opts.lineUserId;
-  if (!alreadyLinked) record.linked_at = now.toISOString();
-  await writeJourneys(dataDir, list);
-
   // 2) オーナー通知（同じ人の再送では二重通知しない）。結果をLeadに記録。
-  if (!alreadyLinked) {
-    const summary = formatJourneyOwnerSummary(record);
+  if (!linked.alreadyLinked) {
+    const summary = formatJourneyOwnerSummary(linked.record);
+    const outcome: Pick<JourneyRecord, "notify_status" | "notify_error" | "notified_at"> = {};
     try {
       const pushed = await notifyOwner(summary);
-      record.notify_status = pushed.mode === "dry_run" ? "dry_run" : pushed.ok ? "sent" : "failed";
-      if (!pushed.ok && pushed.error) record.notify_error = pushed.error;
+      outcome.notify_status = pushed.mode === "dry_run" ? "dry_run" : pushed.ok ? "sent" : "failed";
+      if (!pushed.ok && pushed.error) outcome.notify_error = pushed.error;
     } catch (error) {
-      record.notify_status = "failed";
-      record.notify_error = error instanceof Error ? error.message : "notify_threw";
+      outcome.notify_status = "failed";
+      outcome.notify_error = error instanceof Error ? error.message : "notify_threw";
     }
-    record.notified_at = now.toISOString();
-    await writeJourneys(dataDir, list);
+    outcome.notified_at = now.toISOString();
+    // 送信中に他の更新が入っていても消さないよう、読み直してから結果だけ足す。
+    await withStateLock(lockKey, async () => {
+      const list = await readJourneys(dataDir);
+      const record = list.find(j => j.journey_id === journeyId);
+      if (!record) return;
+      Object.assign(record, outcome);
+      await writeJourneys(dataDir, list);
+    });
   }
 
   return {

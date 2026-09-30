@@ -168,4 +168,28 @@ assert.deepEqual(publicLocalImageResult.browserQueued, []);
 assert.match(publicLocalCalls[0].body, /media_type=IMAGE/);
 assert.match(publicLocalCalls[0].body, /image_url=https%3A%2F%2Fmedia.example.com%2Fopenqlow%2Fpost.jpg/);
 
+// 再実行しても、投稿済みの宛先へ二重投稿しない（Threads の投稿後に落ちた想定）。
+let rerunCalls = 0;
+const rerun = await runFinalPublish(root, "FG-20260603-003", {
+  env: { THREADS_USER_ID: "27079444471741122", THREADS_ACCESS_TOKEN: "token" },
+  fetchImpl: (async () => {
+    rerunCalls += 1;
+    return new Response(JSON.stringify({ id: "duplicate" }), { status: 200 });
+  }) as typeof fetch,
+});
+assert.equal(rerunCalls, 0, "投稿済みの Threads へ再投稿してはいけない");
+assert.deepEqual(rerun.published, [{ destination: "threads", externalId: "post-1" }]);
+
+// 結果ファイルが壊れていたら「未投稿」と見なさず、投稿せずに止まる。
+await writeFile(path.join(root, "state", "publish_results", "FG-20260603-003.json"), "{broken", "utf8");
+rerunCalls = 0;
+await assert.rejects(runFinalPublish(root, "FG-20260603-003", {
+  env: { THREADS_USER_ID: "27079444471741122", THREADS_ACCESS_TOKEN: "token" },
+  fetchImpl: (async () => {
+    rerunCalls += 1;
+    return new Response(JSON.stringify({ id: "duplicate" }), { status: 200 });
+  }) as typeof fetch,
+}));
+assert.equal(rerunCalls, 0, "壊れた結果ファイルのとき投稿してはいけない");
+
 console.log("final publish tests passed");

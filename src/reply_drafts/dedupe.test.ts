@@ -67,6 +67,26 @@ assert(await hasSeen(root, "line", "line:evt-3"), "新しい記録は残る");
 await fs.writeFile(seenStorePath(root, "line"), "{壊れている", "utf8");
 assert(!(await hasSeen(root, "line", "line:evt-3")), "壊れた台帳は空として扱う");
 assert(await markSeen(root, "line", "line:evt-4", later, 30), "壊れた台帳でも記録できる");
+{
+  const names = await fs.readdir(path.dirname(seenStorePath(root, "line")));
+  const kept = names.filter(name => name.startsWith("line_seen.json.corrupt-"));
+  assert(kept.length === 1, "壊れた台帳は消さずに退避する");
+  const original = await fs.readFile(path.join(path.dirname(seenStorePath(root, "line")), kept[0]!), "utf8");
+  assert(original === "{壊れている", "退避した中身は元のまま");
+}
+// 読めない台帳（ここではディレクトリ）は「無い」扱いにせず、例外で止める。
+{
+  const unreadableRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-unreadable-"));
+  await fs.mkdir(seenStorePath(unreadableRoot, "line"), { recursive: true });
+  let threw = false;
+  try {
+    await markSeen(unreadableRoot, "line", "line:evt-x", later, 30);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "読めない台帳は空扱いにせず止める");
+  await fs.rm(unreadableRoot, { recursive: true, force: true });
+}
 
 await fs.rm(root, { recursive: true, force: true });
 console.log("reply_drafts dedupe tests passed");

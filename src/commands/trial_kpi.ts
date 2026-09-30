@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { formatName, sanitiseFreeText } from "../privacy/rules.js";
+import { withStateLock } from "../reply_drafts/lock.js";
+import { writeFileAtomic } from "../state/atomic_json.js";
 import { formatDateInTimeZone } from "../utils/date.js";
 
 export type AttendanceStatus = "予約" | "参加" | "欠席" | "キャンセル";
@@ -221,7 +223,8 @@ function renderTracker(records: TrialRecord[], now: Date): string {
 async function saveRecords(vaultRoot: string, records: TrialRecord[], now: Date): Promise<void> {
   const file = trackerPath(vaultRoot);
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, renderTracker(records, now), "utf8");
+  // 置き換え方式で書く。途中で落ちても正本が書きかけで残らない（残ると次の読み込みが落ちる）。
+  await writeFileAtomic(file, renderTracker(records, now));
 }
 
 function nextId(records: TrialRecord[], today: string): string {
@@ -302,7 +305,15 @@ export async function readTrialKpiSummary(vaultRoot: string, now: Date = new Dat
   return summariseTrialRecords(await loadRecords(vaultRoot), now);
 }
 
-export async function executeTrialKpiCommand(text: string, opts: TrialKpiOptions): Promise<TrialKpiCommandResult | undefined> {
+/**
+ * 「読む→変える→書く」を1件ずつ順番に行う。LINEの入力が同時に届くと、
+ * 後から書いた方が先の更新を消してしまうため。
+ */
+export function executeTrialKpiCommand(text: string, opts: TrialKpiOptions): Promise<TrialKpiCommandResult | undefined> {
+  return withStateLock(`trial_kpi:${trackerPath(opts.vaultRoot)}`, () => executeTrialKpiCommandUnlocked(text, opts));
+}
+
+async function executeTrialKpiCommandUnlocked(text: string, opts: TrialKpiOptions): Promise<TrialKpiCommandResult | undefined> {
   const command = normaliseText(text);
   const now = opts.now ?? new Date();
   const today = formatDateInTimeZone(now);
