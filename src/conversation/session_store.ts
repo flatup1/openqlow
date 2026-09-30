@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { writeFileAtomic } from "../state/atomic_json.js";
 import { openqlowPath } from "../utils/paths.js";
 
 export type Genre =
@@ -124,7 +125,8 @@ export class SessionStore {
     session.expiresAt = new Date(now.getTime() + this.ttlMs).toISOString();
 
     await fs.mkdir(this.baseDir, { recursive: true });
-    await fs.writeFile(this.fileFor(session.userId), JSON.stringify(session, null, 2));
+    // 置き換え方式で書く。途中で落ちて壊れたファイルが残ると、次の load が JSON.parse で落ちる。
+    await writeFileAtomic(this.fileFor(session.userId), JSON.stringify(session, null, 2));
   }
 
   async destroy(userId: string): Promise<void> {

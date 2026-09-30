@@ -1,5 +1,5 @@
 import { checkDraftSafety } from "../safety/check.js";
-import { loadRecord, readRecord, saveRecord } from "../state/file_store.js";
+import { loadRecord, readRecord, saveRecord, withRecordLock } from "../state/file_store.js";
 import type { DraftRecord, PlatformDraft } from "../types.js";
 import { resolveCurrentDraftId } from "./shortcut.js";
 import { formatApprovalMessage } from "./message.js";
@@ -58,6 +58,16 @@ export async function applyLineRevisionCommand(root: string, text: string, now =
   if (!command) {
     return { ok: false, message: "修正は `修正 新しい本文` または `修正 FG-YYYYMMDD-NNN: 新しい本文` で送ってください。" };
   }
+  // 同じ下書きへの承認・却下・修正が同時に来ても、先の変更を古い内容で上書きしない。
+  const lockId = command.id ?? (await resolveCurrentDraftId(root)) ?? "current";
+  return withRecordLock(root, lockId, () => applyRevision(root, command, now));
+}
+
+async function applyRevision(
+  root: string,
+  command: NonNullable<ReturnType<typeof parseLineRevisionCommand>>,
+  now: Date,
+): Promise<LineRevisionResult> {
 
   if (command.id) {
     // 読めなかっただけなのに「ありません」と答えると、JINはIDを間違えたと思う。

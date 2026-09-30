@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readJsonOrQuarantine } from "../state/atomic_json.js";
 import { replyDraftStateDir } from "./config.js";
 import { withStateLock } from "./lock.js";
 
@@ -68,15 +69,10 @@ export function seenStorePath(root: string, source: InquirySource): string {
 }
 
 async function readSeen(file: string): Promise<SeenFile> {
-  const text = await fs.readFile(file, "utf8").catch(() => "");
-  if (!text) return { version: 1, entries: {} };
-  try {
-    const parsed = JSON.parse(text) as Partial<SeenFile>;
-    return { version: 1, entries: parsed.entries ?? {} };
-  } catch {
-    // 壊れた台帳で処理を止めない。空として作り直す（重複通知は起きうるが、取りこぼしよりまし）。
-    return { version: 1, entries: {} };
-  }
+  // 壊れた台帳で処理を止めない（重複通知は起きうるが、取りこぼしよりまし）。
+  // ただし元の中身は退避して残す。読めない（権限・I/O）ときは例外にして、空で上書きしない。
+  const parsed = await readJsonOrQuarantine<Partial<SeenFile>>(file);
+  return { version: 1, entries: parsed?.entries ?? {} };
 }
 
 /** 保持期間を過ぎた記録を落とす（要件 §19。ファイルの肥大化を防ぐ）。 */

@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { saveRecord, loadRecord, readRecord } from "./file_store.js";
+import { saveRecord, loadRecord, readRecord, withRecordLock } from "./file_store.js";
 import type { DraftRecord } from "../types.js";
 
 function assert(condition: unknown, message: string): void {
@@ -74,6 +74,20 @@ assert(loaded?.status === "pending_approval", "keeps status");
   assert(!threw, "壊れた記録を読んでも例外にしない");
 
   await writeFile(file, whole, "utf8"); // 元に戻す
+}
+
+// withRecordLock: 同じ下書きへの更新は重ならず順番に動く。別の下書きは待たない。
+{
+  const order: string[] = [];
+  const slow = withRecordLock(tmp, "FG-A", async () => {
+    order.push("A1 start");
+    await new Promise(resolve => setTimeout(resolve, 30));
+    order.push("A1 end");
+  });
+  const same = withRecordLock(tmp, "FG-A", async () => { order.push("A2"); });
+  const other = withRecordLock(tmp, "FG-B", async () => { order.push("B"); });
+  await Promise.all([slow, same, other]);
+  assert(order.join(",") === "A1 start,B,A1 end,A2", `順序が想定外: ${order.join(",")}`);
 }
 
 await rm(tmp, { recursive: true, force: true });
