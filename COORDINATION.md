@@ -54,6 +54,8 @@
 | `openqlow/.codex/` | Codex | open | 2026-07-18 |
 | `openqlow/scripts/*ai-os*` | Codex | open | 2026-07-18 |
 | `openqlow/tools/uizin-clipper/` | Claude | open | 2026-08-07 |
+| `openqlow/docs/uizin-event-os/` | Claude（設計）／Codex（レビュー） | open（設計書のみ・JIN承認前） | 2026-10-01 |
+| `openqlow/tools/uizin-event-os/` | Claude（実装予定） | 未作成・Phase 1 のJIN承認待ち | 2026-10-01 |
 | `openqlow/docs/` | 共有 | open | - |
 | `openqlow/docs/superpowers/specs/` | 共有 | open | 2026-06-12 |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
