@@ -1,7 +1,7 @@
 # UIZIN Event OS 設計パック
 
 最終更新: 2026-10-01 / 起案: Claude / 承認: 未（オーナー承認前）
-状態: **設計書のみ。コードは未着手。** 実装は Phase ごとに JIN の承認後。
+状態: **Phase 1〜6 のソフトを実装済み（`tools/uizin-event-os/`）・自動テスト100本合格。実機（OBS・iPhone・YouTube）での確認はまだ。** 2026-10-01 に JIN が「一気通貫で作ってよし」と承認（AGENTS.md §0.1）。本番で使う前に RUNBOOK.md のリハーサルを通すこと。
 
 ---
 
@@ -40,12 +40,27 @@ OBS・NDI・WebSocket・RTMP・VJソフトを知らなくていい。
 | [ROADMAP.md](ROADMAP.md) | Phase 0〜8・リスク登録簿・費用・未決事項 | JIN / 全員 |
 | [ACCEPTANCE_TESTS.md](ACCEPTANCE_TESTS.md) | Phaseごとの受入テスト・小学生UIテスト・CHAOS | Claude Code / Codex |
 | [REFERENCES.md](REFERENCES.md) | 使うOSS・外部サービスの確認済み事実と「借りる/作る」判定 | Claude Code / JIN |
+| [RUNBOOK.md](RUNBOOK.md) | 2週間前〜大会後のチェックリストと、困ったときの対処 | JIN / 運営スタッフ |
+| [../../tools/uizin-event-os/README.md](../../tools/uizin-event-os/README.md) | 道具の使い方（体験モード・設定・CSV） | JIN / 開発 |
 
 ## 関係するもの
 
 - `tools/uizin-clipper/` と `docs/UIZIN_AUTO_CLIP_SYSTEM_DESIGN.md`：大会動画の自動切り抜き（既存）。Event OSの録画と操作記録を、将来この道具の入力にできる（ARCHITECTURE.md §9）。
 - 既存UIZIN OS：**このリポジトリには無い（所在未確認）**。ROADMAP.md Phase 0 で確認する。
 
+## まず試す（OBS なしで5分）
+
+```bash
+node tools/uizin-event-os/src/server/main.mjs --demo
+```
+
+ブラウザで `http://localhost:8787/` を開き、ターミナルに出る運営PINで「🔑 運営モード」へ。`tools/uizin-event-os/samples/demo_card.csv`（架空の選手）を読み込むと、大会を最後まで練習できます。
+
 ## JINに決めてほしいこと
 
-ROADMAP.md §5（Q1〜Q5）。特に **Q1 既存UIZIN OSの所在** が分かると Phase 0 を始められます。
+ROADMAP.md §5（Q1〜Q10）。特に急ぐもの：
+
+1. **Q7 配信・撮影の同意をどう集めるか**（今は同意の記録がどこにも無い）
+2. **Q6 入場の順番**（赤→青 か 青→赤）
+3. **Q8 入場曲を配信でどう扱うか**
+4. **Q1 既存UIZIN OSの所在**（Phase 0）
