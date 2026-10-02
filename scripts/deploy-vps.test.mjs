@@ -48,8 +48,11 @@ const sync = await readFile(path.join(root, "deploy/scripts/sync-to-vps.sh"), "u
 assert.match(sync, /--exclude '\.npm\/'/, ".npm を除外する");
 assert.match(sync, /--exclude '\.DS_Store'/, ".DS_Store を除外する");
 
-// 本番データを消さない除外は維持されていること
-for (const keep of ["state/", "drafts/", "logs/", ".env"]) {
+// 本番データを消さない除外は維持されていること。
+// 先頭の / は「プロジェクトの一番上だけ」。これを外すと src/state/ のような
+// ソースのフォルダまで巻き込んで本番へ送られなくなる（2026-10-02 の事故）。
+// 詳しい網は scripts/sync-to-vps.test.mjs にある。
+for (const keep of ["/state/", "/drafts/", "/logs/", ".env"]) {
   assert.ok(sync.includes(`--exclude '${keep}'`), `${keep} の除外を消さない`);
 }
 
@@ -78,5 +81,22 @@ assert.match(sync, /AIKA_RESERVED_HOST="162\.43\.90\.71"/, "単独同期でもAI
 // rsync の軽微な警告(23/24)では止まらず、それ以外は異常終了する
 assert.match(sync, /23\|24\)/, "23/24 は警告として扱う");
 assert.match(sync, /exit "\$rsync_status"/, "その他の失敗はそのまま落とす");
+
+// ---- 失敗したビルドは本番に何も残さない ----
+//
+// このスクリプトは VPS の上で `npm run build` を走らせる。tsc は既定では
+// エラーが出ても「出せる分だけ」dist/ に書き出す。そのため本番ビルドが
+// 途中で失敗すると、dist/ が新旧の混ざった状態になる。
+// 失敗時は再起動まで進まないので、その瞬間は動き続ける。ところが次に
+// サーバーが再起動したとたん、その混ざったコードが読み込まれる。
+// ＝「何もしていないのに、ある日いきなり壊れる」形の事故になる。
+//
+// 2026-10-02、実際に本番ビルドが TS2724 で失敗した。
+const buildConfig = await readFile(path.join(root, "tsconfig.build.json"), "utf8");
+assert.match(
+  buildConfig,
+  /"noEmitOnError"\s*:\s*true/,
+  "ビルドが失敗したら dist/ を書き換えない（半端な本番を作らない）",
+);
 
 console.log("deploy-vps tests passed");
