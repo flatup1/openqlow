@@ -85,4 +85,15 @@ for (const dangerous of [/systemctl restart/, /npm run deploy/, /rm -rf/, /git p
 assert.match(script, /git fetch/, "取り直しは fetch で行う");
 assert.doesNotMatch(executable, /^set -e\b/m, "途中で止まらず最後まで全部見る");
 
+// 301/302 を「ページが無い」と誤報しないこと。
+// 本番の /webos/ が 301 を返したとき、追いかけずに落第にして
+// 「XServer に index.html があるか確かめろ」と間違った案内を出した。
+// 転送は「別の住所へ案内されている」だけなので、最後まで追って着いた先で判定する。
+assert.match(script, /curl -s -o \/dev\/null -L/, "転送を追いかけて最後の答えを見る");
+assert.match(script, /url_effective/, "着いた先のURLを読む");
+assert.match(script, /\^3\[0-9\]\[0-9\]\$/, "3xx を転送として扱う");
+assert.match(script, /へ転送されています/, "どこへ転送されたかを表示する");
+// 中身の読み出しも転送後のURLから行う（転送前から読むと空になる）
+assert.match(script, /curl -s -L -m 15 "\$\{WEBOS_TARGET\}"/, "版の比較は転送先の中身で行う");
+
 console.log("check-prod tests passed");

@@ -292,6 +292,55 @@ async function testProgressFollowsQuestionData() {
   );
 }
 
+// 選択肢の一部だけに next がある質問で、残りが落ちる先（質問の next）を数え落とさないこと。
+// 「opt.next を持つ選択肢だけ」を見る実装だと、q.next の先にある長い道を見落として
+// 進捗が実際より短く出る（実測で「5問」を「1問」と答えた）。
+// いま audience は全選択肢が next を持つので表に出ないが、
+// questions.js を編集した瞬間に静かに壊れる。ここで固定する。
+async function testProgressCountsFallthroughBranch() {
+  const app = launch();
+  const Q = app.win.FLATUP.QUESTIONS;
+
+  Q.audience.next = "gender";            // 落ちる先は成人ルート（あと4問）
+  delete Q.audience.options[0].next;
+  Q.audience.options[1].next = "result"; // 残りは短い道のまま
+  Q.audience.options[2].next = "result";
+  Q.audience.options[3].next = "result";
+
+  await app.click("button", "自分に合う始め方を見つける");
+  const p = progressOf(app);
+  assert(p.total === 5, `質問の next に落ちる選択肢の道も数える（5問のはずが ${p.total}問）`);
+}
+
+// 「答えずに進む」を使っても進捗が止まらないこと。
+// 回答の数で位置を数えていた頃は、スキップすると回答が残らないため
+// 「5問中2問目 → 4問中2問目」と、位置が止まったうえ総数まで減っていた。
+async function testProgressWithSkip() {
+  const app = launch();
+  await app.click("button", "自分に合う始め方を見つける");
+  await app.click("button", "自分が通ってみたい");
+  const before = progressOf(app);
+  assert(before.pos === 2 && before.total === 5, `スキップ前は 2/5（今: ${before.pos}/${before.total}）`);
+
+  await app.click("button", "答えずに進む →");
+  const after = progressOf(app);
+  assert(after.pos === 3, `スキップしても位置が進む（2 → ${after.pos}）`);
+  assert(after.total === 5, `スキップしても総数が減らない（5 → ${after.total}）`);
+  assert(after.filled === after.pos, "塗られた点の数が現在位置と一致する");
+}
+
+// 「← 戻る」で進捗も1つ戻ること。
+async function testProgressWithBack() {
+  const app = launch();
+  await app.click("button", "自分に合う始め方を見つける");
+  await app.click("button", "自分が通ってみたい");
+  assert(progressOf(app).pos === 2, "戻る前は2問目");
+  await app.click("button", "← 戻る");
+  const back = progressOf(app);
+  assert(back.pos === 1, `戻ったら1問目に戻る（今: ${back.pos}問目）`);
+  assert(back.total === 5, `戻っても総数は5のまま（今: ${back.total}）`);
+}
+
 /* ---------- 2. 3ルートが最後まで進む ---------- */
 async function testThreeRoutes() {
   const adult = launch();
@@ -453,6 +502,26 @@ async function testIndexHtml() {
     /<link rel="canonical" href="https:\/\/[^"]+">/.test(html),
     "canonical で正しいURLを1つに決めている",
   );
+
+  // 自分の住所は「転送される方」ではなく「実際に200で出る方」を書く。
+  // 本番は flatupnarita.jp → www.flatupnarita.jp へ301で転送している。
+  // 転送される住所を og:image に書くと、LINEのカード画像を取りに来る側が
+  // 転送を追わない場合に写真の出ないカードになる（LINEへ来てもらう入口なので痛い）。
+  const selfUrls = {
+    canonical: html.match(/<link rel="canonical" href="([^"]+)"/)?.[1] ?? "",
+    "og:url": html.match(/property="og:url" content="([^"]+)"/)?.[1] ?? "",
+    "og:image": html.match(/property="og:image" content="([^"]+)"/)?.[1] ?? "",
+  };
+  for (const [tag, url] of Object.entries(selfUrls)) {
+    assert(
+      url.startsWith("https://www.flatupnarita.jp/"),
+      `${tag} は転送されない本物の住所（www付き）を指す（今: ${url || "なし"}）`,
+    );
+  }
+  assert(
+    new Set(Object.values(selfUrls).map(u => new URL(u).origin)).size === 1,
+    "自分の住所の書き方が3つともそろっている",
+  );
   assert(html.includes('lang="ja"'), "日本語ページとして宣言している");
   assert(/<title>[^<]+<\/title>/.test(html), "タイトルがある");
 
@@ -497,6 +566,9 @@ const TESTS = [
   ["匿名の計測送信", testFirstPartyAnalytics],
   ["進捗（あと何問か）", testProgress],
   ["進捗は質問データに追従する", testProgressFollowsQuestionData],
+  ["進捗は質問のnextに落ちる道も数える", testProgressCountsFallthroughBranch],
+  ["進捗はスキップでも止まらない", testProgressWithSkip],
+  ["進捗は戻ると1つ戻る", testProgressWithBack],
   ["3ルート（成人・キッズ・相談・家族）", testThreeRoutes],
   ["戻る（画面内・スマホ）", testBack],
   ["選び直しても前の回答が残らない", testAnswerReplacement],

@@ -149,10 +149,29 @@ esac
 # ---- 4. WebOS のページ -------------------------------------------------
 echo ""
 echo "--- 4. WebOSのページ ---"
+# 301/302 は「ページが無い」ではなく「別の住所へ案内されている」。
+# 追いかけずに落第にすると、動いているページを「XServerにindex.htmlがあるか確かめろ」と
+# 誤って案内してしまう（実際にそう誤報した）。最後まで追いかけて、着いた先で判定する。
+WEBOS_TARGET="${WEBOS_URL}"
 WEBOS_CODE="$(http_code "${WEBOS_URL}")"
+if [[ "$WEBOS_CODE" =~ ^3[0-9][0-9]$ ]]; then
+  WEBOS_FOLLOWED="$(curl -s -o /dev/null -L -m 15 \
+    -w '%{http_code} %{url_effective}' "${WEBOS_URL}" 2>/dev/null)"
+  WEBOS_FINAL_CODE="${WEBOS_FOLLOWED%% *}"
+  WEBOS_FINAL_URL="${WEBOS_FOLLOWED#* }"
+  [[ "$WEBOS_FINAL_CODE" =~ ^[0-9]{3}$ ]] || WEBOS_FINAL_CODE="000"
+  echo "   （${WEBOS_CODE} で ${WEBOS_FINAL_URL} へ転送されています）"
+  WEBOS_CODE="$WEBOS_FINAL_CODE"
+  [[ -n "$WEBOS_FINAL_URL" ]] && WEBOS_TARGET="$WEBOS_FINAL_URL"
+fi
+
 if [[ "$WEBOS_CODE" == "200" ]]; then
-  ok "${WEBOS_URL} は公開されています"
-  WEBOS_HTML="$(curl -s -m 10 "${WEBOS_URL}" 2>/dev/null || echo "")"
+  if [[ "$WEBOS_TARGET" != "$WEBOS_URL" ]]; then
+    ok "${WEBOS_URL} は公開されています（転送先 ${WEBOS_TARGET} で表示）"
+  else
+    ok "${WEBOS_URL} は公開されています"
+  fi
+  WEBOS_HTML="$(curl -s -L -m 15 "${WEBOS_TARGET}" 2>/dev/null || echo "")"
   LOCAL_V="$(grep -o 'styles\.css?v=[0-9]*' flatup-webos/app/index.html 2>/dev/null | head -1)"
   # 版の目印が読めないときに黙って飛ばさない。
   # 飛ばすと、公開中のページが古いままでも「✅ 公開されています」で終わる
@@ -162,7 +181,7 @@ if [[ "$WEBOS_CODE" == "200" ]]; then
     TODO+=("flatup-webos/app/index.html の styles.css?v=… の書き方を確認する")
   elif [[ -z "$WEBOS_HTML" ]]; then
     warn "公開中のページの中身を読めず、新旧を比べていません"
-    TODO+=("${WEBOS_URL} をブラウザで開いて表示されるか確かめる")
+    TODO+=("${WEBOS_TARGET} をブラウザで開いて表示されるか確かめる")
   elif [[ "$WEBOS_HTML" == *"$LOCAL_V"* ]]; then
     ok "アップロード済みのページは手元と同じ版です（${LOCAL_V}）"
   else
