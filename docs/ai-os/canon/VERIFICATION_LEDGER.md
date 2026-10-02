@@ -35,6 +35,8 @@
 | `parking` | A | 2026-06-25 | |
 | `gloveSet` | A | 2026-06-25 | 11,000円 |
 | `address` | A | 2026-06-25 | |
+| `lineOaId` | **A** | 2026-09-06 | LINE公式アカウントマネージャーのアカウント設定で確認（FLATUPGYM・認証済）。openQLOW用 @817nsdhr とは別 |
+| `lineFriendUrl` | **A** | 2026-09-06 | 同画面「URLを作成」に表示された現行URL。従来リポジトリにあった lin.ee/cTSDajPz・Y3MbbAe・SRRBU94・NZZQ1Ly はいずれも不一致だった |
 | `nearestStation` | A | 2026-06-25 | |
 | `access` | A | 2026-06-25 | |
 | `scheduleKids` | A | 2026-07-06 | |
