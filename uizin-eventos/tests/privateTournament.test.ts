@@ -116,6 +116,8 @@ test('Google受付は主催者アカウント内へSheetと写真フォルダを
 test('Google初回設定は専門用語を一度に見せず、5段階で1つずつ案内する', () => {
   const source = readFileSync(new URL('../app/private/google-setup/page.tsx', import.meta.url), 'utf8');
   for (const text of ['主催者本人のGoogleを確認', 'プログラムをコピー', 'Googleの白い画面を開く', '実行完了', '受付用URLを作る', '最後に1回だけテストする', '選手へ渡すURLをコピー']) assert.match(source, new RegExp(text));
+  assert.match(source, /「関数なし ▼」を押す/);
+  assert.match(source, /コピーする文字ではありません/);
   assert.match(source, /testChecked/);
   assert.match(source, /SETTINGS\.expectedOwner|expectedOwner/);
 });

@@ -93,10 +93,11 @@ export default function GoogleSetup() {
 <p className="font-black text-indigo-700">3 / 5</p>
 <h2 className="mt-1 text-2xl font-black">申込表と写真フォルダを作る</h2>
 <ol className="mt-4 space-y-4 text-lg font-bold">
-<li>① 上の「実行する関数」で <code>setupTournament</code> を選ぶ</li>
-<li>② 「実行」▶を押す</li>
-<li>③ Googleから確認が出たら、主催者本人のアカウントを選んで許可する</li>
-<li>④ 下に「実行完了」と出るまで待つ</li>
+<li>① Google画面の上にある「関数なし ▼」を押す</li>
+<li>② 出てきた一覧から <code>setupTournament</code> を押す（コピーする文字ではありません）</li>
+<li>③ その右にある「実行」▶を押す</li>
+<li>④ Googleから確認が出たら、主催者本人のアカウントを選んで許可する</li>
+<li>⑤ 下に「実行完了」と出るまで待つ</li>
 </ol>
 <p className="mt-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-900">違うGoogleアカウントでは動かない安全設定です。</p>
 <button onClick={()=>setStep(4)} className="mt-5 w-full rounded-2xl bg-emerald-700 p-5 text-xl font-black text-white">「実行完了」が出た →</button>
