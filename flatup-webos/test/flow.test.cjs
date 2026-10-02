@@ -502,6 +502,26 @@ async function testIndexHtml() {
     /<link rel="canonical" href="https:\/\/[^"]+">/.test(html),
     "canonical で正しいURLを1つに決めている",
   );
+
+  // 自分の住所は「転送される方」ではなく「実際に200で出る方」を書く。
+  // 本番は flatupnarita.jp → www.flatupnarita.jp へ301で転送している。
+  // 転送される住所を og:image に書くと、LINEのカード画像を取りに来る側が
+  // 転送を追わない場合に写真の出ないカードになる（LINEへ来てもらう入口なので痛い）。
+  const selfUrls = {
+    canonical: html.match(/<link rel="canonical" href="([^"]+)"/)?.[1] ?? "",
+    "og:url": html.match(/property="og:url" content="([^"]+)"/)?.[1] ?? "",
+    "og:image": html.match(/property="og:image" content="([^"]+)"/)?.[1] ?? "",
+  };
+  for (const [tag, url] of Object.entries(selfUrls)) {
+    assert(
+      url.startsWith("https://www.flatupnarita.jp/"),
+      `${tag} は転送されない本物の住所（www付き）を指す（今: ${url || "なし"}）`,
+    );
+  }
+  assert(
+    new Set(Object.values(selfUrls).map(u => new URL(u).origin)).size === 1,
+    "自分の住所の書き方が3つともそろっている",
+  );
   assert(html.includes('lang="ja"'), "日本語ページとして宣言している");
   assert(/<title>[^<]+<\/title>/.test(html), "タイトルがある");
 
