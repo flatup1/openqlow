@@ -4,7 +4,15 @@
     "noEmit": false,
     "sourceMap": true,
     "declaration": false,
-    "removeComments": true
+    "removeComments": true,
+    // エラーが1つでもあったら dist/ に何も書かない。
+    //
+    // 既定では tsc はエラーが出ても出せる分だけ出力する。VPS のビルドが
+    // 途中で失敗したとき、dist/ が「新しいファイルと古いファイルの混ざった状態」
+    // になる。そのときはまだ再起動していないので動き続けるが、次に何かの理由で
+    // 再起動したとたん、その混ざったコードが読み込まれる。
+    // 失敗したビルドは何も残さないのが安全。前回の動くビルドがそのまま残る。
+    "noEmitOnError": true
   },
   "exclude": ["src/**/*.test.ts"]
 }
