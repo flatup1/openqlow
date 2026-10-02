@@ -3,7 +3,7 @@
 #
 # Mac で `npm run check` と打つだけで、「本当にできてる？」に答えを出す。
 #   1. GitHub の main と、openQLOW VPS で動いているコードが同じか
-#   2. LINE の自動応答（openQLOW webhook）が動いているか
+#   2. openQLOW のLINE窓口（openqlow-webhook）が動いているか（← JIN専用。お客さま対応ではない）
 #   3. 引き継ぎコードの受け口 /journey が生きているか（← AIKA VPS。別サーバー）
 #   4. WebOS のページ（flatupnarita.jp/webos/。← XServer。別サーバー）が公開されているか
 #
@@ -105,16 +105,25 @@ else
   esac
 fi
 
-# ---- 2. LINE の自動応答 ------------------------------------------------
+# ---- 2. openQLOW の LINE 窓口 ------------------------------------------
 echo ""
-echo "--- 2. LINEの自動応答（お客さま対応） ---"
+echo "--- 2. openQLOW のLINE窓口（JIN専用・お客さま対応ではない） ---"
+# AGENTS.md の決まり:
+#   「AIKAは守りの顧客対応。openQLOWは攻めの営業・経営支援。混同しない。」
+#
+# ここで見ている openqlow-webhook は JIN専用のLINEに繋がっている。
+# お客さま対応は AIKA（別サーバー・別リポジトリ）の担当で、ここではない。
+#
+# 以前この行には「LINEの自動応答（お客さま対応）」と書いてあり、
+# 止まったときに「これはお客さまに影響します」と出していた。
+# 事実と違ううえ、反映作業のリスクを実際より重く見せ、判断を誤らせる表示だった。
 if [[ "$PUBLIC_ONLY" -eq 1 ]]; then
   warn "--public のため、確認していません"
 elif ssh -i "${SSH_KEY}" -o ConnectTimeout=10 "${SSH_USER}@${SSH_HOST}" \
      "systemctl is-active --quiet ${SERVICE}" 2>/dev/null; then
-  ok "${SERVICE} は動いています（お客さまへの返信は止まっていません）"
+  ok "${SERVICE} は動いています（JINのLINE窓口。お客さま対応はAIKA側）"
 else
-  ng "${SERVICE} が止まっています。これはお客さまに影響します"
+  ng "${SERVICE} が止まっています（JIN専用のLINE窓口。お客さまへの返信はAIKA側なので影響しません）"
   TODO+=("ssh -i ${SSH_KEY} ${SSH_USER}@${SSH_HOST} 'journalctl -u ${SERVICE} -n 30 --no-pager' でログを見る")
 fi
 
@@ -185,8 +194,23 @@ if [[ "$WEBOS_CODE" == "200" ]]; then
   elif [[ "$WEBOS_HTML" == *"$LOCAL_V"* ]]; then
     ok "アップロード済みのページは手元と同じ版です（${LOCAL_V}）"
   else
-    ng "公開中のページが古いです（手元は ${LOCAL_V}）"
-    TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す")
+    # 「古い」の原因は2通りある。どちらかで次の一手がまるで変わる。
+    #   (a) ファイルを上げていない
+    #   (b) ファイルは上がっているが、/webos/ が別のページへ振り分けられている
+    # 2026-10-02 に (b) が実際に起きた。.htaccess の
+    #   RewriteRule ^webos/?$ webos.html [L]
+    # が、新しい webos/index.html ではなく古い webos.html を出していた。
+    # このとき検査は「上げ直せ」としか言えず、すでに上げてある人を悩ませた。
+    # index.html を直接開いて新しければ、ファイルは届いている＝振り分けの問題。
+    DIRECT_HTML="$(curl -s -L -m 15 "${WEBOS_TARGET%/}/index.html" 2>/dev/null || echo "")"
+    if [[ -n "$DIRECT_HTML" && "$DIRECT_HTML" == *"$LOCAL_V"* ]]; then
+      ng "ファイルは新しいのに、${WEBOS_URL} が古いページへ振り分けられています"
+      echo "   （${WEBOS_TARGET%/}/index.html を直接開くと新しい ${LOCAL_V} が出ます）"
+      TODO+=(".htaccess の RewriteRule が ^webos/?\$ を webos/index.html へ向けているか確認する（編集前にバックアップを取り、直したらトップページも開いて確かめる）")
+    else
+      ng "公開中のページが古いです（手元は ${LOCAL_V}）"
+      TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す（8ファイル全部・js/ も）")
+    fi
   fi
 elif [[ "$WEBOS_CODE" == "000" ]]; then
   # ページもjourneyも両方つながらないなら、本番ではなく手元の回線の問題。
