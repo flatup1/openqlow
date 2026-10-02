@@ -72,3 +72,20 @@ jobs:
       # Skills の正本と配布（.claude / .agents）が一致しているか。
       - name: Check skill sync
         run: bash scripts/sync-agent-skills.sh --check
+
+  uizin-eventos:
+    name: UIZIN tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: uizin-eventos
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: uizin-eventos/package-lock.json
+      - run: npm ci
+      - run: npm run verify
