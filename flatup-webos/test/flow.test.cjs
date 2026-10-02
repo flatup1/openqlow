@@ -201,7 +201,8 @@ async function testWelcome() {
   assert(app.heading() === "はじめの一歩を、安心から。", "ようこそ画面に見出し（h1）がある");
   assert(app.find("button", "自分に合う始め方を見つける"), "開始ボタンがある");
   assert(app.text().includes("30秒ほどで終わります"), "所要時間の一言がある");
-  assert(app.find("img", "") && app.find("img", "").getAttribute("src") === "hero.jpg?v=13", "写真枠がある（v13キャッシュ更新）");
+  const heroSrc = app.find("img", "")?.getAttribute("src") ?? "";
+  assert(/^hero\.jpg\?v=\d+$/.test(heroSrc), `写真枠がある（今: ${heroSrc || "なし"}）`);
   assert(app.events().length === 0, "画面を見ただけではイベントを送らない");
   assert(app.beaconCalls.length === 0, "開始前は匿名計測を送らない");
 }
@@ -483,9 +484,33 @@ async function testHandoffNotDuplicated() {
 async function testIndexHtml() {
   const html = fs.readFileSync(path.join(APP_DIR, "index.html"), "utf8");
 
-  const versions = [...html.matchAll(/\?v=(\d+)/g)].map(m => m[1]);
-  assert(versions.length >= 6, "JS・CSSにキャッシュ対策のバージョンが付いている");
-  assert(new Set(versions).size === 1, "バージョン番号がすべて同じ（上げ忘れがない）");
+  // 版番号（?v=…）は「写真や中身を新しくした」とスマホに知らせる合図。
+  // 1つでも古いまま残ると、そこだけ前に見た古いものが使われ続ける。
+  //
+  // index.html の中だけを見ていたため、画面に出る写真の版が app.js に
+  // 書かれていることを見落とし、index.html が v=14 なのに写真だけ v=13 で
+  // 取り残されていた。検査はファイルをまたいで行う。
+  const versionSources = { "index.html": html };
+  for (const name of fs.readdirSync(path.join(APP_DIR, "js"))) {
+    if (name.endsWith(".js")) {
+      versionSources["js/" + name] = fs.readFileSync(path.join(APP_DIR, "js", name), "utf8");
+    }
+  }
+  const versionsByFile = {};
+  for (const [name, text] of Object.entries(versionSources)) {
+    const found = [...text.matchAll(/\?v=(\d+)/g)].map(m => m[1]);
+    if (found.length) versionsByFile[name] = [...new Set(found)];
+  }
+  const allVersions = [...new Set(Object.values(versionsByFile).flat())];
+  assert(
+    [...html.matchAll(/\?v=(\d+)/g)].length >= 6,
+    "JS・CSSにキャッシュ対策のバージョンが付いている",
+  );
+  assert(
+    allVersions.length === 1,
+    "版番号がファイルをまたいで全部同じ（上げ忘れがない）。今: " +
+      Object.entries(versionsByFile).map(([f, v]) => `${f}=${v.join("/")}`).join(", "),
+  );
 
   for (const tag of ["og:title", "og:description", "og:image", "og:type", "og:url"]) {
     assert(html.includes(`property="${tag}"`), `シェア用の ${tag} がある`);
