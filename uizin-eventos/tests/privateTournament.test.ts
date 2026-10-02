@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { contractWeight, importFighters, safeMusicUrl, validateTournament, emptyTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
+import { isAppsScriptUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
 
 test('汎用CSVの日本語見出しを選手情報へ変換する', () => {
   const csv = 'ジム名,名前,戦績,学年,年齢,身長,体重,意気込み,入場曲URL\n青空ジム,山田太郎,2戦1勝,小5,11,145cm,38.5kg,最後まで戦う,https://music.apple.com/jp/song/1';
@@ -80,4 +81,33 @@ test('他ジム向け入力シートを迷わず保存して、そのままExcel
   assert.match(source, /\.zip,\.xlsx,\.csv/);
   assert.match(source, /電話番号・メール・住所・生年月日・保護者名は入れません/);
   assert.equal(readFileSync(new URL('../public/templates/Tournament_OS_選手入力テンプレート.xlsx', import.meta.url)).length > 5_000, true);
+});
+
+test('一般公開フォームの設定はURLの#内だけで受け渡す', () => {
+  const config = { endpoint:'https://script.google.com/macros/s/ABC_123/exec', eventId:'cup-2027', title:'大会', organizer:'主催ジム', date:'2027-09-23', venue:'体育館', deadline:'2027-09-01', contact:'公式LINE', music:true, grade:'required' as const, age:'optional' as const, comment:'off' as const };
+  const hash = publicEntryHash(config);
+  assert.ok(hash.startsWith('#'));
+  assert.deepEqual(publicEntryConfig(hash), config);
+  assert.equal(isAppsScriptUrl(config.endpoint), true);
+  assert.equal(isAppsScriptUrl('https://evil.example/exec'), false);
+});
+
+test('一般公開フォームはCloudflare APIへ個人情報を送らない', () => {
+  const source = readFileSync(new URL('../app/apply/page.tsx', import.meta.url), 'utf8');
+  for (const pattern of [/\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/, /new WebSocket/, /\/api\//]) assert.equal(pattern.test(source), false, String(pattern));
+  assert.match(readFileSync(new URL('../core/publicEntry.ts', import.meta.url), 'utf8'), /script\\\.google\\\.com/);
+  assert.match(source, /顔写真 必須/);
+  assert.match(source, /連絡先のお名前 必須/);
+});
+
+test('Google受付は主催者アカウント内へSheetと写真フォルダを作り重複を防ぐ', () => {
+  const source = readFileSync(new URL('../public/templates/Tournament_OS_Google受付.gs', import.meta.url), 'utf8');
+  for (const required of ['Session.getEffectiveUser()', 'SpreadsheetApp.create', 'DriveApp.createFolder', 'LockService.getScriptLock', 'リクエストID', 'OS取込用（連絡先なし）']) assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('限定公開ビルドは一般公開フォームだけを追加し、旧公開画面は混ぜない', () => {
+  const source = readFileSync(new URL('../scripts/build-private-pages.sh', import.meta.url), 'utf8');
+  assert.match(source, /SOURCE_DIR\/apply/);
+  assert.doesNotMatch(source, /SOURCE_DIR\/entry/);
+  assert.doesNotMatch(source, /SOURCE_DIR\/admin/);
 });

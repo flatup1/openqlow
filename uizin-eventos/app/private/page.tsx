@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { emptyTournament, importFighters, validateTournament, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
 import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
+import { EMPTY_PUBLIC_ENTRY_CONFIG, isAppsScriptUrl, publicEntryHash, type PublicEntryConfig } from '../../core/publicEntry.ts';
 import { bytesToArrayBuffer, decryptBackup, encryptBackup, photoToDataUrl, readPrivateEvent, writePrivateEvent } from '../lib/privateStore.ts';
 
 const field = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-base';
@@ -15,10 +16,11 @@ export default function PrivateAdmin() {
   const [manual, setManual] = useState<LocalFighter>(blankFighter);
   const [password, setPassword] = useState('');
   const [entryConfig, setEntryConfig] = useState<EntryFormConfig>(DEFAULT_ENTRY_CONFIG);
+  const [publicConfig, setPublicConfig] = useState<PublicEntryConfig>(EMPTY_PUBLIC_ENTRY_CONFIG);
 
   useEffect(() => {
     const id = new URLSearchParams(location.search).get('event')?.trim() || 'my-tournament';
-    readPrivateEvent(id).then((saved) => { setData(saved ?? emptyTournament(id)); setReady(true); }).catch(() => { setData(emptyTournament(id)); setReady(true); });
+    readPrivateEvent(id).then((saved) => { const next=saved ?? emptyTournament(id); setData(next); setPublicConfig((old)=>({...old,eventId:id,title:next.title,date:next.date,venue:next.venue})); setReady(true); }).catch(() => { setData(emptyTournament(id)); setPublicConfig((old)=>({...old,eventId:id})); setReady(true); });
   }, []);
 
   const byId = useMemo(() => new Map(data.fighters.map((fighter) => [fighter.id, fighter])), [data.fighters]);
@@ -102,10 +104,17 @@ export default function PrivateAdmin() {
     await navigator.clipboard.writeText(location.origin + entryLink);
     setMessage('設定済みのエントリーURLをコピーしました。');
   };
+  const publicApplyLink = '/apply/' + publicEntryHash({ ...publicConfig, eventId:data.eventId, title:publicConfig.title || data.title, date:publicConfig.date || data.date, venue:publicConfig.venue || data.venue, music:entryConfig.music, grade:entryConfig.grade, age:entryConfig.age, comment:entryConfig.comment });
+  const copyPublicApplyLink = async () => {
+    if (!isAppsScriptUrl(publicConfig.endpoint)) return setMessage('先にGoogle受付URLを貼ってください。');
+    await navigator.clipboard.writeText(location.origin + publicApplyLink);
+    setMessage('選手本人へ渡す一般公開フォームのURLをコピーしました。');
+  };
 
   return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950"><div className="mx-auto max-w-5xl">
     <header className="rounded-3xl bg-white p-6 shadow-sm"><p className="font-black text-emerald-700">🔐 完全ローカル Tournament OS</p><h1 className="mt-2 text-3xl font-black">個人情報は、このパソコンから出ません</h1><p className="mt-3 leading-relaxed text-slate-700">Cloudflareには、この空の画面だけがあります。選手名・写真・体重・対戦表は、このブラウザの中だけに保存します。</p><div className="mt-4 rounded-xl bg-amber-50 p-4 font-bold text-amber-950">別のパソコンには自動で同期しません。同じパソコンの別タブだけが同じ内容になります。</div></header>
     {message ? <p role="status" className="sticky top-2 z-20 mt-4 rounded-xl bg-indigo-700 p-4 font-bold text-white shadow">{message}</p> : null}
+    <section className="mt-5 rounded-2xl bg-white p-6 shadow-sm"><p className="font-black text-indigo-700">🌐 選手本人が1人ずつ申し込む場合</p><h2 className="mt-1 text-2xl font-black">主催者のGoogleへ直接ためる</h2><p className="mt-3 leading-relaxed text-slate-700">Cloudflareには画面だけを置きます。選手情報と写真は、ここで指定した主催者本人のGoogleスプレッドシート・Driveだけへ届きます。</p><div className="mt-4 rounded-2xl bg-amber-50 p-5"><h3 className="text-lg font-black">初回だけ、主催者本人が行う3つ</h3><ol className="mt-2 list-decimal space-y-2 pl-6"><li>主催者本人のGoogleアカウントでApps Scriptを開く</li><li>下の受付プログラムを貼り、説明どおりに設定する</li><li>できた「ウェブアプリURL」をこの欄へ貼る</li></ol><a href="/templates/Tournament_OS_Google受付.gs" download className="mt-4 block rounded-xl bg-slate-900 p-4 text-center font-black text-white">Google受付プログラムを保存</a></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="font-bold sm:col-span-2">Google受付URL 必須<input className={field} value={publicConfig.endpoint} placeholder="https://script.google.com/macros/s/.../exec" onChange={(e)=>setPublicConfig((old)=>({...old,endpoint:e.target.value}))}/><span className="mt-1 block text-xs text-slate-600">主催者本人が作成したウェブアプリURLだけを使います。</span></label><label className="font-bold">主催者名<input className={field} value={publicConfig.organizer} onChange={(e)=>setPublicConfig((old)=>({...old,organizer:e.target.value}))}/></label><label className="font-bold">申込締切<input className={field} value={publicConfig.deadline} onChange={(e)=>setPublicConfig((old)=>({...old,deadline:e.target.value}))}/></label><label className="font-bold sm:col-span-2">問い合わせ先<input className={field} value={publicConfig.contact} placeholder="公式LINEなど" onChange={(e)=>setPublicConfig((old)=>({...old,contact:e.target.value}))}/></label></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><a href={publicApplyLink} target="_blank" className="rounded-xl bg-indigo-700 p-4 text-center text-lg font-black text-white">一般公開フォームを確認</a><button onClick={()=>void copyPublicApplyLink()} className="rounded-xl bg-emerald-700 p-4 text-lg font-black text-white">選手へ渡すURLをコピー</button></div><p className="mt-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-900">重要：別の人のGoogleアカウントで設定すると、その人のGoogleへ保存されます。必ず主催者本人のアカウントで作成してください。</p></section>
 
     <section className="mt-5 rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-2xl font-black">1. 大会の基本情報</h2><div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="font-bold">大会名<input className={field} value={data.title} onChange={(e) => edit('title', e.target.value)} /></label><label className="font-bold">開催日<input className={field} value={data.date} onChange={(e) => edit('date', e.target.value)} /></label><label className="font-bold">会場<input className={field} value={data.venue} onChange={(e) => edit('venue', e.target.value)} /></label></div></section>
 

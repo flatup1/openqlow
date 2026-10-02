@@ -17,7 +17,7 @@ asset_list="$(mktemp)"
 copied_list="$(mktemp)"
 pending_list="$(mktemp)"
 trap 'rm -f "$asset_list" "$copied_list" "$pending_list"' EXIT
-grep -rhoE '/_next/static/[A-Za-z0-9._/-]+' "$SOURCE_DIR/private" | sort -u > "$asset_list"
+grep -rhoE '/_next/static/[A-Za-z0-9._/-]+' "$SOURCE_DIR/private" "$SOURCE_DIR/apply" | sort -u > "$asset_list"
 while :; do
   sort -u "$asset_list" -o "$asset_list"
   sort -u "$copied_list" -o "$copied_list"
@@ -38,6 +38,8 @@ if [[ -d "$SOURCE_DIR/_next/static/media" ]]; then
 fi
 mkdir -p "$TARGET_DIR/private"
 rsync -a --delete "$SOURCE_DIR/private/" "$TARGET_DIR/private/"
+mkdir -p "$TARGET_DIR/apply"
+rsync -a --delete "$SOURCE_DIR/apply/" "$TARGET_DIR/apply/"
 cp "$SOURCE_DIR/_headers" "$TARGET_DIR/_headers"
 cp "$ROOT_DIR/private-deploy/_redirects" "$TARGET_DIR/_redirects"
 mkdir -p "$TARGET_DIR/templates"
