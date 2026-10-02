@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { contractWeight, importFighters, safeMusicUrl, validateTournament, emptyTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
-import { isAppsScriptUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
+import { isAppsScriptUrl, isVenueUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
 
 test('汎用CSVの日本語見出しを選手情報へ変換する', () => {
   const csv = 'ジム名,名前,戦績,学年,年齢,身長,体重,意気込み,入場曲URL\n青空ジム,山田太郎,2戦1勝,小5,11,145cm,38.5kg,最後まで戦う,https://music.apple.com/jp/song/1';
@@ -92,12 +92,14 @@ test('他ジム向け入力シートを迷わず保存して、そのままExcel
 });
 
 test('一般公開フォームの設定はURLの#内だけで受け渡す', () => {
-  const config = { endpoint:'https://script.google.com/macros/s/ABC_123/exec', eventId:'cup-2027', title:'大会', organizer:'主催ジム', date:'2027-09-23', venue:'体育館', deadline:'2027-09-01', contact:'公式LINE', music:true, grade:'required' as const, age:'optional' as const, comment:'off' as const };
+  const config = { endpoint:'https://script.google.com/macros/s/ABC_123/exec', eventId:'cup-2027', title:'大会', organizer:'主催ジム', date:'2027-09-23', venue:'体育館', venueUrl:'https://share.google/example', deadline:'2027-09-01', contact:'公式LINE', music:true, grade:'required' as const, age:'optional' as const, comment:'off' as const };
   const hash = publicEntryHash(config);
   assert.ok(hash.startsWith('#'));
   assert.deepEqual(publicEntryConfig(hash), config);
   assert.equal(isAppsScriptUrl(config.endpoint), true);
   assert.equal(isAppsScriptUrl('https://evil.example/exec'), false);
+  assert.equal(isVenueUrl(config.venueUrl), true);
+  assert.equal(isVenueUrl('javascript:alert(1)'), false);
 });
 
 test('一般公開フォームはCloudflare APIへ個人情報を送らない', () => {

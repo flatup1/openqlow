@@ -13,6 +13,7 @@ export default function GoogleSetup() {
   const [title, setTitle] = useState('大会名未設定');
   const [date, setDate] = useState('');
   const [venue, setVenue] = useState('');
+  const [venueUrl, setVenueUrl] = useState('');
   const [organizer, setOrganizer] = useState('');
   const [deadline, setDeadline] = useState('');
   const [contact, setContact] = useState('');
@@ -30,12 +31,13 @@ export default function GoogleSetup() {
     setTitle(params.get('title')?.trim() || '大会名未設定');
     setDate(params.get('date')?.trim() || '');
     setVenue(params.get('venue')?.trim() || '');
+    setVenueUrl(params.get('venueUrl')?.trim() || '');
     setEntryConfig(entryConfigFromSearch(location.search));
     setReady(true);
     fetch('/templates/Tournament_OS_Google受付.gs').then((response) => { if (!response.ok) throw new Error(); return response.text(); }).then(setProgramTemplate).catch(() => setMessage('準備に失敗しました。画面を再読み込みしてください。'));
   }, []);
 
-  const applyLink = useMemo(() => '/apply/' + publicEntryHash({ endpoint, eventId, title, organizer, date, venue, deadline, contact, ...entryConfig }), [endpoint,eventId,title,organizer,date,venue,deadline,contact,entryConfig]);
+  const applyLink = useMemo(() => '/apply/' + publicEntryHash({ endpoint, eventId, title, organizer, date, venue, venueUrl, deadline, contact, ...entryConfig }), [endpoint,eventId,title,organizer,date,venue,venueUrl,deadline,contact,entryConfig]);
   const copyProgram = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email)) return setMessage('主催者本人のGoogleメールアドレスを入力してください。');
     if (!programTemplate) return setMessage('まだ準備中です。数秒後に、もう一度押してください。');
@@ -131,6 +133,8 @@ export default function GoogleSetup() {
 <label className="font-bold">申込締切<input className={field} value={deadline} onChange={(e)=>setDeadline(e.target.value)}/>
 </label>
 <label className="font-bold sm:col-span-2">問い合わせ先<input className={field} value={contact} onChange={(e)=>setContact(e.target.value)}/>
+</label>
+<label className="font-bold sm:col-span-2">会場のGoogle地図URL（任意）<input className={field} value={venueUrl} onChange={(e)=>setVenueUrl(e.target.value.trim())} placeholder="https://share.google/..."/>
 </label>
 </div>{isAppsScriptUrl(endpoint)?<a href={applyLink} target="_blank" className="mt-5 block rounded-2xl bg-indigo-700 p-5 text-center text-xl font-black text-white">テスト申込画面を開く</a>:<p className="mt-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-900">GoogleのURLを貼ると、テストボタンが出ます。</p>}<label className="mt-4 flex items-start gap-3 rounded-xl bg-amber-50 p-4 font-bold">
 <input type="checkbox" className="mt-1 h-6 w-6 shrink-0" checked={testChecked} onChange={(e)=>setTestChecked(e.target.checked)}/>テスト申込が申込表に入り、写真もGoogle Driveに入った</label>
