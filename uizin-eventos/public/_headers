@@ -1,4 +1,11 @@
-/private/*
+/private/
+  Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+
+/private/entry/*
   Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
@@ -13,14 +20,14 @@
   X-Frame-Options: DENY
 
 /private/google-setup/*
-  Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action https://script.google.com https://script.googleusercontent.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
 
 /apply/*
-  Content-Security-Policy: default-src 'self'; connect-src 'none'; img-src 'self' data: blob:; media-src 'none'; object-src 'none'; frame-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action https://script.google.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; connect-src 'none'; img-src 'self' data: blob:; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action https://script.google.com https://script.googleusercontent.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   X-Content-Type-Options: nosniff

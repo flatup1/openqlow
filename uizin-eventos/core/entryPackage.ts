@@ -54,15 +54,18 @@ export function entryErrors(fighter: EntryFighter, hasPhoto: boolean, config: En
   const errors: string[] = [];
   if (!fighter.gym.trim()) errors.push('ジム名を入力してください。');
   if (!fighter.name.trim()) errors.push('選手名を入力してください。');
-  const height = Number(fighter.height.replace(/[^0-9.]/g, ''));
+  const height = Number(fighter.height.trim().replace(/cm$/i, '').trim());
   if (!Number.isFinite(height) || height < 50 || height > 250) errors.push('身長を50〜250cmで入力してください。');
-  const weight = Number(fighter.weight.replace(/[^0-9.]/g, ''));
+  const weight = Number(fighter.weight.trim().replace(/kg$/i, '').trim());
   if (!Number.isFinite(weight) || weight < 10 || weight > 250) errors.push('体重を10〜250kgで入力してください。');
   if (!fighter.record.trim()) errors.push('戦績・競技歴を入力してください。初試合なら「初試合」と入力してください。');
   if (config.grade === 'required' && !fighter.grade.trim()) errors.push('学年を入力してください。');
   if (config.age === 'required' && !fighter.age.trim()) errors.push('年齢を入力してください。');
+  if (config.age !== 'off' && fighter.age.trim() && (!/^\d{1,3}$/.test(fighter.age) || Number(fighter.age)<1 || Number(fighter.age)>120)) errors.push('年齢を1〜120歳で入力してください。');
   if (config.comment === 'required' && !fighter.comment.trim()) errors.push('試合への意気込みを入力してください。');
   if (config.music && !fighter.musicUrl.trim()) errors.push('入場曲のURLを入力してください。');
+  if (config.music && fighter.musicUrl.trim() && !/^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//.test(fighter.musicUrl.trim())) errors.push('入場曲はApple MusicかYouTubeのURLを入力してください。');
+  for (const [key,max] of [['gym',120],['name',80],['record',300],['comment',500]] as const) if (fighter[key].trim().length>max) errors.push('入力内容が長すぎます。短くしてください。');
   if (!hasPhoto) errors.push('選手の写真を選んでください。');
   return errors;
 }

@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { emptyTournament, importFighters, validateTournament, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
-import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
-import { bytesToArrayBuffer, decryptBackup, encryptBackup, photoToDataUrl, readPrivateEvent, writePrivateEvent } from '../lib/privateStore.ts';
+import { emptyTournament, importFighters, mergeFighters, validateTournament, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
+import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, entryErrors, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
+import { bytesToArrayBuffer, decryptBackup, encryptBackup, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, writePrivateEvent } from '../lib/privateStore.ts';
 
 const field = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-base';
 const blankFighter = (): LocalFighter => ({ id: crypto.randomUUID(), gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', photoDataUrl: '' });
@@ -11,33 +11,42 @@ const blankFighter = (): LocalFighter => ({ id: crypto.randomUUID(), gym: '', na
 export default function PrivateAdmin() {
   const [data, setData] = useState<LocalTournament>(() => emptyTournament('my-tournament'));
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [message, setMessage] = useState('');
   const [manual, setManual] = useState<LocalFighter>(blankFighter);
   const [password, setPassword] = useState('');
-  const [entryConfig, setEntryConfig] = useState<EntryFormConfig>(DEFAULT_ENTRY_CONFIG);
+  const entryConfig: EntryFormConfig = data.entryConfig ?? DEFAULT_ENTRY_CONFIG;
 
   useEffect(() => {
     const id = new URLSearchParams(location.search).get('event')?.trim() || 'my-tournament';
-    readPrivateEvent(id).then((saved) => { setData(saved ?? emptyTournament(id)); setReady(true); }).catch(() => { setData(emptyTournament(id)); setReady(true); });
+    readPrivateEvent(id).then((saved) => { setData(saved ?? emptyTournament(id)); setReady(true); }).catch(() => { setLoadError('このパソコンの保存データを読み取れませんでした。データは消していません。ブラウザの保存設定・空き容量を確認してください。'); setReady(true); });
   }, []);
 
   const byId = useMemo(() => new Map(data.fighters.map((fighter) => [fighter.id, fighter])), [data.fighters]);
-  const save = async (next = data) => { await writePrivateEvent(next); setData(next); setMessage('このパソコンの中だけに保存しました。'); };
-  const edit = <K extends keyof LocalTournament>(key: K, value: LocalTournament[K]) => setData((old) => ({ ...old, [key]: value }));
+  const save = async (next = data) => {
+    try { const saved = await writePrivateEvent(next); setData(saved); setMessage('このパソコンの中だけに保存しました。'); return true; }
+    catch (error) { setMessage(error instanceof PrivateSaveConflict ? error.message + ' 入力内容は画面に残しています。必要な入力をメモしてから、この画面を読み直してください。' : '保存できませんでした。入力内容は画面に残しています。空き容量を確認して、もう一度保存してください。'); return false; }
+  };
+  const edit = <K extends keyof LocalTournament>(key: K, value: LocalTournament[K]) => setData((old) => ({ ...old, [key]: value, currentBout:key==='bouts'?Math.min(old.currentBout,Math.max(0,(value as LocalTournament['bouts']).length-1)):old.currentBout }));
 
   const readEntryFile = async (file?: File) => {
     if (!file) return;
-    if ((data.fighters.length || data.bouts.length) && !window.confirm('今ある選手と対戦カードを、新しいファイルの内容に入れ替えます。よろしいですか？')) return;
     try {
+      if(file.size>100*1024*1024)throw new Error('提出ファイルが大きすぎます。100MB以下にしてください。');
       let csv = '';
       let photos: Record<string, Uint8Array> = {};
       const lower = file.name.toLowerCase();
       if (lower.endsWith('.zip')) {
         if (file.size > 100 * 1024 * 1024) throw new Error('提出ファイルが大きすぎます。100MB以下にしてください。');
         const { strFromU8, unzipSync } = await import('fflate');
-        const unpacked = unzipSync(new Uint8Array(await file.arrayBuffer()));
+        let unpackedBytes=0, fileCount=0;
+        const unpacked = unzipSync(new Uint8Array(await file.arrayBuffer()),{filter:(entry)=>{
+          fileCount++;unpackedBytes+=entry.originalSize;
+          if(fileCount>3001||entry.originalSize>20*1024*1024||unpackedBytes>100*1024*1024)throw new Error('展開後のファイルが大きすぎます。100MB以下に分けてください。');
+          return entry.name==='players.csv'||/^photos\/[^/]+\.(?:jpe?g|png|webp)$/i.test(entry.name);
+        }});
         const keys = Object.keys(unpacked);
-        if (keys.length > 500) throw new Error('提出ファイル内の数が多すぎます。');
+        if (keys.length > 3001) throw new Error('提出ファイル内の数が多すぎます。');
         const csvBytes = unpacked['players.csv'];
         if (!csvBytes) throw new Error('提出ファイルの中にplayers.csvがありません。');
         csv = strFromU8(csvBytes).replace(/^\uFEFF/, '');
@@ -51,6 +60,7 @@ export default function PrivateAdmin() {
       }
       const result = importFighters(csv);
       if (result.blockedHeaders.length) return setMessage('安全のため読み込みを止めました。削除する列: ' + result.blockedHeaders.join('、'));
+      if(!result.fighters.length)throw new Error('選手を1人も読み取れませんでした。見出しと名前を確認してください。今ある名簿は変えていません。');
       const fighters = await Promise.all(result.fighters.map(async (fighter) => {
         const photoEntry = Object.entries(photos).find(([name]) => name.replace(/^photos\//, '').replace(/\.[^.]+$/, '') === fighter.id);
         if (!photoEntry) return fighter;
@@ -58,15 +68,18 @@ export default function PrivateAdmin() {
         const type = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
         return { ...fighter, photoDataUrl: await photoToDataUrl(new File([bytesToArrayBuffer(photoEntry[1])], photoEntry[0], { type })) };
       }));
-      setData((old) => ({ ...old, fighters, bouts: [] }));
-      setMessage(fighters.length + '人と写真' + fighters.filter((fighter) => fighter.photoDataUrl).length + '枚を読み込みました。まだこのパソコン内だけです。');
+      // Validate before scheduling the state update; existing card order and current bout stay intact.
+      mergeFighters(data.fighters,fighters);
+      setData((old) => ({ ...old, fighters:mergeFighters(old.fighters,fighters) }));
+      setMessage(fighters.length + '人分を読み込みました。同じ管理番号は更新し、新しい選手は追加します。元の選手・写真・対戦カード・試合順は削除していません。最後に保存してください。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'ファイルを読み込めませんでした。');
     }
   };
 
   const addManual = () => {
-    if (!manual.name.trim()) return setMessage('選手名を入力してください。');
+    const errors=entryErrors(manual,true,entryConfig);
+    if(errors.length)return setMessage(errors[0]);
     setData((old) => ({ ...old, fighters: [...old.fighters, manual] }));
     setManual(blankFighter()); setMessage('選手を追加しました。最後に「保存」を押してください。');
   };
@@ -82,22 +95,30 @@ export default function PrivateAdmin() {
     try {
       const encrypted = await encryptBackup(data, password);
       const url = URL.createObjectURL(new Blob([encrypted], { type: 'application/octet-stream' }));
-      const a = document.createElement('a'); a.href = url; a.download = data.eventId + '.tournament.enc'; a.click(); URL.revokeObjectURL(url);
-      setMessage('暗号化バックアップを保存しました。パスワードは別に保管してください。');
+      const a = document.createElement('a'); a.href = url; a.download = data.eventId + '.tournament.enc'; a.click();
+      // Give the browser time to start its download before releasing the file URL.
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setMessage('予備ファイルのダウンロードを始めました。パソコンの「ダウンロード」にファイルができたことを確認してください。パスワードは別に保管してください。');
     } catch (error) { setMessage(error instanceof Error ? error.message : '保存できませんでした。'); }
   };
 
   const restore = async (file?: File) => {
     if (!file) return;
-    try { const restored = await decryptBackup(await file.text(), password); await save(restored); setMessage('復元しました。内容を確認してください。'); }
+    try {
+      const restored = await decryptBackup(await file.text(), password);
+      if(restored.eventId!==data.eventId)return setMessage('別の大会のバックアップです。この大会のデータは変えていません。');
+      if(!window.confirm('この大会をバックアップの内容へ戻します。今のデータを上書きしてよろしいですか？'))return;
+      if(await save({...restored,updatedAt:data.updatedAt}))setMessage('復元しました。内容を確認してください。');
+    }
     catch { setMessage('復元できません。ファイルかパスワードを確認してください。'); }
   };
 
   if (!ready) return <main className="p-8">このパソコンのデータを読んでいます…</main>;
+  if(loadError)return <main className="p-8"><p role="alert">{loadError}</p><button className="mt-4 rounded-xl bg-indigo-700 p-4 font-bold text-white" onClick={()=>location.reload()}>もう一度読み込む</button></main>;
   const errors = validateTournament(data);
   const live = '/private/live/?event=' + encodeURIComponent(data.eventId);
   const entryLink = '/private/entry/?' + entryConfigSearch(entryConfig);
-  const setEntryMode = (key: 'grade' | 'age' | 'comment', value: EntryFieldMode) => setEntryConfig((old) => ({ ...old, [key]: value }));
+  const setEntryMode = (key: 'grade' | 'age' | 'comment', value: EntryFieldMode) => edit('entryConfig', { ...entryConfig, [key]: value });
   const copyEntryLink = async () => {
     await navigator.clipboard.writeText(location.origin + entryLink);
     setMessage('設定済みのエントリーURLをコピーしました。');
@@ -108,12 +129,12 @@ export default function PrivateAdmin() {
 <div className="mx-auto max-w-5xl">
     <header className="rounded-3xl bg-white p-6 shadow-sm">
 <p className="font-black text-emerald-700">🔐 完全ローカル Tournament OS</p>
-<h1 className="mt-2 text-3xl font-black">個人情報は、このパソコンから出ません</h1>
+<h1 className="mt-2 text-3xl font-black">大会当日の名簿は、このパソコンに保存</h1>
 <p className="mt-3 leading-relaxed text-slate-700">Cloudflareには、この空の画面だけがあります。選手名・写真・体重・対戦表は、このブラウザの中だけに保存します。</p>
 <div className="mt-4 rounded-xl bg-amber-50 p-4 font-bold text-amber-950">別のパソコンには自動で同期しません。同じパソコンの別タブだけが同じ内容になります。</div>
 </header>
     {message ? <p role="status" className="sticky top-2 z-20 mt-4 rounded-xl bg-indigo-700 p-4 font-bold text-white shadow">{message}</p> : null}
-    <section className="mt-5 rounded-2xl bg-white p-6 shadow-sm"><p className="text-4xl">🌐</p><h2 className="mt-2 text-2xl font-black">選手本人からネットで申し込みを受ける</h2><p className="mt-3 leading-relaxed text-slate-700">主催者本人のGoogleに、申込表と写真フォルダを作ります。画面の説明どおり、上から1つずつ進めます。</p><a href={googleSetup} className="mt-4 block rounded-2xl bg-indigo-700 p-5 text-center text-xl font-black text-white">はじめてのGoogle受付設定を開く →</a><p className="mt-3 text-center text-sm font-bold text-emerald-800">選手情報はCloudflareへ保存しません</p></section>
+    <section className="mt-5 rounded-2xl bg-white p-6 shadow-sm"><p className="text-4xl">🌐</p><h2 className="mt-2 text-2xl font-black">選手本人からネットで申し込みを受ける</h2><p className="mt-3 leading-relaxed text-slate-700">主催者本人のGoogleに、申込表と写真フォルダを作ります。画面の説明どおり、上から1つずつ進めます。</p><a href={googleSetup} onClick={async(e)=>{e.preventDefault();if(await save())location.href=googleSetup;}} className="mt-4 block rounded-2xl bg-indigo-700 p-5 text-center text-xl font-black text-white">はじめてのGoogle受付設定を開く →</a><p className="mt-3 text-center text-sm font-bold text-emerald-800">選手情報はCloudflareへ保存しません</p></section>
 
     <section className="mt-5 rounded-2xl bg-white p-6 shadow-sm">
 <h2 className="text-2xl font-black">1. 大会の基本情報</h2>
@@ -132,7 +153,7 @@ export default function PrivateAdmin() {
 <div className="mt-4 rounded-2xl bg-blue-50 p-5">
 <h3 className="text-xl font-black text-blue-950">先に、募集項目を決める</h3>
 <label className="mt-3 flex items-center gap-3 font-bold">
-<input type="checkbox" checked={entryConfig.music} onChange={(e)=>setEntryConfig((old)=>({...old,music:e.target.checked}))} className="h-5 w-5"/>この大会は入場曲を使う</label>
+<input type="checkbox" checked={entryConfig.music} onChange={(e)=>edit('entryConfig',{...entryConfig,music:e.target.checked})} className="h-5 w-5"/>この大会は入場曲を使う</label>
 <p className="mt-3 text-sm font-bold text-blue-950">写真・身長・体重・戦績・ジム名・選手名は必ず入力されます。</p>
 <div className="mt-3 grid gap-3 sm:grid-cols-3">{([['grade','学年'],['age','年齢'],['comment','意気込み']] as const).map(([key,label])=>
 <label key={key} className="font-bold">{label}<select className={field} value={entryConfig[key]} onChange={(e)=>setEntryMode(key,e.target.value as EntryFieldMode)}>
@@ -191,16 +212,16 @@ export default function PrivateAdmin() {
 <h2 className="text-2xl font-black">3. 対戦カードを作る</h2>{data.bouts.map((bout,index) => <article key={bout.id} className="mt-4 rounded-2xl border-2 p-4">
 <div className="flex flex-wrap items-center gap-2">
 <b className="mr-auto text-xl">第{index + 1}試合</b>
-<button onClick={() => move(index,-1)} className="rounded-lg border px-3 py-2">↑</button>
-<button onClick={() => move(index,1)} className="rounded-lg border px-3 py-2">↓</button>
+<button disabled={index===0} onClick={() => move(index,-1)} className="rounded-lg border px-3 py-2 disabled:text-slate-300">↑ 上へ</button>
+<button disabled={index===data.bouts.length-1} onClick={() => move(index,1)} className="rounded-lg border px-3 py-2 disabled:text-slate-300">↓ 下へ</button>
 <button onClick={() => updateBout(index,{ redId:bout.blueId, blueId:bout.redId })} className="rounded-lg bg-slate-800 px-3 py-2 font-bold text-white">赤青を入替</button>
 </div>
 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-<label className="font-bold text-rose-700">赤<select className={field} value={bout.redId} onChange={(e) => updateBout(index,{redId:e.target.value})}>
+<label className="font-bold text-rose-700">赤コーナー<select aria-label="赤コーナーの選手" className={field} value={bout.redId} onChange={(e) => updateBout(index,{redId:e.target.value})}>
 <option value="">選手を選ぶ</option>{data.fighters.map((f)=>
 <option key={f.id} value={f.id}>{f.name}（{f.gym}）</option>)}</select>
 </label>
-<label className="font-bold text-blue-700">青<select className={field} value={bout.blueId} onChange={(e) => updateBout(index,{blueId:e.target.value})}>
+<label className="font-bold text-blue-700">青コーナー<select aria-label="青コーナーの選手" className={field} value={bout.blueId} onChange={(e) => updateBout(index,{blueId:e.target.value})}>
 <option value="">選手を選ぶ</option>{data.fighters.map((f)=>
 <option key={f.id} value={f.id}>{f.name}（{f.gym}）</option>)}</select>
 </label>
@@ -220,7 +241,8 @@ export default function PrivateAdmin() {
 
     <section className="my-5 rounded-2xl bg-slate-900 p-6 text-white">
 <h2 className="text-xl font-black">5. 暗号化バックアップ</h2>
-<p className="mt-2 text-sm text-slate-300">故障に備える時だけ使います。10文字以上のパスワードで暗号化します。</p>
+<p className="mt-2 text-sm text-slate-300">名簿や対戦カードを直したら、ここで予備のファイルを保存します。パソコンの故障やブラウザのデータ消去に備えます。10文字以上のパスワードで鍵をかけます。</p>
+<p className="mt-2 text-sm text-amber-200">名簿・写真・対戦カード・募集項目の設定が入ります。Google受付の接続設定は別です。予備ファイルはUSBなどにも保管し、パスワードは別に控えてください。</p>
 <input type="password" className={field + ' text-slate-950'} value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="10文字以上のパスワード" />
 <div className="mt-3 grid gap-3 sm:grid-cols-2">
 <button onClick={()=>void download()} className="rounded-xl bg-emerald-600 p-3 font-black">暗号化して保存</button>

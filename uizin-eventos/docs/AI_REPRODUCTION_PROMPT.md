@@ -15,7 +15,7 @@ https://github.com/flatup1/openqlow
 対象ブランチ：
 
 ```text
-claude/uizin-eventos-v1-6f2l8p
+codex/tournament-os-v1
 ```
 
 対象ディレクトリ：
@@ -27,7 +27,7 @@ uizin-eventos
 汎用化仕様：
 
 ```text
-uizin-eventos/docs/GENERIC_TOURNAMENT_OS.md
+uizin-eventos/docs/EASY_SETUP_GUIDE.md の「現在の版」
 ```
 
 ## 最優先ルール
@@ -57,7 +57,7 @@ npm --version
 対象リポジトリがない場合は、新しい安全なフォルダへ対象ブランチをcloneしてください。
 
 ```bash
-git clone --branch claude/uizin-eventos-v1-6f2l8p --single-branch https://github.com/flatup1/openqlow.git
+git clone --branch codex/tournament-os-v1 --single-branch https://github.com/flatup1/openqlow.git
 cd openqlow/uizin-eventos
 ```
 
@@ -71,7 +71,9 @@ cd openqlow/uizin-eventos
 # リポジトリ直下にいる場合だけ実行
 cd uizin-eventos
 npm install
-npm run verify
+npm test
+npm run typecheck
+npm run build:private
 ```
 
 すでに `uizin-eventos` フォルダ内にいる場合は、`cd uizin-eventos` を繰り返さず、そこで `npm install` から始めてください。
@@ -90,13 +92,14 @@ npm run dev
 
 - UIZIN固有の大会名、ロゴ、色、日付、会場を大会設定へ分離する。
 - 大会IDごとに番組表・現在試合・画像・音楽・操作状態を分離する。
-- URLは `/events/<eventId>/live` を基本形とする。
+- 会長画面 `/private/?event=<eventId>` と本番画面 `/private/live/?event=<eventId>` を使う。既存クラウド連携版を流用しない。
 - 選手、試合、入場曲の共通データモデルを使用する。
 - 本番画面と管理画面を分離する。
 - 本番画面は写真、名前、所属、プロフィール、意気込み、契約体重、入場曲、前／次だけを中心にする。
-- Googleスプレッドシート取り込みと管理画面での小修正の両方に対応する。
+- 受付は主催者本人の非公開Google Sheets/Driveへ直接保存する。Cloudflareへ選手情報を送るWorker/APIは作らない。
+- Googleで連絡先なし名簿＋写真のZIPを作り、主催者PCだけに取り込む。初回設定・保存先照合・テストが終わるまでは選手用URLを渡さない。
 - 画像を事前最適化し、失敗時はシルエットを表示する。
-- 最後に正常取得できたデータを保持し、通信断でも現在画面を表示する。
+- 大会名簿はIndexedDBに保存する。別PCには自動同期しない。保存失敗時に成功表示や試合の進行をしない。
 - 公開用データと申込原本を完全に分ける。
 
 ## 変更時の進め方

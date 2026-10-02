@@ -1,5 +1,31 @@
 # UIZIN EventOS v1.0
 
+## 現在の汎用版：主催者Google受付＋パソコン内保存
+
+2026-10-02の改修はローカル検証版です。本番公開・実Googleでの送信完了確認は別工程です。
+初心者向けの現在の手順は [EASY_SETUP_GUIDE.md](docs/EASY_SETUP_GUIDE.md) の「現在の版」を使います。
+
+- 会長の準備画面：`/private/?event=大会ID`
+- 会長本人のGoogleを設定：`/private/google-setup/?event=大会ID`
+- 選手へ渡す画面：設定・テスト完了後に生成する `/apply/#...` の専用URL
+- 大会画面：`/private/live/?event=大会ID`
+- Cloudflareへ置くのは空のプログラムだけ。選手情報・写真は主催者本人の非公開Googleへ直接保存し、OSには連絡先なしZIPをローカルで取り込みます。
+- 旧クラウド連携版の `/admin/`・`/entry/` と混ぜません。公開する場合は `npm run build:private` の **out-private-pagesだけ**が対象です。`go-live` は使いません。
+- プログラムの保存だけでGASの公開版は更新されません。GASを新バージョンへ更新し、新しいテスト申込と専用URLを確認してから切り替えます。
+
+```bash
+npm test
+npm run typecheck
+npm run build:private
+```
+
+ブラウザ検証は `scripts/test-private-browser.mjs`。ローカルのCloudflare PagesプレビューとPlaywrightが必要です。
+Google送信をローカルで置き換えて検証するため、成功しても実Google・実機スマートフォンの成功とは扱いません。
+
+---
+
+以下は旧UIZIN／クラウド連携版の記録です。新しい会長の設定には上の手順を使ってください。
+
 > **2026-09-20 更新:** 大会DJデスク `/dj/` を追加。既存画面を維持し、詳細プロフィール・個別アナウンス・Winner／サンプラー・復元と誤操作防止を補完。現行仕様・保存範囲・本番前確認は [TOURNAMENT_DESK.md](docs/TOURNAMENT_DESK.md)。以下の以前の進捗数字は過去時点の記録です。
 
 

@@ -14,6 +14,9 @@ export type PublicEntryConfig = {
   grade: EntryFieldMode;
   age: EntryFieldMode;
   comment: EntryFieldMode;
+  protocol?: string;
+  entryKey?: string;
+  mode?: 'test' | 'live';
 };
 
 export const EMPTY_PUBLIC_ENTRY_CONFIG: PublicEntryConfig = {
@@ -25,6 +28,10 @@ const APPS_SCRIPT = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/
 
 export function isAppsScriptUrl(value: string): boolean {
   return APPS_SCRIPT.test(value.trim());
+}
+
+export function publicEntryReady(config: PublicEntryConfig): boolean {
+  return isAppsScriptUrl(config.endpoint) && config.protocol === '2' && /^[\w-]{32,100}$/.test(config.entryKey || '') && (config.mode === 'test' || config.mode === 'live');
 }
 
 export function isVenueUrl(value: string): boolean {
@@ -50,5 +57,8 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
     date: params.get('date')?.trim() ?? '', venue: params.get('venue')?.trim() ?? '', venueUrl: params.get('venueUrl')?.trim() ?? '',
     deadline: params.get('deadline')?.trim() ?? '', contact: params.get('contact')?.trim() ?? '',
     music: params.get('music') === 'on', grade: mode('grade', 'optional'), age: mode('age', 'optional'), comment: mode('comment', 'optional'),
+    ...(params.has('protocol') ? { protocol: params.get('protocol') || '' } : {}),
+    ...(params.has('entryKey') ? { entryKey: params.get('entryKey') || '' } : {}),
+    ...(params.has('mode') ? { mode: params.get('mode') === 'test' ? 'test' as const : 'live' as const } : {}),
   };
 }

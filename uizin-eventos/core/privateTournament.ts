@@ -1,4 +1,5 @@
 import { fingerprint, pick, toRows } from './csv.ts';
+import type { EntryFormConfig } from './entryPackage.ts';
 
 export type LocalFighter = {
   id: string;
@@ -32,6 +33,7 @@ export type LocalTournament = {
   currentBout: number;
   fighters: LocalFighter[];
   bouts: LocalBout[];
+  entryConfig?: EntryFormConfig;
 };
 
 const PRIVATE_HEADERS = [
@@ -69,13 +71,27 @@ export function importFighters(csv: string): { fighters: LocalFighter[]; blocked
       photoDataUrl: '',
     };
   }).filter((fighter) => fighter.name.trim() !== '');
+  if (new Set(fighters.map((fighter) => fighter.id)).size !== fighters.length) throw new Error('同じ管理番号が2つあります。原本で重複を確認してください。今ある名簿は変えていません。');
   return { fighters, blockedHeaders: [] };
 }
 
+/** Re-import by receipt, retaining cards and fighters absent from this file. Never guess by name. */
+export function mergeFighters(current: LocalFighter[], incoming: LocalFighter[]): LocalFighter[] {
+  if (new Set(incoming.map(fighter=>fighter.id)).size !== incoming.length) throw new Error('同じ管理番号が2つあります。元の名簿は変えていません。');
+  const updates = new Map(incoming.map(fighter=>[fighter.id,fighter]));
+  const existing = new Set(current.map(fighter=>fighter.id));
+  const combined = current.map(fighter=>{
+    const next=updates.get(fighter.id);
+    return next ? {...next,photoDataUrl:next.photoDataUrl||fighter.photoDataUrl} : fighter;
+  }).concat(incoming.filter(fighter=>!existing.has(fighter.id)));
+  if(combined.length>3000)throw new Error('名簿が3000人を超えます。元の名簿は変えていません。');
+  return combined;
+}
+
 export function contractWeight(red: LocalFighter | undefined, blue: LocalFighter | undefined): string {
-  const parse = (value: string | undefined) => Number(String(value ?? '').replace(/[^0-9.]/g, ''));
-  const weights = [parse(red?.weight), parse(blue?.weight)].filter((value) => Number.isFinite(value) && value >= 10 && value <= 200);
-  if (!weights.length) return '';
+  const parse = (value: string | undefined) => Number(String(value ?? '').trim().replace(/kg$/i, '').trim());
+  const weights = [parse(red?.weight), parse(blue?.weight)];
+  if (!weights.every((value) => Number.isFinite(value) && value >= 10 && value <= 250)) return '';
   const value = Math.max(...weights);
   return (Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)) + 'kg契約';
 }
@@ -96,6 +112,19 @@ export function validateTournament(value: LocalTournament): string[] {
   value.bouts.forEach((bout, index) => {
     if (!bout.redId || !bout.blueId) errors.push('第' + (index + 1) + '試合の赤・青を選んでください。');
     if (bout.redId && bout.redId === bout.blueId) errors.push('第' + (index + 1) + '試合で同じ選手が選ばれています。');
+    if ([bout.redId, bout.blueId].some((id) => id && !value.fighters.some((fighter) => fighter.id === id))) errors.push('第' + (index + 1) + '試合に名簿にいない選手がいます。選び直してください。');
   });
+  if (new Set(value.fighters.map((fighter) => fighter.id)).size !== value.fighters.length) errors.push('選手の管理番号が重複しています。');
+  if (new Set(value.bouts.map((bout) => bout.id)).size !== value.bouts.length) errors.push('試合の管理番号が重複しています。');
   return errors;
+}
+
+/** Validate stored/backup data before it can overwrite this event. Incomplete cards are allowed while preparing. */
+export function isLocalTournament(value: unknown): value is LocalTournament {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as LocalTournament;
+  const text = (item: unknown) => typeof item === 'string' && item.length <= 5000;
+  if (data.entryConfig !== undefined && (!data.entryConfig || typeof data.entryConfig.music !== 'boolean' || !['grade','age','comment'].every(key => ['off','optional','required'].includes(data.entryConfig![key as 'grade'|'age'|'comment'])))) return false;
+  if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
+  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }

@@ -1,5 +1,7 @@
 # 60代・パソコン初心者向け Tournament OS 再現説明書
 
+> 現在の会長向け受付設定は [EASY_SETUP_GUIDE.md](EASY_SETUP_GUIDE.md) の「現在の版」です。この説明書の後半は旧クラウド連携版の背景説明であり、現在の大会データをクラウドへ置く指示ではありません。
+
 この説明書は、パソコン操作に慣れていない格闘技ジムの会長でも、Codex または Claude Code に1つのリンクを渡して Tournament OS を再現できるようにしたものです。
 
 難しいプログラム操作はAIに任せます。人が行う作業は、基本的に「リンクをコピーしてAIへ貼る」「ログイン画面で許可する」「最後の画面を確認する」の3つです。
@@ -28,7 +30,7 @@ Node.jsやGitが入っているか分からなくても大丈夫です。AIが�
 ### 1. 次のリンクをコピーする
 
 ```text
-https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/claude/uizin-eventos-v1-6f2l8p/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
+https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/codex/tournament-os-v1/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
 ```
 
 ### 2. CodexまたはClaude Codeへ送る
@@ -37,7 +39,7 @@ https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/claude/uizin-event
 
 ```text
 このリンクの説明を読んで、Tournament OSをこのパソコンで再現してください。
-https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/claude/uizin-eventos-v1-6f2l8p/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
+https://raw.githubusercontent.com/flatup1/openqlow/refs/heads/codex/tournament-os-v1/uizin-eventos/docs/AI_REPRODUCTION_PROMPT.md
 ```
 
 ### 3. AIの作業が終わるまで待つ

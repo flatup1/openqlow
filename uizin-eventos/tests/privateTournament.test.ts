@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { contractWeight, importFighters, safeMusicUrl, validateTournament, emptyTournament } from '../core/privateTournament.ts';
+import { contractWeight, importFighters, mergeFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
 import { isAppsScriptUrl, isVenueUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
 
@@ -31,6 +31,56 @@ test('同じ選手を赤青に置いた試合を拒否する', () => {
   assert.match(validateTournament(data)[0], /同じ選手/);
 });
 
+test('空・負数・不正な片側体重から契約体重を作らない',()=>{
+  const f={id:'x',gym:'',name:'',grade:'',age:'',height:'',weight:'51kg',record:'',comment:'',musicUrl:'',photoDataUrl:''};
+  for(const weight of ['','-57kg','abc57','51/57kg','300'])assert.equal(contractWeight(f,{...f,weight}),'');
+  assert.equal(contractWeight(f,undefined),'');
+});
+test('選手の重複番号・名簿にいない対戦相手を検出する',()=>{
+  assert.throws(()=>importFighters('管理番号,選手名\nX,赤\nX,青'),/重複/);
+  const data=emptyTournament();data.bouts=[{id:'bout',redId:'missing',blueId:'other',className:'',rule:''}];
+  assert.match(validateTournament(data).join(''),/名簿にいない/);
+});
+test('復元前に大会ID・配列・試合位置・写真の形式を検証する',()=>{
+  const data=emptyTournament('local-test');assert.equal(isLocalTournament(data),true);
+  for(const changes of [{schema:2},{fighters:{}},{currentBout:1},{currentBout:-1},{eventId:'../../other'},{title:undefined}])assert.equal(isLocalTournament({...data,...changes}),false);
+  const f={id:'x',gym:'',name:'',grade:'',age:'',height:'',weight:'51',record:'',comment:'',musicUrl:'',photoDataUrl:'https://example.com/tracking.jpg'};
+  assert.equal(isLocalTournament({...data,fighters:[f]}),false);
+});
+test('募集項目は名簿と一緒に保存・復元でき、旧バックアップも読める',()=>{
+  const data=emptyTournament('local-test');assert.equal(isLocalTournament(data),true);
+  const entryConfig={music:true,grade:'required',age:'optional',comment:'off'};
+  assert.equal(isLocalTournament({...data,entryConfig}),true);
+  for(const entryConfig of [null,{music:'yes',grade:'required',age:'optional',comment:'off'},{music:true,grade:'wrong',age:'optional',comment:'off'}])assert.equal(isLocalTournament({...data,entryConfig}),false);
+  const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
+  assert.match(admin,/data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG/);assert.match(admin,/if\(await save\(\)\)location\.href=googleSetup/);
+});
+test('写真の選び直しは古い写真・遅れて終わる加工を送らず、加工中に送信できない',()=>{
+  const source=readFileSync(new URL('../app/apply/page.tsx',import.meta.url),'utf8');
+  assert.match(source,/setPhotoLoading\(true\); setPhoto\(''\)/);assert.match(source,/version !== photoVersionRef\.current/);assert.match(source,/if \(photoLoadingRef\.current\)/);assert.match(source,/disabled=\{sending\|\|photoLoading\|\|!endpointReady\}/);
+});
+test('読み込み失敗・空名簿・別大会復元・進行保存失敗で元データを上書きしない',()=>{
+  const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
+  assert.match(admin,/setLoadError/);assert.match(admin,/!result\.fighters\.length/);assert.match(admin,/restored\.eventId!==data\.eventId/);assert.match(admin,/今のデータを上書きしてよろしいですか/);
+  const live=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
+  assert.match(live,/const saved=await writePrivateEvent\(next\);setData\(saved\)/);assert.match(live,/savingRef\.current/);
+});
+test('再取り込みは管理番号で更新・追加し、写真・元の選手・対戦カード・試合順を消さない',()=>{
+  const original=importFighters('管理番号,選手名,体重\nF1,赤,55\nF2,青,58').fighters;
+  original[0].photoDataUrl='data:image/jpeg;base64,/9j/2Q==';
+  const snapshot=JSON.stringify(original),incoming=importFighters('管理番号,選手名,体重\nF1,赤,56\nF3,赤,60').fighters;
+  const merged=mergeFighters(original,incoming);assert.equal(merged.length,3);assert.equal(merged[0].weight,'56');assert.equal(merged[0].photoDataUrl,original[0].photoDataUrl);assert.deepEqual(merged[1],original[1]);assert.equal(merged[2].id,'F3');assert.equal(JSON.stringify(original),snapshot);
+  assert.throws(()=>mergeFighters(original,[incoming[0],incoming[0]]),/同じ管理番号/);
+  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/fighters:mergeFighters\(old\.fighters,fighters\)/);assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
+});
+
+test('入場曲を使わない大会では曲リンクを出さず、同じ注意文を重ねない',()=>{
+  const source=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
+  assert.match(source,/musicEnabled=data\.entryConfig\?\.music \?\? true/);
+  assert.match(source,/musicEnabled \? safeMusicUrl/);
+  assert.match(source,/この大会は入場曲なし/);assert.ok(!source.includes('曲なし・URL要確認'));
+  assert.equal((source.match(/musicEnabled=\{musicEnabled\}/g)||[]).length,2);
+});
 test('入場曲はApple MusicとYouTubeのHTTPSだけを開く', () => {
   assert.match(safeMusicUrl('https://music.apple.com/jp/song/1'), /^https:\/\/music\.apple\.com/);
   assert.match(safeMusicUrl('https://youtu.be/abc'), /^https:\/\/youtu\.be/);
@@ -51,7 +101,7 @@ test('ローカル画面は同じサイトの説明ファイルだけ読めて�
   const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8');
   const privateRules = headers.split('/apply/*', 1)[0];
   assert.match(privateRules, /connect-src 'self'/);
-  assert.doesNotMatch(privateRules, /connect-src[^\n]*https:/);
+  assert.doesNotMatch(privateRules, /connect-src[^;\n]*https:/);
   assert.match(privateRules, /form-action 'none'/);
 });
 
@@ -108,20 +158,47 @@ test('一般公開フォームはCloudflare APIへ個人情報を送らない', 
   assert.match(readFileSync(new URL('../core/publicEntry.ts', import.meta.url), 'utf8'), /script\\\.google\\\.com/);
   assert.match(source, /顔写真 必須/);
   assert.match(source, /連絡先のお名前 必須/);
+  assert.match(source, /setTimeout\(\(\) =>/);
+  assert.match(source, /target="_self"/);
+  assert.doesNotMatch(source, /postMessage|<iframe/);
+  assert.match(source, /old \|\| crypto.randomUUID/);
+  assert.doesNotMatch(source, /window\.confirm/);
+  assert.match(source, /aria-label="送る前の確認"/);
+  assert.match(source, /if \(!confirmed\) \{ setReviewing\(true\)/);
+  assert.match(source, /confirmed && !reviewing/);
+  assert.match(source, /戻って直す（送信しません）/);
 });
 
 test('Google受付は主催者アカウント内へSheetと写真フォルダを作り重複を防ぐ', () => {
   const source = readFileSync(new URL('../public/templates/Tournament_OS_Google受付.gs', import.meta.url), 'utf8');
   for (const required of ['Session.getEffectiveUser()', 'SETTINGS.expectedOwner', 'SpreadsheetApp.create', 'DriveApp.createFolder', 'LockService.getScriptLock', 'リクエストID', 'OS取込用（連絡先なし）']) assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(source, /申し込みが完了しました/);
+  assert.doesNotMatch(source, /parent\.postMessage/);
 });
 
 test('Google初回設定は専門用語を一度に見せず、5段階で1つずつ案内する', () => {
   const source = readFileSync(new URL('../app/private/google-setup/page.tsx', import.meta.url), 'utf8');
-  for (const text of ['主催者本人のGoogleを確認', 'プログラムをコピー', 'Googleの白い画面を開く', '実行完了', '受付用URLを作る', '最後に1回だけテストする', '選手へ渡すURLをコピー']) assert.match(source, new RegExp(text));
+  for (const text of ['主催者本人のGoogleを確認', 'プログラムをコピー', 'Googleの白い画面を開く', '実行完了', '受付用URLを作る', 'テスト申込画面を開く', '選手へ渡すURLをコピー']) assert.match(source, new RegExp(text));
   assert.match(source, /「関数なし ▼」を押す/);
   assert.match(source, /コピーする文字ではありません/);
-  assert.match(source, /testChecked/);
+  for (const text of ['verifyGoogleConnection', 'connection?.testComplete', 'connection.accepting', '他の会長が作った受付URLは使い回しません']) assert.ok(source.includes(text));
   assert.match(source, /SETTINGS\.expectedOwner|expectedOwner/);
+  for (const text of ['createGoogleConnectionRequest', 'Googleの受付URL', 'Googleの接続を確かめる', 'googleConnectionFresh']) assert.ok(source.includes(text));
+  assert.match(source,/target="_blank"/);assert.match(source,/name="action" value="verifyConnection"/);
+  assert.match(source,/method="post" target="_self"/);
+  assert.ok(source.includes("request:draftRequest,code:''"));
+  const submissionTail=source.slice(source.indexOf("setCode('');setRequest(draftRequest)"),source.indexOf('<input type="hidden" name="action"'));
+  assert.ok(!submissionTail.includes('setRequestVersion'), '送信時にGoogleへ送る確認番号を再生成しない');
+  assert.ok(source.includes('exportTestTournament'));
+  assert.ok(!source.includes('confirmedWebAppUrl'));
+  assert.match(source,/Date\.parse\(deadlineIso\(deadline\)\+'T23:59:59\+09:00'\)>=now/);
+});
+test('Cloudflareの重複ヘッダーでGoogle接続確認を止めず、選手データ画面の送信禁止は維持する',()=>{
+  const headers=readFileSync(new URL('../public/_headers',import.meta.url),'utf8');
+  const blocks=headers.trim().split(/\n\s*\n/).map(block=>{const lines=block.split('\n');return{path:lines[0],policy:lines.find(line=>line.trim().startsWith('Content-Security-Policy:'))||''};});
+  const policies=(path:string)=>blocks.filter(block=>block.path.endsWith('*')?path.startsWith(block.path.slice(0,-1)):block.path===path).map(block=>block.policy);
+  const setup=policies('/private/google-setup/');assert.equal(setup.length,1);assert.match(setup[0],/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/);assert.doesNotMatch(setup[0],/form-action 'none'/);
+  for(const path of ['/private/','/private/entry/','/private/live/']){const matched=policies(path);assert.equal(matched.length,1);assert.match(matched[0],/form-action 'none'/);assert.match(matched[0],/connect-src 'self';/);}
 });
 
 test('限定公開ビルドは一般公開フォームだけを追加し、旧公開画面は混ぜない', () => {

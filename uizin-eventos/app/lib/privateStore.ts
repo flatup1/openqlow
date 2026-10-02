@@ -1,6 +1,6 @@
 'use client';
 
-import type { LocalTournament } from '../../core/privateTournament.ts';
+import { isLocalTournament, type LocalTournament } from '../../core/privateTournament.ts';
 
 const DB = 'tournament-os-private-v1';
 const STORE = 'events';
@@ -21,25 +21,56 @@ export async function readPrivateEvent(eventId: string): Promise<LocalTournament
   const db = await database();
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(eventId);
-    request.onsuccess = () => resolve((request.result as LocalTournament | undefined) ?? null);
+    request.onsuccess = () => {
+      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、暗号化バックアップを確認してください。'));
+      else resolve((request.result as LocalTournament | undefined) ?? null);
+    };
     request.onerror = () => reject(request.error);
+    request.transaction!.oncomplete = () => db.close();
   });
 }
 
-export async function writePrivateEvent(value: LocalTournament): Promise<void> {
-  const next = { ...value, updatedAt: Date.now() };
+export class PrivateSaveConflict extends Error {
+  constructor() {
+    super('別の画面で大会が変更されました。古い内容では上書きしていません。');
+    this.name = 'PrivateSaveConflict';
+  }
+}
+
+export function preparePrivateEventSave(value: LocalTournament, saved: unknown, now = Date.now()): LocalTournament {
+  if (!isLocalTournament(value)) throw new Error('保存するデータを確認してください。今あるデータは変えていません。');
+  if (saved !== undefined && saved !== null) {
+    if (!isLocalTournament(saved)) throw new Error('保存データを読めません。元のデータは変えていません。');
+    if (saved.eventId !== value.eventId || saved.updatedAt !== value.updatedAt) throw new PrivateSaveConflict();
+  }
+  return { ...value, updatedAt: Math.max(now, value.updatedAt + 1) };
+}
+
+export async function writePrivateEvent(value: LocalTournament): Promise<LocalTournament> {
+  if (!isLocalTournament(value)) throw new Error('保存するデータを確認してください。今あるデータは変えていません。');
   const db = await database();
-  await new Promise<void>((resolve, reject) => {
+  const next = await new Promise<LocalTournament>((resolve, reject) => {
     const transaction = db.transaction(STORE, 'readwrite');
-    transaction.objectStore(STORE).put(next, value.eventId);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
+    const store = transaction.objectStore(STORE);
+    let persisted: LocalTournament;
+    let failure: unknown;
+    // Check and write in one transaction, so another tab cannot save between them.
+    const current = store.get(value.eventId);
+    current.onsuccess = () => {
+      try {
+        persisted = preparePrivateEventSave(value, current.result);
+        store.put(persisted, value.eventId);
+      } catch (error) { failure = error; transaction.abort(); }
+    };
+    transaction.oncomplete = () => { db.close(); resolve(persisted); };
+    transaction.onabort = () => { db.close(); reject(failure || transaction.error || new Error('保存できませんでした。ブラウザの空き容量を確認してください。')); };
   });
   if ('BroadcastChannel' in window) {
     const channel = new BroadcastChannel(channelName(value.eventId));
     channel.postMessage({ type: 'changed' });
     channel.close();
   }
+  return next;
 }
 
 export function watchPrivateEvent(eventId: string, callback: () => void): () => void {
@@ -85,17 +116,26 @@ export async function decryptBackup(text: string, password: string): Promise<Loc
   if (payload.format !== 'tournament-os-private-1') throw new Error('Tournament OSのバックアップではありません。');
   const key = await keyFromPassword(password, base64ToBytes(payload.salt));
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytesToArrayBuffer(base64ToBytes(payload.iv)) }, key, bytesToArrayBuffer(base64ToBytes(payload.data)));
-  return JSON.parse(new TextDecoder().decode(plain)) as LocalTournament;
+  const value: unknown = JSON.parse(new TextDecoder().decode(plain));
+  if (!isLocalTournament(value)) throw new Error('バックアップの中身を読み取れません。元のデータは残しています。');
+  return value;
 }
 
 export async function photoToDataUrl(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('画像ファイルを選んでください。');
+  if (file.size > 20 * 1024 * 1024) throw new Error('写真が大きすぎます。20MB以下の写真を選んでください。');
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, 900 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const context = canvas.getContext('2d');
+  if (!context) { bitmap.close(); throw new Error('写真を加工できませんでした。別のブラウザで試してください。'); }
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
-  return canvas.toDataURL('image/jpeg', 0.78);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+  if (!dataUrl.startsWith('data:image/jpeg;base64,') || dataUrl.length > 1_800_100) throw new Error('写真を小さくできませんでした。別の写真を選んでください。');
+  return dataUrl;
 }
