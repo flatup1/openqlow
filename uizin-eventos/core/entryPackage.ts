@@ -13,7 +13,7 @@ export type EntryFighter = {
 
 export type EntryFieldMode = 'off' | 'optional' | 'required';
 export type EntryFormConfig = { music: boolean; grade: EntryFieldMode; age: EntryFieldMode; comment: EntryFieldMode };
-export const DEFAULT_ENTRY_CONFIG: EntryFormConfig = { music: true, grade: 'optional', age: 'optional', comment: 'optional' };
+export const DEFAULT_ENTRY_CONFIG: EntryFormConfig = { music: false, grade: 'optional', age: 'optional', comment: 'optional' };
 
 export function entryConfigFromSearch(search: string): EntryFormConfig {
   const params = new URLSearchParams(search);
@@ -21,7 +21,7 @@ export function entryConfigFromSearch(search: string): EntryFormConfig {
     const value = params.get(key);
     return value === 'off' || value === 'optional' || value === 'required' ? value : fallback;
   };
-  return { music: params.get('music') !== 'off', grade: mode('grade', 'optional'), age: mode('age', 'optional'), comment: mode('comment', 'optional') };
+  return { music: params.get('music') === 'on', grade: mode('grade', 'optional'), age: mode('age', 'optional'), comment: mode('comment', 'optional') };
 }
 
 export function entryConfigSearch(config: EntryFormConfig): string {

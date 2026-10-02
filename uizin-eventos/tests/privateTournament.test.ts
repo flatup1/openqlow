@@ -56,16 +56,21 @@ test('エントリー画面はOSと同じ10列のCSVを作る', () => {
   assert.doesNotMatch(csv.split(/\r?\n/, 1)[0], /電話|メールアドレス|住所|生年月日|保護者/);
 });
 
-test('エントリーは写真・身長・体重・戦績・入場曲選択を必須にする', () => {
+test('エントリーは写真・身長・体重・戦績を必須にし、入場曲は主催者設定に従う', () => {
   const blank = { id:'1',gym:'',name:'',grade:'',age:'',height:'',weight:'',record:'',comment:'',musicUrl:'' };
   assert.equal(entryErrors(blank, false, { music:false, grade:'optional', age:'optional', comment:'optional' }).length, 6);
   assert.deepEqual(entryErrors({ ...blank, gym:'青空', name:'山田', height:'145', weight:'40', record:'初試合' }, true, { music:false, grade:'off', age:'off', comment:'off' }), []);
-  assert.match(entryErrors({ ...blank, gym:'青空', name:'山田', height:'145', weight:'40', record:'1戦' }, true)[0], /URL/);
+  assert.match(entryErrors({ ...blank, gym:'青空', name:'山田', height:'145', weight:'40', record:'1戦' }, true, { music:true, grade:'optional', age:'optional', comment:'optional' })[0], /URL/);
 });
 
 test('主催者の募集設定をURLにして同じ内容へ戻せる', () => {
   const config = { music:false, grade:'required' as const, age:'off' as const, comment:'optional' as const };
   assert.deepEqual(entryConfigFromSearch('?' + entryConfigSearch(config)), config);
+});
+
+test('標準のエントリーシートでは入場曲を表示しない', () => {
+  assert.equal(entryConfigFromSearch('').music, false);
+  assert.equal(entryConfigFromSearch('?music=on').music, true);
 });
 
 test('他ジム向け入力シートを迷わず保存して、そのままExcelで読み込める', () => {
