@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { contractWeight, importFighters, safeMusicUrl, validateTournament, emptyTournament } from '../core/privateTournament.ts';
+import { entryCsv, entryErrors } from '../core/entryPackage.ts';
 
 test('汎用CSVの日本語見出しを選手情報へ変換する', () => {
   const csv = 'ジム名,名前,戦績,学年,年齢,身長,体重,意気込み,入場曲URL\n青空ジム,山田太郎,2戦1勝,小5,11,145cm,38.5kg,最後まで戦う,https://music.apple.com/jp/song/1';
@@ -37,7 +38,7 @@ test('入場曲はApple MusicとYouTubeのHTTPSだけを開く', () => {
 });
 
 test('完全ローカル画面には外部送信APIがない', () => {
-  const files = ['app/private/page.tsx', 'app/private/live/page.tsx', 'app/lib/privateStore.ts'];
+  const files = ['app/private/page.tsx', 'app/private/live/page.tsx', 'app/private/entry/page.tsx', 'app/lib/privateStore.ts'];
   const forbidden = [/\bfetch\s*\(/, /XMLHttpRequest/, /sendBeacon/, /new WebSocket/, /\/api\//];
   for (const file of files) {
     const source = readFileSync(new URL('../' + file, import.meta.url), 'utf8');
@@ -45,11 +46,28 @@ test('完全ローカル画面には外部送信APIがない', () => {
   }
 });
 
+test('エントリー画面はOSと同じ10列のCSVを作る', () => {
+  const fighter = { id:'WM-001',gym:'青空ジム',name:'山田太郎',grade:'小5',age:'11',height:'145',weight:'38.5',record:'1戦',comment:'最後まで戦う',musicChoice:'yes' as const,musicUrl:'https://music.apple.com/jp/song/1' };
+  const csv = entryCsv([fighter]);
+  const result = importFighters(csv);
+  assert.equal(result.fighters.length, 1);
+  assert.equal(result.fighters[0].id, 'WM-001');
+  assert.equal(result.fighters[0].weight, '38.5');
+  assert.doesNotMatch(csv.split(/\r?\n/, 1)[0], /電話|メールアドレス|住所|生年月日|保護者/);
+});
+
+test('エントリーは写真・身長・体重・戦績・入場曲選択を必須にする', () => {
+  const blank = { id:'1',gym:'',name:'',grade:'',age:'',height:'',weight:'',record:'',comment:'',musicChoice:'' as const,musicUrl:'' };
+  assert.equal(entryErrors(blank, false).length, 7);
+  assert.deepEqual(entryErrors({ ...blank, gym:'青空', name:'山田', height:'145', weight:'40', record:'初試合', musicChoice:'no' }, true), []);
+  assert.match(entryErrors({ ...blank, gym:'青空', name:'山田', height:'145', weight:'40', record:'1戦', musicChoice:'yes' }, true)[0], /URL/);
+});
+
 test('他ジム向け入力シートを迷わず保存して、そのままExcelで読み込める', () => {
   const source = readFileSync(new URL('../app/private/page.tsx', import.meta.url), 'utf8');
   assert.match(source, /選手入力シートを保存する/);
-  assert.match(source, /返ってきたExcelをそのまま選べます/);
-  assert.match(source, /\.xlsx,\.csv/);
+  assert.match(source, /返ってきたZIPを選ぶだけです/);
+  assert.match(source, /\.zip,\.xlsx,\.csv/);
   assert.match(source, /電話番号・メール・住所・生年月日・保護者名は入れません/);
   assert.equal(readFileSync(new URL('../public/templates/Tournament_OS_選手入力テンプレート.xlsx', import.meta.url)).length > 5_000, true);
 });

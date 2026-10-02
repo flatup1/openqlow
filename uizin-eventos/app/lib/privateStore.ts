@@ -60,7 +60,7 @@ function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
+export function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return copy.buffer;
@@ -68,7 +68,7 @@ function arrayBuffer(bytes: Uint8Array): ArrayBuffer {
 
 async function keyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: arrayBuffer(salt), iterations: 250_000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: bytesToArrayBuffer(salt), iterations: 250_000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 
 export async function encryptBackup(value: LocalTournament, password: string): Promise<string> {
@@ -84,7 +84,7 @@ export async function decryptBackup(text: string, password: string): Promise<Loc
   const payload = JSON.parse(text) as { format: string; salt: string; iv: string; data: string };
   if (payload.format !== 'tournament-os-private-1') throw new Error('Tournament OSのバックアップではありません。');
   const key = await keyFromPassword(password, base64ToBytes(payload.salt));
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: arrayBuffer(base64ToBytes(payload.iv)) }, key, arrayBuffer(base64ToBytes(payload.data)));
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytesToArrayBuffer(base64ToBytes(payload.iv)) }, key, bytesToArrayBuffer(base64ToBytes(payload.data)));
   return JSON.parse(new TextDecoder().decode(plain)) as LocalTournament;
 }
 
