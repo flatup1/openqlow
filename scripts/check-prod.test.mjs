@@ -96,4 +96,15 @@ assert.match(script, /へ転送されています/, "どこへ転送されたか
 // 中身の読み出しも転送後のURLから行う（転送前から読むと空になる）
 assert.match(script, /curl -s -L -m 15 "\$\{WEBOS_TARGET\}"/, "版の比較は転送先の中身で行う");
 
+// 「ページが古い」の原因を2つに切り分けること。
+// 2026-10-02、ファイルは全部上がっていたのに .htaccess の RewriteRule が
+// /webos/ を古い webos.html へ向けていた。検査は「上げ直せ」としか言えず、
+// すでに上げ終えた人に、やり直す必要のない作業をさせるところだった。
+// index.html を直接開いて新しければ、届いている＝振り分けの問題と分かる。
+assert.match(script, /index\.html" 2>\/dev\/null/, "index.htmlを直接開いて切り分ける");
+assert.match(script, /振り分けられています/, "振り分けの問題だと名指しする");
+assert.match(script, /\.htaccess/, "直す場所を案内する");
+assert.match(script, /バックアップ/, ".htaccessの編集前にバックアップを促す");
+assert.match(script, /8ファイル全部/, "上げ直す場合は全部だと伝える");
+
 console.log("check-prod tests passed");

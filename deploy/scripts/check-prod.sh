@@ -185,8 +185,23 @@ if [[ "$WEBOS_CODE" == "200" ]]; then
   elif [[ "$WEBOS_HTML" == *"$LOCAL_V"* ]]; then
     ok "アップロード済みのページは手元と同じ版です（${LOCAL_V}）"
   else
-    ng "公開中のページが古いです（手元は ${LOCAL_V}）"
-    TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す")
+    # 「古い」の原因は2通りある。どちらかで次の一手がまるで変わる。
+    #   (a) ファイルを上げていない
+    #   (b) ファイルは上がっているが、/webos/ が別のページへ振り分けられている
+    # 2026-10-02 に (b) が実際に起きた。.htaccess の
+    #   RewriteRule ^webos/?$ webos.html [L]
+    # が、新しい webos/index.html ではなく古い webos.html を出していた。
+    # このとき検査は「上げ直せ」としか言えず、すでに上げてある人を悩ませた。
+    # index.html を直接開いて新しければ、ファイルは届いている＝振り分けの問題。
+    DIRECT_HTML="$(curl -s -L -m 15 "${WEBOS_TARGET%/}/index.html" 2>/dev/null || echo "")"
+    if [[ -n "$DIRECT_HTML" && "$DIRECT_HTML" == *"$LOCAL_V"* ]]; then
+      ng "ファイルは新しいのに、${WEBOS_URL} が古いページへ振り分けられています"
+      echo "   （${WEBOS_TARGET%/}/index.html を直接開くと新しい ${LOCAL_V} が出ます）"
+      TODO+=(".htaccess の RewriteRule が ^webos/?\$ を webos/index.html へ向けているか確認する（編集前にバックアップを取り、直したらトップページも開いて確かめる）")
+    else
+      ng "公開中のページが古いです（手元は ${LOCAL_V}）"
+      TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す（8ファイル全部・js/ も）")
+    fi
   fi
 elif [[ "$WEBOS_CODE" == "000" ]]; then
   # ページもjourneyも両方つながらないなら、本番ではなく手元の回線の問題。
