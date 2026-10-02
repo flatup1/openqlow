@@ -47,6 +47,14 @@ test('完全ローカル画面には外部送信APIがない', () => {
   }
 });
 
+test('ローカル画面は同じサイトの説明ファイルだけ読めて、外部送信先を許可しない', () => {
+  const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8');
+  const privateRules = headers.split('/apply/*', 1)[0];
+  assert.match(privateRules, /connect-src 'self'/);
+  assert.doesNotMatch(privateRules, /connect-src[^\n]*https:/);
+  assert.match(privateRules, /form-action 'none'/);
+});
+
 test('エントリー画面はOSと同じ10列のCSVを作る', () => {
   const fighter = { id:'WM-001',gym:'青空ジム',name:'山田太郎',grade:'小5',age:'11',height:'145',weight:'38.5',record:'1戦',comment:'最後まで戦う',musicUrl:'https://music.apple.com/jp/song/1' };
   const csv = entryCsv([fighter]);
