@@ -138,8 +138,12 @@ function saveEntry_(p){
       const common=[clean_(p.gym,120),clean_(p.name,80),SETTINGS.grade==='off'?'':clean_(p.grade,30),SETTINGS.age==='off'?'':clean_(p.age,3),String(Number(p.height)),String(Number(p.weight)),clean_(p.record,300),SETTINGS.comment==='off'?'':clean_(p.comment,500),SETTINGS.music?clean_(p.musicUrl,500):'',photoUrl];
       values=[receiptNo,new Date(),SETTINGS.eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId]);
       // Googleの自動変換で電話番号の先頭0や数字だけの選手名を失わない。
-      sheet.getRange(sheet.getLastRow()+1,3,1,16).setNumberFormat('@');
-      sheet.appendRow(values);
+      const newRow=sheet.getLastRow()+1;
+      sheet.getRange(newRow,3,1,16).setNumberFormat('@');
+      sheet.getRange(newRow,1,1,18).setValues([values]);
+      // 実際に書かれた電話番号が送った文字と違えば（先頭0が消えた等）、文字として書き直す。
+      const phoneCell=sheet.getRange(newRow,15);
+      if(phoneCell.getDisplayValue()!==String(values[14])){phoneCell.setNumberFormat('@').setValue(String(values[14]));}
       values=sheet.getRange(findRow_(sheet,18,requestId),1,1,18).getDisplayValues()[0];
     }
     const osValues=[values[0]].concat(values.slice(3,13)).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);

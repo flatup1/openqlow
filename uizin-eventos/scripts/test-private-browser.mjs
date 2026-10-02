@@ -52,7 +52,11 @@ try {
     const program=await page.evaluate(()=>navigator.clipboard.readText());
     check(program.includes('"expectedOwner":"organizer@example.com"'),'Program uses the organizer, not Jin');
     settings=JSON.parse(program.match(/^const SETTINGS = (.*);$/m)[1]);
+    // ステップ2へ進み、その状態が保存されるのを待ってから再読み込みする（保存前に読み直すと1に戻るのは当然）
+    await page.getByRole('heading',{name:'Googleの白い画面へ貼る'}).waitFor({timeout:15000});
+    await page.waitForFunction(id=>JSON.parse(localStorage.getItem('tournament-google-setup:'+id)||'{}').step===2,eventId,{timeout:15000});
     await page.reload();
+    await page.getByRole('heading',{name:'Googleの白い画面へ貼る'}).waitFor({timeout:15000});
     check(await page.getByRole('heading',{name:'Googleの白い画面へ貼る'}).isVisible(),'Wizard survives reload');
     await page.getByRole('button',{name:'貼って保存できた →',exact:true}).click();
     await page.getByRole('button',{name:'「実行完了」が出た →',exact:true}).click();
@@ -107,7 +111,7 @@ try {
     const csv='管理番号,ジム名,選手名,学年,年齢,身長,体重,戦績・競技歴,試合への意気込み,入場曲URL（Apple Music推奨）\nF01,架空赤ジム,架空赤選手,小6,12,150,60,初試合,がんばる,https://music.apple.com/jp/song/1\nF02,架空青ジム,架空青選手,中1,13,155,61.5,1戦,全力,https://youtu.be/test';
     const zip=zipSync({'players.csv':strToU8(csv),'photos/F01.jpg':jpeg,'photos/F02.jpg':jpeg});
     await page.locator('input[accept^=".zip"]').setInputFiles({name:'test.zip',mimeType:'application/zip',buffer:Buffer.from(zip)});
-    await page.getByRole('status').filter({hasText:'2人と写真2枚'}).waitFor();
+    await page.getByRole('status').filter({hasText:'2人分を読み込みました'}).waitFor();
     check(await page.locator('article img').count()===2,'ZIP restores both matched photos');
     for(let i=0;i<2;i++){
       await page.getByRole('button',{name:'＋ 試合を追加',exact:true}).click();
@@ -123,6 +127,14 @@ try {
     check(await first.getByLabel('赤コーナーの選手',{exact:true}).inputValue()==='F02','Reordering preserves fighter identity');
     await page.locator('article').filter({hasText:'第2試合'}).getByRole('button',{name:'↑ 上へ',exact:true}).click();
     await page.getByLabel('大会名',{exact:true}).fill('ローカル架空大会');
+    // 開催日: 全角・数字だけでも日本語の日付になる。日にちが抜けたら案内が出る
+    const dateBox=page.getByPlaceholder('例: 20271003');
+    await dateBox.fill('２０２７１００３');await dateBox.blur();
+    check(await dateBox.inputValue()==='2027年10月3日','Event date digits become a Japanese date');
+    await dateBox.fill('2027年10月日');
+    check(await page.getByText('日にちまで入れてください').isVisible(),'Incomplete event date shows guidance');
+    await dateBox.fill('20271003');await dateBox.blur();
+    check(await dateBox.inputValue()==='2027年10月3日','Eight digits become a Japanese date');
     await page.getByRole('button',{name:'このパソコンの中だけに保存',exact:true}).click();
     await page.getByRole('status').filter({hasText:'保存しました'}).waitFor();
     await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
@@ -136,7 +148,16 @@ try {
     await page.getByRole('status').filter({hasText:'復元できません'}).waitFor();
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='未保存の変更','Wrong password does not overwrite');
     await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
+    // 復元の前に「上書きしてよいか」の確認が出る。まず「いいえ」で、何も変わらないことを確かめる
+    let confirmText='';
+    page.once('dialog',dialog=>{confirmText=dialog.message();dialog.dismiss();});
     await page.locator('input[accept=".enc"]').setInputFiles({name:'test.enc',mimeType:'application/octet-stream',buffer:encrypted});
+    await page.waitForFunction(()=>true);
+    await page.waitForTimeout(800);
+    check(confirmText.includes('上書き'),'Restore asks before overwriting');
+    check(await page.getByLabel('大会名',{exact:true}).inputValue()==='未保存の変更','Cancelling the restore keeps the current data');
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('input[accept=".enc"]').setInputFiles({name:'test2.enc',mimeType:'application/octet-stream',buffer:encrypted});
     await page.getByRole('status').filter({hasText:'復元しました'}).waitFor();
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='ローカル架空大会','Encrypted backup restores correctly');
     const live=await context.newPage();

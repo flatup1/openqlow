@@ -6,6 +6,7 @@ import { getApiBase, getEventId, getOperatorKey, setApiBase, setEventId, setOper
 import { extractSheetId, validateNewEvent } from '../../core/eventConfig.ts';
 import { isValidEventId, normalizeEventId } from '../../core/eventId.ts';
 import type { EntrySiteConfig } from '../../core/entry.ts';
+import { dateDigits, formatDateInput } from '../../core/dateInput.ts';
 import { EMPTY_ENTRY_CONFIG, validateEntryConfig } from '../../core/entry.ts';
 import type { DraftMatch, MatchBuilderFighter } from '../../core/matchBuilder.ts';
 import { draftEventCsv, draftMatchesCsv, draftMusicCsv, moveDraftMatch, swapDraftCorners, validateDraftMatches } from '../../core/matchBuilder.ts';
@@ -74,7 +75,7 @@ export default function AdminPage() {
   const liveUrl = origin + '/live/?event=' + encodeURIComponent(normalizedId);
   const adminUrl = origin + '/admin/?event=' + encodeURIComponent(normalizedId);
   const helpPrompt = `Tournament OSで大会を作ります。次の管理画面を確認しながら手伝ってください。\n${adminUrl}\n\n今あるデータを消さず、勝手に公開せず、私が次に押す場所を小学生にも分かる日本語で1つずつ教えてください。リンクを直接開けない場合は、画面のスクリーンショットを送るよう案内してください。`;
-  const setupPrompt = `Tournament OSの初回接続を設定してください。\n大会ID: ${normalizedId || '未設定'}\n私はパソコン操作に慣れていません。既存データを消さず、公開前に確認を取り、接続先URLと管理用パスワードをこの画面へ設定してください。`;
+  const setupPrompt = `Tournament OSの初回接続を設定してください。\n大会ID: ${normalizedId || '未設定'}\n私はパソコン操作に慣れていません。既存データを消さず、公開前に確認を取り、この端末の保存済み接続設定を確認し、必要な初回設定を手伝ってください。管理用の秘密情報はチャットに表示しないでください。`;
   const input = 'mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-base focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100';
 
   const saveConnection = () => { setEventId(normalizedId); setApiBase(api); setOperatorKey(key); };
@@ -87,30 +88,32 @@ export default function AdminPage() {
     updateEventId((base || 'my-tournament') + '-' + new Date().getFullYear());
   };
   const saveEntry = async () => {
-    const configErrors = validateEntryConfig(entryConfig);
+    const config = { ...entryConfig, date: formatDateInput(entryConfig.date), deadline: formatDateInput(entryConfig.deadline) };
+    const configErrors = validateEntryConfig(config);
     if (!idReady) return setMessage('まず「1」で大会IDを決めてください。');
     if (configErrors.length) return setMessage('「2」の入力を確認してください。' + configErrors[0]);
-    if (!connectionReady) return setMessage('「3」を開き、AIから教えてもらった接続先と操作キーを入れてください。');
+    if (!connectionReady) return setMessage('「3」を開き、AIへ接続設定を依頼してください。');
     saveConnection(); setBusy(true); setMessage('保存しています。画面を閉じずにお待ちください…');
-    const result = await saveEntryConfig(entryConfig);
+    setEntryConfig(config);
+    const result = await saveEntryConfig(config);
     setBusy(false); setMessage(result.ok ? '保存できました。下の「募集ページを見る」で内容を確認してください。' : '保存できませんでした: ' + (result.reason ?? '理由不明'));
   };
   const importSheet = async () => {
     if (errors.length) return setMessage('「1」と「4」を確認してください。' + errors[0]);
-    if (!connectionReady) return setMessage('「3」を開き、接続先と操作キーを入れてください。');
+    if (!connectionReady) return setMessage('「3」を開き、AIへ接続設定を依頼してください。');
     saveConnection(); setBusy(true); setMessage('対戦表を確認しています…');
     const result = await reloadProgram(extractSheetId(sheet));
     setBusy(false); setMessage(result.ok ? '対戦表を取り込みました。「大会当日の画面を見る」で確認してください。' : '取り込めませんでした: ' + (result.reason ?? '理由不明'));
   };
   const importCsv = async () => {
     if (!matchesCsv.trim()) return setMessage('予備の対戦表CSVが空です。分からない場合はAIへ相談してください。');
-    if (!connectionReady) return setMessage('接続先と操作キーを入力してください。');
+    if (!connectionReady) return setMessage('「3」を開き、AIへ接続設定を依頼してください。');
     saveConnection(); setBusy(true); setMessage('予備データを確認しています…');
     const result = await uploadProgram({ event: eventCsv, matches: matchesCsv, music: musicCsv });
     setBusy(false); setMessage(result.ok ? '予備データを取り込みました。大会画面を確認してください。' : '取り込めませんでした: ' + (result.reason ?? '理由不明'));
   };
   const loadFighters = async () => {
-    if (!connectionReady) return setMessage('「3」を開き、接続先と操作キーを入れてください。');
+    if (!connectionReady) return setMessage('「3」を開き、AIへ接続設定を依頼してください。');
     saveConnection(); setBusy(true); setMessage('申込選手を読み込んでいます…');
     const result = await loadEntryFighters(); setBusy(false);
     if (!result.ok) return setMessage('読み込めませんでした: ' + (result.reason ?? '理由不明'));
@@ -131,7 +134,7 @@ export default function AdminPage() {
     setBusy(false); setMessage(result.ok ? '対戦カードを反映しました。大会当日の画面で赤・青と試合順を確認してください。' : '反映できませんでした: ' + (result.reason ?? '理由不明'));
   };
   const downloadEntries = async (view: 'os' | 'full') => {
-    if (!connectionReady) return setMessage('「3」を開き、接続先と操作キーを入れてください。');
+    if (!connectionReady) return setMessage('「3」を開き、AIへ接続設定を依頼してください。');
     const url = new URL(api.replace(/\/+$/, '') + '/api/entries/export'); url.searchParams.set('event', normalizedId); url.searchParams.set('view', view);
     const res = await fetch(url, { headers: { 'x-operator-key': key } });
     const body = await res.json() as { entries?: Array<Record<string, unknown>>; reason?: string };
@@ -158,14 +161,14 @@ export default function AdminPage() {
 
     <section id="step-2" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><StepTitle no={2} title="参加者に見せる募集ページを書く" done={entryReady} /><p className="mt-3 text-slate-600">分かるところから入力します。赤い「必須」だけは空欄にできません。</p><div className="mt-5 grid gap-4 sm:grid-cols-2">
       <label className="font-bold sm:col-span-2">大会名 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.title} onChange={(e) => updateEntry('title', e.target.value)} placeholder="例: ○○キックボクシング大会" /></label>
-      <label className="font-bold">主催者 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.organizer} onChange={(e) => updateEntry('organizer', e.target.value)} placeholder="例: ○○ジム" /></label><label className="font-bold">開催日 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.date} onChange={(e) => updateEntry('date', e.target.value)} placeholder="例: 2027年9月23日" /></label>
+      <label className="font-bold">主催者 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.organizer} onChange={(e) => updateEntry('organizer', e.target.value)} placeholder="例: ○○ジム" /></label><label className="font-bold">開催日 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.date} inputMode="numeric" onFocus={() => updateEntry('date', dateDigits(entryConfig.date))} onChange={(e) => updateEntry('date', dateDigits(e.target.value))} onBlur={() => updateEntry('date', formatDateInput(entryConfig.date))} placeholder="例: 20270923（半角数字8桁）" /></label>
       <label className="font-bold sm:col-span-2">会場 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.venue} onChange={(e) => updateEntry('venue', e.target.value)} placeholder="会場名と市区町村" /></label>
       <label className="font-bold">計量時間<input className={input} value={entryConfig.weighInAt} onChange={(e) => updateEntry('weighInAt', e.target.value)} placeholder="例: 10:00" /></label><label className="font-bold">試合開始<input className={input} value={entryConfig.startAt} onChange={(e) => updateEntry('startAt', e.target.value)} placeholder="例: 11:00" /></label>
-      <label className="font-bold">参加費<input className={input} value={entryConfig.fee} onChange={(e) => updateEntry('fee', e.target.value)} placeholder="例: 4,000円" /></label><label className="font-bold">申し込み締切 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.deadline} onChange={(e) => updateEntry('deadline', e.target.value)} placeholder="例: 2027年9月1日" /></label>
+      <label className="font-bold">参加費<input className={input} value={entryConfig.fee} onChange={(e) => updateEntry('fee', e.target.value)} placeholder="例: 4,000円" /></label><label className="font-bold">申し込み締切 <b className="text-rose-600">必須</b><input className={input} value={entryConfig.deadline} inputMode="numeric" onFocus={() => updateEntry('deadline', dateDigits(entryConfig.deadline))} onChange={(e) => updateEntry('deadline', dateDigits(e.target.value))} onBlur={() => updateEntry('deadline', formatDateInput(entryConfig.deadline))} placeholder="例: 20270901（半角数字8桁）" /></label>
       <label className="font-bold sm:col-span-2">大会の説明<textarea className={input} rows={6} value={entryConfig.description} onChange={(e) => updateEntry('description', e.target.value)} placeholder="例: 初めて試合に出る方も歓迎します。経験を考えて安全に対戦相手を決めます。" /></label><label className="font-bold sm:col-span-2">質問の連絡先<input className={input} value={entryConfig.contact} onChange={(e) => updateEntry('contact', e.target.value)} placeholder="例: 公式LINEへご連絡ください" /></label>
     </div><label className="mt-5 flex gap-3 rounded-xl bg-indigo-50 p-4"><input type="checkbox" checked={entryConfig.usesWalkoutMusic} onChange={(e) => updateEntry('usesWalkoutMusic', e.target.checked)} /><span><b>この大会では入場曲を使う</b><br /><span className="text-sm text-slate-600">使わない大会はOFFにします。参加者の画面から入場曲の質問が消えます。</span></span></label><label className="mt-3 flex gap-3 rounded-xl bg-amber-50 p-4"><input type="checkbox" checked={entryConfig.published} onChange={(e) => updateEntry('published', e.target.checked)} /><span><b>申し込みを受け付ける</b><br /><span className="text-sm text-slate-600">最初はOFFのまま保存して確認します。内容が正しいと確認できたらONにします。</span></span></label><button disabled={busy} onClick={() => void saveEntry()} className="mt-4 w-full rounded-xl bg-indigo-700 p-4 text-lg font-black text-white disabled:bg-slate-300">入力した募集ページを保存する</button></section>
 
-    <section id="step-3" className="mt-6 rounded-2xl border border-violet-200 bg-white p-6 shadow-sm"><StepTitle no={3} title="最初の1回だけ、AIにつないでもらう" done={connectionReady} />{connectionReady ? <div className="mt-4 rounded-2xl bg-emerald-50 p-5 text-center"><p className="text-4xl" aria-hidden="true">✅</p><p className="mt-2 text-xl font-black text-emerald-900">接続できています</p><p className="mt-1 text-slate-700">ここでは何もしなくて大丈夫です。ステップ4へ進んでください。</p></div> : <div className="mt-4 rounded-2xl bg-violet-50 p-5"><p className="text-lg font-black text-violet-950">ここは自分で設定しません</p><p className="mt-2 leading-relaxed text-slate-700">下のボタンを押して文章をコピーし、CodexやClaude Codeなど、アプリを作ってくれたAIへ貼り付けてください。AIが接続を準備します。</p><button type="button" onClick={() => void copy('setup', setupPrompt)} className="mt-4 w-full rounded-xl bg-violet-700 p-4 text-lg font-black text-white">{copied === 'setup' ? 'コピーしました ✓ AIへ貼り付けてください' : 'AIへお願いする文章をコピー'}</button></div>}<details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer font-bold text-slate-700">AI・詳しい人だけが開く接続設定</summary><div className="mt-4 space-y-4"><p className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-900">分からない場合は入力しないでください。間違った文字を入れるとデータを読み込めません。</p><label className="block font-bold">保存場所URL<input value={api} onChange={(e) => setApi(e.target.value)} className={input} placeholder="https://○○○.workers.dev" /><span className="mt-1 block text-sm font-normal text-slate-500">Cloudflareに作った、大会データの保存場所です。</span></label><label className="block font-bold">管理用パスワード<input type="password" value={key} onChange={(e) => setKey(e.target.value)} className={input} placeholder="AIが作った管理用パスワード" /><span className="mt-1 block text-sm font-normal text-slate-500">他の人へ送らないでください。このパソコンの中だけに保存されます。</span></label></div></details></section>
+    <section id="step-3" className="mt-6 rounded-2xl border border-violet-200 bg-white p-6 shadow-sm"><StepTitle no={3} title="最初の1回だけ、AIにつないでもらう" done={connectionReady} />{connectionReady ? <div className="mt-4 rounded-2xl bg-emerald-50 p-5 text-center"><p className="text-4xl" aria-hidden="true">✅</p><p className="mt-2 text-xl font-black text-emerald-900">接続できています</p><p className="mt-1 text-slate-700">ここでは何もしなくて大丈夫です。ステップ4へ進んでください。</p></div> : <div className="mt-4 rounded-2xl bg-violet-50 p-5"><p className="text-lg font-black text-violet-950">ここは自分で設定しません</p><p className="mt-2 leading-relaxed text-slate-700">下のボタンを押して文章をコピーし、CodexやClaude Codeなど、アプリを作ってくれたAIへ貼り付けてください。AIが接続を準備します。</p><button type="button" onClick={() => void copy('setup', setupPrompt)} className="mt-4 w-full rounded-xl bg-violet-700 p-4 text-lg font-black text-white">{copied === 'setup' ? 'コピーしました ✓ AIへ貼り付けてください' : 'AIへお願いする文章をコピー'}</button></div>}<details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer font-bold text-slate-700">AI・詳しい人だけが開く接続設定</summary><div className="mt-4 space-y-4"><p className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-900">分からない場合は入力しないでください。間違った文字を入れるとデータを読み込めません。</p><label className="block font-bold">保存場所URL<input value={api} onChange={(e) => setApi(e.target.value)} className={input} placeholder="https://○○○.workers.dev" /><span className="mt-1 block text-sm font-normal text-slate-500">Cloudflareに作った、大会データの保存場所です。</span></label><p className="text-sm text-slate-600">管理用の接続情報は、この端末に保存した設定を使います。接続できない場合は、上のボタンでAIへ設定を依頼してください。</p></div></details></section>
 
     <section id="step-4" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><StepTitle no={4} title="申込選手を原本から読み込む" done={fighters.length > 0} /><p className="mt-3 text-slate-600">ボタンを押すと、非公開のGoogleスプレッドシート原本から最新版の選手一覧を読み込みます。原本を直した後も、もう一度押せば更新されます。</p><button disabled={busy} onClick={() => void loadFighters()} className="mt-4 w-full rounded-xl bg-indigo-700 p-4 text-xl font-black text-white disabled:bg-slate-300">申込選手を読み込む</button>{fighters.length ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 font-bold text-emerald-900">✓ {fighters.length}人の選手を使えます</p> : null}
       <details className="mt-4 rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-bold">すでに対戦表のGoogleスプレッドシートがある場合</summary><p className="mt-3 text-sm text-slate-600">対戦表のURLを貼って取り込めます。電話番号・メール・住所が入った申込原本はここへ貼らないでください。</p><input value={sheet} onChange={(e) => setSheet(e.target.value)} className={input} placeholder="https://docs.google.com/spreadsheets/d/…/edit" /><button disabled={busy || errors.length > 0} onClick={() => void importSheet()} className="mt-3 w-full rounded-xl bg-slate-800 p-3 font-bold text-white disabled:bg-slate-300">完成済みの対戦表を取り込む</button></details>

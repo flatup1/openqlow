@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { emptyTournament, importFighters, mergeFighters, validateTournament, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
+import { formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, entryErrors, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { bytesToArrayBuffer, decryptBackup, encryptBackup, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, writePrivateEvent } from '../lib/privateStore.ts';
 
@@ -141,7 +142,8 @@ export default function PrivateAdmin() {
 <div className="mt-4 grid gap-3 sm:grid-cols-3">
 <label className="font-bold">大会名<input className={field} value={data.title} onChange={(e) => edit('title', e.target.value)} />
 </label>
-<label className="font-bold">開催日<input className={field} value={data.date} onChange={(e) => edit('date', e.target.value)} />
+<label className="font-bold">開催日<input className={field} inputMode="numeric" placeholder="例: 20271003" value={data.date} onChange={(e) => edit('date', e.target.value)} onBlur={(e) => { const next = formatDateInput(e.target.value); if (next !== e.target.value) edit('date', next); }} />
+{data.date.trim() && !isCompleteDate(data.date) ? <span role="alert" className="mt-1 block text-sm font-bold text-rose-700">日にちまで入れてください。例：20271003（半角でも全角でもOK）</span> : <span className="mt-1 block text-sm font-normal text-slate-500">数字だけでOK。20271003 → 2027年10月3日</span>}
 </label>
 <label className="font-bold">会場<input className={field} value={data.venue} onChange={(e) => edit('venue', e.target.value)} />
 </label>
