@@ -163,4 +163,42 @@ assert.doesNotMatch(
 // 3番（/journey）は AIKA VPS。こちらはお客さま側の経路なので、担当を明記する。
 assert.match(script, /AIKA VPS/, "受け口が別サーバーだと明記する");
 
+// ---- ③ 本番の設定に、テスト用のニセ番号が残っていないか ----
+//
+// 2026-10-02、本番の JIN_LINE_USER_ID にテスト用の番号が入っていた。
+// ロボットは「社長はこの番号の人」と覚えるので、本物のJINが会員扱いになり、
+// LINEからの承認コマンドが一切効かない状態が続いた。画面はどこも緑のままだった。
+// 一度起きた事故は、人の注意ではなく検査で止める。
+assert.match(script, /JIN_LINE_USER_ID/, "本番の承認者IDを確認する");
+assert.match(script, /owner:testvalue/, "テスト用のニセ番号を見分ける");
+assert.match(script, /owner:empty/, "空の場合も見逃さない");
+
+// 禁止する番号を直書きすると、テスト用の番号が増えたときに守備範囲から漏れる。
+// テストファイルから拾って突き合わせることで、検査が自動で追従する。
+assert.match(
+  script,
+  /--include='\*\.test\.ts'/,
+  "禁止する番号はテストファイルから拾う（直書きしない）",
+);
+assert.doesNotMatch(
+  script.split("\n").filter(line => !/^\s*#/.test(line)).join("\n"),
+  /U[0-9a-f]{32}/,
+  "ニセ番号をスクリプト本文に直書きしない",
+);
+
+// シークレットが空だと、受信を全部拒否したり返信が黙って消えたりする。
+// どちらも「画面は緑なのに動かない」型の故障なので、必ず見る。
+assert.match(script, /LINE_CHANNEL_SECRET/, "チャネルシークレットの有無を確認する");
+assert.match(script, /LINE_CHANNEL_ACCESS_TOKEN/, "アクセストークンの有無を確認する");
+
+// 診断が秘密を手元に持ってくると、診断そのものが情報漏れの経路になる。
+// VPS側で判定させ、返すのは set / empty / ok のような印だけにする。
+assert.match(script, /値は表示しません/, "値を表示しないと明示する");
+assert.match(script, /:set|:empty/, "有無の印だけを返す");
+assert.doesNotMatch(
+  script,
+  /echo\s+"?\$OWNER/,
+  "承認者IDの値そのものを出力しない",
+);
+
 console.log("check-prod tests passed");
