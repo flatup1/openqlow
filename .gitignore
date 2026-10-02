@@ -83,5 +83,17 @@ tools/uizin-clipper/profiles/*.png
 tools/uizin-clipper/**/card*.yml
 # この道具専用の Python 置き場所（各自の環境で作る）
 tools/uizin-clipper/.venv/
+
+# --- UIZIN Event OS（tools/uizin-event-os） ---
+# 大会データ（操作記録・試合データ・書き出し）は選手の表示名を含むため、個人情報として扱いコミットしない。
+# 通常の保存先はリポジトリの外（~/UIZIN-EventOS/）。ここは置き間違いへの保険。
+tools/uizin-event-os/runtime/
+tools/uizin-event-os/**/*.jsonl
+tools/uizin-event-os/**/*.csv
+!tools/uizin-event-os/samples/*.csv
+tools/uizin-event-os/**/config.json
+tools/uizin-event-os/**/secrets.env
+tools/uizin-event-os/**/access_token
+tools/uizin-event-os/**/exports/
 __pycache__/
 *.pyc

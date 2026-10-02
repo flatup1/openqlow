@@ -1,0 +1,27 @@
+{
+  "eventName": "UIZIN 大会",
+  "dataDir": "~/UIZIN-EventOS/data",
+  "server": { "host": "0.0.0.0", "port": 8787 },
+  "obs": {
+    "url": "ws://127.0.0.1:4455",
+    "passwordEnv": "EVENT_OS_OBS_PASSWORD",
+    "phase": 7,
+    "expectedVersion": ""
+  },
+  "pins": { "operatorEnv": "EVENT_OS_OPERATOR_PIN", "adminEnv": "EVENT_OS_ADMIN_PIN" },
+  "scenes": { "WAIT": "WAIT", "FIGHTER": "FIGHTER", "FIGHT": "FIGHT", "WINNER": "WINNER", "SAFE": "SAFE", "CAM": "CAM" },
+  "cameras": { "main": "MAIN", "sub": "SUB" },
+  "texts": {
+    "boutNo": "EOS_BOUT_NO",
+    "redName": "EOS_RED_NAME",
+    "blueName": "EOS_BLUE_NAME",
+    "winnerName": "EOS_WINNER_NAME",
+    "info": "EOS_INFO"
+  },
+  "flow": { "entranceOrder": ["red", "blue"] },
+  "audio": { "muteDuringEntrance": [] },
+  "stream": { "enabled": true },
+  "recording": { "minFreeGB": 50 },
+  "rehearsal": { "record": false },
+  "export": { "preRollSec": 6, "postRollSec": 20 }
+}
