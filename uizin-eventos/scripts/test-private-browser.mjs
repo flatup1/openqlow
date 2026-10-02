@@ -127,6 +127,14 @@ try {
     check(await first.getByLabel('赤コーナーの選手',{exact:true}).inputValue()==='F02','Reordering preserves fighter identity');
     await page.locator('article').filter({hasText:'第2試合'}).getByRole('button',{name:'↑ 上へ',exact:true}).click();
     await page.getByLabel('大会名',{exact:true}).fill('ローカル架空大会');
+    // 開催日: 全角・数字だけでも日本語の日付になる。日にちが抜けたら案内が出る
+    const dateBox=page.getByPlaceholder('例: 20271003');
+    await dateBox.fill('２０２７１００３');await dateBox.blur();
+    check(await dateBox.inputValue()==='2027年10月3日','Event date digits become a Japanese date');
+    await dateBox.fill('2027年10月日');
+    check(await page.getByText('日にちまで入れてください').isVisible(),'Incomplete event date shows guidance');
+    await dateBox.fill('20271003');await dateBox.blur();
+    check(await dateBox.inputValue()==='2027年10月3日','Eight digits become a Japanese date');
     await page.getByRole('button',{name:'このパソコンの中だけに保存',exact:true}).click();
     await page.getByRole('status').filter({hasText:'保存しました'}).waitFor();
     await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
