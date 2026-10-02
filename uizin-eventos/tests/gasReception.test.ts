@@ -42,8 +42,10 @@ function harness() {
       appendRow:(values:any[])=>{hit('append:before:'+result.name);const r=result.rows.length+1;result.rows.push(values.map((v,c)=>stored(v,r,c+1)));hit('append:after:'+result.name);},
       getRange:(r:number,c:number,n=1,m=1)=>{const range={
         getDisplayValues:()=>Array.from({length:n},(_,i)=>Array.from({length:m},(_,j)=>String(result.rows[r-1+i]?.[c-1+j]??'').replace(/^'(?=[=+\-@])/u,''))),
-        setValues:(values:any[][])=>{hit('set:'+result.name);values.forEach((row,i)=>{result.rows[r-1+i]??=[];row.forEach((value,j)=>result.rows[r-1+i][c-1+j]=stored(value,r+i,c+j));});return range;},
+        setValues:(values:any[][])=>{const isNew=r>result.rows.length&&c===1&&m===18;if(isNew)hit('append:before:'+result.name);hit('set:'+result.name);values.forEach((row,i)=>{result.rows[r-1+i]??=[];row.forEach((value,j)=>result.rows[r-1+i][c-1+j]=stored(value,r+i,c+j));});if(isNew)hit('append:after:'+result.name);return range;},
         setNumberFormat:(format:string)=>{for(let i=0;i<n;i++)for(let j=0;j<m;j++)formats.set((r+i)+':'+(c+j),format);return range;},
+        getDisplayValue:()=>range.getDisplayValues()[0][0],
+        setValue:(value:any)=>range.setValues([[value]]),
         setFontWeight:()=>range,
       };return range;},
       getDataRange:()=>result.getRange(1,1,result.rows.length,result.rows[0]?.length||1),
