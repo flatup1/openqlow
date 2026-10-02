@@ -1,3 +1,4 @@
+import { isCompleteDate } from './dateInput.ts';
 export type EntrySiteConfig = {
   title: string;
   organizer: string;
@@ -108,7 +109,9 @@ export function validateEntryConfig(config: EntrySiteConfig): string[] {
   if (!config.title) errors.push('大会名を入力してください。');
   if (!config.organizer) errors.push('主催者名を入力してください。');
   if (!config.date) errors.push('開催日を入力してください。');
+  else if (!isCompleteDate(config.date)) errors.push('開催日は年月日を半角数字8桁で入力してください（例: 20271003）。');
   if (!config.venue) errors.push('会場を入力してください。');
   if (!config.deadline) errors.push('締切を入力してください。');
+  else if (!isCompleteDate(config.deadline)) errors.push('締切は年月日を半角数字8桁で入力してください（例: 20271003）。');
   return errors;
 }
