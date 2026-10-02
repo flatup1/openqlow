@@ -66,7 +66,7 @@ test('beginner admin screen avoids unexplained technical labels in the normal pa
   assert.match(source, /function CoachIllustration/);
   assert.match(source, />RED<\/text>/);
   assert.match(source, />BLUE<\/text>/);
-  assert.match(source, /ここは自分で設定しません/);
+  assert.match(source, /管理用パスワードを入れてください/);
   assert.match(source, /AIへお願いする文章をコピー/);
   assert.match(source, /接続できています/);
   assert.match(source, /AI・詳しい人だけが開く接続設定/);
