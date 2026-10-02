@@ -1,5 +1,7 @@
 // 本体・保存・画面サーバー。AT-P4A-02/05/06/07/08、AT-P5-01/02/03、AT-P6 C1/C2、ARCHITECTURE.md §10
 import { test, afterEach } from "node:test";
+import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import assert from "node:assert/strict";
 import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -248,4 +250,104 @@ test("SSE：変化があれば知らせる", async () => {
   const next = new TextDecoder().decode((await reader.read()).value);
   assert.match(next, /event: change/);
   controller.abort();
+});
+
+test("操作記録：書き途中で切れた行を切り取るので、2回目以降の再起動でも壊れない", () => {
+  const file = logFileFor(tempDir(), "live");
+  const log = new EventLog(file);
+  log.append([{ type: "A" }, { type: "B" }]);
+  appendFileSync(file, '{"seq":3,"type":"C"');
+  const first = new EventLog(file);
+  assert.equal(first.skipped, 1);
+  first.append([{ type: "D" }, { type: "E" }]);
+  const second = new EventLog(file);
+  assert.deepEqual(second.events.map(event => event.type), ["A", "B", "D", "E"]);
+  assert.deepEqual(second.events.map(event => event.seq), [1, 2, 3, 4]);
+});
+
+test("記録を保存できなくなっても Event OS は落ちず、画面に ❌ を出し続ける", async () => {
+  const { app, fake } = await makeApp();
+  await ready(app);
+  await press(app, "start_event", {}, OP);
+  await until(() => fake.record.active === true);
+  app.log.append = () => {
+    throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+  };
+  fake.externalStopRecord();
+  await until(() => app.storageError != null);
+  await wait(150);
+  const view = app.view("easy");
+  assert.match(view.alerts[0].text, /保存できません/);
+  const result = await press(app, "safe_on").catch(error => ({ ok: false, message: error.message }));
+  assert.equal(result.ok, false);
+});
+
+test("C6：録画中に Event OS を起動し直し、止まっている間に人が場面を変えていたら、上書きせず手動モード", async () => {
+  const dataDir = tempDir();
+  const first = await makeApp({ dataDir });
+  await ready(first.app);
+  await press(first.app, "start_event", {}, OP);
+  await until(() => first.fake.record.active === true);
+  await press(first.app, "entrance", { corner: "red" });
+  await until(() => first.fake.program === "FIGHTER");
+  first.adapter.stop();
+  // 同じ OBS（録画は続いている）に、新しい Event OS がつなぐ。
+  first.fake.program = "SAFE";
+  const config = exampleConfig();
+  config.recording.minFreeGB = 1;
+  const adapter = new ObsAdapter({ config, password: "pw-123456", WebSocketImpl: first.fake.webSocketClass(), timings: FAST, statfs: async () => ({ bavail: 500, bsize: 1024 ** 3 }) });
+  const app = new EventOsApp({ config, dataDir, adapter, fake: first.fake }).init();
+  adapter.start();
+  cleanups.push(() => adapter.stop());
+  await until(() => adapter.state.manual === true);
+  await wait(200);
+  assert.equal(first.fake.program, "SAFE", "人が選んだ場面を上書きしない");
+  assert.equal(app.state.recordings.filter(rec => !rec.stoppedAt).length, 1, "同じ録画を二重に数えない");
+});
+
+test("配信中は練習モードに切り替えない。切り替えたら、録画中であることを新しい記録にも書く", async () => {
+  const { app, fake } = await makeApp();
+  await press(app, "stream_start", {}, OP, { confirm: true });
+  await until(() => app.adapter.snapshot().stream.active === true);
+  const refused = await press(app, "set_mode", { mode: "rehearsal" }, { role: "admin" }, { confirm: true });
+  assert.equal(refused.ok, false);
+  assert.match(refused.message, /配信を終える/);
+  await press(app, "stream_stop", {}, OP, { confirm: true });
+  await until(() => app.adapter.snapshot().stream.active === false);
+  assert.equal(fake.record.active, true);
+  assert.equal((await press(app, "set_mode", { mode: "rehearsal" }, { role: "admin" }, { confirm: true })).ok, true);
+  assert.equal((await press(app, "set_mode", { mode: "live" }, { role: "admin" }, { confirm: true })).ok, true);
+  assert.equal(app.state.recordings.filter(rec => !rec.stoppedAt).length, 1, "本番の記録にも録画中が残る");
+});
+
+test("練習モードで録画しない設定なら、🛟 を押しても録画を始めない", async () => {
+  const { app, fake } = await makeApp();
+  await press(app, "set_mode", { mode: "rehearsal" }, { role: "admin" }, { confirm: true });
+  await ready(app);
+  await press(app, "start_event", {}, OP);
+  await press(app, "safe_on");
+  await wait(200);
+  assert.equal(fake.record.active, false);
+});
+
+test("体験モードは、本番の設定ファイルがあっても本番の保存先に書かない", async () => {
+  const home = tempDir();
+  mkdirSync(join(home, "UIZIN-EventOS"), { recursive: true });
+  const config = exampleConfig();
+  config.server.port = 0;
+  config.server.host = "127.0.0.1";
+  const configPath = join(home, "UIZIN-EventOS", "config.json");
+  writeFileSync(configPath, JSON.stringify(config));
+  const child = spawn(process.execPath, [join(TOOL_DIR, "src/server/main.mjs"), "--demo", "--config", configPath], {
+    env: { ...process.env, HOME: home },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  cleanups.push(() => child.kill());
+  let output = "";
+  child.stdout.on("data", chunk => {
+    output += chunk;
+  });
+  await until(() => output.includes("保存先"), { timeoutMs: 8000 });
+  assert.match(output, /UIZIN-EventOS\/demo/);
+  assert.ok(!existsSync(join(home, "UIZIN-EventOS", "data")), "本番の保存先は作らない");
 });

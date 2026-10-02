@@ -120,11 +120,22 @@ function apply(state, event) {
   };
 
   switch (event.type) {
-    case "LOAD_CARD":
+    case "LOAD_CARD": {
+      // 読み直したら当日の手直しは消す（別の選手の名前が残らないように）。
+      // 今の試合は「位置」ではなく「試合番号」で探し直す。見つからなければ、その試合の最初（待機）に戻す。
+      const currentNo = s.card?.bouts?.[s.boutIndex]?.no;
       s.card = { bouts: event.bouts, hash: event.hash, source: event.source, loadedAt: event.at };
-      if (s.boutIndex > event.bouts.length - 1) s.boutIndex = Math.max(0, event.bouts.length - 1);
+      s.edits = {};
+      const found = currentNo === undefined ? -1 : event.bouts.findIndex(item => item.no === currentNo);
+      if (found >= 0) {
+        s.boutIndex = found;
+      } else {
+        s.boutIndex = Math.min(s.boutIndex, Math.max(0, event.bouts.length - 1));
+        if (s.phase === "running" && s.step !== "break") s.step = "standby";
+      }
       s.lastEvent = event;
       return s;
+    }
     case "START_EVENT":
       s.phase = "running";
       s.boutIndex = 0;
@@ -197,30 +208,42 @@ function apply(state, event) {
     case "HUMAN_CHECK":
       s.humanChecks = { ...s.humanChecks, [event.item]: { checked: Boolean(event.checked), at: event.at } };
       return s;
-    case "OBS_RECORD": {
-      if (event.active) {
-        s.recordings = [...s.recordings, { startedAt: event.at, stoppedAt: null, path: null }];
-      } else if (s.recordings.length > 0) {
-        const last = s.recordings[s.recordings.length - 1];
-        if (!last.stoppedAt) {
-          s.recordings = [...s.recordings.slice(0, -1), { ...last, stoppedAt: event.at, path: event.path ?? last.path }];
-        }
-      }
+    case "OBS_RECORD":
+      s.recordings = applyOutput(s.recordings, event, true);
       return s;
-    }
-    case "OBS_STREAM": {
-      if (event.active) {
-        s.streams = [...s.streams, { startedAt: event.at, stoppedAt: null }];
-      } else if (s.streams.length > 0) {
-        const last = s.streams[s.streams.length - 1];
-        if (!last.stoppedAt) s.streams = [...s.streams.slice(0, -1), { ...last, stoppedAt: event.at }];
-      }
+    case "OBS_STREAM":
+      s.streams = applyOutput(s.streams, event, false);
       return s;
-    }
     default:
       // 監査用の記録（OPERATOR_ACTION など）は状態を変えない。
       return s;
   }
+}
+
+// 録画・配信の「始まった／止まった」を区間の一覧にする。
+//  - 開いている区間があるのに「始まった」が来たら重ねない（Event OS の再起動で同じ録画を二度数えない）
+//  - 接続が切れて「止まった」とした後、同じ録画のまま続いていた（開始時刻がほぼ同じ）なら区間を開き直す
+const SAME_OUTPUT_MS = 5000;
+function applyOutput(list, event, withPath) {
+  const last = list[list.length - 1];
+  if (event.active) {
+    if (last && !last.stoppedAt) {
+      return withPath && event.path && !last.path ? [...list.slice(0, -1), { ...last, path: event.path }] : list;
+    }
+    if (last && last.stoppedReason === "disconnect" && Math.abs(Date.parse(event.at) - Date.parse(last.startedAt)) <= SAME_OUTPUT_MS) {
+      const reopened = { ...last, stoppedAt: null };
+      delete reopened.stoppedReason;
+      return [...list.slice(0, -1), reopened];
+    }
+    const entry = { startedAt: event.at, stoppedAt: null };
+    if (withPath) entry.path = event.path ?? null;
+    return [...list, entry];
+  }
+  if (!last || last.stoppedAt) return list;
+  const closed = { ...last, stoppedAt: event.at };
+  if (withPath) closed.path = event.path ?? last.path ?? null;
+  if (event.reason) closed.stoppedReason = event.reason;
+  return [...list.slice(0, -1), closed];
 }
 
 // ---- 受け付け（decide） ----
@@ -381,6 +404,10 @@ export function decide(ctx, cmd) {
     }
     case "consent_ack": {
       if (!state.card) return reject("card", "試合データを読み込んでください");
+      // 画面で見ていた試合データと違えば受け付けない（見ていないデータを「確認した」にしない）。
+      if (args.hash !== undefined && args.hash !== state.card.hash) {
+        return reject("stale", "試合データが読み直されました。配信しない試合をもう一度確かめてください");
+      }
       return accept([{ ...base, type: "CONSENT_ACK", hash: state.card.hash, count: notBroadcastCount(state) }]);
     }
     case "human_check": {

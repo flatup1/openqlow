@@ -11,9 +11,12 @@ import { upcomingBouts } from "./desired.mjs";
 
 export const MAX_LARGE_BUTTONS = 3;
 
-function outputLamp(output, connected, label) {
-  if (!connected || !output || output.checkedAt == null) return { status: "unknown", text: `⚠️ ${label} 未確認` };
+// 確かめてから時間がたった値は「未確認」にする（✅ を出しっぱなしにしない）。
+function outputLamp(output, connected, label, nowMs) {
+  const fresh = output && lamp({ status: "ok", checkedAt: output.checkedAt ?? null }, nowMs).status === "ok";
+  if (!connected || !fresh) return { status: "unknown", text: `⚠️ ${label} 未確認` };
   if (output.reconnectingSince != null) return { status: "warn", text: `⚠️ ${label} つなぎ直し中` };
+  if (output.active && output.paused) return { status: "error", text: `⏸ ${label}一時停止中` };
   return output.active ? { status: "ok", text: `● ${label}中` } : { status: "off", text: `○ ${label}していない` };
 }
 
@@ -54,8 +57,8 @@ export function buildView(ctx) {
       undo: { enabled: undoTarget !== undefined && (!undoNeedsOperator || roleAtLeast(role, "operator")) },
     },
     lamps: {
-      record: outputLamp(obs?.record, connected, "録画"),
-      stream: outputLamp(obs?.stream, connected, "配信"),
+      record: outputLamp(obs?.record, connected, "録画", nowMs),
+      stream: outputLamp(obs?.stream, connected, "配信", nowMs),
     },
     preflightReady: preflight?.ready === true,
   };
@@ -77,7 +80,9 @@ export function buildView(ctx) {
       }),
       stream: { reconnectingSince: obs?.stream?.reconnectingSince ?? null },
       card: state.card ? { count: state.card.bouts.length, hash: state.card.hash, loadedAt: state.card.loadedAt } : null,
+      storageError: Boolean(ctx.storageError),
       canStream: !rehearsal,
+      streamActive: obs?.stream?.active === true,
     };
   }
   if (roleAtLeast(role, "admin")) {

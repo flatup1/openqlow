@@ -244,7 +244,9 @@ function renderOperator() {
     span.textContent = `${{ ok: "✅", unknown: "⚠️", error: "❌" }[lamp.status] || "⚠️"} ${label}${lamp.message ? `：${lamp.message}` : ""}`;
     lamps.append(span);
   }
-  $("stream-row").hidden = !op.canStream;
+  // 練習中は「始める」「やり直す」を出さない。「終える」はいつでも出す（配信が残っていたら止められるように）。
+  $("stream-start").hidden = !op.canStream;
+  $("stream-restart").hidden = !op.canStream;
 
   const list = $("preflight");
   list.replaceChildren();
@@ -442,11 +444,21 @@ function wire() {
     const csv = await file.text();
     showCardErrors([]);
     if (view && view.phase !== "setup") {
-      if (!(await confirmDialog("大会中に試合データを読み直します。当日の手直しが消えることがあります。よいですか？"))) return;
+      if (!(await confirmDialog("大会中に試合データを読み直します。当日に直した表示名は消えます。今の試合が新しいデータに無いときは、その試合の最初に戻ります。よいですか？"))) return;
       send("load_card", { csv }, { confirm: true });
     } else {
       send("load_card", { csv });
     }
+  });
+
+  // 画面で見ていた試合データの印を一緒に送る（読み直された後のデータを、見ずに「確認した」にしない）。
+  $("consent-ack").addEventListener("click", () => {
+    const card = view && view.operator && view.operator.card;
+    if (!card) {
+      toast("試合データを読み込んでください", true);
+      return;
+    }
+    send("consent_ack", { hash: card.hash });
   });
 
   $("edit-save").addEventListener("click", () => {

@@ -187,7 +187,7 @@ export function evaluatePreflight({ state, config, obs, nowMs, rehearsal }) {
   items.push(item({
     id: "audio",
     label: "配信に乗る音が出ている（音のチェック）",
-    required: false,
+    required: streamPlanned,
     status: !audio ? "unknown" : audio.ok ? "ok" : "error",
     detail: !audio ? "運営モードの「音のチェック」で確かめます" : audio.message,
   }));

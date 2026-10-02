@@ -1,7 +1,7 @@
 # UIZIN Event OS 設計パック
 
 最終更新: 2026-10-01 / 起案: Claude / 承認: 未（オーナー承認前）
-状態: **Phase 1〜6 のソフトを実装済み（`tools/uizin-event-os/`）・自動テスト100本合格。実機（OBS・iPhone・YouTube）での確認はまだ。** 2026-10-01 に JIN が「一気通貫で作ってよし」と承認（AGENTS.md §0.1）。本番で使う前に RUNBOOK.md のリハーサルを通すこと。
+状態: **Phase 1〜6 のソフトを実装済み（`tools/uizin-event-os/`）・自動テスト合格。実機（OBS・iPhone・YouTube）での確認はまだ。** 2026-10-01 に JIN が「一気通貫で作ってよし」と承認（AGENTS.md §0.1）。本番で使う前に RUNBOOK.md のリハーサルを通すこと。
 
 ---
 

@@ -174,3 +174,61 @@ test("記録を最初から積み直すと、同じ状態になる（再起動�
   const replayed = reduce(JSON.parse(JSON.stringify(event.events)));
   assert.deepEqual(replayed, event.state);
 });
+
+test("試合データの読み直し：今の試合は試合番号で探し直し、当日の手直しは消す", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  event.run("edit_name", { bout: 2, corner: "red", name: "ミナトＸ" });
+  event.run("entrance", { corner: "red" }, { role: "easy" });
+  const without1 = event.card.bouts.filter(bout => bout.no !== 1);
+  assert.equal(event.run("load_card", { bouts: without1, hash: "v2" }, { confirm: true }).ok, true);
+  assert.equal(currentBout(event.state).no, 2, "位置ではなく試合番号で");
+  assert.equal(event.state.step, "entrance1", "同じ試合なら進み具合はそのまま");
+  assert.equal(currentBout(event.state).red.name, "ミナト", "手直しは消える");
+});
+
+test("試合データの読み直し：今の試合が新しいデータに無ければ、その試合の最初（待機）に戻す", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  event.run("entrance", { corner: "red" }, { role: "easy" });
+  const only13 = event.card.bouts.filter(bout => bout.no !== 2);
+  event.run("load_card", { bouts: only13, hash: "v3" }, { confirm: true });
+  assert.equal(event.state.step, "standby");
+});
+
+test("配信しない試合の確認：画面で見ていた試合データと違えば受け付けない", () => {
+  const event = new MiniEvent();
+  event.run("load_card", { bouts: event.card.bouts, hash: event.card.hash });
+  assert.equal(event.run("consent_ack", { hash: "old" }).code, "stale");
+  assert.equal(event.run("consent_ack", { hash: event.card.hash }).ok, true);
+});
+
+test("録画の区間：同じ録画の「始まった」が二度来ても重ねない。ファイル名も残す", async () => {
+  const event = new MiniEvent().setup();
+  event.observe({ type: "OBS_RECORD", active: true, path: null });
+  event.clock.advance(1000);
+  event.observe({ type: "OBS_RECORD", active: true, path: null });
+  assert.equal(event.state.recordings.length, 1);
+  event.observe({ type: "OBS_RECORD", active: false, path: null });
+  event.observe({ type: "OBS_RECORD", active: true, path: "/rec/2.mkv" });
+  event.observe({ type: "OBS_RECORD", active: false, path: null });
+  assert.equal(event.state.recordings[1].path, "/rec/2.mkv");
+});
+
+test("録画の区間：接続が切れて閉じても、同じ録画が続いていたら開き直す。別の録画なら新しい区間", () => {
+  const event = new MiniEvent().setup();
+  const start = event.clock.iso();
+  event.observe({ type: "OBS_RECORD", active: true, path: null });
+  event.clock.advance(60_000);
+  event.observe({ type: "OBS_RECORD", active: false, path: null, reason: "disconnect" });
+  event.clock.advance(5_000);
+  event.observe({ type: "OBS_RECORD", active: true, path: null, at: start });
+  assert.equal(event.state.recordings.length, 1);
+  assert.equal(event.state.recordings[0].stoppedAt, null);
+  event.observe({ type: "OBS_RECORD", active: false, path: null, reason: "disconnect" });
+  event.clock.advance(30_000);
+  event.observe({ type: "OBS_RECORD", active: true, path: null });
+  assert.equal(event.state.recordings.length, 2, "OBS が落ちて録画し直したら新しい区間");
+});

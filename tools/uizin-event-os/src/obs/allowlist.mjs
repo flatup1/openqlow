@@ -14,7 +14,7 @@ export const PHASE_REQUESTS = {
     "GetStats",
   ],
   2: ["GetSceneItemList", "SetSceneItemEnabled", "GetSourceScreenshot"],
-  3: ["StartRecord", "GetProfileParameter"],
+  3: ["StartRecord", "ResumeRecord", "GetProfileParameter"],
   4: ["GetInputList", "SetInputSettings", "CreateRecordChapter"],
   5: ["StartStream", "StopStream", "StopRecord"],
   6: [],

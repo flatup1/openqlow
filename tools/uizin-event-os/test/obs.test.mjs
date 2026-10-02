@@ -319,3 +319,78 @@ test("どの場面でも、許可リストに無い命令は1つも OBS に届�
   assert.deepEqual(unexpected, []);
   adapter.stop();
 });
+
+test("C7：OBSが固まったら、「確かめた時刻」を進めない（✅ を出し続けない）", async () => {
+  const { fake, adapter } = setup();
+  adapter.start();
+  await until(() => adapter.state.connection.status === "ok" && adapter.state.record.checkedAt != null);
+  fake.hang(true);
+  await wait(400);
+  const frozenAt = adapter.state.connection.checkedAt;
+  const recordAt = adapter.state.record.checkedAt;
+  await wait(1200);
+  assert.equal(adapter.state.connection.checkedAt, frozenAt, "返事が無い間は進まない");
+  assert.equal(adapter.state.record.checkedAt, recordAt);
+  fake.hang(false);
+  await until(() => adapter.state.connection.checkedAt > frozenAt);
+});
+
+test("録画の一時停止を見つけ、再開できる。「始める」を押しても一時停止なら再開する", async () => {
+  const { fake, adapter } = setup();
+  adapter.start();
+  await until(() => adapter.state.connection.status === "ok");
+  await adapter.startRecord();
+  await until(() => fake.record.active === true);
+  fake.humanPauseRecord();
+  await until(() => adapter.state.record.paused === true);
+  const result = await adapter.startRecord();
+  assert.match(result.message, /再開/);
+  assert.equal(fake.record.paused, false);
+});
+
+test("OBSが落ちたら、録画の区切りを「切れた時刻」で記録する", async () => {
+  const { fake, adapter } = setup();
+  const observations = [];
+  adapter.on("observation", entry => observations.push(entry));
+  adapter.start();
+  await until(() => adapter.state.connection.status === "ok");
+  await adapter.startRecord();
+  await until(() => observations.some(entry => entry.active === true));
+  fake.crash();
+  await until(() => observations.some(entry => entry.active === false && entry.reason === "disconnect"));
+  assert.equal(adapter.state.record.active, null, "切れている間は分からない");
+});
+
+test("命令が届かなかったカメラ・テロップも、見回りで合わせ直す", async () => {
+  const { fake, adapter } = setup();
+  await connectRunning(adapter, desired("FIGHT", { texts: { EOS_RED_NAME: "A" } }));
+  await until(() => fake.inputs.get("EOS_RED_NAME").settings.text === "A");
+  fake.hang(true);
+  adapter.setDesired(desired("FIGHT", { subVisible: true, texts: { EOS_RED_NAME: "B" } }), "running");
+  await wait(500);
+  fake.hang(false);
+  await until(() => fake.camItems[1].sceneItemEnabled === true && fake.inputs.get("EOS_RED_NAME").settings.text === "B", { timeoutMs: 4000 });
+});
+
+test("つなぎ直しを押したとき、古い接続の失敗で新しい接続を壊さない", async () => {
+  const { fake, adapter } = setup();
+  fake.holdHello = true;
+  const realClass = fake.webSocketClass();
+  let created = 0;
+  adapter.client.WebSocketImpl = class extends realClass {
+    constructor(...args) {
+      super(...args);
+      created += 1;
+    }
+  };
+  adapter.start();
+  await wait(50);
+  fake.holdHello = false;
+  adapter.reconnect();
+  await until(() => adapter.state.connection.status === "ok");
+  const count = created;
+  await wait(900);
+  assert.equal(created, count, "成功した後に、つなぎ直しをくり返さない");
+  assert.equal(adapter.state.connection.status, "ok");
+  assert.equal(adapter.client.identified, true);
+});

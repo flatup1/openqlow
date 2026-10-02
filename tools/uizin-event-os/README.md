@@ -94,7 +94,7 @@ Google Sheets で作り、**ファイル → ダウンロード → CSV** で保
 ## 5. 開発者向け
 
 ```bash
-npm run test:uizin-event-os      # 自動テスト（100本・約2秒）
+npm run test:uizin-event-os      # 自動テスト（依存なし・数秒）
 ```
 
 | 場所 | 中身 |

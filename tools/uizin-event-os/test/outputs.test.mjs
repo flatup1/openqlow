@@ -172,12 +172,19 @@ test("次の一手：録画停止は最優先の知らせ＋1タップで録画�
   assert.ok(action.buttons.length > 0);
 });
 
-test("次の一手：OBSにつながっていない理由ごとに、やさしい言葉で知らせる", () => {
+test("次の一手：OBSにつながっていない理由ごとに、やさしい言葉で知らせる（かんたんモードでは「OBS」と言わない）", () => {
   const event = new MiniEvent().setup();
-  const message = reason => nextAction(ctx(event, { obs: healthyObs({ connection: { status: "error", checkedAt: NOW, reason } }) })).alerts[0].text;
+  const message = (reason, role = "operator") => nextAction(ctx(event, { role, obs: healthyObs({ connection: { status: "error", checkedAt: NOW, reason } }) })).alerts[0].text;
   assert.match(message("auth"), /パスワードが違います/);
   assert.match(message("kicked"), /接続を切られました/);
   assert.match(message("refused"), /OBSとつながっていません/);
+  for (const reason of ["auth", "kicked", "refused", "exiting"]) {
+    const text = message(reason, "easy");
+    assert.doesNotMatch(text, /OBS/, text);
+    assert.match(text, /映像ソフト/);
+  }
+  const manual = nextAction(ctx(event, { role: "easy", obs: healthyObs({ manual: true, program: "WAIT" }) }));
+  assert.ok(manual.alerts.every(alert => !/OBS/.test(alert.text)));
 });
 
 test("次の一手：手動モードは「自動に戻す」ボタン付き。配信のつなぎ直しが長いと強く知らせる", () => {
@@ -254,4 +261,73 @@ test("運営の画面：練習モードでは配信の操作を出さない", ()
   const event = new MiniEvent().setup();
   assert.equal(buildView(ctx(event, { role: "operator", rehearsal: true })).operator.canStream, false);
   assert.equal(buildView(ctx(event, { role: "operator", rehearsal: false })).operator.canStream, true);
+});
+
+test("🛟 安全運転でも、配信しない試合ではカメラを映さない（WAIT のまま）", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("safe_on", {}, { role: "easy" });
+  assert.equal(desiredOutputs(event.state, event.config).programScene, "SAFE", "配信する試合なら SAFE");
+  event.run("next_bout", {}, { role: "easy" });
+  for (const [type, args] of [[null], ["entrance", { corner: "red" }], ["entrance", { corner: "blue" }], ["fight_start"]]) {
+    if (type) event.run(type, args, { role: "easy" });
+    const desired = desiredOutputs(event.state, event.config);
+    assert.equal(desired.programScene, "WAIT", event.state.step);
+    assert.equal(desired.subVisible, false);
+  }
+});
+
+test("手動モードのまま配信しない試合がカメラの場面なら、❌ で知らせ「配信しません」とは言わない", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  const onCamera = nextAction(ctx(event, { obs: healthyObs({ manual: true, program: "FIGHT" }) }));
+  assert.equal(onCamera.alerts[0].level, "error");
+  assert.match(onCamera.alerts[0].text, /配信しない試合なのに/);
+  assert.equal(onCamera.alerts[0].button.cmd, "resume_auto");
+  assert.ok(!onCamera.notices.some(text => text.includes("カメラを映さず")));
+  const onWait = nextAction(ctx(event, { obs: healthyObs({ manual: true, program: "WAIT" }) }));
+  assert.ok(!onWait.alerts.some(alert => /配信しない試合なのに/.test(alert.text)));
+  assert.ok(onWait.notices.some(text => text.includes("カメラを映さず")));
+});
+
+test("録画の一時停止は ❌ で知らせ、再開ボタンを出す。ランプも「録画中」にしない", () => {
+  const event = new MiniEvent().setup();
+  const obs = healthyObs({ record: { active: true, paused: true, checkedAt: NOW } });
+  const action = nextAction(ctx(event, { obs }));
+  assert.equal(action.alerts[0].button.cmd, "record_resume");
+  assert.match(buildView(ctx(event, { obs })).lamps.record.text, /一時停止/);
+});
+
+test("ランプ：OBSにつながっていても、録画の確認が古ければ「未確認」", () => {
+  const event = new MiniEvent().setup();
+  const view = buildView(ctx(event, { obs: healthyObs({ record: { active: true, checkedAt: NOW - 30_000 } }) }));
+  assert.equal(view.lamps.record.status, "unknown");
+  const action = nextAction(ctx(event, { obs: healthyObs({ record: { active: false, checkedAt: NOW - 30_000 } }) }));
+  assert.ok(!action.alerts.some(alert => alert.button?.cmd === "record_start"), "古い情報で「止まっています」とも言わない");
+});
+
+test("練習モード：録画しない設定なら「録画が止まっています」を出さない。配信していれば ❌", () => {
+  const event = new MiniEvent().setup();
+  const quiet = nextAction(ctx(event, { rehearsal: true, obs: healthyObs({ record: { active: false, checkedAt: NOW } }) }));
+  assert.ok(!quiet.alerts.some(alert => alert.button?.cmd === "record_start"));
+  assert.ok(quiet.notices.some(text => text.includes("録画していません")));
+  const live = nextAction(ctx(event, { rehearsal: true, obs: healthyObs({ stream: { active: true, checkedAt: NOW, reconnectingSince: null } }) }));
+  assert.match(live.alerts[0].text, /練習中なのに配信しています/);
+});
+
+test("記録を保存できないときは、最優先で知らせる", () => {
+  const event = new MiniEvent().setup();
+  const action = nextAction(ctx(event, { storageError: "ENOSPC" }));
+  assert.match(action.alerts[0].text, /保存できません/);
+});
+
+test("開始前チェック：配信する日は「音のチェック」も必須。練習モードでは推奨", () => {
+  const event = new MiniEvent();
+  event.run("load_card", { bouts: event.card.bouts, hash: event.card.hash });
+  const silent = healthyObs({ audio: { ok: false, message: "どの入力からも音が来ていません", checkedAt: NOW } });
+  const live = evaluatePreflight({ state: event.state, config: event.config, obs: silent, nowMs: NOW, rehearsal: false });
+  assert.ok(live.blocking.includes("audio"));
+  const rehearsal = evaluatePreflight({ state: event.state, config: event.config, obs: silent, nowMs: NOW, rehearsal: true });
+  assert.ok(!rehearsal.blocking.includes("audio"));
 });

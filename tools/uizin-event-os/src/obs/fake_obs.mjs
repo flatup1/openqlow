@@ -48,6 +48,7 @@ export class FakeObs {
     this.cameras = { MAIN: "alive", SUB: "alive" };
     this.crashed = false;
     this.hung = false;
+    this.holdHello = false;
     this.sockets = new Set();
     this.requestLog = [];
     this.tick = 0;
@@ -93,6 +94,12 @@ export class FakeObs {
     this.broadcast("RecordStateChanged", { outputActive: false, outputState: OUT.STOPPED, outputPath: this.record.path });
   }
 
+  humanPauseRecord() {
+    if (!this.record.active) return;
+    this.record.paused = true;
+    this.broadcast("RecordStateChanged", { outputActive: true, outputState: "OBS_WEBSOCKET_OUTPUT_PAUSED", outputPath: null });
+  }
+
   setStreamReconnecting(on) {
     this.stream.reconnecting = on;
     this.broadcast("StreamStateChanged", { outputActive: true, outputState: on ? OUT.RECONNECTING : OUT.RECONNECTED });
@@ -123,6 +130,8 @@ export class FakeObs {
             return;
           }
           fake.sockets.add(this);
+          // 最初のあいさつを返さない（OBS が固まって、接続の途中で止まる場面の再現）。
+          if (fake.holdHello) return;
           const d = { obsWebSocketVersion: "5.6.2", rpcVersion: 1 };
           if (fake.password) d.authentication = { challenge: this.challenge, salt: this.salt };
           this._deliver({ op: OP.Hello, d });
@@ -253,7 +262,7 @@ export class FakeObs {
       case "GetRecordStatus":
         return {
           outputActive: this.record.active,
-          outputPaused: false,
+          outputPaused: Boolean(this.record.active && this.record.paused),
           outputTimecode: "00:00:00.000",
           outputDuration: this.record.active ? Date.now() - this.record.startedAt : 0,
           outputBytes: 0,
@@ -293,8 +302,13 @@ export class FakeObs {
       }
       case "StartRecord":
         if (this.record.active) throw fail(500, "Record output already active");
-        this.record = { active: true, startedAt: Date.now(), path: `${this.recordDirectory}/fake-${++this.record.fileNo}.mp4`, fileNo: this.record.fileNo };
+        this.record = { active: true, paused: false, startedAt: Date.now(), path: `${this.recordDirectory}/fake-${++this.record.fileNo}.mp4`, fileNo: this.record.fileNo };
         setImmediate(() => this.broadcast("RecordStateChanged", { outputActive: true, outputState: OUT.STARTED, outputPath: null }));
+        return {};
+      case "ResumeRecord":
+        if (!this.record.active || !this.record.paused) throw fail(501, "Record output not paused");
+        this.record.paused = false;
+        setImmediate(() => this.broadcast("RecordStateChanged", { outputActive: true, outputState: "OBS_WEBSOCKET_OUTPUT_RESUMED", outputPath: null }));
         return {};
       case "StopRecord": {
         if (!this.record.active) throw fail(501, "Record output not running");

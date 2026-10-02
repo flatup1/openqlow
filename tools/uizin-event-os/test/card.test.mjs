@@ -73,3 +73,13 @@ test("空のCSVや試合0件は止める", () => {
   assert.equal(parseCard("").ok, false);
   assert.equal(parseCard(`${CSV_HEADER}\n`).ok, false);
 });
+
+test("CSV：セルの途中の引用符は文字のまま。閉じていない引用符は読み込みを止める（後ろの行を消さない）", () => {
+  const ok = parseCard(csv(['1,ヒカル,,OK,ソラ,,OK,,12" Mix,曲B', "2,ミナト,,OK,ハル,,NG,,,"]));
+  assert.equal(ok.ok, true);
+  assert.equal(ok.bouts.length, 2);
+  assert.equal(ok.bouts[0].red.music, '12" Mix');
+  const broken = parseCard(csv(['1,ヒカル,,OK,ソラ,,OK,,"曲A,曲B', "2,ミナト,,OK,ハル,,NG,,,", "3,アオイ,,OK,レン,,OK,,,"]));
+  assert.equal(broken.ok, false);
+  assert.match(broken.errors[0], /引用符/);
+});

@@ -2,7 +2,7 @@
 // 本番（live）と練習（rehearsal）は別ファイル。保存先はリポジトリの外に限る（選手の表示名を含むため）。
 // 仕様: docs/uizin-event-os/ARCHITECTURE.md §3
 
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync, writeFileSync, renameSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync, writeFileSync, renameSync, truncateSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -34,18 +34,20 @@ export class EventLog {
   }
 
   load() {
-    const text = readFileSync(this.file, "utf8");
-    const lines = text.split("\n");
+    const buffer = readFileSync(this.file);
+    // 書き込み途中で落ちると、最後の行が改行なしで途中まで残る。そのかけらは切り取ってから読む
+    // （残したまま追記すると、次の行とくっついて記録が壊れるため）。
+    const end = buffer.lastIndexOf(0x0a) + 1;
+    if (end < buffer.length) {
+      if (buffer.subarray(end).toString("utf8").trim()) this.skipped += 1;
+      truncateSync(this.file, end);
+    }
+    const lines = buffer.subarray(0, end).toString("utf8").split("\n");
     for (const [index, line] of lines.entries()) {
       if (!line.trim()) continue;
       try {
         this.events.push(JSON.parse(line));
       } catch {
-        // 書き込み途中で落ちた最後の1行だけは読み飛ばす。それ以外の壊れは止める。
-        if (index >= lines.length - 2) {
-          this.skipped += 1;
-          continue;
-        }
         throw new Error(`操作記録の ${index + 1} 行目が読めません（${this.file}）`);
       }
     }
@@ -63,7 +65,10 @@ export class EventLog {
     try {
       for (const entry of entries) {
         const event = { seq: this.nextSeq(), ...entry };
-        writeSync(fd, `${JSON.stringify(event)}\n`);
+        const bytes = Buffer.from(`${JSON.stringify(event)}\n`, "utf8");
+        // 一度で全部書けないこともあるので、書き切るまで続ける。
+        let offset = 0;
+        while (offset < bytes.length) offset += writeSync(fd, bytes, offset, bytes.length - offset);
         this.events.push(event);
         written.push(event);
       }

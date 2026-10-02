@@ -60,9 +60,9 @@
       <button type="button" data-cmd="record_start">● 録画を始める</button>
       <button type="button" class="danger" data-cmd="record_stop" data-hold="録画を止めます。大会中は止めないでください。よいですか？">■ 録画を止める（長押し）</button>
     </div>
-    <div class="row" id="stream-row">
-      <button type="button" class="danger" data-cmd="stream_start" data-hold="YouTubeに映ります。公開範囲は確認しましたか？">▶ 配信を始める（長押し）</button>
-      <button type="button" class="danger" data-cmd="stream_restart" data-hold="配信を止めて、すぐに始め直します。よいですか？">🔁 配信をやり直す（長押し）</button>
+    <div class="row">
+      <button type="button" class="danger" id="stream-start" data-cmd="stream_start" data-hold="YouTubeに映ります。公開範囲は確認しましたか？">▶ 配信を始める（長押し）</button>
+      <button type="button" class="danger" id="stream-restart" data-cmd="stream_restart" data-hold="配信を止めて、すぐに始め直します。よいですか？">🔁 配信をやり直す（長押し）</button>
       <button type="button" class="danger" data-cmd="stream_stop" data-hold="配信が終わります。元に戻せません。よいですか？">■ 配信を終える（長押し）</button>
     </div>
     <div class="row">
@@ -72,7 +72,7 @@
     <h3>開始前チェック</h3>
     <ul id="preflight" class="checklist"></ul>
     <div class="row">
-      <button type="button" data-cmd="consent_ack">👤 配信しない試合を確認した</button>
+      <button type="button" id="consent-ack">👤 配信しない試合を確認した</button>
       <button type="button" id="force-start" class="danger" data-cmd="start_event" data-hold="❌ が残ったまま大会を始めます（管理モードだけ）。よいですか？">⚠️ それでも始める（管理）</button>
     </div>
 

@@ -13,14 +13,20 @@ const PERSONAL_DATA_HEADERS = /本名|氏名|年齢|学年|学校|生年月日|�
 export const NAME_WARN_LENGTH = 12;
 
 // RFC 4180 に沿ったCSVの読み取り（ダブルクォート・改行入りセル・BOM・CRLF）。
+// 引用符はセルの先頭にあるときだけ囲みとして扱う（途中の " は文字のまま）。閉じていない囲みはエラーにする
+// （黙って後ろの行を飲み込み、試合が消えるのを防ぐ）。
 export function parseCsv(text) {
   const source = String(text ?? "").replace(/^﻿/, "");
   const rows = [];
   let row = [];
   let cell = "";
   let quoted = false;
+  let cellStarted = false;
+  let line = 1;
+  let quoteLine = 0;
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index];
+    if (char === "\n") line += 1;
     if (quoted) {
       if (char === '"') {
         if (source[index + 1] === '"') {
@@ -34,21 +40,30 @@ export function parseCsv(text) {
       }
       continue;
     }
-    if (char === '"') {
+    if (char === '"' && !cellStarted) {
       quoted = true;
+      cellStarted = true;
+      quoteLine = line;
     } else if (char === ",") {
       row.push(cell);
       cell = "";
+      cellStarted = false;
     } else if (char === "\n" || char === "\r") {
-      if (char === "\r" && source[index + 1] === "\n") index += 1;
+      if (char === "\r" && source[index + 1] === "\n") {
+        index += 1;
+        line += 1;
+      }
       row.push(cell);
       rows.push(row);
       row = [];
       cell = "";
+      cellStarted = false;
     } else {
       cell += char;
+      cellStarted = true;
     }
   }
+  if (quoted) throw new Error(`${quoteLine}行目で始まった引用符（"）が閉じていません`);
   if (cell !== "" || row.length > 0) {
     row.push(cell);
     rows.push(row);
@@ -72,7 +87,12 @@ function clean(value) {
 
 // 戻り値: { ok: true, bouts, hash, warnings } または { ok: false, errors }
 export function parseCard(text) {
-  const rows = parseCsv(text);
+  let rows;
+  try {
+    rows = parseCsv(text);
+  } catch (error) {
+    return { ok: false, errors: [`CSVが読めません：${error.message}`] };
+  }
   if (rows.length === 0) return { ok: false, errors: ["CSVが空です"] };
   const header = rows[0].map(clean);
   const errors = [];

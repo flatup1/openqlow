@@ -14,6 +14,8 @@ import { sceneNames, cameraNames, textNames } from "../core/desired.mjs";
 const OUT = {
   STARTED: "OBS_WEBSOCKET_OUTPUT_STARTED",
   STOPPED: "OBS_WEBSOCKET_OUTPUT_STOPPED",
+  PAUSED: "OBS_WEBSOCKET_OUTPUT_PAUSED",
+  RESUMED: "OBS_WEBSOCKET_OUTPUT_RESUMED",
   RECONNECTING: "OBS_WEBSOCKET_OUTPUT_RECONNECTING",
   RECONNECTED: "OBS_WEBSOCKET_OUTPUT_RECONNECTED",
 };
@@ -70,8 +72,8 @@ export class ObsAdapter extends EventEmitter {
       program: null,
       sceneMissing: null,
       cameras: { main: initialTrack(), sub: initialTrack() },
-      record: { active: null, checkedAt: null },
-      stream: { active: null, checkedAt: null, reconnectingSince: null, wanted: false },
+      record: { active: null, paused: false, checkedAt: null, startedAt: null },
+      stream: { active: null, checkedAt: null, reconnectingSince: null, wanted: false, startedAt: null },
       recordDirectory: null,
       disk: null,
       recFormat: null,
@@ -98,6 +100,9 @@ export class ObsAdapter extends EventEmitter {
     this.dirty = false;
     this.simulate = { mainDead: false, subDead: false };
     this.meters = null;
+    this.connectId = 0;
+    this.syncing = false;
+    this.lastAnswerAt = null;
   }
 
   // ---- 起動と停止 ----
@@ -129,14 +134,22 @@ export class ObsAdapter extends EventEmitter {
       this.scheduleReconnect(wait);
       return;
     }
+    // 古い接続の試みが後から失敗しても、新しい接続を壊さない。
+    const id = ++this.connectId;
     try {
       await this.client.connect(this.url, this.password, BASE_SUBSCRIPTIONS);
     } catch (error) {
-      this.onConnectFailure(error);
+      if (id === this.connectId) this.onConnectFailure(error);
       return;
     }
+    if (id !== this.connectId) return;
+    clearTimeout(this.reconnectTimer);
     this.attempt = 0;
-    await this.onIdentified();
+    try {
+      await this.onIdentified();
+    } catch (error) {
+      this.state.lastError = error.message;
+    }
   }
 
   scheduleReconnect(delayMs) {
@@ -144,7 +157,7 @@ export class ObsAdapter extends EventEmitter {
     clearTimeout(this.reconnectTimer);
     const delay = delayMs ?? Math.min(this.timings.reconnectMaxMs, this.timings.reconnectBaseMs * 2 ** this.attempt);
     this.attempt += 1;
-    this.reconnectTimer = setTimeout(() => this.connectNow(), delay);
+    this.reconnectTimer = setTimeout(() => this.connectNow().catch(error => this.noteError(error)), delay);
   }
 
   setConnection(status, reason, message) {
@@ -167,9 +180,21 @@ export class ObsAdapter extends EventEmitter {
     this.scheduleReconnect();
   }
 
+  // 接続が切れたら、録画・配信の状態は「未確認」にする。録画中だったなら、切れた時刻で区切りを記録する
+  // （OBS が落ちたなら録画ファイルはそこで終わっている。続いていたなら、つながり直した時に開き直す）。
+  markDisconnected() {
+    const at = new Date(this.now()).toISOString();
+    for (const [key, type] of [["record", "OBS_RECORD"], ["stream", "OBS_STREAM"]]) {
+      const output = this.state[key];
+      if (output.active === true) this.safeEmit("observation", { type, active: false, path: null, at, reason: "disconnect" });
+      this.state[key] = { ...output, active: null, paused: false, checkedAt: null, reconnectingSince: null };
+    }
+  }
+
   onClose(info) {
     if (!info.wasIdentified) return;
     this.stopPolling();
+    this.markDisconnected();
     if (info.code === CLOSE.SESSION_INVALIDATED) {
       this.halted = true;
       this.setConnection("error", "kicked", "OBS側から接続を切られました");
@@ -188,27 +213,45 @@ export class ObsAdapter extends EventEmitter {
     this.connectedOnce = true;
     this.applied = { texts: {}, mute: {}, subVisible: null };
     this.pendingScenes.clear();
+    this.lastAnswerAt = this.now();
     this.setConnection("ok", null, "");
-    await this.refreshAll();
-    // Event OS を大会の途中で起動し直したとき、OBS が予定と違う場面なら、人が触った可能性がある。
-    // 勝手に場面を変えず、手動モードで知らせる（ARCHITECTURE.md §5.2・AT-P6 C6）。
-    if (first && this.eventPhase === "running" && this.desired && this.state.program && this.state.program !== this.desired.programScene) {
-      this.state.manual = true;
-      this.emit("manual", { scene: this.state.program, reason: "start_mismatch" });
-      await this.reconcile(true);
-    } else {
-      await this.reconcile(true);
+    // 様子を読み終わるまでは、姿を合わせない（読んでいる途中の合わせ込みで、人の操作を上書きしないため）。
+    this.syncing = true;
+    try {
+      await this.refreshAll();
+    } finally {
+      this.syncing = false;
     }
+    // Event OS を大会の途中で起動し直したとき、OBS が予定と違う場面・カメラなら、人が触った可能性がある。
+    // 勝手に変えず、手動モードで知らせる（ARCHITECTURE.md §5.2・AT-P6 C6）。
+    const d = this.desired;
+    const sceneDiffers = Boolean(d && this.state.program && this.state.program !== d.programScene);
+    const subDiffers = Boolean(d && this.applied.subVisible != null && this.applied.subVisible !== d.subVisible);
+    if (first && this.eventPhase === "running" && (sceneDiffers || subDiffers)) {
+      this.state.manual = true;
+      this.safeEmit("manual", { scene: this.state.program, reason: "start_mismatch" });
+    }
+    await this.reconcile(true);
     this.startPolling();
     this.emitChange();
   }
 
   // ---- 命令（許可リストと中身の確認を通してから送る） ----
 
+  // OBS から返事が来たら（成功でも失敗の返事でも）、その時刻を「確かめた時刻」として覚える。
   req(type, data) {
     const problem = guardRequestData(type, data, this.guardCtx);
     if (problem) return Promise.reject(new ObsRequestError(problem, "guard"));
-    return this.client.request(type, data);
+    return this.client.request(type, data).then(
+      result => {
+        this.lastAnswerAt = this.now();
+        return result;
+      },
+      error => {
+        if (typeof error.code === "number") this.lastAnswerAt = this.now();
+        throw error;
+      },
+    );
   }
 
   async tryReq(type, data) {
@@ -223,6 +266,7 @@ export class ObsAdapter extends EventEmitter {
   // ---- 様子を読む ----
 
   async refreshAll() {
+    await this.refreshOutputs();
     const version = await this.tryReq("GetVersion");
     if (version) {
       this.state.version = { obsVersion: version.obsVersion, obsWebSocketVersion: version.obsWebSocketVersion };
@@ -232,7 +276,6 @@ export class ObsAdapter extends EventEmitter {
     await this.refreshInputs();
     await this.refreshCamItems();
     await this.refreshRecordSettings();
-    await this.refreshOutputs();
     await this.refreshDisk();
   }
 
@@ -277,7 +320,10 @@ export class ObsAdapter extends EventEmitter {
 
   async refreshOutputs() {
     const record = await this.tryReq("GetRecordStatus");
-    if (record) this.updateRecord(Boolean(record.outputActive), { durationMs: record.outputDuration });
+    if (record) {
+      this.updateRecord(Boolean(record.outputActive), { durationMs: record.outputDuration });
+      this.state.record.paused = Boolean(record.outputActive && record.outputPaused);
+    }
     const stream = await this.tryReq("GetStreamStatus");
     if (stream) {
       this.updateStream(Boolean(stream.outputActive), { durationMs: stream.outputDuration });
@@ -310,10 +356,12 @@ export class ObsAdapter extends EventEmitter {
 
   updateRecord(active, { durationMs, path } = {}) {
     const previous = this.state.record.active;
-    this.state.record = { active, checkedAt: this.now() };
+    this.state.record = { ...this.state.record, active, checkedAt: this.now() };
+    if (!active) this.state.record.paused = false;
     if (previous === active || (previous === null && !active)) return;
-    const at = active && durationMs > 0 ? this.now() - durationMs : this.now();
-    this.emit("observation", { type: "OBS_RECORD", active, path: path ?? null, at: new Date(at).toISOString() });
+    const at = new Date(active && durationMs > 0 ? this.now() - durationMs : this.now()).toISOString();
+    this.state.record.startedAt = active ? at : null;
+    this.safeEmit("observation", { type: "OBS_RECORD", active, path: path ?? null, at });
   }
 
   updateStream(active, { durationMs } = {}) {
@@ -321,15 +369,16 @@ export class ObsAdapter extends EventEmitter {
     this.state.stream = { ...this.state.stream, active, checkedAt: this.now() };
     if (!active) this.state.stream.reconnectingSince = null;
     if (previous === active || (previous === null && !active)) return;
-    const at = active && durationMs > 0 ? this.now() - durationMs : this.now();
-    this.emit("observation", { type: "OBS_STREAM", active, at: new Date(at).toISOString() });
+    const at = new Date(active && durationMs > 0 ? this.now() - durationMs : this.now()).toISOString();
+    this.state.stream.startedAt = active ? at : null;
+    this.safeEmit("observation", { type: "OBS_STREAM", active, at });
   }
 
   // ---- 定期の見回り ----
 
   startPolling() {
     this.stopPolling();
-    this.pollTimer = setInterval(() => this.tick(), this.timings.pollMs);
+    this.pollTimer = setInterval(() => this.tick().catch(error => this.noteError(error)), this.timings.pollMs);
   }
 
   stopPolling() {
@@ -350,15 +399,33 @@ export class ObsAdapter extends EventEmitter {
         await this.refreshInputs();
         await this.refreshCamItems();
       }
-      this.state.connection.checkedAt = this.now();
-      // 命令が届かなかった場合に備え、手動モードでなければ姿を合わせ直す。
-      if (!this.state.manual && this.desired && this.state.program !== this.desired.programScene && !this.pendingScenes.has(this.desired.programScene)) {
-        await this.reconcile(false);
+      // 返事があったときだけ「確かめた」とする（OBS が固まっていたら、ランプは自然に「未確認」になる）。
+      if (this.lastAnswerAt != null && this.state.connection.status === "ok") {
+        this.state.connection.checkedAt = Math.max(this.state.connection.checkedAt ?? 0, this.lastAnswerAt);
       }
+      // 命令が届かなかった場合に備え、ずれていれば合わせ直す（違うところだけ送る）。
+      if (this.drifted()) await this.reconcile(false);
       this.emitChange();
     } finally {
       this.polling = false;
     }
+  }
+
+  drifted() {
+    const d = this.desired;
+    if (!d) return false;
+    if (!this.state.manual) {
+      if (this.state.program !== d.programScene && !this.pendingScenes.has(d.programScene) && !this.state.sceneMissing) return true;
+      if (this.state.subItemId != null && this.applied.subVisible !== d.subVisible) return true;
+    }
+    const inputs = Array.isArray(this.state.inputs) ? this.state.inputs : [];
+    for (const [name, value] of Object.entries(d.texts ?? {})) {
+      if (inputs.includes(name) && this.applied.texts[name] !== value) return true;
+    }
+    for (const [name, muted] of Object.entries(d.mute ?? {})) {
+      if (inputs.includes(name) && this.applied.mute[name] !== muted) return true;
+    }
+    return false;
   }
 
   async checkCameras() {
@@ -397,11 +464,12 @@ export class ObsAdapter extends EventEmitter {
   setDesired(desired, eventPhase) {
     this.desired = desired;
     this.eventPhase = eventPhase ?? this.eventPhase;
-    this.reconcile(false);
+    this.reconcile(false).catch(error => this.noteError(error));
   }
 
   async reconcile(force) {
     if (!this.client.identified || !this.desired) return;
+    if (this.syncing) return;
     if (this.reconciling) {
       this.dirty = true;
       return;
@@ -434,7 +502,7 @@ export class ObsAdapter extends EventEmitter {
       this.emitChange();
       if (this.dirty) {
         this.dirty = false;
-        setImmediate(() => this.reconcile(false));
+        setImmediate(() => this.reconcile(false).catch(error => this.noteError(error)));
       }
     }
   }
@@ -483,7 +551,7 @@ export class ObsAdapter extends EventEmitter {
           this.pendingScenes.delete(name);
         } else if (this.desired && name !== this.desired.programScene && !this.state.manual) {
           this.state.manual = true;
-          this.emit("manual", { scene: name, reason: "human" });
+          this.safeEmit("manual", { scene: name, reason: "human" });
         }
         break;
       }
@@ -496,18 +564,20 @@ export class ObsAdapter extends EventEmitter {
           this.pendingSub = null;
         } else if (this.desired && Boolean(data.sceneItemEnabled) !== this.desired.subVisible && !this.state.manual) {
           this.state.manual = true;
-          this.emit("manual", { scene: this.state.program, reason: "human_camera" });
+          this.safeEmit("manual", { scene: this.state.program, reason: "human_camera" });
         }
         break;
       }
       case "RecordStateChanged":
         if (data.outputState === OUT.STARTED) this.updateRecord(true, { durationMs: 0 });
         if (data.outputState === OUT.STOPPED) this.updateRecord(false, { path: data.outputPath ?? null });
+        if (data.outputState === OUT.PAUSED) this.state.record.paused = true;
+        if (data.outputState === OUT.RESUMED) this.state.record.paused = false;
         break;
       case "RecordFileChanged": {
         const at = new Date(now).toISOString();
-        this.emit("observation", { type: "OBS_RECORD", active: false, path: null, at });
-        this.emit("observation", { type: "OBS_RECORD", active: true, path: data.newOutputPath ?? null, at });
+        this.safeEmit("observation", { type: "OBS_RECORD", active: false, path: null, at });
+        this.safeEmit("observation", { type: "OBS_RECORD", active: true, path: data.newOutputPath ?? null, at });
         break;
       }
       case "StreamStateChanged":
@@ -518,6 +588,7 @@ export class ObsAdapter extends EventEmitter {
         break;
       case "ExitStarted":
         this.state.connection = { status: "error", reason: "exiting", message: "OBSが終了しています", checkedAt: now };
+        this.markDisconnected();
         break;
       case "InputVolumeMeters":
         if (this.meters) {
@@ -537,12 +608,30 @@ export class ObsAdapter extends EventEmitter {
   // ---- 人が押す操作（運営モード） ----
 
   async startRecord() {
-    if (this.state.record.active) return { ok: true, message: "すでに録画しています" };
+    // 手元の記憶ではなく、OBS に今の状態を聞いてから始める。
+    const status = await this.tryReq("GetRecordStatus");
+    if (status) {
+      this.updateRecord(Boolean(status.outputActive), { durationMs: status.outputDuration });
+      this.state.record.paused = Boolean(status.outputActive && status.outputPaused);
+      if (status.outputActive && status.outputPaused) return this.resumeRecord();
+      if (status.outputActive) return { ok: true, message: "すでに録画しています" };
+    }
     try {
       await this.req("StartRecord");
       return { ok: true, message: "録画を始めました" };
     } catch (error) {
       return { ok: false, message: `録画を始められません：${error.message}` };
+    }
+  }
+
+  async resumeRecord() {
+    try {
+      await this.req("ResumeRecord");
+      this.state.record.paused = false;
+      this.emitChange();
+      return { ok: true, message: "録画を再開しました" };
+    } catch (error) {
+      return { ok: false, message: `録画を再開できません：${error.message}` };
     }
   }
 
@@ -649,6 +738,7 @@ export class ObsAdapter extends EventEmitter {
     this.blockedUntil = this.now() + seconds * 1000;
     this.stopPolling();
     this.client.close();
+    this.markDisconnected();
     this.setConnection("error", "lost", "練習：OBSとの接続を切っています");
     this.scheduleReconnect(seconds * 1000);
   }
@@ -684,7 +774,20 @@ export class ObsAdapter extends EventEmitter {
     };
   }
 
+  // 受け取る側の失敗で、OBS とのやり取りや見回りを止めない。
+  safeEmit(name, payload) {
+    try {
+      this.emit(name, payload);
+    } catch (error) {
+      this.noteError(error);
+    }
+  }
+
+  noteError(error) {
+    this.state.lastError = error?.message ?? String(error);
+  }
+
   emitChange() {
-    this.emit("change");
+    this.safeEmit("change");
   }
 }

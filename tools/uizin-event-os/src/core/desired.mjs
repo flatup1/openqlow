@@ -28,11 +28,12 @@ export function textNames(config) {
 }
 
 function sceneKeyFor(state, bout) {
+  // 配信しない試合は、その試合の間ずっとカメラを映さない（WAIT＝静止画）。
+  // 🛟 安全運転より先に判定する（SAFE はメインカメラを直接映すため）。
+  if (state.phase === "running" && state.step !== "break" && bout && bout.broadcast !== "OK") return "WAIT";
   if (state.safe) return "SAFE";
   if (state.phase !== "running") return "WAIT";
   if (state.step === "break") return "WAIT";
-  // 配信しない試合は、その試合の間ずっとカメラを映さない（WAIT＝静止画）。
-  if (bout && bout.broadcast !== "OK") return "WAIT";
   return sceneForStep(state.step);
 }
 

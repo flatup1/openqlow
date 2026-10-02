@@ -47,8 +47,6 @@ if (existsSync(configPath)) {
   }
 } else if (demo) {
   config = JSON.parse(readFileSync(join(TOOL_DIR, "config.example.json"), "utf8"));
-  config.eventName = `${config.eventName}（体験）`;
-  config.dataDir = "~/UIZIN-EventOS/demo";
 } else {
   fail(
     [
@@ -59,6 +57,12 @@ if (existsSync(configPath)) {
       "OBSなしで試すだけなら --demo を付けて起動してください。",
     ].join("\n"),
   );
+}
+
+// 体験モードは、本番の設定ファイルがあっても必ず別の保存先を使う（本番の記録に混ぜない）。
+if (demo) {
+  config.eventName = `${config.eventName ?? "UIZIN"}（体験）`;
+  config.dataDir = "~/UIZIN-EventOS/demo";
 }
 
 // secrets.env（KEY=VALUE の行）を読む。すでにある環境変数は上書きしない。
@@ -136,6 +140,10 @@ server.listen(port, host, () => {
 });
 
 server.on("error", error => fail(`画面を開けませんでした（ポート ${port}）：${error.message}`));
+
+// 想定外の失敗でも、Event OS は止めない（OBS の映像と録画は Event OS が止まっても続くが、画面は使えなくなるため）。
+process.on("unhandledRejection", error => console.error(`⚠️ 想定外のエラー（動作は続けます）：${error?.message ?? error}`));
+process.on("uncaughtException", error => console.error(`⚠️ 想定外のエラー（動作は続けます）：${error?.message ?? error}`));
 
 const shutdown = () => {
   adapter.stop();

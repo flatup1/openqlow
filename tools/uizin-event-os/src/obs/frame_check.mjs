@@ -64,7 +64,8 @@ export function nextTrack(track, sample, nowMs, options = DEFAULTS) {
     t.frame = null;
     t.unchangedSince = null;
     if (t.failCount >= options.deadSamples) return { ...t, status: "error", message: "映像が取れません" };
-    return { ...t, status: track.status === "ok" ? "ok" : "unknown", message: "確認中" };
+    // 1回目の失敗では「確かめた時刻」を進めない（古くなれば自然に「未確認」になる）。
+    return { ...t, checkedAt: track.checkedAt, status: track.status === "ok" ? "ok" : "unknown", message: "確認中" };
   }
   let frame;
   try {

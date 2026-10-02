@@ -19,6 +19,7 @@ import { EventLog, logFileFor, writeFileAtomic } from "./store.mjs";
 // エンジン以外の操作と、必要なモード・確認の有無。
 const ADAPTER_COMMANDS = {
   record_start: { role: "easy", confirm: false },
+  record_resume: { role: "easy", confirm: false },
   resume_auto: { role: "easy", confirm: false },
   record_stop: { role: "operator", confirm: true },
   stream_start: { role: "operator", confirm: true, live: true },
@@ -43,6 +44,7 @@ export class EventOsApp extends EventEmitter {
     this.power = null;
     this.broadcastTimer = null;
     this.mode = "live";
+    this.storageError = null;
   }
 
   init() {
@@ -58,8 +60,8 @@ export class EventOsApp extends EventEmitter {
     }
     this.openLog(this.mode);
     this.adapter.on("change", () => this.onAdapterChange());
-    this.adapter.on("observation", observation => this.record([{ ...observation, role: "system", by: "obs" }]));
-    this.adapter.on("manual", info => this.record([{ type: "OBS_MANUAL", scene: info.scene, reason: info.reason, role: "system", by: "obs", at: this.iso() }]));
+    this.adapter.on("observation", observation => this.recordQuietly([{ ...observation, role: "system", by: "obs" }]));
+    this.adapter.on("manual", info => this.recordQuietly([{ type: "OBS_MANUAL", scene: info.scene, reason: info.reason, role: "system", by: "obs", at: this.iso() }]));
     return this;
   }
 
@@ -78,9 +80,27 @@ export class EventOsApp extends EventEmitter {
   }
 
   record(entries) {
-    const written = this.log.append(entries.map(entry => ({ at: this.iso(), ...entry })));
+    let written;
+    try {
+      written = this.log.append(entries.map(entry => ({ at: this.iso(), ...entry })));
+      this.storageError = null;
+    } catch (error) {
+      this.storageError = error.message;
+      this.scheduleBroadcast();
+      throw error;
+    }
     this.recompute();
     return written;
+  }
+
+  // OBS の知らせや自動の切り替えから記録するとき。保存に失敗しても、Event OS 自体は止めない
+  // （画面に ❌ を出し続ける）。
+  recordQuietly(entries) {
+    try {
+      return this.record(entries);
+    } catch {
+      return [];
+    }
   }
 
   recompute() {
@@ -108,6 +128,7 @@ export class EventOsApp extends EventEmitter {
       nowMs: this.now(),
       role,
       rehearsal: this.rehearsal,
+      storageError: this.storageError,
       findEventType: seq => this.log.find(seq)?.type,
       extras: {
         ...this.extras,
@@ -143,9 +164,9 @@ export class EventOsApp extends EventEmitter {
       const main = lamp(obs.cameras.main, nowMs).status;
       const sub = lamp(obs.cameras.sub, nowMs).status;
       if (state.camera === "sub" && sub === "error") {
-        this.record([{ type: "CAMERA", to: "main", auto: true, reason: "サブが映らないのでメインに戻しました", role: "system", by: "eventos" }]);
+        this.recordQuietly([{ type: "CAMERA", to: "main", auto: true, reason: "サブが映らないのでメインに戻しました", role: "system", by: "eventos" }]);
       } else if (state.camera === "main" && main === "error" && sub === "ok") {
-        this.record([{ type: "CAMERA", to: "sub", auto: true, reason: "メインが映らないのでサブにしました", role: "system", by: "eventos" }]);
+        this.recordQuietly([{ type: "CAMERA", to: "sub", auto: true, reason: "メインが映らないのでサブにしました", role: "system", by: "eventos" }]);
       }
     }
     this.scheduleBroadcast();
@@ -166,10 +187,15 @@ export class EventOsApp extends EventEmitter {
     if (rule.live && this.rehearsal) return { ok: false, message: "練習モードでは配信の操作はできません" };
     if (rule.rehearsal && !this.rehearsal) return { ok: false, message: "わざと壊す練習は、練習モードのときだけ使えます" };
 
-    const audit = extra => this.record([{ type: "OPERATOR_ACTION", action: cmd.type, role, by: device, ...extra }]);
+    const audit = extra => this.recordQuietly([{ type: "OPERATOR_ACTION", action: cmd.type, role, by: device, ...extra }]);
     switch (cmd.type) {
       case "record_start": {
         const result = await this.adapter.startRecord();
+        audit({ ok: result.ok });
+        return result;
+      }
+      case "record_resume": {
+        const result = await this.adapter.resumeRecord();
         audit({ ok: result.ok });
         return result;
       }
@@ -202,12 +228,8 @@ export class EventOsApp extends EventEmitter {
       case "obs_reconnect":
         this.adapter.reconnect();
         return { ok: true, message: "OBSにつなぎ直しています" };
-      case "set_mode": {
-        const mode = cmd.args?.mode === "rehearsal" ? "rehearsal" : "live";
-        writeFileAtomic(join(this.dataDir, "mode.json"), JSON.stringify({ mode }));
-        this.openLog(mode);
-        return { ok: true, message: mode === "rehearsal" ? "練習モードにしました（配信されません）" : "本番モードにしました" };
-      }
+      case "set_mode":
+        return this.setMode(cmd.args?.mode === "rehearsal" ? "rehearsal" : "live");
       case "chaos":
         return this.chaos(cmd.args ?? {});
       case "export":
@@ -215,6 +237,25 @@ export class EventOsApp extends EventEmitter {
       default:
         return { ok: false, message: "知らない操作です" };
     }
+  }
+
+  // 本番と練習の切り替え。配信中（または配信しているか分からない）ときは練習にしない。
+  // 切り替えたら、今の録画・配信の状態を新しい記録にも書いておく（書き出しで録画が消えないように）。
+  setMode(mode) {
+    const obs = this.adapter.snapshot();
+    if (mode === "rehearsal" && obs.stream.active !== false) {
+      return {
+        ok: false,
+        message: obs.stream.active ? "配信中です。先に「配信を終える」を押してから練習モードにしてください" : "配信しているか確かめられません。OBSにつながってから切り替えてください",
+      };
+    }
+    writeFileAtomic(join(this.dataDir, "mode.json"), JSON.stringify({ mode }));
+    this.openLog(mode);
+    const carry = [];
+    if (obs.record.active === true) carry.push({ type: "OBS_RECORD", active: true, path: null, at: obs.record.startedAt ?? this.iso(), role: "system", by: "obs" });
+    if (obs.stream.active === true) carry.push({ type: "OBS_STREAM", active: true, at: obs.stream.startedAt ?? this.iso(), role: "system", by: "obs" });
+    if (carry.length > 0) this.recordQuietly(carry);
+    return { ok: true, message: mode === "rehearsal" ? "練習モードにしました（配信の操作はできません）" : "本番モードにしました" };
   }
 
   handleEngine(cmd, role, device) {
@@ -249,19 +290,19 @@ export class EventOsApp extends EventEmitter {
   // 記録した操作に続けて、OBS へ行う「おまけ」の操作（失敗しても進行は止めない）。
   afterEngine(written) {
     for (const event of written) {
-      if (event.type === "START_EVENT" && (!this.rehearsal || this.config?.rehearsal?.record === true)) {
-        this.adapter.startRecord().then(result => {
-          if (!result.ok) this.scheduleBroadcast();
-        });
+      const recordAllowed = !this.rehearsal || this.config?.rehearsal?.record === true;
+      if (event.type === "START_EVENT" && recordAllowed) {
+        this.adapter.startRecord().then(() => this.scheduleBroadcast(), () => this.scheduleBroadcast());
       }
       if (event.type === "FIGHT_START") {
         const bout = currentBout(this.state);
         if (bout && bout.broadcast === "OK") this.adapter.chapter(`第${bout.no}試合`);
       }
       if (event.type === "SAFE" && event.on) {
-        // 🛟 は「考えずに押すボタン」。手動モードも解いて SAFE に切り替え、録画が止まっていれば始める。
-        this.adapter.resumeAuto();
-        if (this.adapter.snapshot().record.active === false) this.adapter.startRecord();
+        // 🛟 は「考えずに押すボタン」。手動モードも解いて SAFE に切り替え、録画が止まっていれば始める
+        // （練習で録画しない設定なら始めない）。配信には触らない。
+        this.adapter.resumeAuto().catch(() => {});
+        if (recordAllowed) this.adapter.startRecord().catch(() => {});
       }
     }
   }
