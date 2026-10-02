@@ -102,7 +102,14 @@ test('一般公開フォームはCloudflare APIへ個人情報を送らない', 
 
 test('Google受付は主催者アカウント内へSheetと写真フォルダを作り重複を防ぐ', () => {
   const source = readFileSync(new URL('../public/templates/Tournament_OS_Google受付.gs', import.meta.url), 'utf8');
-  for (const required of ['Session.getEffectiveUser()', 'SpreadsheetApp.create', 'DriveApp.createFolder', 'LockService.getScriptLock', 'リクエストID', 'OS取込用（連絡先なし）']) assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  for (const required of ['Session.getEffectiveUser()', 'SETTINGS.expectedOwner', 'SpreadsheetApp.create', 'DriveApp.createFolder', 'LockService.getScriptLock', 'リクエストID', 'OS取込用（連絡先なし）']) assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('Google初回設定は専門用語を一度に見せず、5段階で1つずつ案内する', () => {
+  const source = readFileSync(new URL('../app/private/google-setup/page.tsx', import.meta.url), 'utf8');
+  for (const text of ['主催者本人のGoogleを確認', 'プログラムをコピー', 'Googleの白い画面を開く', '実行完了', '受付用URLを作る', '最後に1回だけテストする', '選手へ渡すURLをコピー']) assert.match(source, new RegExp(text));
+  assert.match(source, /testChecked/);
+  assert.match(source, /SETTINGS\.expectedOwner|expectedOwner/);
 });
 
 test('限定公開ビルドは一般公開フォームだけを追加し、旧公開画面は混ぜない', () => {

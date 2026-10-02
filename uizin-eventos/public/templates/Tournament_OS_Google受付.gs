@@ -7,12 +7,13 @@
  * 4. 実行するユーザー＝自分、アクセスできるユーザー＝全員
  * 5. ウェブアプリURLをTournament OSへ貼る
  */
-const SETTINGS = { eventId: 'my-tournament', tournamentName: '大会名をここに入力' };
+const SETTINGS = { eventId: 'my-tournament', tournamentName: '大会名をここに入力', expectedOwner: '主催者のGoogleメールアドレス' };
 const PRIVATE_HEADERS = ['受付番号','申込日時','大会ID','所属ジム','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','連絡先氏名','連絡先電話番号','連絡先メールアドレス','同意','リクエストID'];
 const OS_HEADERS = ['管理番号','ジム名','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL'];
 
 function setupTournament() {
   const owner = Session.getEffectiveUser().getEmail();
+  if (!owner || owner.toLowerCase() !== SETTINGS.expectedOwner.toLowerCase()) throw new Error('Googleアカウントが違います。右上の丸い写真から主催者本人のアカウントへ切り替えてください。');
   const book = SpreadsheetApp.create('Tournament OS 申込原本 - ' + SETTINGS.tournamentName);
   const privateSheet = book.getSheets()[0];
   privateSheet.setName('申込原本（個人情報あり）');
