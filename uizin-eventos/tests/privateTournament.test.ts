@@ -44,3 +44,12 @@ test('完全ローカル画面には外部送信APIがない', () => {
     for (const pattern of forbidden) assert.equal(pattern.test(source), false, file + ' contains ' + pattern);
   }
 });
+
+test('他ジム向け入力シートを迷わず保存して、そのままExcelで読み込める', () => {
+  const source = readFileSync(new URL('../app/private/page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /選手入力シートを保存する/);
+  assert.match(source, /返ってきたExcelをそのまま選べます/);
+  assert.match(source, /\.xlsx,\.csv/);
+  assert.match(source, /電話番号・メール・住所・生年月日・保護者名は入れません/);
+  assert.equal(readFileSync(new URL('../public/templates/Tournament_OS_選手入力テンプレート.xlsx', import.meta.url)).length > 5_000, true);
+});

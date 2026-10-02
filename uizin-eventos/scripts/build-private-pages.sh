@@ -20,5 +20,7 @@ mkdir -p "$TARGET_DIR/private"
 rsync -a --delete "$SOURCE_DIR/private/" "$TARGET_DIR/private/"
 cp "$SOURCE_DIR/_headers" "$TARGET_DIR/_headers"
 cp "$ROOT_DIR/private-deploy/_redirects" "$TARGET_DIR/_redirects"
+mkdir -p "$TARGET_DIR/templates"
+rsync -a --delete "$SOURCE_DIR/templates/" "$TARGET_DIR/templates/"
 
 echo "Private Pages build: $TARGET_DIR"
