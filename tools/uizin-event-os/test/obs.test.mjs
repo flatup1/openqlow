@@ -325,14 +325,14 @@ test("C7：OBSが固まったら、「確かめた時刻」を進めない（✅
   adapter.start();
   await until(() => adapter.state.connection.status === "ok" && adapter.state.record.checkedAt != null);
   fake.hang(true);
-  await wait(400);
-  const frozenAt = adapter.state.connection.checkedAt;
-  const recordAt = adapter.state.record.checkedAt;
-  await wait(1200);
-  assert.equal(adapter.state.connection.checkedAt, frozenAt, "返事が無い間は進まない");
-  assert.equal(adapter.state.record.checkedAt, recordAt);
+  // 固まる直前に届いていた返事は「確かめた」に入ってよい。固まった後の時刻にはならないことを見る。
+  await wait(50);
+  const hungAt = Date.now();
+  await wait(1600);
+  assert.ok(adapter.state.connection.checkedAt <= hungAt, "返事が無い間は進まない");
+  assert.ok(adapter.state.record.checkedAt <= hungAt);
   fake.hang(false);
-  await until(() => adapter.state.connection.checkedAt > frozenAt);
+  await until(() => adapter.state.connection.checkedAt > hungAt);
 });
 
 test("録画の一時停止を見つけ、再開できる。「始める」を押しても一時停止なら再開する", async () => {
