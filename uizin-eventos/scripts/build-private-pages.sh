@@ -9,7 +9,13 @@ cd "$ROOT_DIR"
 npm run build
 
 mkdir -p "$TARGET_DIR"
-rsync -a --delete "$SOURCE_DIR/_next/" "$TARGET_DIR/_next/"
+mkdir -p "$TARGET_DIR/_next"
+find "$TARGET_DIR/_next" -type f -delete
+grep -rhoE '/_next/static/[A-Za-z0-9._/-]+' "$SOURCE_DIR/private" | sort -u | while IFS= read -r asset; do
+  relative="${asset#/}"
+  mkdir -p "$TARGET_DIR/$(dirname "$relative")"
+  cp "$SOURCE_DIR/$relative" "$TARGET_DIR/$relative"
+done
 mkdir -p "$TARGET_DIR/private"
 rsync -a --delete "$SOURCE_DIR/private/" "$TARGET_DIR/private/"
 cp "$SOURCE_DIR/_headers" "$TARGET_DIR/_headers"
