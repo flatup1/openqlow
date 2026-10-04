@@ -42,6 +42,7 @@ mkdir -p "$TARGET_DIR/apply"
 rsync -a --delete "$SOURCE_DIR/apply/" "$TARGET_DIR/apply/"
 cp "$SOURCE_DIR/_headers" "$TARGET_DIR/_headers"
 cp "$ROOT_DIR/private-deploy/_redirects" "$TARGET_DIR/_redirects"
+cp "$SOURCE_DIR/template-link.json" "$TARGET_DIR/template-link.json"
 mkdir -p "$TARGET_DIR/templates"
 rsync -a --delete "$SOURCE_DIR/templates/" "$TARGET_DIR/templates/"
 

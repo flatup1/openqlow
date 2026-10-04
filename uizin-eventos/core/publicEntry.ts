@@ -31,7 +31,8 @@ export function isAppsScriptUrl(value: string): boolean {
 }
 
 export function publicEntryReady(config: PublicEntryConfig): boolean {
-  return isAppsScriptUrl(config.endpoint) && config.protocol === '2' && /^[\w-]{32,100}$/.test(config.entryKey || '') && (config.mode === 'test' || config.mode === 'live');
+  const keyed = config.protocol === '2' && /^[\w-]{32,100}$/.test(config.entryKey || '');
+  return isAppsScriptUrl(config.endpoint) && (keyed || config.protocol === '3') && (config.mode === 'test' || config.mode === 'live');
 }
 
 export function isVenueUrl(value: string): boolean {
