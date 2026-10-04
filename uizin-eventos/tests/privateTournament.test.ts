@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { contractWeight, importFighters, mergeFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
+import { boutWarnings, contractWeight, importFighters, mergeFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
 import { isAppsScriptUrl, isVenueUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
 
@@ -206,4 +206,16 @@ test('限定公開ビルドは一般公開フォームだけを追加し、旧�
   assert.match(source, /SOURCE_DIR\/apply/);
   assert.doesNotMatch(source, /SOURCE_DIR\/entry/);
   assert.doesNotMatch(source, /SOURCE_DIR\/admin/);
+});
+
+test('対戦カードの注意：体重差・同じジム・複数試合を警告するが保存は止めない', () => {
+  const f = (id: string, gym: string, weight: string) => ({ id, gym, name: id, grade: '', age: '', height: '', weight, record: '', comment: '', musicUrl: '', photoDataUrl: '' });
+  const fighters = [f('A', 'x', '60'), f('B', 'y', '82kg'), f('C', 'x', '61')];
+  const bout = (id: string, redId: string, blueId: string) => ({ id, redId, blueId, className: '', rule: '' });
+  assert.equal(boutWarnings(bout('1', 'A', 'C'), fighters, [bout('1', 'A', 'C')]).length, 1);
+  assert.ok(boutWarnings(bout('1', 'A', 'C'), fighters, [bout('1', 'A', 'C')])[0].includes('同じジム'));
+  assert.ok(boutWarnings(bout('2', 'A', 'B'), fighters, [bout('2', 'A', 'B')])[0].includes('22kg'));
+  const two = [bout('1', 'A', 'B'), bout('2', 'A', 'C')];
+  assert.ok(boutWarnings(two[0], fighters, two).some((w) => w.includes('2 試合')));
+  assert.deepEqual(boutWarnings(bout('3', '', ''), fighters, []), []);
 });
