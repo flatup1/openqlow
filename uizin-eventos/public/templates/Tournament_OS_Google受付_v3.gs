@@ -1,23 +1,42 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261004.1';
+const RECEPTION_BUILD = '3.20261004.2';
+/** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
-  ['大会ID', 'my-tournament', '半角の英小文字・数字・ハイフン。大会ごとに変えます'],
-  ['大会名', '大会名をここに入力', ''],
-  ['申込締切', '', '例: 2027-10-03（半角）'],
+  ['大会名', '', '例：第1回 ○○ジム大会'],
+  ['開催日', '', '例：2027-10-03　（半角の数字）'],
+  ['会場', '', '例：成田市体育館'],
+  ['会場の地図URL', '', '任意。Googleマップの「共有」で出るURL'],
+  ['主催者名', '', '例：○○ジム'],
+  ['問い合わせ先', '', '選手に見えます。電話やLINEなど'],
+  ['申込締切', '', '例：2027-09-20　（開催日と同じか、それより前）'],
   ['入場曲', 'なし', 'あり／なし'],
   ['学年', '任意', '必須／任意／なし'],
   ['年齢', '任意', '必須／任意／なし'],
   ['意気込み', '任意', '必須／任意／なし']
 ];
+const SELFTEST_JPEG = '/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALIAP//Z';
 let SETTINGS_CACHE_ = null;
 function mode_(text) { const v = String(text || '').trim(); return v === '必須' ? 'required' : v === 'なし' ? 'off' : 'optional'; }
-function deadlineIso_(text) {
-  const d = String(text || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).replace(/\D/g, '');
-  if (d.length !== 8) return '';
-  const iso = d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8), t = new Date(iso + 'T00:00:00Z');
-  return Number.isNaN(t.getTime()) || t.toISOString().slice(0, 10) !== iso ? '' : iso;
+function dateIso_(text) {
+  const t = String(text || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).trim();
+  let y, m, d;
+  const parts = t.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D*$/);
+  if (parts) { y = parts[1]; m = parts[2]; d = parts[3]; }
+  else { const digits = t.replace(/\D/g, ''); if (digits.length !== 8) return ''; y = digits.slice(0, 4); m = digits.slice(4, 6); d = digits.slice(6, 8); }
+  const iso = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2), parsed = new Date(iso + 'T00:00:00Z');
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? '' : iso;
 }
-/** 設定は「設定」タブが正本。コードには焼き込まない。 */
+/** 設定タブの見た目を作る。onOpen（メニューが出るとき）と最初の設定で呼ぶ。すでにあれば何も変えない。 */
+function ensureSettingsSheet_(book) {
+  let sheet = book.getSheetByName('設定');
+  if (sheet) return sheet;
+  sheet = book.insertSheet('設定');
+  sheet.getRange(1, 1, 1, 3).setValues([['項目', '値（ここに入れる）', '説明']]).setFontWeight('bold');
+  sheet.getRange(2, 2, SETTING_ROWS.length, 1).setNumberFormat('@');
+  sheet.getRange(2, 1, SETTING_ROWS.length, 3).setValues(SETTING_ROWS);
+  return sheet;
+}
+/** 設定は「設定」タブが正本。コードには焼き込まない。大会IDは自動で決まる（会長は入れない）。 */
 function S_() {
   if (SETTINGS_CACHE_) return SETTINGS_CACHE_;
   const props = PropertiesService.getScriptProperties(), id = props.getProperty('spreadsheetId');
@@ -26,10 +45,25 @@ function S_() {
   if (!sheet) throw entryError_('setup', '「設定」タブが見つかりません。「① 最初の設定」を押してください。', false);
   const rows = sheet.getRange(2, 1, SETTING_ROWS.length, 2).getDisplayValues(), v = {};
   rows.forEach(function (row) { v[String(row[0]).trim()] = String(row[1]).trim(); });
-  SETTINGS_CACHE_ = { eventId: v['大会ID'], tournamentName: v['大会名'], deadline: deadlineIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']) };
+  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), raw: v };
   return SETTINGS_CACHE_;
 }
-
+/** 設定の間違いを、直す場所つきで返す。空なら問題なし。 */
+function settingsProblems_(s) {
+  const missing = [], bad = [], raw = s.raw || {};
+  if (!s.tournamentName) missing.push('大会名');
+  if (!raw['開催日']) missing.push('開催日'); else if (!s.date) bad.push('「開催日」は、2027-10-03 のように入れてください');
+  if (!s.venue) missing.push('会場');
+  if (!s.organizer) missing.push('主催者名');
+  if (!s.contact) missing.push('問い合わせ先');
+  if (!raw['申込締切']) missing.push('申込締切'); else if (!s.deadline) bad.push('「申込締切」は、2027-09-20 のように入れてください');
+  if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
+  if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
+  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + ' のどれかにしてください'); });
+  const out = [];
+  if (missing.length) out.push('「設定」タブの、次の欄を入れてください：' + missing.join('、'));
+  return out.concat(bad);
+}
 const PRIVATE_HEADERS = ['受付番号','申込日時','大会ID','所属ジム','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','連絡先氏名','連絡先電話番号','連絡先メールアドレス','同意','リクエストID'];
 const OS_HEADERS = ['管理番号','ジム名','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL'];
 function assertOwner_() {
@@ -39,39 +73,45 @@ function assertOwner_() {
 }
 function entryError_(code,message,retryable) { const error=new Error(message); error.code=code; error.retryable=retryable; return error; }
 function withLock_(callback) { const lock=LockService.getScriptLock(); if(!lock.tryLock(25000))throw entryError_('busy','受付が混み合っています。',true);try{return callback();}finally{lock.releaseLock();} }
-/** ① 最初の設定。何度押しても同じ申込表・写真フォルダを使います。 */
+/** ① 最初の設定。何度押しても同じ申込表・写真フォルダを使います。最後に、架空の1件で自動テストをします。 */
 function setupTournament() {
   const owner = assertOwner_();
-  return withLock_(function () {
+  withLock_(function () {
     const props = PropertiesService.getScriptProperties();
     let book;
     if (props.getProperty('spreadsheetId')) book = SpreadsheetApp.openById(props.getProperty('spreadsheetId'));
     else { book = SpreadsheetApp.getActiveSpreadsheet(); if (!book) throw new Error('このシートの中のメニューから実行してください。'); props.setProperty('spreadsheetId', book.getId()); }
-    let settings = book.getSheetByName('設定');
-    if (!settings) {
-      settings = book.insertSheet('設定');
-      settings.getRange(1, 1, 1, 3).setValues([['項目', '値', '説明']]).setFontWeight('bold');
-      settings.getRange(2, 2, SETTING_ROWS.length, 1).setNumberFormat('@');
-      settings.getRange(2, 1, SETTING_ROWS.length, 3).setValues(SETTING_ROWS);
-    }
+    const fresh = !book.getSheetByName('設定');
+    ensureSettingsSheet_(book);
     SETTINGS_CACHE_ = null;
-    const s = S_();
-    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(s.eventId) || s.eventId === 'my-tournament') throw new Error('「設定」タブの「大会ID」を、英小文字・数字・ハイフンで入れてください。');
-    if (!s.tournamentName || s.tournamentName === '大会名をここに入力') throw new Error('「設定」タブの「大会名」を入れてください。');
-    if (!s.deadline) throw new Error('「設定」タブの「申込締切」を、例のように入れてください（2027-10-03）。');
-    if (props.getProperty('eventId') && (props.getProperty('eventId') !== s.eventId || props.getProperty('ownerEmail') !== owner)) throw new Error('別の大会が入っています。このシートをもう一度コピーして、新しい大会を作ってください。');
-    props.setProperties({ ownerEmail: owner, eventId: s.eventId });
+    const problems = settingsProblems_(S_());
+    if (problems.length) throw new Error(problems.join('。') + '。入れたら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : ''));
+    if (props.getProperty('ownerEmail') && props.getProperty('ownerEmail') !== owner) throw new Error('別の大会が入っています。このシートをもう一度コピーして、新しい大会を作ってください。');
+    props.setProperties({ ownerEmail: owner });
+    if (!props.getProperty('eventId')) props.setProperty('eventId', 'tos-' + Utilities.getUuid().replace(/-/g, '').slice(0, 10));
+    SETTINGS_CACHE_ = null;
     if (!props.getProperty('accepting')) props.setProperty('accepting', 'false');
     [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS取込用（連絡先なし）', OS_HEADERS], ['テスト申込', PRIVATE_HEADERS], ['テストOS取込用', OS_HEADERS]].forEach(function (pair) {
       const sheet = book.getSheetByName(pair[0]) || book.insertSheet(pair[0]);
       if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]).setFontWeight('bold');
       else if (JSON.stringify(sheet.getRange(1, 1, 1, pair[1].length).getDisplayValues()[0]) !== JSON.stringify(pair[1])) throw new Error('申込表の見出しが変わっています。元のデータは消さず、見出しを確認してください。');
     });
-    if (!props.getProperty('photoFolderId')) { const folder = DriveApp.createFolder('Tournament OS 顔写真 - ' + s.tournamentName); props.setProperty('photoFolderId', folder.getId()); }
+    if (!props.getProperty('photoFolderId')) { const folder = DriveApp.createFolder('Tournament OS 顔写真 - ' + S_().tournamentName); props.setProperty('photoFolderId', folder.getId()); }
     if (!props.getProperty('testFolderId')) { const folder = DriveApp.getFolderById(props.getProperty('photoFolderId')).createFolder('テスト写真'); props.setProperty('testFolderId', folder.getId()); }
     checkResources_();
-    Logger.log('準備できました。次は「デプロイ」→「新しいデプロイ」→「ウェブアプリ」です。何度押しても同じ申込表を使います。');
   });
+  selfTest_();
+  Logger.log('準備できました。次は「拡張機能」→「Apps Script」→「デプロイ」→「新しいデプロイ」→「ウェブアプリ」です。何度押しても同じ申込表を使います。');
+  return statusInfo_();
+}
+/** 架空の1件を、本物の申込と同じ道で書き、表と写真が残ったことを確かめる。会長が手でテスト送信しなくてよい。 */
+function selfTest_() {
+  const resources = checkResources_();
+  if (testComplete_(resources.book)) return true;
+  const s = S_();
+  saveEntry_({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG });
+  if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
+  return true;
 }
 function isPrivateOwned_(resource,owner){return resource.getOwner().getEmail().toLowerCase()===owner&&resource.getSharingAccess()===DriveApp.Access.PRIVATE&&resource.getEditors().filter(function(user){return user.getEmail().toLowerCase()!==owner;}).length===0&&resource.getViewers().length===0&&!resource.isTrashed();}
 function checkResources_(){
@@ -82,17 +122,20 @@ function checkResources_(){
   [['申込原本（個人情報あり）',PRIVATE_HEADERS],['OS取込用（連絡先なし）',OS_HEADERS],['テスト申込',PRIVATE_HEADERS],['テストOS取込用',OS_HEADERS]].forEach(function(pair){const sheet=book.getSheetByName(pair[0]);if(!sheet||JSON.stringify(sheet.getRange(1,1,1,pair[1].length).getDisplayValues()[0])!==JSON.stringify(pair[1]))throw entryError_('headers','申込表の見出しが変わっています。データを消さず、主催者が確認してください。',false);});
   return{book:book,folder:folder};
 }
-/** ⑤ いまの状態。 */
+/** ⑤ いまの状態。画面（OS）が読むのは、公開してよい項目だけ。主催者のメール・鍵・申込の内容は含めない。 */
 function statusInfo_() {
   const props = PropertiesService.getScriptProperties();
-  const ready = Boolean(props.getProperty('spreadsheetId') && props.getProperty('photoFolderId'));
-  let eventId = props.getProperty('eventId') || '', testDone = false, deadline = '';
-  if (ready) { const resources = checkResources_(); testDone = testComplete_(resources.book); deadline = S_().deadline; }
-  return { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, eventId: eventId, ready: ready, testComplete: testDone, accepting: props.getProperty('accepting') === 'true', deadline: deadline };
+  const ready = Boolean(props.getProperty('spreadsheetId') && props.getProperty('photoFolderId') && props.getProperty('eventId'));
+  const info = { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, ready: ready, accepting: props.getProperty('accepting') === 'true' };
+  if (!ready) return info;
+  const resources = checkResources_(), s = S_(), problems = settingsProblems_(s);
+  info.eventId = s.eventId; info.testComplete = testComplete_(resources.book); info.settingsProblem = problems.join('。');
+  if (!problems.length) { info.title = s.tournamentName; info.date = s.date; info.venue = s.venue; info.venueUrl = s.venueUrl; info.organizer = s.organizer; info.contact = s.contact; info.deadline = s.deadline; info.music = s.music; info.grade = s.grade; info.age = s.age; info.comment = s.comment; }
+  return info;
 }
 function showStatus() {
   const s = statusInfo_();
-  const text = ['設定: ' + (s.ready ? '済み' : 'まだ（① 最初の設定を押す）'), 'テスト1件: ' + (s.testComplete ? '確認済み' : 'まだ'), '受付: ' + (s.accepting ? '受付中' : '停止中'), '締切: ' + (s.deadline || '未設定')].join('\n');
+  const text = ['設定: ' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト: ' + (s.testComplete ? '済み' : 'まだ'), '受付: ' + (s.accepting ? '受付中' : '停止中'), '締切: ' + (s.deadline || '未設定')].join('\n');
   Logger.log(text);
   try { SpreadsheetApp.getUi().alert('いまの状態', text, SpreadsheetApp.getUi().ButtonSet.OK); } catch (_) {}
   return s;
@@ -105,8 +148,9 @@ function onOpen() {
     .addItem('④ OS用の名簿ZIPを作る', 'exportTournament')
     .addItem('⑤ いまの状態を見る', 'showStatus')
     .addToUi();
+  try { ensureSettingsSheet_(SpreadsheetApp.getActiveSpreadsheet()); } catch (_) { /* 設定タブは「① 最初の設定」でも作る */ }
 }
-/** 接続確認。返すのは公開してよい項目だけ（主催者のメール・鍵・個人情報は返さない）。 */
+/** 接続確認。 */
 function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.action === 'ping') {
@@ -129,7 +173,7 @@ function testComplete_(book){
   return inside&&file.getSize()>0&&isPrivateOwned_(file,props.getProperty('ownerEmail'));
 }
 function openEntries(){
-  return withLock_(function(){const resources=checkResources_();if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');if(Date.now()>deadlineTime_())throw new Error('締切を過ぎています。「設定」タブの申込締切を直してください。');PropertiesService.getScriptProperties().setProperty('accepting','true');Logger.log('受付を開始しました。大会設定画面で「接続を確かめる」を押してください。');SpreadsheetApp.flush();return true;});
+  return withLock_(function(){const resources=checkResources_();const problems=settingsProblems_(S_());if(problems.length)throw new Error(problems.join('。')+'。');if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');if(Date.now()>deadlineTime_())throw new Error('締切を過ぎています。「設定」タブの申込締切を直してください。');PropertiesService.getScriptProperties().setProperty('accepting','true');Logger.log('受付を開始しました。大会設定画面で「接続を確かめる」を押してください。');SpreadsheetApp.flush();return true;});
 }
 function closeEntries(){assertOwner_();PropertiesService.getScriptProperties().setProperty('accepting','false');Logger.log('受付を停止しました。申込済みデータは残っています。');}
 function deadlineTime_(){const time=Date.parse(S_().deadline+'T23:59:59+09:00');if(!Number.isFinite(time))throw entryError_('deadline','主催者が締切を設定する必要があります。',false);return time;}

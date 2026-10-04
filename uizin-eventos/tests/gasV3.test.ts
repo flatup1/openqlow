@@ -1,92 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { createHash, randomUUID } from 'node:crypto';
+import { harness, owner, script } from './helpers/gasV3Harness.ts';
 
-const owner = 'organizer@example.com';
-const script = readFileSync(new URL('../public/templates/Tournament_OS_Google受付_v3.gs', import.meta.url), 'utf8');
-const JPEG = Buffer.from([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]);
-
-type Opts = { ignoreTextFormat?: boolean };
-
-function harness(opts: Opts = {}) {
-  const props = new Map<string, string>(), resources = new Map<string, any>(), logs: string[] = [], zips: any[] = [];
-  let currentOwner = owner, serial = 0, menu: string[] = [];
-  const iterator = (array: any[]) => { let i = 0; return { hasNext: () => i < array.length, next: () => array[i++] }; };
-  const blob = (bytes: any, type: string, name: string) => ({ bytes: typeof bytes === 'string' ? Buffer.from(bytes) : Buffer.from(bytes), type, name, getBytes() { return [...this.bytes]; }, setName(v: string) { this.name = v; return this; } });
-  function resource(kind: string, name: string, data?: any): any {
-    const id = 'res' + (++serial);
-    const r: any = { kind, name, id, children: [] as any[], data, sharing: 'PRIVATE', editors: [] as any[], viewers: [] as any[], trashed: false,
-      getId: () => id, getOwner: () => ({ getEmail: () => owner }), getSharingAccess: () => r.sharing, getEditors: () => r.editors, getViewers: () => r.viewers, isTrashed: () => r.trashed,
-      getUrl: () => (kind === 'folder' ? 'https://drive.google.com/drive/folders/' : 'https://drive.google.com/file/d/') + id + '/view',
-      getSize: () => r.data?.bytes?.length || 0, getBlob: () => blob(r.data.bytes, r.data.type, r.name),
-      parents: [] as any[], getParents: () => iterator(r.parents),
-      createFolder: (n: string) => { const c = resource('folder', n); c.parents.push(r); r.children.push(c); return c; },
-      createFile: (v: any) => { const c = resource('file', v.name, v); c.parents.push(r); r.children.push(c); return c; },
-      getFilesByName: (n: string) => iterator(r.children.filter((c: any) => c.kind === 'file' && c.name === n && !c.trashed)) };
-    resources.set(id, r); return r;
-  }
-  function sheet(book: any, name: string): any {
-    const formats = new Map<string, string>();
-    const stored = (v: any, r: number, c: number, viaSetValue = false) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v) && (formats.get(r + ':' + c) !== '@' || (opts.ignoreTextFormat && !viaSetValue)) ? Number(v) : v;
-    const s: any = { name, rows: [] as any[][],
-      getLastRow: () => s.rows.length,
-      appendRow: (values: any[]) => { const r = s.rows.length + 1; s.rows.push(values.map((v, c) => stored(v, r, c + 1))); },
-      getDataRange: () => s.getRange(1, 1, s.rows.length, s.rows[0]?.length || 1),
-      getRange: (r: number, c: number, n = 1, m = 1) => {
-        const range: any = {
-          getDisplayValues: () => Array.from({ length: n }, (_, i) => Array.from({ length: m }, (_, j) => String(s.rows[r - 1 + i]?.[c - 1 + j] ?? '').replace(/^'(?=[=+\-@])/u, ''))),
-          getDisplayValue: () => range.getDisplayValues()[0][0],
-          setValues: (values: any[][]) => { values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
-          setValue: (v: any) => { s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
-          setNumberFormat: (f: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
-          setFontWeight: () => range };
-        return range;
-      } };
-    book.sheets.set(name, s); return s;
-  }
-  const bookFile = resource('file', 'copy-of-template');
-  const book: any = { sheets: new Map<string, any>(), getId: () => bookFile.id, getSheetByName: (n: string) => book.sheets.get(n) || null, insertSheet: (n: string) => sheet(book, n) };
-  sheet(book, 'シート1');
-  const propsApi = { getProperty: (k: string) => props.get(k) ?? null, setProperty: (k: string, v: string) => { props.set(k, String(v)); }, setProperties: (o: Record<string, string>) => { for (const [k, v] of Object.entries(o)) props.set(k, String(v)); } };
-  const api: any = {
-    Session: { getEffectiveUser: () => ({ getEmail: () => currentOwner }) },
-    PropertiesService: { getScriptProperties: () => propsApi },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
-    SpreadsheetApp: { getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
-      getUi: () => ({ ButtonSet: { OK: 'OK' }, alert: () => undefined, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
-    DriveApp: { Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
-    Utilities: { base64Decode: (v: string) => [...Buffer.from(v, 'base64')], newBlob: blob, Charset: { UTF_8: 'utf8' }, DigestAlgorithm: { SHA_256: 'sha256' }, computeDigest: (_: any, v: string | number[]) => [...createHash('sha256').update(typeof v === 'string' ? v : Buffer.from(v)).digest()].map((b) => (b > 127 ? b - 256 : b)),
-      zip: (files: any[], name: string) => { zips.push(files); return { bytes: Buffer.from('zip'), type: 'application/zip', name }; } },
-    ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST_ONLY/exec' }) },
-    ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (text: string) => ({ text, setMimeType() { return this; } }) },
-    HtmlService: { createHtmlOutput: (html: string) => ({ html, setTitle() { return this; }, addMetaTag() { return this; } }) },
-    Logger: { log: (v: string) => logs.push(v) }, console: { error: () => undefined },
-  };
-  vm.createContext(api); vm.runInContext(script, api);
-  const call = (name: string, ...args: any[]) => { vm.runInContext('SETTINGS_CACHE_ = null;', api); return api[name](...args); };
-  const settingsSheet = () => book.getSheetByName('設定');
-  const setSetting = (key: string, value: string) => { const row = settingsSheet().rows.findIndex((r: any[]) => r[0] === key); settingsSheet().rows[row][1] = value; };
-  const fill = (over: Record<string, string> = {}) => { const v: Record<string, string> = { 大会ID: 'test-cup', 大会名: 'テスト大会', 申込締切: '2099-11-30', ...over }; for (const [k, val] of Object.entries(v)) setSetting(k, val); };
-  const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: 'test-cup', mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '', age: '20', height: '170', weight: '65', record: '初試合', comment: '', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
-  // 会長の操作: 最初の設定 → 「設定」タブを埋める → もう一度「最初の設定」
-  const ready = () => { assert.throws(() => call('setupTournament'), /設定|大会/); fill(); call('setupTournament'); };
-  return { api, props, resources, book, logs, zips, call, params, fill, ready, setSetting, settingsSheet, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
-}
-
-test('v3: 初回の設定は「設定」タブを作って止まり、埋めてから再実行すると申込表と写真フォルダができる', () => {
+test('v3: シートを開くと「設定」タブができ、空のまま「最初の設定」を押すと、足りない欄を全部言って止まる', () => {
   const h = harness();
-  assert.throws(() => h.call('setupTournament'), /大会ID/);
-  assert.ok(h.settingsSheet(), '設定タブが作られる');
-  h.fill();
-  h.call('setupTournament');
+  assert.equal(h.settingsSheet(), null);
+  h.call('onOpen');
+  assert.ok(h.settingsSheet(), '設定タブが自動でできる');
+  assert.deepEqual(h.rows('設定').slice(1).map((r) => r[0]), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み']);
+  assert.ok(!h.rows('設定').flat().includes('大会ID'), '大会IDは会長が入れない');
+  assert.throws(() => h.call('setupTournament'), /大会名、開催日、会場、主催者名、問い合わせ先、申込締切/);
+  assert.equal(h.props.get('eventId'), undefined, '足りないあいだは何も作らない');
+  assert.equal(h.resources.size, 1, 'フォルダも作らない（シート自身の1つだけ）');
+});
+
+test('v3: 設定を埋めて「最初の設定」を押すと、申込表・写真フォルダ・自動の大会IDができ、架空1件の自動テストまで済む', () => {
+  const h = harness(); h.ready();
   for (const n of ['申込原本（個人情報あり）', 'OS取込用（連絡先なし）', 'テスト申込', 'テストOS取込用']) assert.ok(h.book.getSheetByName(n), n);
-  assert.ok(h.props.get('photoFolderId') && h.props.get('testFolderId'));
+  assert.match(h.eventId(), /^tos-[0-9a-f]{10}$/);
+  assert.equal(h.rows('テスト申込').length, 2, '自動テストの1件');
+  assert.equal(h.rows('テスト申込')[1][4], '自動テスト選手');
+  assert.equal(h.rows('申込原本（個人情報あり）').length, 1, '本番の表には入らない');
+  assert.equal(h.call('statusInfo_').testComplete, true);
+  assert.equal(h.call('statusInfo_').accepting, false);
   assert.ok(h.logs.some((l) => l.includes('ウェブアプリ')));
 });
 
-test('v3: 何度「最初の設定」を押しても同じ表・フォルダを使い、既存データを消さない', () => {
+test('v3: 何度「最初の設定」を押しても同じ表・フォルダ・大会IDを使い、自動テストを増やさず、既存データを消さない', () => {
   const h = harness(); h.ready(); h.call('saveEntry_', h.params());
   const keep = JSON.stringify([...h.props.entries()]), count = h.resources.size, row = JSON.stringify(h.rows('テスト申込'));
   h.call('setupTournament'); h.call('setupTournament');
@@ -98,23 +39,31 @@ test('v3: 何度「最初の設定」を押しても同じ表・フォルダを�
 test('v3: 実行者本人が自動で所有者になり、メールを入力させない。別のGoogleは止まる', () => {
   const h = harness(); h.ready();
   assert.equal(h.props.get('ownerEmail'), owner);
-  assert.ok(!h.settingsSheet().rows.flat().some((v: any) => String(v).includes('@')), '設定タブにメールを書かせない');
+  assert.ok(!h.rows('設定').flat().some((v) => String(v).includes('@')), '設定タブにメールを書かせない');
   h.setOwner('other@example.com');
   assert.throws(() => h.call('saveEntry_', h.params()), /本人のGoogle/);
   assert.throws(() => h.call('setupTournament'), /本人のGoogle/);
 });
 
-test('v3: 設定が足りないときは、何を直すかを言って止まる', () => {
-  const h = harness(); h.call('onOpen');
-  assert.throws(() => h.call('setupTournament'), /大会ID/);
-  h.setSetting('大会ID', 'ok-cup'); assert.throws(() => h.call('setupTournament'), /大会名/);
-  h.setSetting('大会名', 'ある大会'); assert.throws(() => h.call('setupTournament'), /申込締切/);
-  h.setSetting('申込締切', '2099-02-31'); assert.throws(() => h.call('setupTournament'), /申込締切/);
-  h.setSetting('申込締切', '２０９９年１１月３０日'); h.call('setupTournament');
-  assert.equal(h.call('statusInfo_').deadline, '2099-11-30');
+test('v3: 設定の間違いは、どこをどう直すかを言って止まる（日付・順番・地図URL・選択肢）', () => {
+  const cases: [Record<string, string>, RegExp][] = [
+    [{ 開催日: '2099-02-31' }, /「開催日」は/],
+    [{ 申込締切: 'あした' }, /「申込締切」は/],
+    [{ 申込締切: '2099-12-02' }, /開催日と同じか、それより前/],
+    [{ 会場の地図URL: 'https://example.com/map' }, /地図URL/],
+    [{ 入場曲: 'はい' }, /「入場曲」は、あり／なし/],
+    [{ 学年: '多い' }, /「学年」は、必須／任意／なし/],
+  ];
+  for (const [over, message] of cases) {
+    const h = harness(); h.call('onOpen'); h.fill(over);
+    assert.throws(() => h.call('setupTournament'), message, JSON.stringify(over));
+    assert.equal(h.props.get('eventId'), undefined);
+  }
+  const ok = harness(); ok.call('onOpen'); ok.fill({ 開催日: '２０９９年１２月１日', 申込締切: '2099/11/30', 会場の地図URL: 'https://maps.app.goo.gl/abc' }); ok.call('setupTournament');
+  assert.equal(ok.call('statusInfo_').date, '2099-12-01');
 });
 
-test('v3: メニューは5つで、「設定」タブの書き換えだけで締切・項目が変わる（コードの貼り替え不要）', () => {
+test('v3: メニューは5つ。「設定」タブの書き換えだけで締切・項目が変わる（コードの貼り替え不要）', () => {
   const h = harness(); h.call('onOpen');
   assert.deepEqual(h.menu(), ['Tournament OS', '① 最初の設定', '② 受付を開始', '③ 受付を停止', '④ OS用の名簿ZIPを作る', '⑤ いまの状態を見る']);
   h.ready();
@@ -123,45 +72,55 @@ test('v3: メニューは5つで、「設定」タブの書き換えだけで締
   h.call('saveEntry_', h.params('test', { grade: '小5' }));
   h.setSetting('学年', 'なし');
   h.call('saveEntry_', h.params('test'));
-  assert.equal(h.rows('テスト申込').length, 3);
+  assert.equal(h.rows('テスト申込').length, 4);
 });
 
-test('v3: ping は公開してよい項目だけを返し、メール・鍵・連絡先を返さない', () => {
+test('v3: 入場曲「あり」でも自動テストは通る', () => {
+  const h = harness(); h.ready({ 入場曲: 'あり', 学年: '必須', 年齢: '必須', 意気込み: '必須' });
+  assert.equal(h.call('statusInfo_').testComplete, true);
+  assert.equal(h.call('statusInfo_').music, true);
+});
+
+test('v3: ping は公開してよい項目だけ。大会の設定は返すが、メール・鍵・ID・連絡先は返さない', () => {
   const h = harness();
   const before = JSON.parse(h.call('doGet', { parameter: { action: 'ping' } }).text);
   assert.equal(before.ready, false); assert.equal(before.app, 'tournament-os');
-  h.ready(); h.call('saveEntry_', h.params());
+  assert.deepEqual(Object.keys(before).sort(), ['accepting', 'app', 'build', 'protocol', 'ready']);
+  h.ready();
   const out = h.call('doGet', { parameter: { action: 'ping' } }).text, body = JSON.parse(out);
-  assert.deepEqual(Object.keys(body).sort(), ['accepting', 'app', 'build', 'deadline', 'eventId', 'protocol', 'ready', 'testComplete']);
-  assert.equal(body.testComplete, true); assert.equal(body.accepting, false);
-  for (const secret of [owner, 'test@example.com', '09000000000', 'テスト太郎', h.props.get('spreadsheetId')!, h.props.get('photoFolderId')!]) assert.ok(!out.includes(secret), '漏れてはいけない: ' + secret);
+  assert.deepEqual(Object.keys(body).sort(), ['accepting', 'age', 'app', 'build', 'comment', 'contact', 'date', 'deadline', 'eventId', 'grade', 'music', 'organizer', 'protocol', 'ready', 'settingsProblem', 'testComplete', 'title', 'venue', 'venueUrl']);
+  assert.equal(body.testComplete, true); assert.equal(body.accepting, false); assert.equal(body.title, 'テスト大会'); assert.equal(body.date, '2099-12-01'); assert.equal(body.deadline, '2099-11-30');
+  for (const secret of [owner, 'selftest@example.invalid', 'test@example.com', '09000000000', 'テスト太郎', '自動テスト選手', h.props.get('spreadsheetId')!, h.props.get('photoFolderId')!, h.props.get('testFolderId')!]) assert.ok(!out.includes(secret), '漏れてはいけない: ' + secret);
   assert.match(String(h.call('doGet', {}).html), /保存先です/);
+  h.setSetting('会場', '');
+  const broken = JSON.parse(h.call('doGet', { parameter: { action: 'ping' } }).text);
+  assert.match(broken.settingsProblem, /会場/); assert.equal(broken.title, undefined, '直すまで設定は返さない');
 });
 
 test('v3: 電話番号の先頭の0が残る。Googleが書式を無視しても書き直して残す', () => {
   for (const ignoreTextFormat of [false, true]) {
     const h = harness({ ignoreTextFormat }); h.ready();
     h.call('saveEntry_', h.params('test', { contactPhone: '09012345678' }));
-    assert.equal(h.rows('テスト申込')[1][14], '09012345678', 'ignoreTextFormat=' + ignoreTextFormat);
-    assert.equal(typeof h.rows('テスト申込')[1][14], 'string');
+    const last = h.rows('テスト申込').at(-1)!;
+    assert.equal(last[14], '09012345678', 'ignoreTextFormat=' + ignoreTextFormat);
+    assert.equal(typeof last[14], 'string');
+    assert.equal(h.rows('テスト申込')[1][14], '09000000000', '自動テストの電話も文字のまま');
   }
 });
 
-test('v3: 連絡先は取込用シートにもZIPにも出ない', () => {
+test('v3: 連絡先は取込用シートにもZIPにもpingにも出ない', () => {
   const h = harness(); h.ready(); h.call('saveEntry_', h.params());
   const os = JSON.stringify(h.rows('テストOS取込用'));
-  for (const secret of ['テスト太郎', 'test@example.com', '09000000000']) assert.ok(!os.includes(secret), secret);
+  for (const secret of ['テスト太郎', 'test@example.com', '09000000000', 'selftest@example.invalid']) assert.ok(!os.includes(secret), secret);
   assert.ok(JSON.stringify(h.rows('テスト申込')).includes('09000000000'), '原本には残る');
   h.call('exportTestTournament');
   const csv = h.zips[0].find((f: any) => f.name === 'players.csv').bytes.toString('utf8');
-  for (const secret of ['テスト太郎', 'test@example.com', '09000000000', owner]) assert.ok(!csv.includes(secret), secret);
+  for (const secret of ['テスト太郎', 'test@example.com', '09000000000', 'selftest@example.invalid', owner]) assert.ok(!csv.includes(secret), secret);
   assert.ok(csv.includes('架空選手'));
 });
 
-test('v3: 本番の受付は、テスト1件が済み・受付開始・締切前のときだけ。テストは締切後でも通る', () => {
+test('v3: 受付は、「② 受付を開始」から締切までだけ。テストを手で送らなくても開始できる', () => {
   const h = harness(); h.ready();
-  assert.throws(() => h.call('openEntries'), /テスト申込/);
-  h.call('saveEntry_', h.params('test'));
   assert.throws(() => h.call('saveEntry_', h.params('live')), /受け付けていません/);
   h.call('openEntries');
   h.call('saveEntry_', h.params('live'));
@@ -169,14 +128,15 @@ test('v3: 本番の受付は、テスト1件が済み・受付開始・締切前
   h.call('closeEntries');
   assert.throws(() => h.call('saveEntry_', h.params('live')), /受け付けていません/);
   h.setSetting('申込締切', '2000-01-01');
-  h.call('closeEntries');
   assert.throws(() => h.call('openEntries'), /締切/);
+  h.setSetting('申込締切', '2099-11-30'); h.setSetting('主催者名', '');
+  assert.throws(() => h.call('openEntries'), /主催者名/);
 });
 
 test('v3: 同じ申込番号の再送は1件のまま、大会IDが違えば拒否し、旧プロトコル2も受ける', () => {
   const h = harness(); h.ready();
   const p = h.params('test'); const a = h.call('saveEntry_', p), b = h.call('saveEntry_', p);
-  assert.equal(a, b); assert.equal(h.rows('テスト申込').length, 2);
+  assert.equal(a, b); assert.equal(h.rows('テスト申込').length, 3);
   assert.throws(() => h.call('saveEntry_', h.params('test', { eventId: 'other-cup' })), /受付URL/);
   h.call('saveEntry_', h.params('test', { protocol: '2' }));
   assert.throws(() => h.call('saveEntry_', h.params('test', { protocol: '9' })), /受付URL/);
@@ -193,12 +153,20 @@ test('v3: 申込表・写真フォルダが公開共有・直接共有・削除�
 test('v3: 数式になる文字は無害化し、写真が壊れていれば保存しない', () => {
   const h = harness(); h.ready();
   h.call('saveEntry_', h.params('test', { gym: '=HYPERLINK("x")' }));
-  assert.ok(String(h.rows('テスト申込')[1][3]).startsWith("'="));
+  assert.ok(String(h.rows('テスト申込').at(-1)![3]).startsWith("'="));
   const rowsBefore = h.rows('テスト申込').length;
   assert.throws(() => h.call('saveEntry_', h.params('test', { photoDataUrl: 'data:image/jpeg;base64,AAAA' })), /写真/);
   assert.equal(h.rows('テスト申込').length, rowsBefore);
 });
 
-test('v3: 新しいスクリプトに鍵・署名・確認コードの仕組みが残っていない', () => {
-  for (const word of ['setupKey', 'entryKey:', 'testKey', 'TOS2', 'computeHmac', 'verifyConnection', 'expectedOwner', 'policy_']) assert.ok(!script.includes(word), word);
+test('v3: 新しいスクリプトに鍵・署名・確認コード・メール入力の仕組みが残っていない', () => {
+  for (const word of ['setupKey', 'entryKey:', 'testKey', 'TOS2', 'computeHmac', 'verifyConnection', 'expectedOwner', 'policy_', "['大会ID'"]) assert.ok(!script.includes(word), word);
+});
+
+test('v3: 公開用の設定（デプロイの初期値）は「自分で実行・全員がアクセス」', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../public/templates/appsscript.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.webapp.executeAs, 'USER_DEPLOYING');
+  assert.equal(manifest.webapp.access, 'ANYONE_ANONYMOUS');
+  assert.equal(manifest.timeZone, 'Asia/Tokyo');
+  assert.equal(manifest.oauthScopes, undefined, '権限は自動判定に任せ、余計な権限を足さない');
 });
