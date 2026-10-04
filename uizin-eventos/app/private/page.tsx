@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { emptyTournament, importFighters, mergeFighters, validateTournament, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
+import { boutWarnings, emptyTournament, importFighters, mergeFighters, validateTournament, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
 import { formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, entryErrors, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { bytesToArrayBuffer, decryptBackup, encryptBackup, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, writePrivateEvent } from '../lib/privateStore.ts';
@@ -232,6 +232,7 @@ export default function PrivateAdmin() {
 <label className="font-bold">ルール<input className={field} value={bout.rule} onChange={(e)=>updateBout(index,{rule:e.target.value})} />
 </label>
 </div>
+{boutWarnings(bout,data.fighters,data.bouts).map((w)=><p key={w} role="status" className="mt-3 rounded-xl bg-amber-100 p-3 font-bold text-amber-950">⚠ {w}</p>)}
 <button onClick={()=>edit('bouts',data.bouts.filter((_,i)=>i!==index))} className="mt-3 text-sm font-bold text-rose-700">この試合を削除</button>
 </article>)}<button onClick={addBout} className="mt-4 w-full rounded-xl border-2 border-dashed border-indigo-300 p-4 font-black text-indigo-800">＋ 試合を追加</button>
 </section>

@@ -96,6 +96,25 @@ export function contractWeight(red: LocalFighter | undefined, blue: LocalFighter
   return (Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)) + 'kg契約';
 }
 
+/** Soft warnings for one card. They never block saving; the organizer decides. */
+export const WEIGHT_GAP_WARN_KG = 5;
+export function boutWarnings(bout: LocalBout, fighters: LocalFighter[], bouts: LocalBout[]): string[] {
+  const red = fighters.find((f) => f.id === bout.redId), blue = fighters.find((f) => f.id === bout.blueId);
+  const warnings: string[] = [];
+  const parse = (value: string | undefined) => Number(String(value ?? '').trim().replace(/kg$/i, '').trim());
+  if (red && blue) {
+    const a = parse(red.weight), b = parse(blue.weight);
+    if (Number.isFinite(a) && Number.isFinite(b) && a >= 10 && b >= 10 && Math.abs(a - b) >= WEIGHT_GAP_WARN_KG) warnings.push('体重差が ' + (Math.round(Math.abs(a - b) * 10) / 10) + 'kg あります（' + red.name + ' ' + a + 'kg / ' + blue.name + ' ' + b + 'kg）。');
+    if (red.gym.trim() && red.gym.trim() === blue.gym.trim()) warnings.push('同じジム（' + red.gym.trim() + '）の選手どうしです。');
+  }
+  [red, blue].forEach((f) => {
+    if (!f) return;
+    const count = bouts.filter((other) => other.redId === f.id || other.blueId === f.id).length;
+    if (count > 1) warnings.push(f.name + ' が ' + count + ' 試合に入っています。');
+  });
+  return warnings;
+}
+
 export function safeMusicUrl(value: string): string {
   try {
     const url = new URL(value.trim());
