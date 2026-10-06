@@ -170,3 +170,29 @@ test('v3: 公開用の設定（デプロイの初期値）は「自分で実行�
   assert.equal(manifest.timeZone, 'Asia/Tokyo');
   assert.equal(manifest.oauthScopes, undefined, '権限は自動判定に任せ、余計な権限を足さない');
 });
+
+test('v3: 入場曲の「あり／なし」は、最初に必ず選ぶ（空のままでは進めない・初期値は入れない）', () => {
+  const h = harness(); h.call('onOpen');
+  const row = h.rows('設定').find((r) => r[0] === '入場曲')!;
+  assert.equal(row[1], '', '初期値は空（「なし」を勝手に入れない）');
+  h.fill({ 入場曲: '' });
+  assert.throws(() => h.call('setupTournament'), /入場曲/);
+  assert.equal(h.props.get('eventId'), undefined, '選ぶまで何も作らない');
+  h.setSetting('入場曲', 'なし'); h.call('setupTournament');
+  assert.equal(h.call('statusInfo_').music, false);
+  const on = harness(); on.ready({ 入場曲: 'あり' });
+  assert.equal(on.call('statusInfo_').music, true);
+  // 受付が始まったあとで空にされたら、ping は設定の間違いとして知らせ、受付も開始できない
+  h.setSetting('入場曲', '');
+  assert.match(h.call('statusInfo_').settingsProblem, /入場曲/);
+  assert.throws(() => h.call('openEntries'), /入場曲/);
+});
+
+test('v3: 入場曲・学年・年齢・意気込みは「▼から選ぶ」欄になり、ほかの文字は入れられない', () => {
+  const h = harness(); h.call('onOpen');
+  const sheet = h.settingsSheet(); const rule = (name: string) => { const i = h.rows('設定').findIndex((r) => r[0] === name); return sheet.validations.get((i + 1) + ':2'); };
+  assert.equal(JSON.stringify(rule('入場曲').list), JSON.stringify(['あり', 'なし']));
+  for (const name of ['学年', '年齢', '意気込み']) assert.equal(JSON.stringify(rule(name).list), JSON.stringify(['必須', '任意', 'なし']));
+  for (const name of ['入場曲', '学年', '年齢', '意気込み']) assert.equal(rule(name).allowInvalid, false);
+  assert.equal(rule('大会名'), undefined);
+});

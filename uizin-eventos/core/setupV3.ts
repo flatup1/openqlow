@@ -3,7 +3,7 @@ import { formatDateInput } from './dateInput.ts';
 import type { EntryFieldMode } from './entryPackage.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
-export const EXPECTED_RECEPTION_BUILD = '3.20261004.2';
+export const EXPECTED_RECEPTION_BUILD = '3.20261004.3';
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;

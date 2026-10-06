@@ -1,5 +1,5 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261004.2';
+const RECEPTION_BUILD = '3.20261004.3';
 /** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
   ['大会名', '', '例：第1回 ○○ジム大会'],
@@ -9,7 +9,7 @@ const SETTING_ROWS = [
   ['主催者名', '', '例：○○ジム'],
   ['問い合わせ先', '', '選手に見えます。電話やLINEなど'],
   ['申込締切', '', '例：2027-09-20　（開催日と同じか、それより前）'],
-  ['入場曲', 'なし', 'あり／なし'],
+  ['入場曲', '', '必ず選びます（あり／なし）。入場曲を聞くかどうかを、最初に決めます'],
   ['学年', '任意', '必須／任意／なし'],
   ['年齢', '任意', '必須／任意／なし'],
   ['意気込み', '任意', '必須／任意／なし']
@@ -34,6 +34,13 @@ function ensureSettingsSheet_(book) {
   sheet.getRange(1, 1, 1, 3).setValues([['項目', '値（ここに入れる）', '説明']]).setFontWeight('bold');
   sheet.getRange(2, 2, SETTING_ROWS.length, 1).setNumberFormat('@');
   sheet.getRange(2, 1, SETTING_ROWS.length, 3).setValues(SETTING_ROWS);
+  // 選び間違い・入れ間違いを防ぐ「▼から選ぶ」欄。使えない環境でも、設定は読めるので止めない。
+  try {
+    [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']]].forEach(function (pair) {
+      const index = SETTING_ROWS.findIndex(function (row) { return row[0] === pair[0]; });
+      if (index >= 0) sheet.getRange(index + 2, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(pair[1], true).setAllowInvalid(false).build());
+    });
+  } catch (_) { /* 選択欄が作れなくても、手で入れられる */ }
   return sheet;
 }
 /** 設定は「設定」タブが正本。コードには焼き込まない。大会IDは自動で決まる（会長は入れない）。 */
@@ -57,6 +64,7 @@ function settingsProblems_(s) {
   if (!s.organizer) missing.push('主催者名');
   if (!s.contact) missing.push('問い合わせ先');
   if (!raw['申込締切']) missing.push('申込締切'); else if (!s.deadline) bad.push('「申込締切」は、2027-09-20 のように入れてください');
+  if (!raw['入場曲']) missing.push('入場曲（あり／なしを選ぶ）');
   if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
   if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
   [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + ' のどれかにしてください'); });

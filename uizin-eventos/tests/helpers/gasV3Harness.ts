@@ -28,6 +28,7 @@ export function harness(opts: Opts = {}) {
   }
   function sheet(book: any, name: string): any {
     const formats = new Map<string, string>();
+    const validations = new Map<string, any>();
     const stored = (v: any, r: number, c: number, viaSetValue = false) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v) && (formats.get(r + ':' + c) !== '@' || (opts.ignoreTextFormat && !viaSetValue)) ? Number(v) : v;
     const s: any = { name, rows: [] as any[][],
       getLastRow: () => s.rows.length,
@@ -40,9 +41,11 @@ export function harness(opts: Opts = {}) {
           setValues: (values: any[][]) => { values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
           setValue: (v: any) => { s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
           setNumberFormat: (f: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
-          setFontWeight: () => range };
+          setFontWeight: () => range,
+          setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; } };
         return range;
       } };
+    s.validations = validations;
     book.sheets.set(name, s); return s;
   }
   const bookFile = resource('file', 'copy-of-template');
@@ -53,7 +56,7 @@ export function harness(opts: Opts = {}) {
     Session: { getEffectiveUser: () => ({ getEmail: () => currentOwner }) },
     PropertiesService: { getScriptProperties: () => propsApi },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
-    SpreadsheetApp: { getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
+    SpreadsheetApp: { newDataValidation: () => { const b: any = { list: [] as string[], requireValueInList: (l: string[]) => { b.list = l; return b; }, setAllowInvalid: (v: boolean) => { b.allowInvalid = v; return b; }, build: () => ({ list: b.list, allowInvalid: b.allowInvalid }) }; return b; }, getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
       getUi: () => ({ ButtonSet: { OK: 'OK' }, alert: () => undefined, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
     DriveApp: { Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
     Utilities: { getUuid: () => randomUUID(), base64Decode: (v: string) => [...Buffer.from(v, 'base64')], newBlob: blob, Charset: { UTF_8: 'utf8' }, DigestAlgorithm: { SHA_256: 'sha256' }, computeDigest: (_: any, v: string | number[]) => [...createHash('sha256').update(typeof v === 'string' ? v : Buffer.from(v)).digest()].map((b) => (b > 127 ? b - 256 : b)),
@@ -67,7 +70,7 @@ export function harness(opts: Opts = {}) {
   const call = (name: string, ...args: any[]) => { vm.runInContext('SETTINGS_CACHE_ = null;', api); return api[name](...args); };
   const settingsSheet = () => book.getSheetByName('設定');
   const setSetting = (key: string, value: string) => { const row = settingsSheet().rows.findIndex((r: any[]) => r[0] === key); assert.ok(row >= 0, key); settingsSheet().rows[row][1] = value; };
-  const GOOD: Record<string, string> = { 大会名: 'テスト大会', 開催日: '2099-12-01', 会場: '体育館', 主催者名: '主催ジム', 問い合わせ先: '0200000000', 申込締切: '2099-11-30' };
+  const GOOD: Record<string, string> = { 大会名: 'テスト大会', 開催日: '2099-12-01', 会場: '体育館', 主催者名: '主催ジム', 問い合わせ先: '0200000000', 申込締切: '2099-11-30', 入場曲: 'なし' };
   const fill = (over: Record<string, string> = {}) => { for (const [k, v] of Object.entries({ ...GOOD, ...over })) setSetting(k, v); };
   const eventId = () => props.get('eventId') || '';
   const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '', age: '20', height: '170', weight: '65', record: '初試合', comment: '', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
