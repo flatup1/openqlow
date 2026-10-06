@@ -12,6 +12,7 @@ export type Opts = { ignoreTextFormat?: boolean };
 export function harness(opts: Opts = {}) {
   const props = new Map<string, string>(), resources = new Map<string, any>(), logs: string[] = [], zips: any[] = [];
   let currentOwner = owner, serial = 0, menu: string[] = [];
+  const alerts: string[] = [], toasts: string[] = []; let storage = { limit: 15 * 1024 ** 3, used: 1024 ** 3 };
   const iterator = (array: any[]) => { let i = 0; return { hasNext: () => i < array.length, next: () => array[i++] }; };
   const blob = (bytes: any, type: string, name: string) => ({ bytes: typeof bytes === 'string' ? Buffer.from(bytes) : Buffer.from(bytes), type, name, getBytes() { return [...this.bytes]; }, setName(v: string) { this.name = v; return this; } });
   function resource(kind: string, name: string, data?: any): any {
@@ -42,14 +43,15 @@ export function harness(opts: Opts = {}) {
           setValue: (v: any) => { s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
           setNumberFormat: (f: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
           setFontWeight: () => range,
-          setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; } };
+          setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; },
+          protect: () => { const prot: any = { warningOnly: false, setDescription() { return prot; }, setWarningOnly(v: boolean) { prot.warningOnly = v; return prot; } }; s.protections.push({ r, c, n, m, prot }); return prot; } };
         return range;
       } };
-    s.validations = validations;
+    s.validations = validations; s.protections = [] as any[];
     book.sheets.set(name, s); return s;
   }
   const bookFile = resource('file', 'copy-of-template');
-  const book: any = { sheets: new Map<string, any>(), getId: () => bookFile.id, getSheetByName: (n: string) => book.sheets.get(n) || null, insertSheet: (n: string) => sheet(book, n) };
+  const book: any = { sheets: new Map<string, any>(), toast: (message: string) => { toasts.push(String(message)); }, getId: () => bookFile.id, getSheetByName: (n: string) => book.sheets.get(n) || null, insertSheet: (n: string) => sheet(book, n) };
   sheet(book, 'シート1');
   const propsApi = { getProperty: (k: string) => props.get(k) ?? null, setProperty: (k: string, v: string) => { props.set(k, String(v)); }, setProperties: (o: Record<string, string>) => { for (const [k, v] of Object.entries(o)) props.set(k, String(v)); } };
   const api: any = {
@@ -57,8 +59,8 @@ export function harness(opts: Opts = {}) {
     PropertiesService: { getScriptProperties: () => propsApi },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
     SpreadsheetApp: { newDataValidation: () => { const b: any = { list: [] as string[], requireValueInList: (l: string[]) => { b.list = l; return b; }, setAllowInvalid: (v: boolean) => { b.allowInvalid = v; return b; }, build: () => ({ list: b.list, allowInvalid: b.allowInvalid }) }; return b; }, getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
-      getUi: () => ({ ButtonSet: { OK: 'OK' }, alert: () => undefined, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
-    DriveApp: { Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
+      getUi: () => ({ ButtonSet: { OK: 'OK' }, alert: (_t: string, message: string) => { alerts.push(String(message)); }, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
+    DriveApp: { getStorageLimit: () => storage.limit, getStorageUsed: () => storage.used, Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
     Utilities: { getUuid: () => randomUUID(), base64Decode: (v: string) => [...Buffer.from(v, 'base64')], newBlob: blob, Charset: { UTF_8: 'utf8' }, DigestAlgorithm: { SHA_256: 'sha256' }, computeDigest: (_: any, v: string | number[]) => [...createHash('sha256').update(typeof v === 'string' ? v : Buffer.from(v)).digest()].map((b) => (b > 127 ? b - 256 : b)),
       zip: (files: any[], name: string) => { zips.push(files); return { bytes: Buffer.from('zip'), type: 'application/zip', name }; } },
     ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST_ONLY/exec' }) },
@@ -76,6 +78,6 @@ export function harness(opts: Opts = {}) {
   const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '', age: '20', height: '170', weight: '65', record: '初試合', comment: '', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
   // 会長の操作: コピーしたシートを開く（onOpen）→ 「設定」タブに入れる → 「① 最初の設定」
   const ready = (over: Record<string, string> = {}) => { call('onOpen'); fill(over); call('setupTournament'); };
-  return { api, props, resources, book, logs, zips, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
+  return { api, props, resources, book, logs, zips, alerts, toasts, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
 }
 

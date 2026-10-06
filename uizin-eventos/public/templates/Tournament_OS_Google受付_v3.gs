@@ -1,5 +1,6 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261004.3';
+const RECEPTION_BUILD = '3.20261004.4';
+const MIN_FREE_BYTES = 200 * 1024 * 1024;
 /** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
   ['大会名', '', '例：第1回 ○○ジム大会'],
@@ -95,14 +96,18 @@ function setupTournament() {
     const problems = settingsProblems_(S_());
     if (problems.length) throw new Error(problems.join('。') + '。入れたら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : ''));
     if (props.getProperty('ownerEmail') && props.getProperty('ownerEmail') !== owner) throw new Error('別の大会が入っています。このシートをもう一度コピーして、新しい大会を作ってください。');
+    const storage = storageProblem_();
+    if (storage && !props.getProperty('photoFolderId')) throw new Error(storage);
     props.setProperties({ ownerEmail: owner });
     if (!props.getProperty('eventId')) props.setProperty('eventId', 'tos-' + Utilities.getUuid().replace(/-/g, '').slice(0, 10));
     SETTINGS_CACHE_ = null;
     if (!props.getProperty('accepting')) props.setProperty('accepting', 'false');
     [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS取込用（連絡先なし）', OS_HEADERS], ['テスト申込', PRIVATE_HEADERS], ['テストOS取込用', OS_HEADERS]].forEach(function (pair) {
       const sheet = book.getSheetByName(pair[0]) || book.insertSheet(pair[0]);
-      if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]).setFontWeight('bold');
-      else if (JSON.stringify(sheet.getRange(1, 1, 1, pair[1].length).getDisplayValues()[0]) !== JSON.stringify(pair[1])) throw new Error('申込表の見出しが変わっています。元のデータは消さず、見出しを確認してください。');
+      if (sheet.getLastRow() === 0) {
+        sheet.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]).setFontWeight('bold');
+        try { sheet.getRange(1, 1, 1, pair[1].length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
+      } else if (JSON.stringify(sheet.getRange(1, 1, 1, pair[1].length).getDisplayValues()[0]) !== JSON.stringify(pair[1])) throw new Error('申込表の見出しが変わっています。元のデータは消さず、見出しを確認してください。');
     });
     if (!props.getProperty('photoFolderId')) { const folder = DriveApp.createFolder('Tournament OS 顔写真 - ' + S_().tournamentName); props.setProperty('photoFolderId', folder.getId()); }
     if (!props.getProperty('testFolderId')) { const folder = DriveApp.getFolderById(props.getProperty('photoFolderId')).createFolder('テスト写真'); props.setProperty('testFolderId', folder.getId()); }
@@ -137,7 +142,7 @@ function statusInfo_() {
   const info = { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, ready: ready, accepting: props.getProperty('accepting') === 'true' };
   if (!ready) return info;
   const resources = checkResources_(), s = S_(), problems = settingsProblems_(s);
-  info.eventId = s.eventId; info.testComplete = testComplete_(resources.book); info.settingsProblem = problems.join('。');
+  info.eventId = s.eventId; info.testComplete = testComplete_(resources.book); info.settingsProblem = problems.join('。'); info.storageProblem = storageProblem_();
   if (!problems.length) { info.title = s.tournamentName; info.date = s.date; info.venue = s.venue; info.venueUrl = s.venueUrl; info.organizer = s.organizer; info.contact = s.contact; info.deadline = s.deadline; info.music = s.music; info.grade = s.grade; info.age = s.age; info.comment = s.comment; }
   return info;
 }
@@ -148,12 +153,36 @@ function showStatus() {
   try { SpreadsheetApp.getUi().alert('いまの状態', text, SpreadsheetApp.getUi().ButtonSet.OK); } catch (_) {}
   return s;
 }
+/** Googleの保存容量が足りないと、写真が保存できない。先に教える。 */
+function storageProblem_() {
+  try {
+    const limit = DriveApp.getStorageLimit(), used = DriveApp.getStorageUsed();
+    if (limit > 0 && limit - used < MIN_FREE_BYTES) return 'Googleの保存容量が、ほとんど残っていません（あと約' + Math.max(0, Math.floor((limit - used) / 1048576)) + 'MB）。写真が保存できなくなります。Driveや Gmail の要らないものを消すか、容量を追加してください。';
+  } catch (_) { /* 容量が調べられない環境では、何も言わない */ }
+  return '';
+}
+/** メニューから押したときは、成功も失敗も、画面の上に日本語で出す。 */
+function menuRun_(fn, doneMessage) {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const result = fn();
+    SpreadsheetApp.getActiveSpreadsheet().toast(typeof doneMessage === 'function' ? doneMessage(result) : doneMessage, 'Tournament OS', 20);
+    return result;
+  } catch (error) {
+    ui.alert('Tournament OS', String(error && error.message ? error.message : error), ui.ButtonSet.OK);
+    return null;
+  }
+}
+function menuSetup() { return menuRun_(setupTournament, '準備できました。架空の1件の自動テストも済みました。次は「拡張機能」→「Apps Script」→「デプロイ」→「新しいデプロイ」→「ウェブアプリ」です。'); }
+function menuOpen() { return menuRun_(openEntries, '受付を開始しました。アプリの画面で「確かめる」を押してください。'); }
+function menuClose() { return menuRun_(closeEntries, '受付を停止しました。申込済みのデータは残っています。'); }
+function menuExport() { return menuRun_(exportTournament, function (url) { return '名簿ZIPができました。Driveの写真フォルダに入っています：' + url; }); }
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Tournament OS')
-    .addItem('① 最初の設定', 'setupTournament')
-    .addItem('② 受付を開始', 'openEntries')
-    .addItem('③ 受付を停止', 'closeEntries')
-    .addItem('④ OS用の名簿ZIPを作る', 'exportTournament')
+    .addItem('① 最初の設定', 'menuSetup')
+    .addItem('② 受付を開始', 'menuOpen')
+    .addItem('③ 受付を停止', 'menuClose')
+    .addItem('④ OS用の名簿ZIPを作る', 'menuExport')
     .addItem('⑤ いまの状態を見る', 'showStatus')
     .addToUi();
   try { ensureSettingsSheet_(SpreadsheetApp.getActiveSpreadsheet()); } catch (_) { /* 設定タブは「① 最初の設定」でも作る */ }

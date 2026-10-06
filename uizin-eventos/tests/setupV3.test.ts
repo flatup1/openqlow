@@ -35,11 +35,13 @@ test('v3: 画面は迷う原因を1行で言う（古い版・設定前・設定
   assert.equal(diagnose(ping({ ready: false })).stage, 'not-setup');
   const bad = diagnose(ping({ settingsProblem: '「設定」タブの、次の欄を入れてください：会場' }));
   assert.equal(bad.stage, 'bad-settings'); assert.match(bad.message, /会場/);
+  const full2 = diagnose(ping({ storageProblem: 'Googleの保存容量が、ほとんど残っていません（あと約10MB）。' }));
+  assert.equal(full2.stage, 'storage-full'); assert.match(full2.message, /保存容量/); assert.equal(full2.ok, false);
   assert.equal(diagnose(ping({ testComplete: false })).stage, 'need-selftest');
   assert.equal(diagnose(ping()).stage, 'need-open');
   const ok = diagnose(ping({ accepting: true }));
   assert.equal(ok.stage, 'ready'); assert.equal(ok.ok, true);
-  for (const over of [{ build: 'x' }, { ready: false }, { settingsProblem: 'x' }, { testComplete: false }, {}]) assert.equal(diagnose(ping(over)).ok, false);
+  for (const over of [{ build: 'x' }, { ready: false }, { settingsProblem: 'x' }, { storageProblem: 'x' }, { testComplete: false }, {}]) assert.equal(diagnose(ping(over)).ok, false);
 });
 
 test('v3: 申込ページへ渡す情報は、Googleから読んだ設定だけ。足りなければ作らず、鍵は入れない', () => {

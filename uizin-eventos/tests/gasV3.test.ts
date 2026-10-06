@@ -88,7 +88,7 @@ test('v3: ping は公開してよい項目だけ。大会の設定は返すが�
   assert.deepEqual(Object.keys(before).sort(), ['accepting', 'app', 'build', 'protocol', 'ready']);
   h.ready();
   const out = h.call('doGet', { parameter: { action: 'ping' } }).text, body = JSON.parse(out);
-  assert.deepEqual(Object.keys(body).sort(), ['accepting', 'age', 'app', 'build', 'comment', 'contact', 'date', 'deadline', 'eventId', 'grade', 'music', 'organizer', 'protocol', 'ready', 'settingsProblem', 'testComplete', 'title', 'venue', 'venueUrl']);
+  assert.deepEqual(Object.keys(body).sort(), ['accepting', 'age', 'app', 'build', 'comment', 'contact', 'date', 'deadline', 'eventId', 'grade', 'music', 'organizer', 'protocol', 'ready', 'settingsProblem', 'storageProblem', 'testComplete', 'title', 'venue', 'venueUrl']);
   assert.equal(body.testComplete, true); assert.equal(body.accepting, false); assert.equal(body.title, 'テスト大会'); assert.equal(body.date, '2099-12-01'); assert.equal(body.deadline, '2099-11-30');
   for (const secret of [owner, 'selftest@example.invalid', 'test@example.com', '09000000000', 'テスト太郎', '自動テスト選手', h.props.get('spreadsheetId')!, h.props.get('photoFolderId')!, h.props.get('testFolderId')!]) assert.ok(!out.includes(secret), '漏れてはいけない: ' + secret);
   assert.match(String(h.call('doGet', {}).html), /保存先です/);
@@ -195,4 +195,46 @@ test('v3: 入場曲・学年・年齢・意気込みは「▼から選ぶ」欄�
   for (const name of ['学年', '年齢', '意気込み']) assert.equal(JSON.stringify(rule(name).list), JSON.stringify(['必須', '任意', 'なし']));
   for (const name of ['入場曲', '学年', '年齢', '意気込み']) assert.equal(rule(name).allowInvalid, false);
   assert.equal(rule('大会名'), undefined);
+});
+
+test('v3: メニューから押したときは、成功も失敗も、画面の上に日本語で出る（何も出ないままにしない）', () => {
+  const h = harness(); h.call('onOpen');
+  h.call('menuSetup');
+  assert.equal(h.toasts.length, 0, '失敗したので、成功の表示は出ない');
+  assert.match(h.alerts.at(-1)!, /次の欄を入れてください/);
+  assert.equal(h.props.get('eventId'), undefined);
+  h.fill(); h.call('menuSetup');
+  assert.match(h.toasts.at(-1)!, /準備できました/);
+  assert.match(h.toasts.at(-1)!, /デプロイ/);
+  h.call('menuOpen'); assert.match(h.toasts.at(-1)!, /受付を開始しました/);
+  h.call('menuClose'); assert.match(h.toasts.at(-1)!, /受付を停止しました/);
+  h.call('menuExport'); assert.match(h.alerts.at(-1) ?? h.toasts.at(-1)!, /./);
+  h.setSetting('主催者名', ''); h.call('menuOpen');
+  assert.match(h.alerts.at(-1)!, /主催者名/);
+});
+
+test('v3: Googleの保存容量が足りないときは、先に分かる言葉で止まり、足りていれば通る', () => {
+  const low = harness(); low.call('onOpen'); low.fill();
+  low.setStorage(15 * 1024 ** 3, 15 * 1024 ** 3 - 50 * 1024 ** 2);
+  assert.throws(() => low.call('setupTournament'), /保存容量が、ほとんど残っていません（あと約50MB）/);
+  assert.equal(low.props.get('photoFolderId'), undefined, '写真フォルダは作らない');
+  low.call('menuSetup'); assert.match(low.alerts.at(-1)!, /保存容量/);
+  low.setStorage(15 * 1024 ** 3, 1024 ** 3); low.call('setupTournament');
+  assert.equal(low.call('statusInfo_').storageProblem, '');
+  low.setStorage(15 * 1024 ** 3, 15 * 1024 ** 3 - 10 * 1024 ** 2);
+  assert.match(low.call('statusInfo_').storageProblem, /あと約10MB/);
+  const unlimited = harness(); unlimited.setStorage(0, 5 * 1024 ** 4); unlimited.ready();
+  assert.equal(unlimited.call('statusInfo_').storageProblem, '', '容量が調べられない（上限なし）ときは、何も言わない');
+});
+
+test('v3: 申込表の見出しは、「警告つき」で守る（うっかり書き換えると、確認が出る）', () => {
+  const h = harness(); h.ready();
+  for (const name of ['申込原本（個人情報あり）', 'OS取込用（連絡先なし）', 'テスト申込', 'テストOS取込用']) {
+    const protections = h.book.getSheetByName(name).protections;
+    assert.equal(protections.length, 1, name);
+    assert.equal(protections[0].prot.warningOnly, true, name);
+    assert.equal(protections[0].r, 1);
+  }
+  h.call('setupTournament');
+  assert.equal(h.book.getSheetByName('テスト申込').protections.length, 1, '何度押しても、増えない');
 });

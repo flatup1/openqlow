@@ -62,7 +62,7 @@ export default function SetupV3() {
   }, [ready, endpoint]);
 
   const diagnosis: Diagnosis | null = ping ? diagnose(ping) : null;
-  const blocked = !diagnosis || ['old-build', 'not-setup', 'bad-settings'].includes(diagnosis.stage);
+  const blocked = !diagnosis || ['old-build', 'not-setup', 'bad-settings', 'storage-full'].includes(diagnosis.stage);
   const link = (mode: 'test' | 'live') => { try { return ping ? '/apply/' + publicEntryHash(entryConfigFromPing(ping, endpoint, mode)) : ''; } catch { return ''; } };
   const copy = async (text: string, done: string) => { try { await navigator.clipboard.writeText(text); setMessage(done); } catch { setMessage('コピーできませんでした。ブラウザの「クリップボードを許可」を押して、もう一度押してください。'); } };
   const fetchTemplate = async (path: string, done: string) => { try { const r = await fetch(path); if (!r.ok) throw new Error(); await copy(await r.text(), done); } catch { setMessage('コピーできませんでした。画面を再読み込みして、もう一度押してください。'); } };

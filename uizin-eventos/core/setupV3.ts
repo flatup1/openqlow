@@ -3,11 +3,11 @@ import { formatDateInput } from './dateInput.ts';
 import type { EntryFieldMode } from './entryPackage.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
-export const EXPECTED_RECEPTION_BUILD = '3.20261004.3';
+export const EXPECTED_RECEPTION_BUILD = '3.20261004.4';
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;
-  eventId?: string; testComplete?: boolean; settingsProblem?: string;
+  eventId?: string; testComplete?: boolean; settingsProblem?: string; storageProblem?: string;
   title?: string; date?: string; venue?: string; venueUrl?: string; organizer?: string; contact?: string; deadline?: string;
   music?: boolean; grade?: EntryFieldMode; age?: EntryFieldMode; comment?: EntryFieldMode; error?: string;
 };
@@ -26,7 +26,7 @@ export function parsePing(value: unknown): Ping {
   const flag = (key: string) => (typeof v[key] === 'boolean' ? (v[key] as boolean) : undefined);
   const mode = (key: string): EntryFieldMode | undefined => (v[key] === 'off' || v[key] === 'optional' || v[key] === 'required' ? (v[key] as EntryFieldMode) : undefined);
   return {
-    app: 'tournament-os', protocol: 3, build: v.build.slice(0, 40), ready: v.ready, accepting: flag('accepting'), eventId: text('eventId', 64), testComplete: flag('testComplete'), settingsProblem: text('settingsProblem', 600),
+    app: 'tournament-os', protocol: 3, build: v.build.slice(0, 40), ready: v.ready, accepting: flag('accepting'), eventId: text('eventId', 64), testComplete: flag('testComplete'), settingsProblem: text('settingsProblem', 600), storageProblem: text('storageProblem', 600),
     title: text('title'), date: text('date', 20), venue: text('venue'), venueUrl: text('venueUrl', 500), organizer: text('organizer'), contact: text('contact'), deadline: text('deadline', 20),
     music: flag('music'), grade: mode('grade'), age: mode('age'), comment: mode('comment'), error: text('error', 40),
   };
@@ -39,7 +39,7 @@ export function parsePingText(text: string): Ping {
   return parsePing(value);
 }
 
-export type Stage = 'old-build' | 'not-setup' | 'bad-settings' | 'need-selftest' | 'need-open' | 'ready';
+export type Stage = 'old-build' | 'not-setup' | 'bad-settings' | 'storage-full' | 'need-selftest' | 'need-open' | 'ready';
 export type Diagnosis = { stage: Stage; ok: boolean; message: string };
 
 /** 画面に出す「次の1つ」。迷う原因（古い版・設定前・設定の間違い）を1行で言う。 */
@@ -47,6 +47,7 @@ export function diagnose(ping: Ping): Diagnosis {
   if (ping.build !== EXPECTED_RECEPTION_BUILD) return { stage: 'old-build', ok: false, message: 'Googleの版が古いです。ひな形をもう一度コピーするか、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押してください。' };
   if (!ping.ready) return { stage: 'not-setup', ok: false, message: 'まだ最初の設定が終わっていません。Googleのシートのメニュー「Tournament OS」→「① 最初の設定」を押してください。' };
   if (ping.settingsProblem) return { stage: 'bad-settings', ok: false, message: 'シートの「設定」タブを直してください。' + ping.settingsProblem };
+  if (ping.storageProblem) return { stage: 'storage-full', ok: false, message: ping.storageProblem };
   if (!ping.testComplete) return { stage: 'need-selftest', ok: false, message: 'つながりました。自動テストがまだです。シートのメニュー「Tournament OS」→「① 最初の設定」をもう一度押してください。' };
   if (!ping.accepting) return { stage: 'need-open', ok: false, message: 'つながりました。テストもできています。次は、シートのメニュー「Tournament OS」→「② 受付を開始」を押してください。' };
   return { stage: 'ready', ok: true, message: '受付できます。選手に渡すURLをコピーできます。' };
