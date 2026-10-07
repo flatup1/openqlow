@@ -61,13 +61,19 @@ window.FLATUP = window.FLATUP || {};
     if (seen[questionId]) return 0; // 万一の循環でも止まる
     seen[questionId] = true;
 
+    // 各選択肢の行き先は「その選択肢の next」→「質問の next」→ 結果画面 の順。
+    // ここで opt.next を持つ選択肢だけを見ると、q.next へ落ちる残りの選択肢
+    // （＝もっと長いかもしれない道）を数え落とす。同じ行き先は1回だけ見る。
     var longest = 0;
     var nexts = [];
-    (q.options || []).forEach(function (opt) {
-      if (opt.next) nexts.push(opt.next);
-    });
-    if (!nexts.length && q.next) nexts.push(q.next);
-    if (!nexts.length) nexts.push("result");
+    function addNext(id) {
+      if (nexts.indexOf(id) === -1) nexts.push(id);
+    }
+    if (q.options && q.options.length) {
+      q.options.forEach(function (opt) { addNext(opt.next || q.next || "result"); });
+    } else {
+      addNext(q.next || "result");
+    }
 
     nexts.forEach(function (nextId) {
       if (nextId === "result") return;
@@ -84,7 +90,18 @@ window.FLATUP = window.FLATUP || {};
   // 「あと何問あるか分からない」が理由になりやすい。
   function dots(questionId) {
     if (!FLATUP.QUESTIONS[questionId]) return null;
-    var pos = FLATUP.state.get().answers.length + 1;
+
+    // 位置は「回答した数」ではなく「見せた質問画面の数」で数える。
+    // 回答で数えると「答えずに進む」で回答が残らず、進捗がその場で止まり、
+    // 総数だけが減って見える（5問中2問目 → 4問中2問目）。
+    // history は画面を出すたび積まれ、「戻る」で取り除かれるので、
+    // スキップでも戻るでも、いま何枚目かがそのまま分かる。
+    var history = FLATUP.state.get().history || [];
+    var visited = [];
+    history.forEach(function (id) {
+      if (FLATUP.QUESTIONS[id] && visited.indexOf(id) === -1) visited.push(id);
+    });
+    var pos = visited.length || 1; // 呼ばれる時点で今の質問は積まれている
     var total = pos + stepsAfter(questionId);
     var wrap = el("div", { class: "dots" });
     wrap.setAttribute("role", "img");
@@ -106,7 +123,7 @@ window.FLATUP = window.FLATUP || {};
     // ファイルが無い場合は写真ブロックごと消え、レイアウトは壊れない。
     var photo = el("img", {
       class: "welcome-photo",
-      src: "hero.jpg?v=13",
+      src: "hero.jpg?v=14",
       alt: "FLAT UP GYMで、先生が小さなお子さんのミット練習を優しく見守っている様子",
       width: "800", height: "600", decoding: "async", fetchpriority: "high"
     });

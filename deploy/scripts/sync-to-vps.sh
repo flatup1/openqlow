@@ -22,10 +22,24 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)/"
 RSYNC_EXCLUDES=(
   --exclude node_modules
   --exclude .git
-  --exclude 'dist/'
-  --exclude 'state/'
-  --exclude 'drafts/'
-  --exclude 'logs/'
+  # 先頭の / は「プロジェクトの一番上だけ」という意味。これが無いと、
+  # rsync は同じ名前のフォルダを どの階層でも 除外してしまう。
+  #
+  # 2026-10-02 に実際に起きたこと:
+  #   'state/' と書いていたため src/state/ まで除外され、VPS には
+  #   古い src/state/file_store.ts が残り続けた。本番ビルドが
+  #     error TS2724: has no exported member named 'readRecord'
+  #   で失敗した。手元とCIは正しいので、絶対に気づけない壊れ方だった。
+  #
+  # ここで消したいのは本番で増え続ける一番上の state/ drafts/ logs/ dist/ だけ。
+  --exclude '/dist/'
+  --exclude '/state/'
+  --exclude '/drafts/'
+  --exclude '/logs/'
+  # 本番が「いまどのコードで動いているか」の印。deploy-vps.sh がビルド成功後に
+  # 書く。リポジトリには無いので --delete の対象になり、ビルドが失敗すると
+  # 印だけ消えて「一度も反映できていません」と誤って出る。消させない。
+  --exclude '/deployed-version.txt'
   --exclude '*.log'
   --exclude '.env'
   --exclude '.env.*'
