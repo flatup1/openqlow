@@ -120,8 +120,22 @@ export function stepGuide({ phase, step, bout, result, isLast, order, preflightR
   }
 }
 
+// 「↩ 戻す」で取り消される操作の名前（ボタンに出して、何が戻るかを押す前に分かるようにする）。
+export const UNDO_LABELS = {
+  ENTRANCE: "入場",
+  FIGHT_START: "試合開始",
+  FIGHT_END: "試合終了",
+  RESULT: "勝者の記録",
+  NEXT_BOUT: "次の試合へ",
+  SKIP_BOUT: "試合を飛ばす",
+  BREAK_START: "休憩",
+  BREAK_END: "休憩の終わり",
+  EVENT_END: "大会を終える",
+};
+
 // 直前の操作を「✅ ○○しました」の文にする（EVENT_OS_SPEC.md §5.2）。
-export function doneText(event, boutNo) {
+// undoneType は「↩ 戻す」で取り消した操作の種類（分かれば文に入れる）。
+export function doneText(event, boutNo, undoneType) {
   if (!event) return "";
   switch (event.type) {
     case "START_EVENT":
@@ -144,8 +158,10 @@ export function doneText(event, boutNo) {
       return "✅ 休憩が終わりました";
     case "EVENT_END":
       return "✅ 大会を終えました";
+    case "LOAD_CARD":
+      return `✅ 試合データを読み込みました（${event.bouts?.length ?? 0}試合）`;
     case "UNDO":
-      return "↩ ひとつ戻しました";
+      return UNDO_LABELS[undoneType] ? `↩「${UNDO_LABELS[undoneType]}」を取り消しました` : "↩ ひとつ戻しました";
     default:
       return "";
   }

@@ -16,7 +16,7 @@
     <button id="safe" class="safe" type="button" aria-label="安全運転">🛟 安全運転</button>
   </header>
 
-  <div id="offline" class="banner offline" hidden>📡 Event OS とつながっていません（自動でつなぎ直しています）</div>
+  <div id="offline" class="banner offline" hidden>📡 本体のMacとつながっていません（自動でつなぎ直しています）。ランプは「未確認」です</div>
   <div id="rehearsal" class="banner rehearsal" hidden>🧪 練習中（配信されません）</div>
   <section id="alerts" class="alerts" aria-live="assertive"></section>
 
@@ -40,7 +40,7 @@
     <section class="fixed" aria-label="いつでも押せるボタン">
       <button id="cam-main" class="small" type="button">📹 メイン</button>
       <button id="cam-sub" class="small" type="button">📹 サブ</button>
-      <button id="undo" class="small" type="button">↩ 戻る</button>
+      <button id="undo" class="small" type="button">↩ 戻す</button>
     </section>
 
     <ul id="notices" class="notices"></ul>
@@ -93,7 +93,7 @@
     <div class="row">
       <button type="button" class="danger" data-cmd="skip_bout" data-hold="この試合を飛ばして次へ進みます。よいですか？">⏭ この試合を飛ばす</button>
       <button type="button" data-cmd="result" data-args='{"winner":"nocontest"}'>⚠️ 無効試合にする</button>
-      <button type="button" data-cmd="undo">↩ 戻る（試合をまたいでも）</button>
+      <button type="button" id="op-undo">↩ 戻す</button>
     </div>
 
     <h3>表示名の手直し</h3>

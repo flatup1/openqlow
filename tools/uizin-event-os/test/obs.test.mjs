@@ -394,3 +394,11 @@ test("つなぎ直しを押したとき、古い接続の失敗で新しい接�
   assert.equal(adapter.state.connection.status, "ok");
   assert.equal(adapter.client.identified, true);
 });
+
+test("カメラの部品が後から見つかったら、「部品が無い」の印を外す", async () => {
+  const { nextTrack, makeBmp } = await import("../src/obs/frame_check.mjs");
+  const missing = { status: "error", kind: "missing", checkedAt: 1, message: "OBSに「MAIN」がありません", frame: null, failCount: 0, darkCount: 0, unchangedSince: null };
+  const track = nextTrack(missing, { ok: true, data: makeBmp(32, 18, (x, y) => [100 + x, 120 + y, 140]) }, 2);
+  assert.equal(track.kind, null);
+  assert.equal(track.status, "ok");
+});

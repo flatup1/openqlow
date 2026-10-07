@@ -331,3 +331,55 @@ test("開始前チェック：配信する日は「音のチェック」も必�
   const rehearsal = evaluatePreflight({ state: event.state, config: event.config, obs: silent, nowMs: NOW, rehearsal: true });
   assert.ok(!rehearsal.blocking.includes("audio"));
 });
+
+test("「↩ 戻す」は何が戻るかをボタンに出す。試合中に「試合開始」を戻すときは確かめる", () => {
+  const event = new MiniEvent().setup();
+  event.run("entrance", { corner: "red" }, { role: "easy" });
+  event.run("entrance", { corner: "blue" }, { role: "easy" });
+  event.run("fight_start", {}, { role: "easy" });
+  // カメラを切り替えても、戻るのは「試合開始」（カメラは戻らない）。それがボタンで分かる。
+  event.run("camera", { to: "sub" }, { role: "easy" });
+  let view = buildView(ctx(event));
+  assert.equal(view.fixed.undo.label, "↩ 戻す（試合開始）");
+  assert.match(view.fixed.undo.confirm, /入場の画面に戻します/);
+  event.run("undo", {}, { role: "easy" });
+  view = buildView(ctx(event));
+  assert.equal(view.done, "↩「試合開始」を取り消しました");
+  assert.equal(view.fixed.undo.label, "↩ 戻す（入場）");
+  assert.equal(view.fixed.undo.confirm, null);
+});
+
+test("今映っているカメラ：安全運転中はメイン、配信しない試合ではどちらも映していない", () => {
+  const event = new MiniEvent().setup();
+  event.run("camera", { to: "sub" }, { role: "easy" });
+  assert.equal(buildView(ctx(event)).fixed.camera.current, "sub");
+  event.run("safe_on", {}, { role: "easy" });
+  assert.equal(buildView(ctx(event)).fixed.camera.current, "main");
+  event.run("safe_off", {}, { role: "easy" });
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  const view = buildView(ctx(event));
+  assert.equal(view.bout.hidden, true);
+  assert.equal(view.fixed.camera.current, null);
+  assert.equal(view.fixed.camera.chosen, "sub");
+});
+
+test("かんたんモード：メインカメラの部品が無いときは「OBS」や部品名を出さず、運営の人を呼ぶように言う", () => {
+  const event = new MiniEvent().setup();
+  const missing = { status: "error", kind: "missing", checkedAt: NOW, message: "OBSに「MAIN_X」がありません" };
+  const obs = healthyObs({ cameras: { main: missing, sub: { status: "ok", checkedAt: NOW, message: "" } } });
+  const easy = nextAction(ctx(event, { obs })).alerts.map(alert => alert.text).join("\n");
+  assert.match(easy, /映像ソフトの設定にありません。運営の人を呼んでください/);
+  assert.doesNotMatch(easy, /OBS|MAIN_X|ケーブル/);
+  const operator = nextAction(ctx(event, { obs, role: "operator" })).alerts.map(alert => alert.text).join("\n");
+  assert.match(operator, /MAIN_X/);
+});
+
+test("かんたんモード：準備中は「❌ を直して」ではなく「運営の人が準備中」と伝える", () => {
+  const event = new MiniEvent();
+  event.run("load_card", { bouts: event.card.bouts, hash: event.card.hash });
+  const preflight = { ready: false, items: [], blocking: ["x"] };
+  assert.match(nextAction(ctx(event, { preflight })).next, /運営の人が準備をしています/);
+  assert.match(nextAction(ctx(event, { preflight, role: "operator" })).next, /❌ を直してください/);
+  assert.equal(nextAction(ctx(event, { preflight })).done, "✅ 試合データを読み込みました（3試合）");
+});

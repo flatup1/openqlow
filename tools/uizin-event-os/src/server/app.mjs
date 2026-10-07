@@ -284,7 +284,8 @@ export class EventOsApp extends EventEmitter {
     const written = decision.events.length > 0 ? this.record(decision.events) : [];
     this.afterEngine(written);
     const note = warnings?.length ? `（注意 ${warnings.length}件）` : "";
-    return { ok: true, message: `受け付けました${note}`, rev: this.state.rev, warnings };
+    const message = cmd.type === "load_card" ? `試合データを読み込みました（${command.args.bouts.length}試合）${note}` : `受け付けました${note}`;
+    return { ok: true, message, rev: this.state.rev, warnings };
   }
 
   // 記録した操作に続けて、OBS へ行う「おまけ」の操作（失敗しても進行は止めない）。

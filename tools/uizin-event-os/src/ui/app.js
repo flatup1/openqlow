@@ -5,6 +5,8 @@
 const $ = id => document.getElementById(id);
 const PRESS_LOCK_MS = 1000;
 const HOLD_MS = 2000;
+const VIEW_TIMEOUT_MS = 5000;
+const VIEW_STALE_MS = 6000;
 
 const store = {
   get(key, fallback, session) {
@@ -45,9 +47,19 @@ if (!device) {
 let pin = store.get("eos-pin", "", true);
 
 let view = null;
+let viewAt = 0;
 let locked = false;
 let fetching = false;
 let fetchAgain = false;
+
+// 中身が変わったときだけ作り直す（2秒ごとに作り直すと、押している途中のボタンが消えて押せないため）。
+const lastSig = {};
+function changed(key, data) {
+  const sig = JSON.stringify(data);
+  if (lastSig[key] === sig) return false;
+  lastSig[key] = sig;
+  return true;
+}
 
 function headers(json) {
   const result = { "x-eos-device": device };
@@ -74,28 +86,47 @@ async function fetchView() {
     return;
   }
   fetching = true;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), VIEW_TIMEOUT_MS);
   try {
-    const res = await fetch(`/api/view${token ? `?t=${encodeURIComponent(token)}` : ""}`, { headers: headers(false) });
+    const res = await fetch(`/api/view${token ? `?t=${encodeURIComponent(token)}` : ""}`, { headers: headers(false), signal: abort.signal });
     const body = await res.json();
     if (res.status === 403 && pin) {
       pin = "";
       store.remove("eos-pin", true);
       toast(body.message || "PINが違います", true);
     } else if (!res.ok) {
+      staleLamps();
       toast(body.message || "画面を読み込めませんでした", true);
     } else {
       view = body.view;
+      viewAt = Date.now();
       render();
     }
   } catch {
-    $("offline").hidden = false;
+    markOffline();
   } finally {
+    clearTimeout(timer);
     fetching = false;
     if (fetchAgain) {
       fetchAgain = false;
       fetchView();
     }
   }
+}
+
+// 新しい様子を受け取れない間は、録画・配信のランプを「未確認」にする（古い「● 録画中」を出し続けない）。
+function staleLamps() {
+  for (const [id, label] of [["lamp-record", "録画"], ["lamp-stream", "配信"]]) {
+    const el = $(id);
+    el.textContent = `⚠️ ${label} 未確認`;
+    el.className = "lamp warn";
+  }
+}
+
+function markOffline() {
+  $("offline").hidden = false;
+  staleLamps();
 }
 
 function lockButtons() {
@@ -107,24 +138,32 @@ function lockButtons() {
   }, PRESS_LOCK_MS);
 }
 
-async function send(type, args, extra) {
-  if (locked) return;
+// opts.force：確認ダイアログの後など、続けて送るとき。opts.askConfirm：「確認が必要」の返事を赤い知らせにしない。
+async function send(type, args, extra, opts) {
+  const options = opts || {};
+  // 🛟 は何度押しても同じ結果なので、連打よけの待ち時間でも必ず送る。
+  if (locked && type !== "safe_on" && !options.force) {
+    toast("⏳ 前に押したボタンを受け付けています。画面が変わってから押してください", false);
+    return null;
+  }
   lockButtons();
   const body = { type, args: args || {}, expectedRev: view ? view.rev : 0, ...(extra || {}) };
+  let result = null;
   try {
     const res = await fetch("/api/command", { method: "POST", headers: headers(true), body: JSON.stringify(body) });
-    const result = await res.json();
+    result = await res.json();
     if (!result.ok) {
-      toast(result.message || "受け付けられませんでした", true);
+      if (!(options.askConfirm && result.code === "confirm")) toast(result.message || "受け付けられませんでした", true);
       if (Array.isArray(result.errors)) showCardErrors(result.errors);
     } else if (result.message && !/^受け付けました$/.test(result.message)) {
       toast(result.message, false);
     }
     if (Array.isArray(result.warnings) && result.warnings.length) showCardErrors(result.warnings.map(w => `注意：${w}`));
   } catch {
-    toast("送れませんでした。Event OS とのつながりを確かめてください", true);
+    toast("送れませんでした。本体のMacとのつながりを確かめてください", true);
   }
   fetchView();
+  return result;
 }
 
 // ---- 長押し＋確認（危険な操作） ----
@@ -168,6 +207,17 @@ function attachHold(button, onConfirmed) {
   });
 }
 
+// 「↩ 戻す」。何が戻るかはボタンに出ている。試合中の「試合開始」などは、確かめてから戻す。
+async function undo() {
+  const target = view && view.fixed.undo;
+  if (!target || !target.confirm) {
+    send("undo");
+    return;
+  }
+  const rev = view.rev;
+  if (await confirmDialog(target.confirm)) send("undo", {}, { expectedRev: rev }, { force: true });
+}
+
 function wirePanelButtons() {
   for (const button of document.querySelectorAll("[data-cmd]")) {
     const type = button.dataset.cmd;
@@ -191,6 +241,7 @@ function lampClass(status) {
 }
 
 function renderAlerts() {
+  if (!changed("alerts", view.alerts)) return;
   const box = $("alerts");
   box.replaceChildren();
   for (const alert of view.alerts) {
@@ -212,6 +263,7 @@ function renderAlerts() {
 }
 
 function renderButtons() {
+  if (!changed("buttons", [view.buttons, view.preflightReady, view.phase, view.role])) return;
   const box = $("buttons");
   box.replaceChildren();
   box.dataset.count = String(view.buttons.length);
@@ -236,46 +288,81 @@ function renderOperator() {
   const op = view.operator;
   $("operator").hidden = !op;
   if (!op) return;
-  const lamps = $("op-lamps");
-  lamps.replaceChildren();
-  for (const [label, lamp] of [["OBS", op.lamps.obs], ["メインカメラ", op.lamps.main], ["サブカメラ", op.lamps.sub]]) {
-    const span = document.createElement("span");
-    span.className = `lamp ${lampClass(lamp.status)}`;
-    span.textContent = `${{ ok: "✅", unknown: "⚠️", error: "❌" }[lamp.status] || "⚠️"} ${label}${lamp.message ? `：${lamp.message}` : ""}`;
-    lamps.append(span);
+  if (changed("op-lamps", op.lamps)) {
+    const lamps = $("op-lamps");
+    lamps.replaceChildren();
+    for (const [label, lamp] of [["OBS", op.lamps.obs], ["メインカメラ", op.lamps.main], ["サブカメラ", op.lamps.sub]]) {
+      const span = document.createElement("span");
+      span.className = `lamp ${lampClass(lamp.status)}`;
+      span.textContent = `${{ ok: "✅", unknown: "⚠️", error: "❌" }[lamp.status] || "⚠️"} ${label}${lamp.message ? `：${lamp.message}` : ""}`;
+      lamps.append(span);
+    }
   }
   // 練習中は「始める」「やり直す」を出さない。「終える」はいつでも出す（配信が残っていたら止められるように）。
   $("stream-start").hidden = !op.canStream;
   $("stream-restart").hidden = !op.canStream;
 
-  const list = $("preflight");
-  list.replaceChildren();
-  for (const entry of op.preflight.items) {
+  $("force-start").hidden = view.role !== "admin" || view.phase !== "setup";
+  renderPreflight(op.preflight);
+  renderResults(op.results);
+}
+
+// 開始前チェックは、行を作り直さず中身だけ書き換える（空き容量などが変わるたびに 👤 ボタンが消えないように）。
+const preflightRows = new Map();
+function preflightRow(id) {
+  let row = preflightRows.get(id);
+  if (!row) {
     const li = document.createElement("li");
-    li.className = `check ${entry.status === "ok" ? "ok" : entry.required ? "error" : "warn"}`;
-    const icon = entry.status === "ok" ? (entry.kind === "human" ? "👤" : "✅") : entry.required ? "❌" : "⚠️";
     const text = document.createElement("span");
-    text.textContent = `${icon} ${entry.label}${entry.detail ? `（${entry.detail}）` : ""}${entry.required ? "" : " ［推奨］"}`;
     li.append(text);
-    if (entry.kind === "human" && entry.id !== "consent") {
+    row = { li, text, button: null };
+    preflightRows.set(id, row);
+  }
+  return row;
+}
+
+function renderPreflight(preflight) {
+  if (!changed("preflight", preflight)) return;
+  const list = $("preflight");
+  const summary = preflightRow("summary:ready");
+  summary.li.className = `check summary ${preflight.ready ? "ok" : "error"}`;
+  summary.text.textContent = preflight.ready ? "✅ 大会を始められます" : `❌ まだ始められません（${preflight.blocking.length}件）`;
+  const wanted = [summary.li];
+  for (const entry of preflight.items) {
+    const row = preflightRow(`item:${entry.id}`);
+    row.li.className = `check ${entry.status === "ok" ? "ok" : entry.required ? "error" : "warn"}`;
+    const icon = entry.status === "ok" ? (entry.kind === "human" ? "👤" : "✅") : entry.required ? "❌" : "⚠️";
+    row.text.textContent = `${icon} ${entry.label}${entry.detail ? `（${entry.detail}）` : ""}${entry.required ? "" : " ［推奨］"}`;
+    const needsButton = entry.kind === "human" && entry.id !== "consent";
+    if (needsButton && !row.button) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "small";
-      button.textContent = entry.status === "ok" ? "取り消す" : "👤 確認した";
-      button.addEventListener("click", () => send("human_check", { item: entry.id, checked: entry.status !== "ok" }));
-      li.append(button);
+      button.addEventListener("click", () => send("human_check", { item: entry.id, checked: button.dataset.checked === "true" }));
+      row.li.append(button);
+      row.button = button;
+    } else if (!needsButton && row.button) {
+      row.button.remove();
+      row.button = null;
     }
-    list.append(li);
+    if (row.button) {
+      row.button.textContent = entry.status === "ok" ? "取り消す" : "👤 確認した";
+      row.button.dataset.checked = String(entry.status !== "ok");
+    }
+    wanted.push(row.li);
   }
-  const ready = document.createElement("li");
-  ready.className = `check summary ${op.preflight.ready ? "ok" : "error"}`;
-  ready.textContent = op.preflight.ready ? "✅ 大会を始められます" : `❌ まだ始められません（${op.preflight.blocking.length}件）`;
-  list.prepend(ready);
-  $("force-start").hidden = view.role !== "admin" || view.phase !== "setup";
+  wanted.forEach((li, index) => {
+    if (list.children[index] !== li) list.insertBefore(li, list.children[index] || null);
+  });
+  while (list.children.length > wanted.length) list.lastElementChild.remove();
+}
 
+// 結果の表は、選んでいる途中で作り直さない（選択が消えないように）。
+function renderResults(results) {
+  if (!changed("results", results)) return;
   const tbody = $("results");
   tbody.replaceChildren();
-  for (const row of op.results) {
+  for (const row of results) {
     const tr = document.createElement("tr");
     for (const value of [`第${row.no}試合`, row.red, row.blue, row.result || "—"]) {
       const td = document.createElement("td");
@@ -307,17 +394,19 @@ function renderAdmin() {
   const admin = view.admin;
   $("admin").hidden = !admin;
   if (!admin) return;
-  const urls = $("urls");
-  urls.replaceChildren();
-  for (const url of admin.lanUrls || []) {
-    const li = document.createElement("li");
-    li.textContent = url;
-    urls.append(li);
-  }
-  if (!admin.lanUrls || admin.lanUrls.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "ネットワークが見つかりません（このMacの画面で操作してください）";
-    urls.append(li);
+  if (changed("urls", admin.lanUrls)) {
+    const urls = $("urls");
+    urls.replaceChildren();
+    for (const url of admin.lanUrls || []) {
+      const li = document.createElement("li");
+      li.textContent = url;
+      urls.append(li);
+    }
+    if (!admin.lanUrls || admin.lanUrls.length === 0) {
+      const li = document.createElement("li");
+      li.textContent = "ネットワークが見つかりません（このMacの画面で操作してください）";
+      urls.append(li);
+    }
   }
   const info = [`モード：${admin.mode === "rehearsal" ? "練習" : "本番"}`];
   if (admin.program) info.push(`OBSの今の場面：${admin.program}`);
@@ -360,24 +449,32 @@ function render() {
   setText("next", view.next);
   renderButtons();
 
+  // 今映っているカメラは、色だけでなく文字でも示す（安全運転中はメイン、配信しない試合ではどちらも映さない）。
   const cam = view.fixed.camera;
-  for (const [id, key] of [["cam-main", "main"], ["cam-sub", "sub"]]) {
+  for (const [id, key, label] of [["cam-main", "main", "📹 メイン"], ["cam-sub", "sub", "📹 サブ"]]) {
     const button = $(id);
+    const onAir = cam.current === key;
     button.disabled = !cam.enabled;
-    button.classList.toggle("active", cam.current === key);
-    button.setAttribute("aria-pressed", String(cam.current === key));
+    button.textContent = onAir ? `${label} ✓映っています` : label;
+    button.classList.toggle("active", onAir);
+    button.setAttribute("aria-pressed", String(onAir));
   }
-  $("undo").disabled = !view.fixed.undo.enabled;
+  for (const id of ["undo", "op-undo"]) {
+    $(id).disabled = !view.fixed.undo.enabled;
+    $(id).textContent = view.fixed.undo.label;
+  }
   const safe = $("safe");
   safe.textContent = view.fixed.safe.on ? "✅ 通常に戻す" : "🛟 安全運転";
   safe.classList.toggle("on", view.fixed.safe.on);
 
-  const notices = $("notices");
-  notices.replaceChildren();
-  for (const text of view.notices) {
-    const li = document.createElement("li");
-    li.textContent = text;
-    notices.append(li);
+  if (changed("notices", view.notices)) {
+    const notices = $("notices");
+    notices.replaceChildren();
+    for (const text of view.notices) {
+      const li = document.createElement("li");
+      li.textContent = text;
+      notices.append(li);
+    }
   }
 
   setText("role-label", { easy: "", operator: "運営モード中", admin: "管理モード中" }[view.role]);
@@ -401,7 +498,8 @@ function showCardErrors(lines) {
 function wire() {
   $("cam-main").addEventListener("click", () => send("camera", { to: "main" }));
   $("cam-sub").addEventListener("click", () => send("camera", { to: "sub" }));
-  $("undo").addEventListener("click", () => send("undo"));
+  $("undo").addEventListener("click", undo);
+  $("op-undo").addEventListener("click", undo);
   $("safe").addEventListener("click", () => send(view && view.fixed.safe.on ? "safe_off" : "safe_on"));
   wirePanelButtons();
 
@@ -417,14 +515,28 @@ function wire() {
     $("pin-dialog").showModal();
   });
   $("pin-cancel").addEventListener("click", () => $("pin-dialog").close());
+  $("pin-input").addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("pin-ok").click();
+    }
+  });
   $("pin-ok").addEventListener("click", async () => {
     const candidate = $("pin-input").value.trim();
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: { ...headers(true), "x-eos-pin": candidate },
-      body: "{}",
-    });
-    const body = await res.json().catch(() => ({}));
+    setText("pin-error", "");
+    let res;
+    let body = {};
+    try {
+      res = await fetch("/api/login", {
+        method: "POST",
+        headers: { ...headers(true), "x-eos-pin": candidate },
+        body: "{}",
+      });
+      body = await res.json().catch(() => ({}));
+    } catch {
+      setText("pin-error", "つながっていません。少し待ってから、もう一度入れてください");
+      return;
+    }
     if (!res.ok || !body.ok) {
       setText("pin-error", body.message || "PINが違います");
       return;
@@ -443,12 +555,11 @@ function wire() {
     }
     const csv = await file.text();
     showCardErrors([]);
-    if (view && view.phase !== "setup") {
-      if (!(await confirmDialog("大会中に試合データを読み直します。当日に直した表示名は消えます。今の試合が新しいデータに無いときは、その試合の最初に戻ります。よいですか？"))) return;
-      send("load_card", { csv }, { confirm: true });
-    } else {
-      send("load_card", { csv });
-    }
+    // 先にファイルの中身を確かめてもらう。大会中なら、中身が正しいと分かってから確認を出す。
+    const result = await send("load_card", { csv }, null, { askConfirm: true });
+    if (!result || result.code !== "confirm") return;
+    if (!(await confirmDialog("大会中に試合データを読み直します。当日に直した表示名は消えます。今の試合が新しいデータに無いときは、その試合の最初に戻ります。よいですか？"))) return;
+    send("load_card", { csv }, { confirm: true }, { force: true });
   });
 
   // 画面で見ていた試合データの印を一緒に送る（読み直された後のデータを、見ずに「確認した」にしない）。
@@ -473,13 +584,15 @@ function wire() {
 
   const source = new EventSource(`/api/events${token ? `?t=${encodeURIComponent(token)}` : ""}`);
   source.addEventListener("change", () => fetchView());
-  source.addEventListener("error", () => {
-    $("offline").hidden = false;
-  });
+  source.addEventListener("error", () => markOffline());
   source.addEventListener("open", () => {
     $("offline").hidden = true;
     fetchView();
   });
+  // 知らせが途切れても、しばらく新しい画面が来なければ自分から読みに行く（つながっていなければ「未確認」にする）。
+  setInterval(() => {
+    if (Date.now() - viewAt > VIEW_STALE_MS) fetchView();
+  }, 2000);
   fetchView();
 }
 

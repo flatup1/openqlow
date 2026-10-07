@@ -27,6 +27,9 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* 下に出る知らせ（toast）の分だけ余白を取り、いちばん下のボタンも知らせの上までスクロールできるようにする。 */
+body { padding-bottom: 96px; }
+
 button, input, select {
   font: inherit;
   color: inherit;
@@ -43,7 +46,8 @@ button {
 
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
-body.locked .big, body.locked .small, body.locked .alert-button { pointer-events: none; opacity: 0.6; }
+/* 押した直後の1秒は、🛟 以外のボタンを薄くして押せないことを見せる（ダイアログの中は除く）。 */
+body.locked main button, body.locked .alerts button, body.locked .panel button { pointer-events: none; opacity: 0.6; }
 
 [hidden] { display: none !important; }
 
@@ -107,7 +111,8 @@ body.locked .big, body.locked .small, body.locked .alert-button { pointer-events
 
 .buttons { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .buttons[data-count="2"], .buttons[data-count="3"] { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.big { min-height: 96px; font-size: 1.9rem; font-weight: 800; border-width: 3px; border-color: var(--text); }
+/* 「赤の勝ち」などを言葉の途中で折り返さない（折り返すなら絵文字の後のすき間だけ）。 */
+.big { min-height: 96px; font-size: 1.9rem; font-weight: 800; border-width: 3px; border-color: var(--text); padding: 0.4em 0.5em; line-height: 1.25; word-break: keep-all; }
 .big.corner-red, .big.win-red { background: var(--red); border-color: var(--red); }
 .big.corner-blue, .big.win-blue { background: var(--blue); border-color: var(--blue); }
 .wait-note { margin: 0; padding: 18px; text-align: center; color: var(--muted); border: 2px dashed var(--line); border-radius: 14px; }
@@ -144,7 +149,8 @@ body.locked .big, body.locked .small, body.locked .alert-button { pointer-events
 .urls { overflow-wrap: anywhere; }
 .admin-info { color: var(--muted); }
 
-.toast { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 10; max-width: 700px; margin: 0 auto; padding: 14px 16px; border-radius: 14px; background: #263238; border: 2px solid var(--ok); font-weight: 700; }
+/* 知らせは押せない（下のボタンへの指をじゃましない）。 */
+.toast { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 10; max-width: 700px; margin: 0 auto; padding: 14px 16px; border-radius: 14px; background: #263238; border: 2px solid var(--ok); font-weight: 700; pointer-events: none; }
 .toast.error { border-color: var(--error); background: #2a1212; }
 
 .dialog { max-width: min(520px, calc(100vw - 32px)); border: 2px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); }

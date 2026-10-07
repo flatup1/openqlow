@@ -67,7 +67,14 @@ export function nextAction(ctx) {
 
   const main = lamp(obs?.cameras?.main, nowMs);
   if (connected && main.status === "error") {
-    alerts.push(alert("error", `❌ メインカメラが映っていません（${main.message}）。ケーブルと電源を確かめてください`));
+    if (obs.cameras.main.kind === "missing") {
+      // 部品が無いのは設定の問題。ケーブルを見ても直らないので、運営の人に任せる。
+      alerts.push(alert("error", role === "easy"
+        ? "❌ メインカメラが映像ソフトの設定にありません。運営の人を呼んでください"
+        : `❌ メインカメラが映っていません（${main.message}）。OBSの部品名と設定ファイルの cameras.main を確かめてください`));
+    } else {
+      alerts.push(alert("error", `❌ メインカメラが映っていません（${main.message}）。ケーブルと電源を確かめてください`));
+    }
   }
 
   // 手動モードのまま配信しない試合に進むと、カメラが映ったままになりうる（人の操作を優先するため）。
@@ -117,9 +124,14 @@ export function nextAction(ctx) {
     preflightReady: preflight?.ready === true,
   });
 
+  // かんたんモードには開始前チェックが見えないので、「❌ を直して」ではなく待つように伝える。
+  if (state.phase === "setup" && role === "easy") guide.next = "運営の人が準備をしています。少し待ってください";
+
   const nextBoutNo = state.card?.bouts?.[state.boutIndex]?.no;
+  const last = state.lastEvent;
+  const undoneType = last?.type === "UNDO" ? ctx.findEventType?.(last.target) : undefined;
   return {
-    done: doneText(state.lastEvent, nextBoutNo),
+    done: doneText(last, nextBoutNo, undoneType),
     now: guide.now,
     next: guide.next,
     buttons: guide.buttons.filter(button => roleAtLeast(role, button.minRole ?? "easy")),

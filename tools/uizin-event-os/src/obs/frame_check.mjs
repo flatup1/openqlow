@@ -57,7 +57,8 @@ export function initialTrack() {
 
 // sample: { ok: true, data } | { ok: false, error }
 export function nextTrack(track, sample, nowMs, options = DEFAULTS) {
-  const t = { ...track, checkedAt: nowMs };
+  // 映像を確かめたら「部品が無い（missing）」の印は外す（あとで部品が見つかった場合）。
+  const t = { ...track, kind: null, checkedAt: nowMs };
   if (!sample.ok) {
     t.failCount += 1;
     t.darkCount = 0;

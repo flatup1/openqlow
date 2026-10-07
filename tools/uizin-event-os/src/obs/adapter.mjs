@@ -439,7 +439,7 @@ export class ObsAdapter extends EventEmitter {
     for (const key of ["main", "sub"]) {
       const name = this.names.cams[key];
       if (Array.isArray(this.state.inputs) && !this.state.inputs.includes(name)) {
-        this.state.cameras[key] = { ...initialTrack(), status: "error", checkedAt: this.now(), message: `OBSに「${name}」がありません` };
+        this.state.cameras[key] = { ...initialTrack(), status: "error", kind: "missing", checkedAt: this.now(), message: `OBSに「${name}」がありません` };
         continue;
       }
       let sample;
@@ -751,7 +751,7 @@ export class ObsAdapter extends EventEmitter {
   // ---- 外へ渡す様子 ----
 
   snapshot() {
-    const camera = track => ({ status: track.status, checkedAt: track.checkedAt, message: track.message });
+    const camera = track => ({ status: track.status, kind: track.kind ?? null, checkedAt: track.checkedAt, message: track.message });
     const s = this.state;
     return {
       connection: { ...s.connection },

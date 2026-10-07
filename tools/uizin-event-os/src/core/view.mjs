@@ -6,7 +6,7 @@ import { lamp } from "./health.mjs";
 import { nextAction } from "./next_action.mjs";
 import { currentBout, roleAtLeast, boutAt } from "./engine.mjs";
 import { BROADCAST_LABELS } from "./card.mjs";
-import { WINNER_LABELS } from "./flow.mjs";
+import { WINNER_LABELS, UNDO_LABELS } from "./flow.mjs";
 import { upcomingBouts } from "./desired.mjs";
 
 export const MAX_LARGE_BUTTONS = 3;
@@ -34,6 +34,15 @@ export function buildView(ctx) {
   const undoTarget = state.undoStack[state.undoStack.length - 1];
   const undoType = undoTarget === undefined ? null : ctx.findEventType?.(undoTarget);
   const undoNeedsOperator = ["NEXT_BOUT", "SKIP_BOUT", "EVENT_END"].includes(undoType);
+  const undoName = UNDO_LABELS[undoType];
+  // 試合中に「試合開始」を取り消すと、配信の画面が入場の画面に戻る。押し間違いに備えて確かめる。
+  const undoConfirm = {
+    FIGHT_START: "「試合開始」を取り消して、入場の画面に戻します（配信にも映ります）。よいですか？",
+    RESULT: "記録した勝者を取り消します。よいですか？",
+  }[undoType] ?? null;
+  const hidden = Boolean(bout) && bout.broadcast !== "OK";
+  // 今、本当に映っているカメラ。安全運転中はメインだけ。配信しない試合ではどちらも映していない。
+  const cameraOnAir = state.phase !== "running" ? state.camera : hidden ? null : state.safe ? "main" : state.camera;
 
   const view = {
     rev: state.rev,
@@ -43,7 +52,7 @@ export function buildView(ctx) {
     phase: state.phase,
     step: state.step,
     bout: bout
-      ? { no: bout.no, category: bout.category, red: cornerView(bout.red), blue: cornerView(bout.blue), hidden: bout.broadcast !== "OK" }
+      ? { no: bout.no, category: bout.category, red: cornerView(bout.red), blue: cornerView(bout.blue), hidden }
       : null,
     done: action.done,
     now: action.now,
@@ -52,9 +61,13 @@ export function buildView(ctx) {
     alerts: action.alerts,
     notices: action.notices,
     fixed: {
-      camera: { current: state.camera, enabled: state.phase === "running" && !state.safe },
+      camera: { current: cameraOnAir, chosen: state.camera, enabled: state.phase === "running" && !state.safe },
       safe: { on: state.safe },
-      undo: { enabled: undoTarget !== undefined && (!undoNeedsOperator || roleAtLeast(role, "operator")) },
+      undo: {
+        enabled: undoTarget !== undefined && (!undoNeedsOperator || roleAtLeast(role, "operator")),
+        label: undoName ? `↩ 戻す（${undoName}）` : "↩ 戻す",
+        confirm: undoConfirm,
+      },
     },
     lamps: {
       record: outputLamp(obs?.record, connected, "録画", nowMs),

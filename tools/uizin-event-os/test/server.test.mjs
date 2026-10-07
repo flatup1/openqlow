@@ -351,3 +351,17 @@ test("体験モードは、本番の設定ファイルがあっても本番の�
   assert.match(output, /UIZIN-EventOS\/demo/);
   assert.ok(!existsSync(join(home, "UIZIN-EventOS", "data")), "本番の保存先は作らない");
 });
+
+test("大会中の CSV 読み直し：先に中身を確かめ、正しいときだけ「確認が必要」と返す。読めたら試合数を知らせる", async () => {
+  const { app } = await makeApp();
+  await ready(app);
+  await press(app, "start_event", {}, OP);
+  const bad = await press(app, "load_card", { csv: "試合番号,赤_表示名\n1,テスト" }, OP);
+  assert.equal(bad.code, "card");
+  assert.ok(bad.errors.length > 0);
+  const needConfirm = await press(app, "load_card", { csv: SAMPLE_CSV }, OP);
+  assert.equal(needConfirm.code, "confirm");
+  const done = await press(app, "load_card", { csv: SAMPLE_CSV }, OP, { confirm: true });
+  assert.equal(done.ok, true);
+  assert.equal(done.message, "試合データを読み込みました（3試合）");
+});
