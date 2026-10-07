@@ -37,12 +37,12 @@ try {
     check((await page.getByRole('link', { name: /ひな形のコピーを作る/ }).getAttribute('href')) === copyUrl, 'copy link comes from template-link.json');
     check((await page.getByPlaceholder('例: 20271003').count()) === 0 && (await page.getByLabel('会場', { exact: true }).count()) === 0, 'no tournament fields are typed on this screen');
     check(await page.getByText('「設定」タブ').first().isVisible(), 'tells where to type');
-    check(await page.getByText('架空の1件でのテストも、自動で済みます').isVisible(), 'self test is automatic');
+    check(await page.getByText('ためしの申し込みが1件、自動で送られます').isVisible(), 'self test is automatic');
     await page.getByRole('button', { name: /「準備できました」と出た/ }).click();
 
     // 2. 公開してURLを貼る
     check(await page.getByText('いまここ 2 / 3').isVisible(), 'moves to step 2');
-    const next2 = page.getByRole('button', { name: 'つながった → 次へ' });
+    const next2 = page.getByRole('button', { name: '次へ進む' });
     check(await next2.isDisabled(), 'cannot move on before connecting');
     const input = page.getByPlaceholder('https://script.google.com/macros/s/…/exec');
     await input.fill('https://example.com/exec');
@@ -78,7 +78,7 @@ try {
     const copyLive = page.getByRole('button', { name: '完成：選手へ渡すURLをコピー' });
     check(await copyLive.isDisabled(), 'no public URL before opening');
     pingState = { ...READY, accepting: true };
-    await page.getByRole('button', { name: '確かめる', exact: true }).click();
+    await page.getByRole('button', { name: 'もう一度確かめる', exact: true }).click();
     await page.getByText('✓ 受付できます。選手に渡すURLをコピーできます。', { exact: true }).first().waitFor();
     await copyLive.click();
     const live = await page.evaluate(() => navigator.clipboard.readText());

@@ -61,3 +61,16 @@ html[data-theme='light'] body {
     color: #000;
   }
 }
+
+/* 会長が使う画面（準備・受付づくり）の読みやすい文字。新しいクラスを足しただけ */
+.tos-read {
+  font-size: 1.125rem;
+  line-height: 1.85;
+  font-feature-settings: normal;
+}
+
+/* 会長が使う画面: 下にくっつく帯や上の手順の帯に、移動先が隠れないようにする */
+html:has(.tos-read) {
+  scroll-padding-top: 5.5rem;
+  scroll-padding-bottom: 10rem;
+}

@@ -87,8 +87,8 @@ try {
     check(link.startsWith(base+'/apply/#'),'Public configuration is carried in the fragment');
     await page.goto(link);
     check(await page.getByRole('heading',{name:'架空テスト大会',exact:true}).isVisible(),'Tournament metadata is correct');
-    check(await page.getByLabel('入場曲URL 必須',{exact:true}).count()===0,'Music is off for this organizer');
-    for(const [label,value]of [['所属ジム 必須','架空ジム'],['選手名・リングネーム 必須','架空選手'],['身長（cm）必須','170'],['希望体重（kg）必須','65'],['戦績・競技歴 必須','初試合'],['連絡先のお名前 必須','架空連絡先'],['電話番号 必須','09000000000'],['メールアドレス 必須','test@example.com']])await page.getByLabel(label,{exact:true}).fill(value);
+    check(await page.getByLabel('入場曲のリンク 必須',{exact:true}).count()===0,'Music is off for this organizer');
+    for(const [label,value]of [['ジム名 必須','架空ジム'],['選手名 必須','架空選手'],['身長（cm）必須','170'],['体重（kg）必須','65'],['戦績 必須','初試合'],['連絡先のお名前 必須','架空連絡先'],['電話番号 必須','09000000000'],['メールアドレス 必須','test@example.com']])await page.getByLabel(label,{exact:true}).fill(value);
     const jpeg=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=120;canvas.height=160;const ctx=canvas.getContext('2d');ctx.fillStyle='#2563eb';ctx.fillRect(0,0,120,160);return canvas.toDataURL('image/jpeg').split(',')[1];}),'base64');
     await page.locator('input[type=file]').setInputFiles({name:'test.jpg',mimeType:'image/jpeg',buffer:jpeg});
     await page.getByAltText('選んだ写真').waitFor();
@@ -135,17 +135,17 @@ try {
     check(await page.getByText('日にちまで入れてください').isVisible(),'Incomplete event date shows guidance');
     await dateBox.fill('20271003');await dateBox.blur();
     check(await dateBox.inputValue()==='2027年10月3日','Eight digits become a Japanese date');
-    await page.getByRole('button',{name:'このパソコンの中だけに保存',exact:true}).click();
+    await page.getByRole('button',{name:'保存する',exact:true}).click();
     await page.getByRole('status').filter({hasText:'保存しました'}).waitFor();
     await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
     const downloadPromise=page.waitForEvent('download');
-    await page.getByRole('button',{name:'暗号化して保存',exact:true}).click();
+    await page.getByRole('button',{name:'パスワードをつけて、コピーを保存する',exact:true}).click();
     const encrypted=await readFile(await(await downloadPromise).path());
     check(!encrypted.toString().includes('架空赤選手'),'Backup contains ciphertext, not readable roster');
     await page.getByLabel('大会名',{exact:true}).fill('未保存の変更');
     await page.getByPlaceholder('10文字以上のパスワード').fill('wrong-password');
     await page.locator('input[accept=".enc"]').setInputFiles({name:'test.enc',mimeType:'application/octet-stream',buffer:encrypted});
-    await page.getByRole('status').filter({hasText:'復元できません'}).waitFor();
+    await page.getByRole('status').filter({hasText:'戻せませんでした'}).waitFor();
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='未保存の変更','Wrong password does not overwrite');
     await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
     // 復元の前に「上書きしてよいか」の確認が出る。まず「いいえ」で、何も変わらないことを確かめる
@@ -158,7 +158,7 @@ try {
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='未保存の変更','Cancelling the restore keeps the current data');
     page.once('dialog',dialog=>dialog.accept());
     await page.locator('input[accept=".enc"]').setInputFiles({name:'test2.enc',mimeType:'application/octet-stream',buffer:encrypted});
-    await page.getByRole('status').filter({hasText:'復元しました'}).waitFor();
+    await page.getByRole('status').filter({hasText:'戻しました'}).waitFor();
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='ローカル架空大会','Encrypted backup restores correctly');
     const live=await context.newPage();
     await live.goto(base+'/private/live/?event='+eventId);
