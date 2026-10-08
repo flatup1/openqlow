@@ -160,6 +160,15 @@
   .gym-use .cell span { border-bottom: 1px solid #999; display: inline-block; min-width: 60%; }
   .gym-use .cell.nowrap { white-space: nowrap; }
 
+  /* 文言の版。印刷済みの用紙がどの文言のものか見分けるための控えめな表示。 */
+  .terms-version {
+    margin-top: 1.5mm;
+    text-align: right;
+    font-size: 6.4pt;
+    color: #888;
+    letter-spacing: .04em;
+  }
+
   /* ---------- 印刷 ---------- */
   @media print {
     body { background: #fff; }
@@ -325,6 +334,11 @@
     <div class="cell">本人確認 <span></span></div>
     <div class="cell nowrap">LINE事前同意 &nbsp;有 ・ 無</div>
   </div>
+
+  <!-- 文言の版。CONSENT_TERMS_VERSION と一致させること。
+       consent_wording_guard.test.ts が一致を検査する。
+       印刷済みの用紙がどの文言のものか、これを見れば分かる。 -->
+  <p class="terms-version">文言版 2026-08-06</p>
 
 </div>
 </body>
