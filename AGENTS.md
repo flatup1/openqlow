@@ -135,7 +135,8 @@ Claude と Codex が同じプロジェクトで並列に動くため、衝突を
 3. `docs/HANDOFF_*.md` （直近のハンドオフ）
 4. `docs/CAMPAIGN_RULES.md` `docs/OPENQLOW_RULES.md` `docs/AIKA_RULES.md` （個別ルール）
 5. `docs/OPENQLOW_NEW_SYSTEM_DESIGN_*.md` （Codex設計書）
-6. プロジェクト内の関連設計書
+6. `docs/VIDEO_GENERATION_AGENT_SPEC.md` （動画生成エージェントの共通ルール）
+7. プロジェクト内の関連設計書
 
 ## FLATUP AI OS 共通基盤
 
