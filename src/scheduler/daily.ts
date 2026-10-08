@@ -7,7 +7,7 @@ import { checkDraftSafety } from "../safety/check.js";
 import { assertNoPublishRuntimeEnabled, assertPhase1DraftOnly } from "../safety/publication_lock.js";
 import { formatApprovalMessage } from "../approval/message.js";
 import { parseApprovalCommand } from "../approval/command.js";
-import { saveRecord, loadRecord } from "../state/file_store.js";
+import { saveRecord, loadRecord, readRecord, withRecordLock } from "../state/file_store.js";
 import { saveXDraftOnly } from "../adapters/x_typefully.js";
 import { saveInstagramDraft } from "../adapters/instagram_draft.js";
 import { saveThreadsDraft } from "../adapters/threads_draft.js";
@@ -39,6 +39,14 @@ export async function runDaily(): Promise<DraftRecord[]> {
 
   for (const [index, idea] of ideas.entries()) {
     const approvalId = approvalIdFor(idea.date, index);
+    // 同じ日に2回動いても、承認済み・却下済みの記録を「承認待ち」で上書きしない。
+    // IDは日付と番号で決まるので、上書きするとJINの判断が消え、通知も再送される。
+    // 読めない記録も「無い」とは限らないので、同じく触らない。
+    const existing = await readRecord(config.root, approvalId);
+    if (existing.status !== "missing") {
+      console.error(`daily: ${approvalId} は既にあるためスキップ (${existing.status})`);
+      continue;
+    }
     const drafts = expandIdea({ ...idea, id: approvalId });
     const safety = checkDraftSafety(allDraftText(drafts));
     const approvalMessage = formatApprovalMessage(idea, drafts, safety);
@@ -85,11 +93,21 @@ export async function runDaily(): Promise<DraftRecord[]> {
   return records;
 }
 
-export async function approveRecord(id: string, approvalReply: string): Promise<string[]> {
+export function approveRecord(id: string, approvalReply: string): Promise<string[]> {
+  // 同じ下書きへの承認・却下・修正は1件ずつ。時間のかかる保存の間に別の変更が入っても消さない。
+  return withRecordLock(loadConfig().root, id, () => approveRecordUnlocked(id, approvalReply));
+}
+
+async function approveRecordUnlocked(id: string, approvalReply: string): Promise<string[]> {
   const config = loadConfig();
   assertNoPublishRuntimeEnabled();
   const record = await loadRecord(config.root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
+  // 保存済み・却下済みは承認し直さない。遅れて届いた「OK」や二重の「OK」で、
+  // 保存や承認記録をやり直したり、却下済みを復活させたりしない。
+  if (record.status === "saved" || record.status === "rejected") {
+    throw new Error(`Record ${id} is already ${record.status}`);
+  }
 
   const approval = parseApprovalCommand(approvalReply);
   if (!approval || approval.response !== "OK" || approval.id !== id) {
@@ -151,7 +169,11 @@ export async function approveRecord(id: string, approvalReply: string): Promise<
   return saved;
 }
 
-export async function rejectRecord(id: string, reason?: string): Promise<DraftRecord> {
+export function rejectRecord(id: string, reason?: string): Promise<DraftRecord> {
+  return withRecordLock(loadConfig().root, id, () => rejectRecordUnlocked(id, reason));
+}
+
+async function rejectRecordUnlocked(id: string, reason?: string): Promise<DraftRecord> {
   const config = loadConfig();
   const record = await loadRecord(config.root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
@@ -173,7 +195,11 @@ export async function rejectRecord(id: string, reason?: string): Promise<DraftRe
   return updatedRecord;
 }
 
-export async function requestRevision(id: string, note: string): Promise<DraftRecord> {
+export function requestRevision(id: string, note: string): Promise<DraftRecord> {
+  return withRecordLock(loadConfig().root, id, () => requestRevisionUnlocked(id, note));
+}
+
+async function requestRevisionUnlocked(id: string, note: string): Promise<DraftRecord> {
   const config = loadConfig();
   const record = await loadRecord(config.root, id);
   if (!record) throw new Error(`Record not found: ${id}`);

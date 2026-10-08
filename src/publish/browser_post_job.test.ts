@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DraftRecord } from "../types.js";
@@ -55,5 +55,24 @@ assert(jobs[0].text.includes("#FLATUPGYM"));
 const saved = JSON.parse(await readFile(path.join(root, "state", "browser_post_jobs", "FG-20260603-003.json"), "utf8"));
 assert.deepEqual(saved.jobs.map((job: { destination: string }) => job.destination), ["google_business", "line_voom"]);
 assert.equal(saved.jobs[0].createdAt, "2026-06-03T06:00:00.000Z");
+
+// 投稿済みの仕事は、再度キューに積んでも消えず、未投稿に戻らない。
+const jobFile = path.join(root, "state", "browser_post_jobs", "FG-20260603-003.json");
+const afterRun = JSON.parse(await readFile(jobFile, "utf8"));
+afterRun.jobs[0].status = "published";
+afterRun.jobs[0].externalId = "ext-1";
+await writeFile(jobFile, JSON.stringify(afterRun), "utf8");
+const requeued = await enqueueBrowserPostJobs(root, "FG-20260603-003", ["google_business", "line_voom"]);
+assert.deepEqual(requeued.map(job => job.destination), ["line_voom"]);
+const merged = JSON.parse(await readFile(jobFile, "utf8"));
+assert.equal(merged.jobs.length, 2);
+const publishedJob = merged.jobs.find((job: { destination: string }) => job.destination === "google_business");
+assert.equal(publishedJob.status, "published");
+assert.equal(publishedJob.externalId, "ext-1");
+
+// 壊れたファイルは「無い」と見なして上書きせず、例外で止まる。
+await writeFile(jobFile, "{broken", "utf8");
+await assert.rejects(enqueueBrowserPostJobs(root, "FG-20260603-003", ["google_business"]));
+assert.equal(await readFile(jobFile, "utf8"), "{broken");
 
 console.log("browser post job tests passed");

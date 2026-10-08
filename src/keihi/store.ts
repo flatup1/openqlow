@@ -3,8 +3,10 @@
 // crm/store.ts と同じ作り。1オーナー運用なので全件読み書きで足りる。
 // 帳簿は壊すと復元できないため、書き込みは必ず一時ファイル経由の rename（原子的）にする。
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 import { normalizeExpenseInput, type Expense, type ExpenseInput } from "./expense.js";
 
 export interface ExpenseStore {
@@ -28,7 +30,8 @@ async function readAll(filePath: string): Promise<Expense[]> {
 
 async function writeAll(filePath: string, list: Expense[]): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  // 名前は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを奪い合って rename が失敗する。
+  const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmpPath, JSON.stringify(list, null, 2) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
@@ -43,18 +46,21 @@ export function openExpenseStore(filePath: string, now: () => Date = () => new D
 
   return {
     async create(input) {
-      const list = await readAll(filePath);
-      const nextId = list.reduce((max, e) => Math.max(max, e.id), 0) + 1;
-      const at = stamp();
-      const expense: Expense = {
-        id: nextId,
-        ...normalizeExpenseInput(input),
-        createdAt: at,
-        updatedAt: at,
-      };
-      list.push(expense);
-      await writeAll(filePath, list);
-      return expense;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`expenses:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const nextId = list.reduce((max, e) => Math.max(max, e.id), 0) + 1;
+        const at = stamp();
+        const expense: Expense = {
+          id: nextId,
+          ...normalizeExpenseInput(input),
+          createdAt: at,
+          updatedAt: at,
+        };
+        list.push(expense);
+        await writeAll(filePath, list);
+        return expense;
+      });
     },
 
     async getAll() {
@@ -67,42 +73,48 @@ export function openExpenseStore(filePath: string, now: () => Date = () => new D
     },
 
     async update(id, patch) {
-      const list = await readAll(filePath);
-      const index = list.findIndex(e => e.id === id);
-      if (index < 0) return undefined;
-      const current = list[index];
-      // 既存値をベースに差分だけ上書きする（部分更新で他の欄が消えないように）
-      const merged: ExpenseInput = {
-        date: patch.date ?? current.date,
-        vendor: patch.vendor ?? current.vendor,
-        amount: patch.amount ?? current.amount,
-        account: patch.account ?? current.account,
-        taxCategory: patch.taxCategory ?? current.taxCategory,
-        note: patch.note ?? current.note,
-        businessRatio: patch.businessRatio ?? current.businessRatio,
-        paymentMethod: patch.paymentMethod ?? current.paymentMethod,
-        receipt: patch.receipt ?? current.receipt,
-        invoiceNumber: patch.invoiceNumber ?? current.invoiceNumber,
-        subsidyTag: patch.subsidyTag ?? current.subsidyTag,
-        assetLife: patch.assetLife ?? current.assetLife,
-      };
-      const updated: Expense = {
-        ...normalizeExpenseInput(merged),
-        id: current.id,
-        createdAt: current.createdAt,
-        updatedAt: stamp(),
-      };
-      list[index] = updated;
-      await writeAll(filePath, list);
-      return updated;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`expenses:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const index = list.findIndex(e => e.id === id);
+        if (index < 0) return undefined;
+        const current = list[index];
+        // 既存値をベースに差分だけ上書きする（部分更新で他の欄が消えないように）
+        const merged: ExpenseInput = {
+          date: patch.date ?? current.date,
+          vendor: patch.vendor ?? current.vendor,
+          amount: patch.amount ?? current.amount,
+          account: patch.account ?? current.account,
+          taxCategory: patch.taxCategory ?? current.taxCategory,
+          note: patch.note ?? current.note,
+          businessRatio: patch.businessRatio ?? current.businessRatio,
+          paymentMethod: patch.paymentMethod ?? current.paymentMethod,
+          receipt: patch.receipt ?? current.receipt,
+          invoiceNumber: patch.invoiceNumber ?? current.invoiceNumber,
+          subsidyTag: patch.subsidyTag ?? current.subsidyTag,
+          assetLife: patch.assetLife ?? current.assetLife,
+        };
+        const updated: Expense = {
+          ...normalizeExpenseInput(merged),
+          id: current.id,
+          createdAt: current.createdAt,
+          updatedAt: stamp(),
+        };
+        list[index] = updated;
+        await writeAll(filePath, list);
+        return updated;
+      });
     },
 
     async remove(id) {
-      const list = await readAll(filePath);
-      const next = list.filter(e => e.id !== id);
-      if (next.length === list.length) return false;
-      await writeAll(filePath, next);
-      return true;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`expenses:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const next = list.filter(e => e.id !== id);
+        if (next.length === list.length) return false;
+        await writeAll(filePath, next);
+        return true;
+      });
     },
   };
 }

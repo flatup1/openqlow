@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { readJsonIfExists, writeJsonAtomic } from "../state/atomic_json.js";
 import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
 import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.js";
@@ -50,10 +51,13 @@ async function loadQueue(root: string, id: string): Promise<PublishQueueEntry> {
   return JSON.parse(text) as PublishQueueEntry;
 }
 
+function resultFile(root: string, id: string): string {
+  return path.join(root, "state", "publish_results", `${id}.json`);
+}
+
 async function saveResult(root: string, result: FinalPublishResult): Promise<void> {
-  const dir = path.join(root, "state", "publish_results");
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, `${result.recordId}.json`), `${JSON.stringify(result, null, 2)}\n`, "utf8");
+  await mkdir(path.dirname(resultFile(root, result.recordId)), { recursive: true });
+  await writeJsonAtomic(resultFile(root, result.recordId), result);
 }
 
 export async function runFinalPublish(
@@ -66,9 +70,13 @@ export async function runFinalPublish(
   const record = await loadRecord(root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
 
+  // 前回の結果を引き継ぐ。すでに投稿した宛先へは、もう一度投稿しない。
+  // 読めない結果ファイルは「まだ投稿していない」とは限らないので、例外のまま止める。
+  const previous = await readJsonIfExists<FinalPublishResult>(resultFile(root, id));
+
   const result: FinalPublishResult = {
     recordId: id,
-    published: [],
+    published: previous?.published ? [...previous.published] : [],
     browserQueued: [],
     skipped: [],
     createdAt: new Date().toISOString(),
@@ -78,6 +86,7 @@ export async function runFinalPublish(
 
   for (const destination of queue.destinations) {
     if (destination === "threads") {
+      if (result.published.some(item => item.destination === destination)) continue;
       const mediaFile = queue.mediaFiles?.[0];
       if (queue.mediaFiles && queue.mediaFiles.length > 1) {
         browserDestinations.push(destination);
@@ -115,6 +124,8 @@ export async function runFinalPublish(
           fetchImpl: opts.fetchImpl,
         });
       result.published.push({ destination, externalId: published.postId });
+      // 投稿できたらすぐ記録する。あとの処理で落ちても、再実行で二重投稿しない。
+      await saveResult(root, result);
       continue;
     }
 
