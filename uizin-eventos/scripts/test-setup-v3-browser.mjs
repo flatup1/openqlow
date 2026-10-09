@@ -33,6 +33,7 @@ try {
     await page.goto(base + '/private/setup/?' + new URLSearchParams({ event: eventId }));
 
     // 1. ひな形をコピーして設定（この画面では、大会の情報を入力させない）
+    await page.getByText('いまここ 1 / 3').waitFor();
     check(await page.getByText('いまここ 1 / 3').isVisible(), 'shows where the user is');
     check((await page.getByRole('link', { name: /ひな形のコピーを作る/ }).getAttribute('href')) === copyUrl, 'copy link comes from template-link.json');
     check((await page.getByPlaceholder('例: 20271003').count()) === 0 && (await page.getByLabel('会場', { exact: true }).count()) === 0, 'no tournament fields are typed on this screen');

@@ -74,3 +74,157 @@ html:has(.tos-read) {
   scroll-padding-top: 5.5rem;
   scroll-padding-bottom: 10rem;
 }
+
+/* 会長が使う画面: 押す所・入れる所は、どれも同じ濃いフォーカスの輪郭（薄い色の ring は使わない） */
+.tos-read a:focus-visible,
+.tos-read button:focus-visible,
+.tos-read summary:focus-visible,
+.tos-read [tabindex]:not([tabindex="-1"]):focus-visible,
+.tos-read input:focus-visible,
+.tos-read select:focus-visible,
+.tos-read textarea:focus-visible {
+  outline: 4px solid #4338ca;
+  outline-offset: 2px;
+}
+
+/* 下の帯の高さ（画面側が測って --bar-h に入れる）。隠れないように余白と移動先をそろえる */
+html:has(.tos-read) {
+  scroll-padding-bottom: calc(var(--bar-h, 10rem) + 1rem);
+}
+
+/* 会長が使う画面: スマホ幅では、上にくっつく手順ナビ（画面側が高さを --nav-h に入れる）より下に、移動先とフォーカス中の欄を出す。
+   PC幅（lg）ではナビが左の列にあるので、上の余白は小さくてよい */
+html:has(.tos-read) {
+  scroll-padding-top: calc(var(--nav-h, 7rem) + 1rem);
+}
+@media (min-width: 1024px) {
+  html:has(.tos-read) {
+    scroll-padding-top: 5.5rem;
+  }
+}
+
+/* 試合当日の画面「一覧」: 押せるのは、見えるボタンだけ（行のどこかを うっかり触れても、今の試合は変わらない） */
+.live-list-row {
+  position: relative;
+}
+/* 押す所は、どれも同じ濃いフォーカスの輪郭 */
+.live-list-focus:focus-visible {
+  outline: 4px solid #4338ca;
+  outline-offset: 2px;
+}
+/* 一覧の上にくっつく帯（今の試合・ページの切りかえ）。
+   スマホ・低い画面では ページの切りかえ だけが くっつく。広くて高い画面では「今の試合」の帯もいっしょにくっつく。
+   移動先とフォーカス中の所が、帯の下に隠れないよう、上の余白をそろえる */
+.live-sticky {
+  display: contents;
+}
+.live-now {
+  margin-top: 0.5rem;
+}
+.live-pager {
+  margin-top: 0.5rem;
+}
+.live-sticky > nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+/* 帯の高さは、画面側が測って --live-sticky-h に入れる。移動先とフォーカス中の所が、帯の下に隠れない */
+html:has(.live-sticky) {
+  scroll-padding-top: calc(var(--live-sticky-h, 9rem) + 0.75rem);
+}
+@media (min-width: 1024px) and (min-height: 650px) {
+  .live-sticky {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    padding: 0.5rem 0;
+    background: #f1f5f9;
+  }
+  .live-now {
+    margin-top: 0;
+  }
+  .live-sticky > nav {
+    position: static;
+  }
+}
+@media (max-height: 520px) {
+  .live-sticky > nav {
+    position: static;
+  }
+  html:has(.live-sticky) {
+    scroll-padding-top: 1rem;
+  }
+}
+/* 試合当日の画面「1試合ずつ」: 下の 前の試合 / 次の試合 の帯は、いつも見える所にくっつく */
+.live-single-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+}
+@media (max-height: 420px) {
+  .live-single-footer {
+    position: static;
+  }
+}
+/* 確認の箱は、上のナビ・下の帯に隠れない位置まで、scroll-padding を使って動く（箱自身の余白は足さない） */
+.tos-read [role="alertdialog"] {
+  scroll-margin-top: 0;
+}
+/* 準備の画面: 画面が低いとき（スマホを横にした／拡大した）は、上の手順ナビは くっつけず、下の帯は1行にして、本文を広く見せる */
+@media (max-height: 500px) {
+  .tos-nav {
+    position: static;
+  }
+  /* 移動先の上の余白は scroll-padding-top だけにそろえる（手順ナビが動かないので、112px 余分に空けない） */
+  .tos-read [class*="scroll-mt-28"] {
+    scroll-margin-top: 0;
+  }
+  /* 質問の箱は、低い画面では行間・余白をつめて、質問と2つのボタンが同時に見えるようにする（文字の大きさは変えない） */
+  .tos-read [role="alertdialog"] {
+    padding: 0.5rem 0.75rem;
+    line-height: 1.4;
+  }
+  .tos-read [role="alertdialog"] p,
+  .tos-read [role="alertdialog"] li {
+    line-height: 1.4;
+  }
+  .tos-read [role="alertdialog"] ul,
+  .tos-read [role="alertdialog"] p + p {
+    margin-top: 0.25rem;
+  }
+  .tos-read [role="alertdialog"] > div {
+    margin-top: 0.5rem;
+    gap: 0.5rem;
+  }
+  html:has(.tos-read) {
+    scroll-padding-top: 1rem;
+  }
+  .tos-bar-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .tos-bar-grid > :first-child {
+    flex: 1 1 40%;
+    min-width: 0;
+  }
+  .tos-bar-grid > :last-child {
+    flex: 1 1 60%;
+    min-width: 0;
+    margin-top: 0;
+  }
+  .tos-bar-note {
+    display: none;
+  }
+}
+@media print {
+  .live-list-noprint {
+    display: none !important;
+  }
+  .live-list-row {
+    break-inside: avoid;
+  }
+}

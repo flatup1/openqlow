@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyTournament, isLocalTournament, validateTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
-import { boutProblems, dropBlankBouts, importErrorText, ImportProblem, isBlankBout, isHalfBout, isTitleReal, nextActionKey, sameExceptProgress, unplacedFighters, weightGap, type NextState } from '../app/private/logic.ts';
+import { backupIsFresh, boutProblems, dropBlankBouts, importErrorText, ImportProblem, isBlankBout, isHalfBout, isTitleReal, nextActionKey, overwriteBoxText, overwriteConfirmText, restoreBoxText, restoreConfirmText, sameExceptProgress, unplacedFighters, useOtherBoxText, weightGap, type NextState } from '../app/private/logic.ts';
 
 const fighter = (id: string, over: Partial<LocalFighter> = {}): LocalFighter => ({ id, gym: 'テストジム', name: '架空' + id, grade: '', age: '', height: '', weight: '60', record: '', comment: '', musicUrl: '', photoDataUrl: '', ...over });
 const bout = (id: string, redId = '', blueId = ''): LocalBout => ({ id, redId, blueId, className: '', rule: '' });
@@ -40,7 +40,9 @@ test('試合ごとの問題は validateTournament と同じ条件で出る', () 
 test('次にやることは決まった順番で1つだけ出る', () => {
   const s: NextState = { titleReal: true, dateOk: true, fighters: 4, nonBlankBouts: 2, halfIndex: -1, dirty: false, everSaved: true, problems: 0, opened: false };
   assert.equal(nextActionKey({ ...s, titleReal: false }), 'title');
-  assert.equal(nextActionKey({ ...s, dateOk: false }), 'date');
+  // 開催日は「なくてもOK」: 空でも、順番には入らない。選手より先に出ることもない
+  assert.equal(nextActionKey({ ...s, dateOk: false }), 'open');
+  assert.equal(nextActionKey({ ...s, dateOk: false, fighters: 0 }), 'fighters');
   assert.equal(nextActionKey({ ...s, fighters: 0 }), 'fighters');
   assert.equal(nextActionKey({ ...s, fighters: 1 }), 'fighters2');
   assert.equal(nextActionKey({ ...s, nonBlankBouts: 0 }), 'bouts');
@@ -75,4 +77,44 @@ test('取り込みエラーは固定の日本語で、ライブラリの文や�
   const unknown = importErrorText(new Error('Invalid zip data at 0x1'));
   assert.doesNotMatch(unknown, /Invalid|0x/);
   assert.match(unknown, /読み込めませんでした/);
+});
+
+test('確認の箱の文: 1行目は結論と数。「よろしいですか？」は付けない。元の文は変わらない', () => {
+  const current = base({ title: 'いま', fighters: [fighter('A'), fighter('B'), fighter('C'), fighter('D')], bouts: [bout('1', 'A', 'B'), bout('2', 'C', 'D')] });
+  const restored = base({ title: '戻したい大会', updatedAt: new Date(2027, 9, 3, 14, 3).getTime(), fighters: [fighter('A'), fighter('B')], bouts: [bout('1', 'A', 'B')] });
+  const box = restoreBoxText({ restored, current, dirty: true, everSaved: true });
+  assert.equal(box.verdict, 'いまの内容が、コピーの内容に上書きされます：選手4人→2人・試合2つ→1つ。');
+  assert.deepEqual(box.lines.slice(0, 2), ['！選手が4人から2人に減ります。', '！試合が2つから1つに減ります。']);
+  assert.ok(box.lines.some((l) => l.includes('『戻したい大会』のコピー')) && box.lines.some((l) => l.includes('まだ保存していない変更あり')));
+  assert.ok(![box.verdict, ...box.lines].some((l) => l.includes('よろしいですか')));
+  const empty = restoreBoxText({ restored: { ...restored, fighters: [], bouts: [] }, current: base({ fighters: [], bouts: [] }), dirty: false, everSaved: false });
+  assert.match(empty.verdict, /^コピーの内容を戻します（なくなるものはありません）：選手0人→0人/);
+  assert.match(restoreConfirmText({ restored, current, dirty: true, everSaved: true }), /^いまの内容が、コピーの内容に上書きされます。\n！選手が4人から2人に減ります。/);
+
+  const diff = { name: '赤坂', fields: [{ label: '体重', from: '65', to: '60' }] };
+  const over = overwriteBoxText([diff, diff]);
+  assert.equal(over.verdict, '次の2人を、ファイルの内容に書きかえます（手で直した所も戻ります）。');
+  assert.deepEqual(over.lines, ['赤坂 体重 65→60', '赤坂 体重 65→60']);
+  assert.match(overwriteConfirmText([diff]), /^次の1人を、ファイルの内容に書きかえます（手で直した所も戻ります）：\n赤坂 体重 65→60\n\nよろしいですか？$/);
+  assert.match(overwriteBoxText([diff, diff, diff, diff, diff]).lines.at(-1) ?? '', /^ほか2人$/);
+
+  const other = useOtherBoxText({ mine: base({ fighters: [fighter('A')] }), latest: base({ fighters: [fighter('A'), fighter('B')], updatedAt: new Date(2027, 9, 3, 9, 5).getTime() }) });
+  assert.equal(other.verdict, 'いまの入力は消えて、別の画面の内容になります：選手1人→2人・試合0つ→0つ。');
+  assert.deepEqual(other.lines, ['いまの入力：架空大会・選手1人', '別の画面の内容：09:05に保存・選手2人']);
+});
+
+test('「コピー作成ずみ」は、あとで変えたら古い扱い（進み具合だけの変化は古くしない）', () => {
+  const copy = base({ bouts: [bout('1', 'A', 'B')], currentBout: 0, updatedAt: 100 });
+  // このページで作ったコピー: 同じ中身なら新しい。保存で時刻が変わっても、進み具合が変わっても新しい
+  assert.equal(backupIsFresh({ current: copy, snapshot: copy, dirty: false, savedFor: 0 }), true);
+  assert.equal(backupIsFresh({ current: { ...copy, updatedAt: 200, currentBout: 1 }, snapshot: copy, dirty: false, savedFor: 0 }), true);
+  // あとで変えたら古い
+  assert.equal(backupIsFresh({ current: { ...copy, title: '変えた' }, snapshot: copy, dirty: true, savedFor: 0 }), false);
+  assert.equal(backupIsFresh({ current: { ...copy, bouts: [bout('1', 'B', 'A')] }, snapshot: copy, dirty: true, savedFor: 0 }), false);
+  assert.equal(backupIsFresh({ current: { ...copy, fighters: copy.fighters.slice(1) }, snapshot: copy, dirty: true, savedFor: 0 }), false);
+  // 開き直したあと（コピーの中身は手元にない）: コピーを作ったときの保存の時刻と同じ、かつ未保存の変更がないときだけ新しい
+  assert.equal(backupIsFresh({ current: copy, snapshot: null, dirty: false, savedFor: 100 }), true);
+  assert.equal(backupIsFresh({ current: copy, snapshot: null, dirty: true, savedFor: 100 }), false);
+  assert.equal(backupIsFresh({ current: { ...copy, updatedAt: 101 }, snapshot: null, dirty: false, savedFor: 100 }), false);
+  assert.equal(backupIsFresh({ current: copy, snapshot: null, dirty: false, savedFor: 0 }), false);
 });

@@ -61,7 +61,7 @@ test('写真の選び直しは古い写真・遅れて終わる加工を送ら�
 });
 test('読み込み失敗・空名簿・別大会復元・進行保存失敗で元データを上書きしない',()=>{
   const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
-  assert.match(admin,/setLoadError/);assert.match(admin,/!result\.fighters\.length/);assert.match(admin,/restored\.eventId!==data\.eventId/);assert.match(admin,/今のデータを上書きしてよろしいですか/);
+  assert.match(admin,/setLoadError/);assert.match(admin,/!result\.fighters\.length/);assert.match(admin,/restored\.eventId !== mine\.eventId/);assert.match(admin,/setAsk\(\{ kind: 'restore', restored/);assert.match(admin,/id="confirm-restore"/);assert.ok(admin.indexOf('restored.eventId !== mine.eventId')<admin.indexOf("setAsk({ kind: 'restore'"),'別の大会かどうかは、確認より先に見る');
   const live=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
   assert.match(live,/const saved=await writePrivateEvent\(next\);setData\(saved\)/);assert.match(live,/savingRef\.current/);
 });
@@ -71,7 +71,7 @@ test('再取り込みは管理番号で更新・追加し、写真・元の選�
   const snapshot=JSON.stringify(original),incoming=importFighters('管理番号,選手名,体重\nF1,赤,56\nF3,赤,60').fighters;
   const merged=mergeFighters(original,incoming);assert.equal(merged.length,3);assert.equal(merged[0].weight,'56');assert.equal(merged[0].photoDataUrl,original[0].photoDataUrl);assert.deepEqual(merged[1],original[1]);assert.equal(merged[2].id,'F3');assert.equal(JSON.stringify(original),snapshot);
   assert.throws(()=>mergeFighters(original,[incoming[0],incoming[0]]),/同じ管理番号/);
-  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/fighters:mergeFighters\(old\.fighters,fighters\)/);assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
+  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/mergeKeepExisting\(current, fighters\)/);assert.ok(!/\bmergeFighters\(/.test(source),'名簿の読み込みは、前からいる人を黙って書きかえない');assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
 });
 
 test('入場曲を使わない大会では曲リンクを出さず、同じ注意文を重ねない',()=>{
