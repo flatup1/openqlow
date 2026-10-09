@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "tournament-os-test",
+  "pages_build_output_dir": "./out",
+  "compatibility_date": "2026-09-01",
+  "services": [{"binding": "EVENTOS_API", "service": "tournament-os-test-api"}]
+}

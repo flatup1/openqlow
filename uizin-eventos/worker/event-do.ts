@@ -1,3 +1,4 @@
+import { readDraft, saveDraft } from '../core/setupDraft.ts';
 /**
  * EventRoom — イベントステートを持つ唯一の場所（Durable Object）。
  *
@@ -8,6 +9,9 @@
  * ブラウザを再読み込みしても、ここから同じ状態が返るので完全に復元される。
  */
 
+import { CloudConflict, readCloudTournament, saveCloudTournament, type AtomicStore } from '../core/cloudTournament.ts';
+import { acceptingEntries, entrySubmission, publicRecruitment } from '../core/cloudEntry.ts';
+import { timerCommand, type TimerAction } from '../core/privateTimer.ts';
 import type {
   Command,
   EventState,
@@ -145,6 +149,91 @@ export class EventRoom {
     await this.load();
     const url = new URL(request.url);
     const path = url.pathname;
+
+    if (path === '/private-catalog') {
+      if(request.method==='GET') {
+        const ids=await this.ctx.storage.get<string[]>('private:catalog')||[];
+        const events=await Promise.all(ids.map(id=>this.ctx.storage.get('private:catalog:'+id)));
+        return json({ok:true,events:events.filter(Boolean)});
+      }
+      if(request.method==='PUT') {
+        const entry=await request.json() as {eventId:string;title:string;date:string;updatedAt:number};
+        if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(entry.eventId)||typeof entry.title!=='string'||entry.title.length>5000||typeof entry.date!=='string'||entry.date.length>5000||!Number.isSafeInteger(entry.updatedAt))return json({ok:false},400);
+        const catalogSaved=await this.ctx.storage.transaction(async tx=>{
+          const ids=await tx.get<string[]>('private:catalog')||[];
+          const key='private:catalog:'+entry.eventId;
+          const old=await tx.get<typeof entry>(key);
+          if(old&&old.updatedAt>entry.updatedAt)return true;
+          if(!ids.includes(entry.eventId)&&ids.length>=1000)return false;
+          await tx.put(key,{eventId:entry.eventId,title:entry.title,date:entry.date,updatedAt:entry.updatedAt});
+          await tx.put('private:catalog',[entry.eventId,...ids.filter(id=>id!==entry.eventId)]);
+          return true;
+        });
+        return json({ok:catalogSaved},catalogSaved?200:409);
+      }
+      return json({ok:false},405);
+    }
+
+    if(path==='/cloud-entry-index') {
+      const code=url.searchParams.get('code')||'';
+      if(!/^[a-f0-9]{64}$/.test(code))return json({ok:false},400);
+      if(request.method==='GET')return json({room:await this.ctx.storage.get('entry-address:'+code)||null});
+      if(request.method==='PUT'){const body=await request.json() as {room:string};if(typeof body.room!=='string'||!body.room.startsWith('private:')||body.room.length>200)return json({ok:false},400);await this.ctx.storage.put('entry-address:'+code,body.room);return json({ok:true});}
+      return json({ok:false},405);
+    }
+    if(path==='/cloud-view'&&request.method==='GET') {
+      const data=await readCloudTournament(this.ctx.storage as unknown as AtomicStore,url.searchParams.get('event')||'');
+      if(!data?.audience?.open)return json({ok:false,reason:'観客向け画面は開いていません。'},404);
+      const bout=data.bouts[data.currentBout];
+      const side=(id:string|undefined)=>{const fighter=data.fighters.find(f=>f.id===id);return fighter?{name:fighter.name,gym:fighter.gym,weight:fighter.weight}:null;};
+      return json({ok:true,view:{title:data.title,boutNo:data.currentBout+1,totalBouts:data.bouts.length,red:side(bout?.redId),blue:side(bout?.blueId)}});
+    }
+    if(path==='/cloud-entry') {
+      const eventId=url.searchParams.get('event')||'',store=this.ctx.storage as unknown as AtomicStore;
+      try {
+        const body=request.method==='POST'?await request.json():null;
+        if(!['GET','POST'].includes(request.method))return json({ok:false},405);
+        for(let attempt=0;attempt<4;attempt++) {
+          const data=await readCloudTournament(store,eventId);
+          if(!data||!data.recruitment?.open)return json({ok:false,reason:'この大会の受付は開いていません。'},404);
+          if(request.method==='GET')return json({ok:true,recruitment:publicRecruitment(data)});
+          const {fighter}=entrySubmission(body,data);
+          const previous=data.fighters.find(f=>f.id===fighter.id);
+          // Retry after a lost response returns the same receipt, even after the deadline.
+          if(previous){if(JSON.stringify(previous)!==JSON.stringify(fighter))return json({ok:false,reason:'この受付番号は保存済みです。内容を変えず確認してください。'},409);return json({ok:true,receipt:fighter.id});}
+          if(!acceptingEntries(data))return json({ok:false,reason:'申し込みの締切を過ぎています。'},409);
+          if(data.fighters.length>=3000)return json({ok:false,reason:'受付人数の上限です。主催者へ確認してください。'},409);
+          try {await saveCloudTournament(store,eventId,{...data,fighters:[...data.fighters,fighter]});return json({ok:true,receipt:fighter.id});}
+          catch(error){if(error instanceof CloudConflict&&attempt<3)continue;throw error;}
+        }
+      }catch(error){return json({ok:false,reason:error instanceof Error?error.message:'保存結果を確認できません。'},error instanceof CloudConflict?409:400);}
+    }
+    if(path==='/private-timer'&&request.method==='POST') {
+      const eventId=url.searchParams.get('event')||'',store=this.ctx.storage as unknown as AtomicStore;
+      try {
+        const command=await request.json() as {action:TimerAction;updatedAt:number};
+        const data=await readCloudTournament(store,eventId);
+        if(!data)return json({ok:false,reason:'大会を保存してください。'},404);
+        if(command.updatedAt!==data.updatedAt)throw new CloudConflict('別の画面で更新されました。最新の試合を確認してください。');
+        const serverNow=Date.now();
+        return json({ok:true,event:await saveCloudTournament(store,eventId,timerCommand(data,command.action,serverNow)),serverNow});
+      }catch(error){return json({ok:false,reason:error instanceof Error?error.message:'時計を操作できません。'},error instanceof CloudConflict?409:400);}
+    }
+    if(path==='/private-draft' && ['GET','PUT'].includes(request.method)) {
+      const eventId=url.searchParams.get('event')||'',store=this.ctx.storage as unknown as AtomicStore;
+      try{return json({ok:true,draft:request.method==='GET'?await readDraft(store,eventId):await saveDraft(store,eventId,await request.json())});}
+      catch(error){return json({ok:false,reason:error instanceof Error?error.message:'途中保存できません。'},error instanceof CloudConflict?409:400);}
+    }
+    if (path === '/private-event' && ['GET','PUT'].includes(request.method)) {
+      const eventId = url.searchParams.get('event') || '';
+      try {
+        if (request.method === 'GET') return json({ok:true,event:await readCloudTournament(this.ctx.storage as unknown as AtomicStore,eventId),serverNow:Date.now()});
+        const value = await request.json();
+        return json({ok:true,event:await saveCloudTournament(this.ctx.storage as unknown as AtomicStore,eventId,value)});
+      } catch(error) {
+        return json({ok:false,reason:error instanceof Error ? error.message : '保存を確認できませんでした。'},error instanceof CloudConflict ? 409 : 400);
+      }
+    }
 
     if (path === '/ws') {
       const pair = new WebSocketPair();

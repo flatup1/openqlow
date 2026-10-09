@@ -1,5 +1,6 @@
 'use client';
 
+import { cloudRequest } from './cloudClient.ts';
 import { isLocalTournament, type LocalTournament } from '../../core/privateTournament.ts';
 
 const DB = 'tournament-os-private-v1';
@@ -17,7 +18,11 @@ function database(): Promise<IDBDatabase> {
   });
 }
 
+export function cloudStorage(): boolean {
+  return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('storage') === 'cloud';
+}
 export async function readPrivateEvent(eventId: string): Promise<LocalTournament | null> {
+  if(cloudStorage())return cloudRequest(eventId);
   const db = await database();
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(eventId);
@@ -47,6 +52,11 @@ export function preparePrivateEventSave(value: LocalTournament, saved: unknown, 
 }
 
 export async function writePrivateEvent(value: LocalTournament): Promise<LocalTournament> {
+  if(cloudStorage()) {
+    const saved=await cloudRequest(value.eventId,value);
+    if(!saved)throw new Error('クラウドの保存結果を確認できません。');
+    return saved;
+  }
   if (!isLocalTournament(value)) throw new Error('保存するデータを確認してください。今あるデータは変えていません。');
   const db = await database();
   const next = await new Promise<LocalTournament>((resolve, reject) => {
@@ -74,6 +84,12 @@ export async function writePrivateEvent(value: LocalTournament): Promise<LocalTo
 }
 
 export function watchPrivateEvent(eventId: string, callback: () => void): () => void {
+  if(cloudStorage()) {
+    const refresh=()=>{if(document.visibilityState==='visible')callback();};
+    const timer=setInterval(refresh,5000);
+    window.addEventListener('focus',refresh);
+    return ()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};
+  }
   if (!('BroadcastChannel' in window)) return () => undefined;
   const channel = new BroadcastChannel(channelName(eventId));
   channel.onmessage = callback;
@@ -102,7 +118,7 @@ async function keyFromPassword(password: string, salt: Uint8Array): Promise<Cryp
   return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: bytesToArrayBuffer(salt), iterations: 250_000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 
-export async function encryptBackup(value: LocalTournament, password: string): Promise<string> {
+export async function encryptPayload(value: unknown, password: string): Promise<string> {
   if (password.length < 10) throw new Error('パスワードは10文字以上にしてください。');
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -111,13 +127,18 @@ export async function encryptBackup(value: LocalTournament, password: string): P
   return JSON.stringify({ format: 'tournament-os-private-1', salt: bytesToBase64(salt), iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(encrypted)) });
 }
 
-export async function decryptBackup(text: string, password: string): Promise<LocalTournament> {
+export async function decryptPayload(text: string, password: string): Promise<unknown> {
   const payload = JSON.parse(text) as { format: string; salt: string; iv: string; data: string };
   if (payload.format !== 'tournament-os-private-1') throw new Error('Tournament OSのバックアップではありません。');
   const key = await keyFromPassword(password, base64ToBytes(payload.salt));
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytesToArrayBuffer(base64ToBytes(payload.iv)) }, key, bytesToArrayBuffer(base64ToBytes(payload.data)));
   const value: unknown = JSON.parse(new TextDecoder().decode(plain));
-  if (!isLocalTournament(value)) throw new Error('バックアップの中身を読み取れません。元のデータは残しています。');
+  return value;
+}
+export const encryptBackup = (value: LocalTournament, password: string) => encryptPayload(value,password);
+export async function decryptBackup(text:string,password:string):Promise<LocalTournament> {
+  const value=await decryptPayload(text,password);
+  if(!isLocalTournament(value))throw new Error('バックアップの中身を読み取れません。元のデータは残しています。');
   return value;
 }
 

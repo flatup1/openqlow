@@ -79,6 +79,48 @@
 
 なし
 
+### Codex 完了記録（2026-10-10）
+ブランチ: codex/mac-latest-20261009（fb42cd1起点の独立worktree）。以下は作業済み。
+対象: docs/CODEX_MAC_LATEST差分.md、および以下のファイル。元Mac作業コピーとClaude側worktreeは変更しない。
+- uizin-eventos/app/setup/page.tsx
+- uizin-eventos/app/cloud-entry/page.tsx
+- uizin-eventos/app/cloud-view/page.tsx
+- uizin-eventos/app/components/EntryForm.tsx
+- uizin-eventos/app/lib/cloudClient.ts
+- uizin-eventos/app/lib/onlineEntryClient.ts
+- uizin-eventos/app/lib/setupDraftClient.ts
+- uizin-eventos/app/lib/useSetupDraft.ts
+- uizin-eventos/core/accessIdentity.ts
+- uizin-eventos/core/cloudEntry.ts
+- uizin-eventos/core/cloudTournament.ts
+- uizin-eventos/core/privateTimer.ts
+- uizin-eventos/core/privateTournament.ts
+- uizin-eventos/core/safeGoogleRules.ts
+- uizin-eventos/core/setupDraft.ts
+- uizin-eventos/worker/index.ts
+- uizin-eventos/worker/event-do.ts
+- uizin-eventos/worker/wrangler.test.toml
+- uizin-eventos/functions/api/[[path]].ts
+- uizin-eventos/wrangler.test.jsonc
+- uizin-eventos/eslint.config.mjs
+- uizin-eventos/tests/accessIdentity.test.ts
+- uizin-eventos/tests/cloudTournament.test.ts
+- uizin-eventos/tests/cloudWorkflow.test.ts
+- uizin-eventos/tests/setupDraft.test.ts
+- uizin-eventos/tests/support/cloudHarness.ts
+- uizin-eventos/scripts/prepare-test-pages.mjs
+- uizin-eventos/scripts/test-cloud-browser.mjs
+- uizin-eventos/app/cloud-manage/page.tsx
+- uizin-eventos/app/cloud-manage/live/page.tsx
+- uizin-eventos/app/lib/privateStore.ts
+- uizin-eventos/app/page.tsx
+- uizin-eventos/public/_headers
+- uizin-eventos/package.json
+- uizin-eventos/package-lock.json
+- uizin-eventos/.gitignore
+- uizin-eventos/docs/templates/entry-sheet-apps-script.gs
+
+
 ### Phase 4 の現在状態（Claude Code 記入 / 2026-08-29）
 
 - 対象: `src/brand_growth/` Phase 4「Quality Guardian and Growth Metadata」

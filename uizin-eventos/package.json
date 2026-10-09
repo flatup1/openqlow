@@ -9,18 +9,20 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "build:private": "bash scripts/build-private-pages.sh",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "eslint app/setup app/lib/cloudClient.ts app/lib/privateStore.ts app/cloud-manage/page.tsx app/cloud-manage/live/page.tsx app/page.tsx core/cloudTournament.ts core/safeGoogleRules.ts core/accessIdentity.ts core/privateTournament.ts functions worker/index.ts worker/event-do.ts tests/cloudTournament.test.ts tests/accessIdentity.test.ts tests/support/cloudHarness.ts app/cloud-entry app/cloud-view app/components/EntryForm.tsx app/private/entry/page.tsx app/lib/onlineEntryClient.ts core/cloudEntry.ts core/privateTimer.ts tests/cloudWorkflow.test.ts app/lib/useSetupDraft.ts app/lib/setupDraftClient.ts core/setupDraft.ts tests/setupDraft.test.ts",
     "verify": "npm run test && npm run build",
     "go-live": "bash scripts/go-live.sh",
     "go-live:tournament": "bash scripts/go-live-tournament.sh",
     "worker:dev": "wrangler dev --config worker/wrangler.toml",
     "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
     "worker:deploy:tournament": "wrangler deploy --config worker/wrangler.tournament.toml",
-    "pages:deploy": "wrangler pages deploy out --project-name uizin-eventos"
+    "pages:deploy": "wrangler pages deploy out --project-name uizin-eventos",
+    "build:cloud": "npm run build && node -e \"console.log('Cloud Pages build: ' + process.cwd() + '/out')\"",
+    "test:cloud-browser": "node scripts/test-cloud-browser.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",
@@ -37,6 +39,9 @@
     "@types/react-dom": "19.2.3",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
-    "wrangler": "4.129.1"
+    "wrangler": "4.129.1",
+    "eslint": "10.12.0",
+    "typescript-eslint": "8.71.0",
+    "playwright": "1.58.2"
   }
 }

@@ -9,6 +9,9 @@
  * 状態はここには置かない。唯一の真実は EventRoom の中だけ。
  */
 
+import { accessIdentity } from '../core/accessIdentity.ts';
+import { recruitmentCode } from '../core/cloudEntry.ts';
+import { safeGoogleRules } from '../core/safeGoogleRules.ts';
 import { looksLikeHtml, sheetCsvUrl } from '../core/sheet.ts';
 import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
@@ -19,6 +22,9 @@ export { EventRoom } from './event-do.ts';
 
 export type Env = {
   EVENT_ROOM: DurableObjectNamespace;
+  ACCESS_ISSUER?: string;
+  ACCESS_AUD?: string;
+  ACCESS_ALLOWED_EMAILS?: string;
   /** 操作者だけが持つ合言葉。未設定なら書き込みを一切受け付けない */
   OPERATOR_KEY?: string;
   /** Google スプレッドシートのID */
@@ -241,6 +247,90 @@ export default {
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+    }
+
+    if(path==='/api/cloud-entry'||path==='/api/cloud-view') {
+      if(!(path==='/api/cloud-view'?['GET']:['GET','POST']).includes(request.method))return withCors(json({ok:false},405),request,env);
+      const code=url.searchParams.get('code')||'';
+      if(!/^[a-f0-9]{64}$/.test(code))return withCors(json({ok:false,reason:'募集リンクを確認してください。'},400),request,env);
+      const directory=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName('cloud-entry-directory'));
+      const result=await directory.fetch(new Request('https://event-room/cloud-entry-index?code='+code));
+      const {room}=await result.json() as {room:string|null};
+      if(!room)return withCors(json({ok:false,reason:'この大会の受付は開いていません。'},404),request,env);
+      const bytes=request.method==='POST'?await request.arrayBuffer():undefined;
+      if(bytes&&bytes.byteLength>2*1024*1024)return withCors(json({ok:false,reason:'写真を小さくしてください。'},413),request,env);
+      const event=room.slice(room.lastIndexOf(':')+1);
+      const destination=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName(room));
+      return withCors(await destination.fetch(new Request('https://event-room/'+(path==='/api/cloud-view'?'cloud-view':'cloud-entry')+'?event='+event,{method:request.method,headers:JSON_HEADERS,body:bytes})),request,env);
+    }
+    if (['/api/private-drafts','/api/private-draft','/api/private-event','/api/private-rules','/api/private-events','/api/private-recruitment','/api/private-timer'].includes(path)) {
+      const accessConfigured=Boolean(env.ACCESS_ISSUER || env.ACCESS_AUD || env.ACCESS_ALLOWED_EMAILS);
+      const identity=accessConfigured ? await accessIdentity(request.headers.get('cf-access-jwt-assertion')||'',{issuer:env.ACCESS_ISSUER,audience:env.ACCESS_AUD,emails:env.ACCESS_ALLOWED_EMAILS}) : isOperator(request,env) ? 'legacy-operator' : null;
+      if (!identity) return withCors(json({ok:false,reason:'メールの確認コードでログインしてから、もう一度開いてください。'},401),request,env);
+      const catalog=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName('private:'+identity+':catalog'));
+      if(path === '/api/private-events') {
+        if(request.method!=='GET')return withCors(json({ok:false},405),request,env);
+        return withCors(await catalog.fetch(new Request('https://event-room/private-catalog')),request,env);
+      }
+      const draftCatalog=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName('draft:'+identity+':catalog'));
+      if(path==='/api/private-drafts') {
+        if(request.method!=='GET')return withCors(json({ok:false},405),request,env);
+        return withCors(await draftCatalog.fetch(new Request('https://event-room/private-catalog')),request,env);
+      }
+      if(path==='/api/private-draft') {
+        if(!['GET','PUT'].includes(request.method))return withCors(json({ok:false},405),request,env);
+        const bytes=request.method==='PUT'?await request.arrayBuffer():undefined;
+        if(bytes && bytes.byteLength>8*1024*1024)return withCors(json({ok:false},413),request,env);
+        const draftRoom=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName('draft:'+identity+':'+eventId(request,env)));
+        const response=await draftRoom.fetch(new Request('https://event-room/private-draft?event='+eventId(request,env),{method:request.method,body:bytes,headers:JSON_HEADERS}));
+        if(request.method==='GET'||!response.ok)return withCors(response,request,env);
+        const body=await response.json() as {ok:boolean;draft:{revision:number;document:{eventId:string;title:string;date:string}}};
+        const d=body.draft;let catalogSaved=false;
+        try{catalogSaved=(await draftCatalog.fetch(new Request('https://event-room/private-catalog',{method:'PUT',body:JSON.stringify({eventId:d.document.eventId,title:d.document.title,date:d.document.date,updatedAt:d.revision})}))).ok;}catch{/* Draft remains saved even if listing fails. */}
+        return withCors(json({...body,catalogSaved}),request,env);
+      }
+      const roomName='private:'+identity+':'+eventId(request,env);
+      const privateRoom=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName(roomName));
+      if(path==='/api/private-recruitment') {
+        if(request.method!=='GET')return withCors(json({ok:false},405),request,env);
+        return withCors(json({ok:true,code:await recruitmentCode(identity,eventId(request,env))}),request,env);
+      }
+      if(path==='/api/private-timer') {
+        if(request.method!=='POST')return withCors(json({ok:false},405),request,env);
+        const command=await request.text();
+        if(command.length>1000)return withCors(json({ok:false},413),request,env);
+        return withCors(await privateRoom.fetch(new Request('https://event-room/private-timer?event='+eventId(request,env),{method:'POST',body:command,headers:JSON_HEADERS})),request,env);
+      }
+      const privateForward=(init?:RequestInit)=>privateRoom.fetch(new Request('https://event-room/private-event?event='+eventId(request,env),init));
+      if (path === '/api/private-event') {
+        if (!['GET','PUT'].includes(request.method)) return withCors(json({ok:false},405),request,env);
+        const declared = Number(request.headers.get('content-length') || 0);
+        if (declared > 8 * 1024 * 1024) return withCors(json({ok:false,reason:'保存データが大きすぎます。'},413),request,env);
+        if (request.method === 'GET') return withCors(await privateForward(),request,env);
+        const bytes = await request.arrayBuffer();
+        if (bytes.byteLength > 8 * 1024 * 1024) return withCors(json({ok:false,reason:'保存データが大きすぎます。'},413),request,env);
+        // An address alone reveals nothing: the destination checks the saved open flag on every call.
+        const code=await recruitmentCode(identity,eventId(request,env));
+        const directory=env.EVENT_ROOM.get(env.EVENT_ROOM.idFromName('cloud-entry-directory'));
+        const linked=await directory.fetch(new Request('https://event-room/cloud-entry-index?code='+code,{method:'PUT',body:JSON.stringify({room:roomName})}));
+        if(!linked.ok)return withCors(json({ok:false,reason:'募集先を準備できませんでした。入力を残してください。'},503),request,env);
+        const saved=await privateForward({method:'PUT',body:bytes,headers:JSON_HEADERS});
+        if(!saved.ok)return withCors(saved,request,env);
+        const body=await saved.json() as {ok:boolean;event:{eventId:string;title:string;date:string;updatedAt:number}};
+        const summary={eventId:body.event.eventId,title:body.event.title,date:body.event.date,updatedAt:body.event.updatedAt};
+        let catalogSaved=false;
+        try {catalogSaved=(await catalog.fetch(new Request('https://event-room/private-catalog',{method:'PUT',body:JSON.stringify(summary)}))).ok;}catch{/* Document is already persisted; never report it as unsaved. */}
+        return withCors(json({...body,catalogSaved}),request,env);
+      }
+      if (request.method !== 'GET') return withCors(json({ok:false},405),request,env);
+      const target=env.ENTRY_SHEET_WEBHOOK_URL?.trim() || '';
+      if (!target || !env.ENTRY_SHEET_WEBHOOK_SECRET) return withCors(json({ok:false,reason:'Google連携は未設定です。大会はGoogleなしでも作れます。'},503),request,env);
+      try {
+        const result=await fetchWithTimeout(target,10000,{method:'POST',headers:JSON_HEADERS,body:JSON.stringify({action:'rules',secret:env.ENTRY_SHEET_WEBHOOK_SECRET,eventId:eventId(request,env)})});
+        if (!result.ok) throw new Error();
+        const body=await result.json() as {rows?:unknown};
+        return withCors(json({ok:true,rules:safeGoogleRules(body.rows)}),request,env);
+      } catch { return withCors(json({ok:false,reason:'個人情報のない大会設定表を確認してください。既存データは変えていません。'},400),request,env); }
     }
 
     // --- 全画面が見る（読み取り専用） -------------------------------------

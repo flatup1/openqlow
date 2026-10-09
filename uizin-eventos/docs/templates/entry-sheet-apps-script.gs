@@ -26,6 +26,16 @@ function doPost(e) {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (!body || body.secret !== ENTRY_SECRET) return reply({ ok: false, reason: '認証できません' });
     const book = SpreadsheetApp.getActiveSpreadsheet();
+    if (body.action === 'rules') {
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(String(body.eventId || ''))) return reply({ok:false});
+      const rules = book.getSheetByName('大会設定_' + body.eventId);
+      const columns = ['試合番号','ラウンド数','ラウンド秒','休憩秒'];
+      if (!rules || rules.getLastColumn() !== 4 || rules.getLastRow() > 3001) return reply({ok:false});
+      if (JSON.stringify(rules.getRange(1,1,1,4).getDisplayValues()[0]) !== JSON.stringify(columns)) return reply({ok:false});
+      const rows = rules.getRange(1,1,Math.max(1,rules.getLastRow()),4).getDisplayValues();
+      if (rows.slice(1).some(row => row.some(cell => !/^\d+$/.test(cell)) || Number(row[0])<1 || Number(row[0])>3000 || Number(row[1])<1 || Number(row[1])>20 || Number(row[2])<10 || Number(row[2])>3600 || Number(row[3])>3600)) return reply({ok:false});
+      return reply({ok:true,rows:rows});
+    }
     const sheet = book.getSheetByName(SHEET_NAME) || book.insertSheet(SHEET_NAME);
     if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
     if (body.action === 'list') {

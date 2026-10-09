@@ -1,5 +1,8 @@
+import { safeGoogleRules, RULE_HEADERS, type SafeRule } from './safeGoogleRules.ts';
 import { fingerprint, pick, toRows } from './csv.ts';
 import type { EntryFormConfig } from './entryPackage.ts';
+import { validRecruitment, type Recruitment } from './cloudEntry.ts';
+import { validTimer, type PrivateTimer } from './privateTimer.ts';
 
 export type LocalFighter = {
   id: string;
@@ -34,6 +37,10 @@ export type LocalTournament = {
   fighters: LocalFighter[];
   bouts: LocalBout[];
   entryConfig?: EntryFormConfig;
+  schedule?: SafeRule[];
+  recruitment?: Recruitment;
+  timer?: PrivateTimer;
+  audience?: {open:boolean};
 };
 
 const PRIVATE_HEADERS = [
@@ -142,8 +149,12 @@ export function validateTournament(value: LocalTournament): string[] {
 export function isLocalTournament(value: unknown): value is LocalTournament {
   if (!value || typeof value !== 'object') return false;
   const data = value as LocalTournament;
+  if(data.audience!==undefined&&(!data.audience||typeof data.audience.open!=='boolean'||Object.keys(data.audience).some(k=>k!=='open')))return false;
+  if(data.recruitment!==undefined&&!validRecruitment(data.recruitment)||data.timer!==undefined&&!validTimer(data.timer))return false;
+  if (data.schedule !== undefined) { try { safeGoogleRules([RULE_HEADERS,...data.schedule.map(row=>[row.no,row.rounds,row.roundSeconds,row.breakSeconds])]); } catch { return false; } }
   const text = (item: unknown) => typeof item === 'string' && item.length <= 5000;
   if (data.entryConfig !== undefined && (!data.entryConfig || typeof data.entryConfig.music !== 'boolean' || !['grade','age','comment'].every(key => ['off','optional','required'].includes(data.entryConfig![key as 'grade'|'age'|'comment'])))) return false;
   if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
+  if(data.timer){const t=data.timer,rule=data.schedule?.find(r=>r.no===data.currentBout+1);if(!rule||t.boutId!==data.bouts[data.currentBout]?.id||t.round>rule.rounds||t.remainingMs>(t.phase==='break'?rule.breakSeconds:rule.roundSeconds)*1000||t.phase==='complete'&&(t.status!=='paused'||t.remainingMs!==0))return false;}
   return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }

@@ -1,0 +1,20 @@
+# Local preparation only. No deployment or authentication settings have been applied.
+name = "tournament-os-test-api"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+EVENT_ID = "test-default"
+ALLOWED_ORIGINS = "https://tournament-os-test.pages.dev"
+
+[[durable_objects.bindings]]
+name = "EVENT_ROOM"
+class_name = "EventRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["EventRoom"]
+
+[observability]
+enabled = false

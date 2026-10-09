@@ -83,7 +83,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10">
       <div className="flex flex-wrap items-center gap-4">
-        <h1 className="text-4xl font-black text-white">Tournament OS</h1>
+        <a href="/setup/" className="block rounded-xl bg-indigo-700 p-4 text-white">クラウドで大会を作る・途中から再開する</a><h1 className="text-4xl font-black text-white">Tournament OS</h1>
         <span className="rounded-full bg-white/10 px-3 py-1 text-sm font-bold text-slate-300">汎用格闘技大会版</span>
         <div className="ml-auto">
           <ConnectionBadge connection={store.connection} />
