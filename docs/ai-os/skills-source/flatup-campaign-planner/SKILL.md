@@ -1,6 +1,6 @@
 ---
 name: flatup-campaign-planner
-description: Use to design a testable FLATUP acquisition campaign for beginners, families, men rebuilding confidence, or seniors. Do not use to set prices, spend money, publish ads, or invent evidence.
+description: Use to design a testable FLATUP acquisition campaign for beginners, families, men rebuilding confidence, or seniors.
 ---
 
 # FLATUP Campaign Planner
@@ -19,3 +19,7 @@ description: Use to design a testable FLATUP acquisition campaign for beginners,
 誰に / 悩み / メッセージ / 媒体 / 体験導線 / KPI / リスク / 検証期間 / 人間確認。
 
 Prefer a small measurable test over a broad campaign.
+
+## Not for
+
+Do not use to set prices, spend money, publish ads, or invent evidence.
