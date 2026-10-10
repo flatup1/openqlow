@@ -1,0 +1,34 @@
+# UIZIN EventOS — バックエンド（Cloudflare Workers）
+#
+# 公開手順は ../docs/DEPLOY.md を読んでください。
+# 秘密（操作キー）はこのファイルに書かないこと。必ず `wrangler secret put` を使う。
+
+name = "uizin-eventos-api"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# 大会ごとに変える部屋名。ここを変えると状態が完全に分かれる。
+EVENT_ID = "uizin-2026"
+# Google スプレッドシートのID（URLの /d/ と /edit の間）。実IDはコミットしない運用にする。
+SHEET_ID = ""
+SHEET_EVENT = "event"
+SHEET_MATCHES = "matches"
+SHEET_MUSIC = "music"
+# 画面(Cloudflare Pages)のURL。カンマ区切りで複数可。開発中だけ "*" にしてよい。
+ALLOWED_ORIGINS = "*"
+
+# OPERATOR_KEY は secret で入れる:
+#   npx wrangler secret put OPERATOR_KEY
+
+[[durable_objects.bindings]]
+name = "EVENT_ROOM"
+class_name = "EventRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["EventRoom"]
+
+[observability]
+enabled = true
