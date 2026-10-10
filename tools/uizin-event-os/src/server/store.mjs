@@ -2,8 +2,8 @@
 // 本番（live）と練習（rehearsal）は別ファイル。保存先はリポジトリの外に限る（選手の表示名を含むため）。
 // 仕様: docs/uizin-event-os/ARCHITECTURE.md §3
 
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync, writeFileSync, renameSync, truncateSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, writeSync, writeFileSync, renameSync, truncateSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -13,12 +13,31 @@ export function expandHome(path) {
   return String(path).replace(/^~(?=$|\/)/, homedir());
 }
 
+// まだ無いフォルダも含めて、シンボリックリンクをたどった本当の場所を求める（あるところまでを realpath にする）。
+function realLocation(path) {
+  let head = resolve(path);
+  const rest = [];
+  for (;;) {
+    try {
+      return join(realpathSync(head), ...rest);
+    } catch {
+      const parent = dirname(head);
+      if (parent === head) return resolve(path);
+      rest.unshift(basename(head));
+      head = parent;
+    }
+  }
+}
+
 // 保存先がリポジトリの中なら止める（誤ってコミットされるのを防ぐ）。
-export function resolveDataDir(path, { repoRoot = REPO_ROOT } = {}) {
+// シンボリックリンク経由や、Mac で大文字・小文字だけ違う書き方でも、リポジトリの中なら止める。
+export function resolveDataDir(path, { repoRoot = REPO_ROOT, caseInsensitive = process.platform === "darwin" || process.platform === "win32" } = {}) {
   if (!path) throw new Error("保存先（dataDir）が決まっていません");
   const target = resolve(expandHome(path));
-  const root = resolve(repoRoot);
-  if (target === root || target.startsWith(root + sep)) {
+  const fold = value => (caseInsensitive ? value.toLowerCase() : value);
+  const real = fold(realLocation(target));
+  const root = fold(realLocation(repoRoot));
+  if (real === root || real.startsWith(root + sep)) {
     throw new Error(`保存先がリポジトリの中です（${target}）。選手名を含むため、リポジトリの外にしてください`);
   }
   return target;
@@ -29,7 +48,7 @@ export class EventLog {
     this.file = file;
     this.events = [];
     this.skipped = 0;
-    mkdirSync(dirname(file), { recursive: true });
+    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
     if (existsSync(file)) this.load();
   }
 
@@ -58,25 +77,34 @@ export class EventLog {
     return last ? last.seq + 1 : 1;
   }
 
-  // 1件ずつ書いて fsync する（落ちても、書いた分は残す）。
+  // まとめて書いて fsync する。書けなかったら、途中まで書いたかけらを切り取ってから失敗を返す
+  // （かけらが残ると次の記録とくっついて、次に起動できなくなるため。容量不足のときに起きる）。
   append(entries) {
-    const written = [];
-    const fd = openSync(this.file, "a");
+    const first = this.nextSeq();
+    const events = entries.map((entry, index) => ({ seq: first + index, ...entry }));
+    const bytes = Buffer.from(events.map(event => `${JSON.stringify(event)}\n`).join(""), "utf8");
+    const fd = openSync(this.file, "a+", 0o600);
+    let start = null;
     try {
-      for (const entry of entries) {
-        const event = { seq: this.nextSeq(), ...entry };
-        const bytes = Buffer.from(`${JSON.stringify(event)}\n`, "utf8");
-        // 一度で全部書けないこともあるので、書き切るまで続ける。
-        let offset = 0;
-        while (offset < bytes.length) offset += writeSync(fd, bytes, offset, bytes.length - offset);
-        this.events.push(event);
-        written.push(event);
-      }
+      start = repairTail(fd);
+      // 一度で全部書けないこともあるので、書き切るまで続ける。
+      let offset = 0;
+      while (offset < bytes.length) offset += writeSync(fd, bytes, offset, bytes.length - offset);
       fsyncSync(fd);
+    } catch (error) {
+      if (start !== null) {
+        try {
+          ftruncateSync(fd, start);
+        } catch {
+          /* 切り取れなくても、次に書く前と次に読むときに直す */
+        }
+      }
+      throw error;
     } finally {
       closeSync(fd);
     }
-    return written;
+    this.events.push(...events);
+    return events;
   }
 
   find(seq) {
@@ -84,11 +112,26 @@ export class EventLog {
   }
 }
 
+// 最後が改行で終わっていなければ（前に書きかけで失敗した）、最後の改行までに切り詰める。書き始める位置を返す。
+function repairTail(fd) {
+  const size = fstatSync(fd).size;
+  if (size === 0) return 0;
+  const last = Buffer.alloc(1);
+  readSync(fd, last, 0, 1, size - 1);
+  if (last[0] === 0x0a) return size;
+  const all = Buffer.alloc(size);
+  let read = 0;
+  while (read < size) read += readSync(fd, all, read, size - read, read);
+  const end = all.lastIndexOf(0x0a) + 1;
+  ftruncateSync(fd, end);
+  return end;
+}
+
 // 小さな設定値を原子的に書く（書き途中で落ちても壊れない）。
 export function writeFileAtomic(file, text) {
-  mkdirSync(dirname(file), { recursive: true });
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   const temp = `${file}.tmp-${process.pid}`;
-  writeFileSync(temp, text);
+  writeFileSync(temp, text, { mode: 0o600 });
   renameSync(temp, file);
 }
 

@@ -5,7 +5,7 @@
 // 仕様: docs/uizin-event-os/ARCHITECTURE.md、EVENT_OS_SPEC.md
 
 import { EventEmitter } from "node:events";
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decide, reduce, roleAtLeast, isEngineCommand, currentBout } from "../core/engine.mjs";
 import { desiredOutputs } from "../core/desired.mjs";
@@ -48,7 +48,13 @@ export class EventOsApp extends EventEmitter {
   }
 
   init() {
-    mkdirSync(this.dataDir, { recursive: true });
+    // 保存先は自分のアカウントだけが開けるフォルダにする（中の記録・書き出しに選手の表示名が入るため）。
+    mkdirSync(this.dataDir, { recursive: true, mode: 0o700 });
+    try {
+      chmodSync(this.dataDir, 0o700);
+    } catch {
+      /* 直せなくても動く */
+    }
     const modeFile = join(this.dataDir, "mode.json");
     if (existsSync(modeFile)) {
       try {
