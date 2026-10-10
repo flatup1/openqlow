@@ -39,6 +39,7 @@ export function initialState() {
     safe: false,
     camera: "main",
     consentAckHash: null,
+    reloadedMidEvent: false,
     humanChecks: {},
     undoStack: [],
     lastEvent: null,
@@ -91,6 +92,17 @@ export function consentAcknowledged(state) {
   return state.consentAckHash === state.card.hash;
 }
 
+// 大会中に試合データを読み直したら、新しいデータで「配信しない試合」を確かめる（👤）まで、
+// どの試合もカメラと名前を映さない（番号がずれて、配信しない試合が映るのを防ぐ）。
+export function broadcastLocked(state) {
+  return state.phase === "running" && state.reloadedMidEvent && state.consentAckHash !== state.card?.hash;
+}
+
+// この試合を配信に映さないか（配信しない試合、または読み直し後の確認待ち）。
+export function boutHidden(state, bout) {
+  return Boolean(bout) && (bout.broadcast !== "OK" || broadcastLocked(state));
+}
+
 // ---- 組み立て（reduce） ----
 
 export function reduce(events) {
@@ -122,11 +134,14 @@ function apply(state, event) {
   switch (event.type) {
     case "LOAD_CARD": {
       // 読み直したら当日の手直しは消す（別の選手の名前が残らないように）。
-      // 今の試合は「位置」ではなく「試合番号」で探し直す。見つからなければ、その試合の最初（待機）に戻す。
-      const currentNo = s.card?.bouts?.[s.boutIndex]?.no;
+      // 今の試合は「位置」ではなく「試合番号と対戦の組み合わせ」で探し直す。番号が同じでも選手が違えば別の試合なので、
+      // 見つからなければ、その試合の最初（待機）に戻す。
+      const current = s.card?.bouts?.[s.boutIndex];
       s.card = { bouts: event.bouts, hash: event.hash, source: event.source, loadedAt: event.at };
       s.edits = {};
-      const found = currentNo === undefined ? -1 : event.bouts.findIndex(item => item.no === currentNo);
+      if (s.phase === "running") s.reloadedMidEvent = true;
+      const samePair = item => item.no === current.no && item.red.name === current.red.name && item.blue.name === current.blue.name;
+      const found = current === undefined ? -1 : event.bouts.findIndex(samePair);
       if (found >= 0) {
         s.boutIndex = found;
       } else {

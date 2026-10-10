@@ -2,7 +2,7 @@
 // Adapterはこの姿にOBSを合わせる（reconcile）。純ロジック。
 // 仕様: docs/uizin-event-os/ARCHITECTURE.md §5.2・§7・§8、EVENT_OS_SPEC.md §12.3
 
-import { currentBout, boutAt } from "./engine.mjs";
+import { currentBout, boutAt, boutHidden } from "./engine.mjs";
 import { sceneForStep, WINNER_LABELS } from "./flow.mjs";
 
 export const DEFAULT_SCENES = { WAIT: "WAIT", FIGHTER: "FIGHTER", FIGHT: "FIGHT", WINNER: "WINNER", SAFE: "SAFE", CAM: "CAM" };
@@ -30,7 +30,7 @@ export function textNames(config) {
 function sceneKeyFor(state, bout) {
   // 配信しない試合は、その試合の間ずっとカメラを映さない（WAIT＝静止画）。
   // 🛟 安全運転より先に判定する（SAFE はメインカメラを直接映すため）。
-  if (state.phase === "running" && state.step !== "break" && bout && bout.broadcast !== "OK") return "WAIT";
+  if (state.phase === "running" && state.step !== "break" && boutHidden(state, bout)) return "WAIT";
   if (state.safe) return "SAFE";
   if (state.phase !== "running") return "WAIT";
   if (state.step === "break") return "WAIT";
@@ -48,7 +48,7 @@ function infoText(state, bout) {
   if (state.phase === "setup") return "まもなく開始します";
   if (state.phase === "ended") return "本日の試合はすべて終了しました";
   if (state.step === "break") return "休憩中";
-  if (bout && bout.broadcast !== "OK") return "この試合は配信をお休みします";
+  if (boutHidden(state, bout)) return "この試合は配信をお休みします";
   if (state.step === "standby" && bout) return `次の試合 ${bout.red.name} vs ${bout.blue.name}`;
   return "";
 }
@@ -58,7 +58,7 @@ export function desiredOutputs(state, config) {
   const sceneKey = sceneKeyFor(state, bout);
   const scenes = sceneNames(config);
   const texts = textNames(config);
-  const hidden = !bout || bout.broadcast !== "OK";
+  const hidden = !bout || boutHidden(state, bout);
   const result = bout ? state.results[bout.no] : null;
 
   const textValues = {

@@ -6,7 +6,7 @@
 
 import { lamp } from "./health.mjs";
 import { stepGuide, doneText, entranceOrder } from "./flow.mjs";
-import { currentBout, isLastBout, roleAtLeast } from "./engine.mjs";
+import { currentBout, isLastBout, roleAtLeast, boutHidden, broadcastLocked } from "./engine.mjs";
 import { sceneNames } from "./desired.mjs";
 
 const STREAM_SLOW_MS = 60_000;
@@ -40,7 +40,7 @@ export function nextAction(ctx) {
   const running = state.phase === "running";
   const rehearsalNoRecord = ctx.rehearsal && config?.rehearsal?.record !== true;
   const bout = running ? currentBout(state) : null;
-  const hidden = Boolean(bout) && bout.broadcast !== "OK";
+  const hidden = boutHidden(state, bout);
 
   if (ctx.storageError) {
     alerts.push(alert("error", "❌ 操作の記録を保存できません（Macの空き容量を確かめてください）。運営の人を呼んでください"));
@@ -77,11 +77,23 @@ export function nextAction(ctx) {
     }
   }
 
+  // 大会中に試合データを読み直した後は、新しいデータで「配信しない試合」を確かめるまでカメラと名前を止める。
+  if (broadcastLocked(state)) {
+    alerts.push(roleAtLeast(role, "operator")
+      ? alert("error", "❌ 試合データを読み直しました。配信しない試合を確かめて「👤 確認した」を押すまで、カメラと名前を映しません", { cmd: "consent_ack", args: { hash: state.card.hash }, label: "👤 配信しない試合を確認した" })
+      : alert("error", "❌ 試合データが読み直されたので、カメラと名前を止めています。運営の人を呼んでください"));
+  }
+
   // 手動モードのまま配信しない試合に進むと、カメラが映ったままになりうる（人の操作を優先するため）。
+  // 映像ソフトから WAIT の場面が消えたときも、切り替えられずにカメラが映ったままになる。
   const waitScene = sceneNames(config).WAIT;
-  const ngOnCamera = hidden && obs?.manual && obs?.program && obs.program !== waitScene;
-  if (ngOnCamera) {
+  const ngOnCamera = hidden && obs?.program && obs.program !== waitScene && (obs.manual || obs.sceneMissing === waitScene);
+  if (ngOnCamera && obs.manual) {
     alerts.push(alert("error", "❌ 配信しない試合なのに、カメラの場面になっています。すぐに「🔁 自動に戻す」を押してください", { cmd: "resume_auto", label: "🔁 自動に戻す" }));
+  } else if (ngOnCamera) {
+    alerts.push(alert("error", role === "easy"
+      ? "❌ 配信しない試合なのに、カメラが映っています。映像ソフトに待ち画面がありません。運営の人を呼んでください"
+      : `❌ 配信しない試合なのに、カメラが映っています。OBSに「${waitScene}」の場面がありません。OBSで直接カメラの映らない場面にしてください`));
   } else if (obs?.manual) {
     alerts.push(alert("warn", `✋ 手動モード：${word}を直接さわったので、自動の切り替えを止めています`, { cmd: "resume_auto", label: "🔁 自動に戻す" }));
   }

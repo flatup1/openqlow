@@ -157,9 +157,11 @@ export function resultsCsv(state) {
     const result = state.results[bout.no];
     rows.push([bout.no, bout.red.name, bout.blue.name, result ? (WINNER_LABELS[result.winner] ?? "") : ""]);
   }
+  // Sheets に読み込んだとき式として動かないように、= + - @ などで始まる値は先頭に ' を付ける（文字として扱われる）。
   const escape = value => {
-    const text = String(value);
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    const raw = String(value);
+    const text = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   return `﻿${rows.map(row => row.map(escape).join(",")).join("\r\n")}\r\n`;
 }

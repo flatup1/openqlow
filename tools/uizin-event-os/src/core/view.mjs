@@ -4,7 +4,7 @@
 
 import { lamp } from "./health.mjs";
 import { nextAction } from "./next_action.mjs";
-import { currentBout, roleAtLeast, boutAt } from "./engine.mjs";
+import { currentBout, roleAtLeast, boutAt, boutHidden } from "./engine.mjs";
 import { BROADCAST_LABELS } from "./card.mjs";
 import { WINNER_LABELS, UNDO_LABELS } from "./flow.mjs";
 import { upcomingBouts } from "./desired.mjs";
@@ -40,7 +40,7 @@ export function buildView(ctx) {
     FIGHT_START: "「試合開始」を取り消して、入場の画面に戻します（配信にも映ります）。よいですか？",
     RESULT: "記録した勝者を取り消します。よいですか？",
   }[undoType] ?? null;
-  const hidden = Boolean(bout) && bout.broadcast !== "OK";
+  const hidden = boutHidden(state, bout);
   // 今、本当に映っているカメラ。安全運転中はメインだけ。配信しない試合ではどちらも映していない。
   const cameraOnAir = state.phase !== "running" ? state.camera : hidden ? null : state.safe ? "main" : state.camera;
 

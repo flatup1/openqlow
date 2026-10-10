@@ -3,7 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MiniEvent, exampleConfig, TOOL_DIR } from "./helpers.mjs";
+import { MiniEvent, exampleConfig, TOOL_DIR, csv, SAMPLE_CSV } from "./helpers.mjs";
+import { parseCard } from "../src/core/card.mjs";
 import { desiredOutputs } from "../src/core/desired.mjs";
 import { buildView, MAX_LARGE_BUTTONS } from "../src/core/view.mjs";
 import { nextAction } from "../src/core/next_action.mjs";
@@ -382,4 +383,58 @@ test("かんたんモード：準備中は「❌ を直して」ではなく「�
   assert.match(nextAction(ctx(event, { preflight })).next, /運営の人が準備をしています/);
   assert.match(nextAction(ctx(event, { preflight, role: "operator" })).next, /❌ を直してください/);
   assert.equal(nextAction(ctx(event, { preflight })).done, "✅ 試合データを読み込みました（3試合）");
+});
+
+test("大会中に試合データを読み直して番号がずれても、配信しない試合をカメラに映さない。👤 確認までカメラと名前を止める", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  // 第2試合（青が NG）を試合中にする。カメラは映らない。
+  for (const [type, args] of [["entrance", { corner: "red" }], ["entrance", { corner: "blue" }], ["fight_start"]]) event.run(type, args, { role: "easy" });
+  assert.equal(desiredOutputs(event.state, event.config).sceneKey, "WAIT");
+  // Sheets で1試合足して番号がずれた CSV を読み直す（NG の組は第3試合になる）。
+  const shifted = parseCard(csv([
+    "1,ヒカル,架空ジムA,OK,ソラ,架空ジムB,OK,キッズ,曲A,曲B",
+    "2,ツバサ,架空ジムF,OK,カイ,架空ジムG,OK,キッズ,曲G,曲H",
+    "3,ミナト,架空ジムC,OK,ハル,架空ジムD,NG,一般,曲C,曲D",
+  ]));
+  assert.equal(event.run("load_card", { bouts: shifted.bouts, hash: shifted.hash }, { confirm: true }).ok, true);
+  // 番号が同じでも選手が違うので、その試合の最初に戻る。確認が済むまでカメラも名前も出さない。
+  assert.equal(event.state.step, "standby");
+  let out = desiredOutputs(event.state, event.config);
+  assert.equal(out.sceneKey, "WAIT");
+  assert.equal(out.texts.EOS_RED_NAME, "");
+  const operatorView = buildView(ctx(event, { role: "operator" }));
+  const lockAlert = operatorView.alerts.find(alert => /読み直しました/.test(alert.text));
+  assert.deepEqual(lockAlert.button, { cmd: "consent_ack", args: { hash: shifted.hash }, label: "👤 配信しない試合を確認した" });
+  assert.equal(operatorView.fixed.camera.current, null);
+  assert.ok(buildView(ctx(event)).alerts.some(alert => /運営の人を呼んでください/.test(alert.text) && !alert.button));
+  // 新しいデータで確かめたら、配信してよい試合はまたカメラに映る。
+  assert.equal(event.run("consent_ack", { hash: shifted.hash }).ok, true);
+  event.run("entrance", { corner: "red" }, { role: "easy" });
+  out = desiredOutputs(event.state, event.config);
+  assert.equal(out.sceneKey, "FIGHTER");
+  assert.equal(out.texts.EOS_RED_NAME, "ツバサ");
+});
+
+test("大会中の読み直しで同じ試合（番号と選手が同じ）なら、進み具合はそのまま。確認までは映さない", () => {
+  const event = new MiniEvent().setup();
+  event.run("entrance", { corner: "red" }, { role: "easy" });
+  const same = parseCard(SAMPLE_CSV.replace("曲A", "曲A2"));
+  event.run("load_card", { bouts: same.bouts, hash: same.hash }, { confirm: true });
+  assert.equal(event.state.step, "entrance1");
+  assert.equal(desiredOutputs(event.state, event.config).sceneKey, "WAIT");
+  event.run("consent_ack", { hash: same.hash });
+  assert.equal(desiredOutputs(event.state, event.config).sceneKey, "FIGHTER");
+});
+
+test("映像ソフトに WAIT の場面が無いまま配信しない試合になったら、手動モードでなくても知らせる", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  const obs = healthyObs({ program: "WINNER", sceneMissing: "WAIT", scenes: ["FIGHTER", "FIGHT", "WINNER", "SAFE", "CAM"] });
+  const easy = nextAction(ctx(event, { obs })).alerts.map(alert => alert.text).join("\n");
+  assert.match(easy, /配信しない試合なのに、カメラが映っています。映像ソフトに待ち画面がありません/);
+  assert.doesNotMatch(easy, /OBS/);
+  assert.match(nextAction(ctx(event, { obs, role: "operator" })).alerts.map(alert => alert.text).join("\n"), /OBSに「WAIT」の場面がありません/);
 });
