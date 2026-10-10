@@ -193,7 +193,7 @@ try {
     check(await bg(tick) === 'rgb(255, 255, 255)', tag + ': the mark-only できた button is never the filled one');
     await advance.click();
     await setup.getByText('いまここ 2 / 3').first().waitFor();
-    check(/操作\s*ア/.test(await setup.locator('main').innerText()), tag + ': step 2 uses ア イ ウ, not numbers like the strip');
+    check(/操作\s*1/.test(await setup.locator('main').innerText()) && !/(操作|やること)\s*[アイウエ]/.test(await setup.locator('main').innerText()), tag + ': step 2 uses plain numbers for its operations and never the katakana ア イ ウ that look like garbled text');
     await setup.locator('#endpoint').fill(endpoint);
     await setup.getByText('Googleにつながりませんでした').first().waitFor({ timeout: 8000 });
     const alerts = await setup.locator('[role=alert]').filter({ hasText: 'つながりませんでした' }).count();

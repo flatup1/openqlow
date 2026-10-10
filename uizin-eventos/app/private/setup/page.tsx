@@ -10,7 +10,6 @@ import { isTitleReal } from '../logic.ts';
 const KEY = 'tournament-setup-v3:';
 const STEPS = ['ひな形をコピーして、設定を書く', 'URLをはって、つなぐ', '選手に渡すURLを作る'];
 /** 作業カードの名前。上の手順の数字（1〜3）とまぜないよう、ア・イ・ウ・エを使う */
-const KANA = ['ア', 'イ', 'ウ', 'エ'];
 const STEP_NAMES = ['準備', 'つなぐ', '渡す'];
 const PAGE_NAME = '選手の受付をつくる';
 const FALLBACK = 'うまくいきませんでした。もう一度やってみてください。直らないときは、ジムの担当者に連絡してください。';
@@ -98,11 +97,11 @@ function Fold({ title, sub, children, openSignal = false, defaultOpen = false, c
   </details>;
 }
 
-/** 作業カード。見出しの上に「やることア」のような名前をつけ（上の手順1〜3の数字とまぜない）、いちばん下に「できた」ボタン（この画面だけの目印。塗らない）。 */
+/** 作業カード。見出しの上に「4つの作業の、3つ目」のような言葉をつけ（上の手順1〜3の数字とまぜない）、いちばん下に「できた」ボタン（この画面だけの目印。塗らない）。 */
 function StepCard({ n, title, done, doneAt, onDone, children }: { n: number; title: ReactNode; done: boolean; doneAt?: string; onDone: () => void; children: ReactNode }) {
   return <section className={'rounded-2xl border-2 bg-white p-4 sm:p-5 ' + (done ? 'border-emerald-700' : 'border-slate-300')}>
     <div>
-      <p className={'text-[17px] font-bold ' + (done ? 'text-emerald-800' : 'text-slate-800')}>{done ? '✓ できた　' : 'まだ　'}やること {KANA[n - 1]}</p>
+      <p className={'text-[17px] font-bold ' + (done ? 'text-emerald-800' : 'text-slate-800')}>{done ? '✓ できた　' : 'まだ　'}4つの作業の、{n}つ目</p>
       <h3 className="mt-1 text-balance text-xl font-bold">{title}</h3>
     </div>
     <div className="mt-3 space-y-3">{children}</div>
@@ -602,10 +601,10 @@ export default function SetupV3() {
           <ol className="space-y-3">
             {[
               <>シートの上のメニュー <b>「拡張機能」→「Apps Script」</b> を押す（新しい画面が開きます）</>,
-              <>右上の <b>「デプロイ」→「新しいデプロイ」</b> を押す。<b>「種類を選択」の歯車 →「ウェブアプリ」</b> を選ぶ。右下の青い <b>「デプロイ」</b> を押す <span aria-hidden="true" className="ml-1 inline-block rounded bg-blue-600 px-3 text-[17px] font-bold text-white">デプロイ</span>。Googleが「アクセスを承認」と出したら、前の画面（やること ウ）と同じように「許可」まで進みます。</>,
+              <>右上の <b>「デプロイ」→「新しいデプロイ」</b> を押す。<b>「種類を選択」の歯車 →「ウェブアプリ」</b> を選ぶ。右下の青い <b>「デプロイ」</b> を押す <span aria-hidden="true" className="ml-1 inline-block rounded bg-blue-600 px-3 text-[17px] font-bold text-white">デプロイ</span>。Googleが「アクセスを承認」と出したら、前の画面（3つ目の作業）と同じように「許可」まで進みます。</>,
               <><b>「ウェブアプリ」のURL</b>（…/exec で終わる長い文字）の <b>「コピー」</b> を押す。コピーしたら、この画面にもどって、下の「貼る四角」に貼ります。</>,
             ].map((content, i) => <li key={i} className="flex items-start gap-3 rounded-2xl border-2 border-slate-300 bg-slate-50 p-4">
-              <span aria-hidden="true" className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-slate-700 text-center text-[17px] font-bold leading-none text-white"><span>操作<br />{KANA[i]}</span></span>
+              <span aria-hidden="true" className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-slate-700 text-center text-[17px] font-bold leading-none text-white"><span>操作<br />{i + 1}</span></span>
               <p className="min-w-0 flex-1 pt-2">{content}</p>
             </li>)}
           </ol>
