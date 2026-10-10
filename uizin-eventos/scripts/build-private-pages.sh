@@ -47,3 +47,6 @@ mkdir -p "$TARGET_DIR/templates"
 rsync -a --delete "$SOURCE_DIR/templates/" "$TARGET_DIR/templates/"
 
 echo "Private Pages build: $TARGET_DIR"
+
+# 公開してよい形か、自動で確かめる（部品の抜け・混ざった画面・秘密らしき文字）。駄目ならここで止まる。
+node "$ROOT_DIR/scripts/check-private-build.mjs" "$TARGET_DIR"

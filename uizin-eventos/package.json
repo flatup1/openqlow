@@ -11,6 +11,8 @@
     "dev": "next dev",
     "build": "next build",
     "build:private": "bash scripts/build-private-pages.sh",
+    "verify:private-build": "node scripts/check-private-build.mjs",
+    "deploy:private": "bash scripts/deploy-private.sh",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
