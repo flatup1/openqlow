@@ -227,6 +227,82 @@ else
   TODO+=("XServer の public_html/webos/ に index.html があるか確かめる")
 fi
 
+# ---- 5. 本番の設定 -----------------------------------------------------
+echo ""
+echo "--- 5. 本番の設定（値は表示しません） ---"
+# 2026-10-02、本番の JIN_LINE_USER_ID に、テストで使っているニセの番号が入っていた。
+# ロボットは「社長はこの番号の人」と覚えるので、本物のJINが会員扱いになり、
+# LINEからの承認コマンドが一切効かない状態が続いていた。画面はどこも緑のままだった。
+#
+# 一度起きた事故は、人の注意ではなく検査で止める。
+# 禁止する番号を直書きせず、テストファイルに出てくる番号を全部拾って突き合わせる。
+# こうすると、将来テスト用の番号が増えても、この検査が自動で守備範囲を広げる。
+if [[ "$PUBLIC_ONLY" -eq 1 ]]; then
+  warn "--public のため、確認していません"
+else
+  PROD_ENV="${OPENQLOW_PROD_ENV:-/etc/openqlow/openqlow.env}"
+  # 値そのものは絶対に持ってこない。番号は突き合わせ用にVPS側で判定させる。
+  TEST_IDS="$(grep -rhoE 'U[0-9a-f]{32}' \
+    --include='*.test.ts' --include='*.test.mjs' src port scripts 2>/dev/null | sort -u | tr '\n' ' ')"
+
+  # VPS側で走らせる判定。値そのものは絶対に手元へ持ってこない。
+  # 変数は向こうで展開させたいので、全体をシングルクォートで囲う。
+  REMOTE_CHECK='
+    [ -r "$ENVFILE" ] || { echo missing; exit 0; }
+    value_of() { sed -n "s/^$1=//p" "$ENVFILE" | tail -1; }
+    OWNER="$(value_of JIN_LINE_USER_ID)"
+    if [ -z "$OWNER" ]; then
+      echo owner:empty
+    else
+      HIT=no
+      for id in $TEST_IDS; do [ "$OWNER" = "$id" ] && HIT=yes; done
+      [ "$HIT" = yes ] && echo owner:testvalue || echo owner:ok
+    fi
+    for key in LINE_CHANNEL_SECRET LINE_CHANNEL_ACCESS_TOKEN; do
+      if [ -n "$(value_of "$key")" ]; then echo "$key:set"; else echo "$key:empty"; fi
+    done
+  '
+  ENV_REPORT="$(printf '%s' "$REMOTE_CHECK" | ssh -i "${SSH_KEY}" -o ConnectTimeout=10 \
+    "${SSH_USER}@${SSH_HOST}" "ENVFILE='${PROD_ENV}' TEST_IDS='${TEST_IDS}' bash -s" 2>/dev/null \
+    || echo unreachable)"
+
+  case "$ENV_REPORT" in
+    unreachable) ng "VPSにつながらず、本番の設定を確認できません" ;;
+    missing)
+      ng "本番の設定ファイル ${PROD_ENV} が読めません"
+      TODO+=("ssh ${SSH_USER}@${SSH_HOST} 'ls -l ${PROD_ENV}' で存在と権限を確かめる")
+      ;;
+    *)
+      case "$ENV_REPORT" in
+        *owner:testvalue*)
+          ng "本番の JIN_LINE_USER_ID が、テスト用のニセ番号のままです"
+          echo "   （この状態だと、JINのLINEが会員扱いになり承認コマンドが効きません）"
+          TODO+=("LINE Developers の「あなたのユーザーID」を ${PROD_ENV} の JIN_LINE_USER_ID に入れ、systemctl restart ${SERVICE}")
+          ;;
+        *owner:empty*)
+          ng "本番の JIN_LINE_USER_ID が空です（全員が承認者として扱われます）"
+          TODO+=("LINE Developers の「あなたのユーザーID」を ${PROD_ENV} の JIN_LINE_USER_ID に入れ、systemctl restart ${SERVICE}")
+          ;;
+        *owner:ok*) ok "JIN_LINE_USER_ID は本物の番号が入っています" ;;
+      esac
+      case "$ENV_REPORT" in
+        *LINE_CHANNEL_SECRET:empty*)
+          ng "LINE_CHANNEL_SECRET が空です（本番モードでは受信を全部拒否します）"
+          TODO+=("LINE Developers のチャネルシークレットを ${PROD_ENV} に入れる")
+          ;;
+        *) ok "LINE_CHANNEL_SECRET は設定されています" ;;
+      esac
+      case "$ENV_REPORT" in
+        *LINE_CHANNEL_ACCESS_TOKEN:empty*)
+          ng "LINE_CHANNEL_ACCESS_TOKEN が空です（返信が黙って送られません）"
+          TODO+=("LINE Developers のチャネルアクセストークンを ${PROD_ENV} に入れる")
+          ;;
+        *) ok "LINE_CHANNEL_ACCESS_TOKEN は設定されています" ;;
+      esac
+      ;;
+  esac
+fi
+
 # ---- まとめ ------------------------------------------------------------
 echo ""
 echo "=== まとめ ==="
