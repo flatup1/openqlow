@@ -160,6 +160,10 @@ export type RowModel = {
   red: CornerModel;
   blue: CornerModel;
   openLabel: string;
+  /** 赤と青が同じ選手（まちがい）。選手が選ばれていない（空）ときは false */
+  sameFighter: boolean;
+  /** 体重もクラス名もなく「契約未入力」になる試合 */
+  noContract: boolean;
 };
 
 function corner(side: 'red' | 'blue', fighter: LocalFighter | undefined, musicEnabled: boolean): CornerModel {
@@ -181,11 +185,14 @@ export function buildRow(bout: LocalBout, index: number, byId: Map<string, Local
   const red = byId.get(bout.redId), blue = byId.get(bout.blueId);
   const r = corner('red', red, musicEnabled), b = corner('blue', blue, musicEnabled);
   const title = '第' + (index + 1) + '試合';
+  const contract = contractWeight(red, blue) || bout.className || NO_CONTRACT;
   return {
     index,
     title,
     isCurrent: index === currentIndex,
-    contract: contractWeight(red, blue) || bout.className || NO_CONTRACT,
+    contract,
+    noContract: contract === NO_CONTRACT,
+    sameFighter: !!bout.redId && bout.redId === bout.blueId,
     rule: bout.rule.trim(),
     red: r,
     blue: b,
@@ -246,11 +253,96 @@ export function nowModel(data: Pick<LocalTournament, 'bouts' | 'fighters' | 'cur
   return { index: data.currentBout, title, text: title + '　' + name(bout.redId) + ' 対 ' + name(bout.blueId), page: pageOfBout(data.currentBout, total, size) };
 }
 
-/** 「第 __ 試合へ」の入力を、0 始まりの試合番号にする。全角の数字も受ける。使えない入力は null。 */
+/** 数字の欄に入れられたものを読みやすくする。全角→半角、空白（全角も）を取る */
+function cleanNumberText(input: string): string {
+  return String(input ?? '').normalize('NFKC').replace(/[\s\u3000]/g, '');
+}
+
+/** 数字のあとに付いていてもよい言葉（「12番」「12号」「12試合目」）と、終わりの「. , 、 。」 */
+const BOUT_NUMBER = /^第?(\d+)(?:試合目|試合|番目|番|号目|号|目)?[.,、。]*$/;
+
+/**
+ * 「第 __ 試合へ」の入力を、0 始まりの試合番号にする。全角の数字・「12番」「12号」「12試合目」・終わりの「。」も受ける。
+ * 小数（3.5）・マイナス・文字だけ・範囲の外は null。
+ */
 export function parseBoutNumber(input: string, total: number): number | null {
-  const half = String(input ?? '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[\s　]/g, '');
-  const m = /^第?(\d{1,5})(?:試合)?$/.exec(half);
-  if (!m) return null;
+  const m = BOUT_NUMBER.exec(cleanNumberText(input));
+  if (!m || m[1].length > 5) return null;
   const n = Number(m[1]);
   return n >= 1 && n <= total ? n - 1 : null;
+}
+
+export type BoutNumberProblem = { kind: 'empty' | 'text' | 'zero' | 'big'; message: string };
+
+/** 「行く」が受けられない入力の、原因別の短い言葉。受けられるなら null。どれも「何がまちがいか」と「どう直すか」 */
+export function boutNumberProblem(input: string, total: number): BoutNumberProblem | null {
+  if (parseBoutNumber(input, total) !== null) return null;
+  const half = cleanNumberText(input);
+  const range = '1から' + total + 'までの数字';
+  if (!half) return { kind: 'empty', message: '数字が入っていません。' + range + 'を入れてください（例：12）。' };
+  const m = BOUT_NUMBER.exec(half);
+  if (!m) return { kind: 'text', message: '数字だけ入れてください（例：12）。' + range + 'を入れます。' };
+  const n = Number(m[1]);
+  if (n < 1) return { kind: 'zero', message: '0番の試合はありません。' + range + 'を入れてください。' };
+  return { kind: 'big', message: 'この大会は' + total + '試合までです（入れた数字は' + (m[1].length > 5 ? '大きすぎる数' : n) + '）。' + range + 'を入れてください。' };
+}
+
+/** 一覧の「行く」が成功したときの、緑の1行。見るだけで、いまの試合は変わらないことまで書く */
+export function jumpDoneText(index: number, page: number, currentBout: number): string {
+  return '第' + (index + 1) + '試合のところへ来ました（' + (page + 1) + 'ページ目）。見るだけです。いまの試合は 第' + (currentBout + 1) + '試合 のままです。';
+}
+
+/** 1試合ずつの画面で「前の試合」「次の試合」「元にもどす」を押した向き。list = 一覧の行から開いた */
+export type MoveVia = 'next' | 'prev' | 'list';
+
+export type MoveNotice = { text: string; undoLabel: string };
+
+/**
+ * 試合を動かした直後に出す、黄色い「⚠ 気をつけて」の言葉と、元にもどす（または、すすむ）ボタンの名前。
+ * before = 押す前の試合（0 始まり）、after = 動かしたあとの試合。ボタンの名前は「第7試合にもどす」の形。
+ */
+export function moveNotice(via: MoveVia, before: number, after: number): MoveNotice {
+  const b = '第' + (before + 1) + '試合', a = '第' + (after + 1) + '試合';
+  if (via === 'prev') return { text: a + 'にもどりました', undoLabel: b + 'にすすむ' };
+  if (via === 'next') return { text: b + ' → ' + a + 'に進みました', undoLabel: b + 'にもどす' };
+  return { text: a + 'に変えました。まちがえたら右のボタン →', undoLabel: b + 'にもどす' };
+}
+
+/** 元にもどす案内を、大きい箱で見せる秒数。そのあとは小さい灰の1行になる */
+export const UNDO_BIG_SECONDS = 10;
+
+/** 大きい箱に残っている秒数（0 なら小さい1行に変わる）。now と since は ms */
+export function undoSecondsLeft(since: number, now: number, limit = UNDO_BIG_SECONDS): number {
+  const passed = Math.floor(Math.max(0, now - since) / 1000);
+  return Math.max(0, limit - passed);
+}
+
+/** 同じ向きのボタンが続けて押された（ダブルタップ）か。まちがって2つ進まないための印 */
+export const REPEAT_PRESS_MS = 450;
+export function isRepeatPress(last: { dir: string; at: number } | null, dir: string, now: number, gap = REPEAT_PRESS_MS): boolean {
+  return !!last && last.dir === dir && now - last.at >= 0 && now - last.at < gap;
+}
+
+/** 保存できなかったときの赤い言葉。text=何があったか / more=いまの状態と、次に押すもの / tip=ありがちな原因と、やること。ぶつかったとき（別の画面で変わった）は page.tsx が別に作る */
+export function saveFailNotice(via: MoveVia | 'undo', currentBout: number): { text: string; more: string; tip: string } {
+  const here = '第' + (currentBout + 1) + '試合';
+  const tip = '写真が多いと保存できないことがあります。ほかのタブを閉じて、もう一度押す。';
+  if (via === 'list') return { text: '失敗：この行は開けませんでした。保存できなかったため、試合は進めていません。', more: 'まだ' + here + 'のままです。もう一度「この試合を開く」を押す。', tip };
+  if (via === 'undo') return { text: '失敗：保存できなかったため、試合は戻せていません。', more: 'まだ' + here + 'のままです。もう一度、同じボタンを押す。', tip };
+  return { text: '失敗：保存できなかったため、試合は進めていません。', more: 'まだ' + here + 'のままです。もう一度「' + (via === 'prev' ? '← 前の試合' : '次の試合 →') + '」を押す。', tip };
+}
+
+/** 絞り込み中の黄色い注意 */
+export function filterNote(shown: number, total: number): string {
+  return '一部の試合だけ表示中です（' + total + '試合中 ' + shown + '試合）。';
+}
+
+/** 一覧の行の「この試合を開く」の下に出す、押す前の言葉 */
+export function openWarning(index: number): string {
+  return '押すと、いまの試合が 第' + (index + 1) + '試合 に変わります';
+}
+
+/** 「次の試合 →」の下の灰字 */
+export function nextHint(current: number, total: number): string {
+  return current + 1 >= total ? '' : '次は 第' + (current + 2) + '試合';
 }

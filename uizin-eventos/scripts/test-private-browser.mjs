@@ -138,6 +138,7 @@ try {
     await page.getByRole('button',{name:'保存する',exact:true}).click();
     await page.getByRole('status').filter({hasText:'保存しました'}).waitFor();
     await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
+    await page.locator('#paper-done').check();
     const downloadPromise=page.waitForEvent('download');
     await page.getByRole('button',{name:'パスワードをつけて、コピーを保存する',exact:true}).click();
     const encrypted=await readFile(await(await downloadPromise).path());
@@ -155,8 +156,8 @@ try {
     await page.locator('input[accept=".enc"]').setInputFiles({name:'test.enc',mimeType:'application/octet-stream',buffer:encrypted});
     await box.waitFor();
     const confirmText=await box.innerText();
-    check(confirmText.includes('上書き'),'Restore asks before overwriting');
-    check(confirmText.split('\n')[0].includes('上書き')&&/選手\d+人→\d+人/.test(confirmText.split('\n')[0]),'The first line of the box is the verdict with counts');
+    check(confirmText.includes('消えて'),'Restore asks before replacing (says what disappears)');
+    check(confirmText.split('\n')[0].includes('入れかわ')&&/選手\d+人→\d+人/.test(confirmText.split('\n')[0]),'The first line of the box is the verdict with counts');
     check(await page.evaluate(()=>{const b=document.querySelector('#confirm-restore'),t=document.querySelector('#restore-file')?.closest('label');if(!b||!t)return false;const rb=b.getBoundingClientRect(),rt=t.getBoundingClientRect();return b.parentElement.closest('.rounded-xl')===t.parentElement.closest('.rounded-xl')&&rb.top>=rt.bottom-1&&rb.top-rt.bottom<200;}),'The box sits right under the restore button');
     check(await page.evaluate(()=>document.activeElement?.textContent==='やめる（何も変えない）'&&document.activeElement.closest('[role=alertdialog]')!==null),'Focus moves into the box, onto the safe button');
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='未保存の変更','The box alone changes nothing');
@@ -171,7 +172,7 @@ try {
     await page.locator('input[accept=".enc"]').setInputFiles({name:'test2.enc',mimeType:'application/octet-stream',buffer:encrypted});
     await box.waitFor();
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='未保存の変更','Still nothing changed before the unsafe button is pressed');
-    await box.getByRole('button',{name:'上書きして戻す',exact:true}).click();
+    await box.getByRole('button',{name:'今の内容を消して、コピーに戻す',exact:true}).click();
     await page.getByRole('status').filter({hasText:'戻しました'}).waitFor();
     check(nativeDialogs.length===0,'No native browser dialog was used: '+nativeDialogs.join(' / '));
     check(await page.getByLabel('大会名',{exact:true}).inputValue()==='ローカル架空大会','Encrypted backup restores correctly');

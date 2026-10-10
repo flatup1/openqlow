@@ -98,6 +98,7 @@ try {
     await page.getByRole('button', { name: '直す 架空青選手', exact: true }).click({ force: true });
     check(await page.locator('#edit-F01-weight').inputValue() === '99' && await page.getByRole('button', { name: '直す 架空青選手', exact: true }).getAttribute('aria-disabled') === 'true', tag + ': another 直す button does not throw the typed edit away');
     await page.locator('#fighter-F01').getByRole('button', { name: 'やめる', exact: true }).click();
+    await page.getByRole('button', { name: '直した内容を消す', exact: true }).click(); // 直した所があるので、確認の箱が出る
 
     /* 6. 管理番号が空で、行がずれた名簿: 二重にしない */
     const page2 = await ctx.newPage();
@@ -117,13 +118,14 @@ try {
 
     /* 7. 戻したあとに新しく打ったら、「元にもどす」は消える */
     await page.locator('#backup-password').fill(PASSWORD);
+    await page.locator('#paper-done').check(); // 「紙に書きました」: パスワードを変えると外れる
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'パスワードをつけて、コピーを保存する', exact: true }).click();
     const file = await (await download).createReadStream();
     const chunks = []; for await (const c of file) chunks.push(c);
     const encrypted = Buffer.concat(chunks);
     check((await page.getByText('ファイルを保存しました').count()) > 0, tag + ': a copy file can be made with the second password box left empty');
-    // 確認は画面の中の箱。まず「やめる」で何も変わらないこと、次に「上書きして戻す」で戻ること
+    // 確認は画面の中の箱。まず「やめる」で何も変わらないこと、次に「今の内容を消して、コピーに戻す」で戻ること
     const nativeDialogs = [];
     page.on('dialog', (d) => { if (d.type() !== 'beforeunload') nativeDialogs.push(d.message()); d.dismiss().catch(() => {}); });
     const restoreBox = page.getByRole('alertdialog');
@@ -134,7 +136,7 @@ try {
     check(await restoreBox.count() === 0 && await status('戻しました').count() === 0, tag + ': cancelling the restore changes nothing');
     await page.locator('input[accept=".enc"]').setInputFiles({ name: 'x.enc', mimeType: 'application/octet-stream', buffer: encrypted });
     await restoreBox.waitFor();
-    await restoreBox.getByRole('button', { name: '上書きして戻す', exact: true }).click();
+    await restoreBox.getByRole('button', { name: '今の内容を消して、コピーに戻す', exact: true }).click();
     await status('戻しました').waitFor();
     check(nativeDialogs.length === 0, tag + ': no native browser dialog was used');
     const undoButton = page.getByRole('button', { name: /元にもどす/ });
@@ -187,7 +189,7 @@ try {
     const stripText = await setup.locator('nav[aria-label="3つの手順"]').innerText();
     check(['準備', 'つなぐ', '渡す'].every((w) => stripText.includes(w)) && stripText.includes('いまここ') && stripText.includes('まだ'), tag + ': the one strip names every step with a word (' + stripText.replace(/\s+/g, ' ') + ')');
     check(((await setup.locator('main').innerText()).match(/目印がつくだけです/g) || []).length <= 1, tag + ': the "only a mark" line is said once, not per card');
-    const advance = setup.getByRole('button', { name: /「準備できました」と出た/ });
+    const advance = setup.getByRole('button', { name: /✓がなくても進む/ });
     const tick = setup.getByRole('button', { name: 'できた ✓', exact: true }).first();
     const bg = (loc) => loc.evaluate((el) => getComputedStyle(el).backgroundColor);
     check(await bg(tick) === 'rgb(255, 255, 255)', tag + ': the mark-only できた button is never the filled one');

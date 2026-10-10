@@ -1,22 +1,24 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { boutWarnings, contractWeight, emptyTournament, importFighters, validateTournament, WEIGHT_GAP_WARN_KG, type LocalBout, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { boutWarnings, emptyTournament, importFighters, validateTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
 import { suggestBouts } from '../../core/boutSuggest.ts';
 import { formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
-import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, entryErrors, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
+import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { bytesToArrayBuffer, decryptBackup, encryptBackup, listPrivateEvents, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, watchPrivateEvent, writePrivateEvent, type PrivateEventSummary } from '../lib/privateStore.ts';
-import { DEFAULT_EVENT_ID, isValidEventId, newEventId, normalizeEventId } from './eventId.ts';
+import { newEventId, normalizeEventId } from './eventId.ts';
 import {
-  backupFileName, backupIsFresh, boutProblems, classifyRestoreError, classifySaveError, clockText, contractKg, decodeCsvBytes, decryptWithRetry, dropBlankBouts, entryConfigFromHash, FALLBACK_ERROR,
-  fromEventIdFromHash, importErrorText, ImportProblem, importKind, isBlankBout, isBlankFighterForm, isHalfBout, isTitleReal, looksLikeBackup, mergeKeepExisting, nextAction, overwriteBoxText,
-  photoErrorText, restoreBoxText, restoreLastRemoved, RESTORE_TEXT, sameExceptProgress, saveErrorText, saveLine, tidy, useOtherBoxText, weightGap,
-  type FighterDiff, type NextKey, type RemovedBout, type SaveState,
+  backupFileName, backupIsFresh, boutProblems, classifyRestoreError, classifySaveError, clockText, contractKg, decodeCsvBytes, decryptWithRetry, dropBlankBouts, entryConfigFromHash, eventListName, FALLBACK_ERROR,
+  fromEventIdFromHash, gapLevel, importErrorParts, ImportProblem, importKind, isBlankBout, isHalfBout, isPastDate, isTitleReal, looksLikeBackup, mergeKeepExisting, nextAction, oldCopyText, overwriteBoxText,
+  photoErrorText, pickMarker, restoreBoxText, restoreLastRemoved, RESTORE_TEXT, sameExceptProgress, sameFighterExists, sameKey, saveErrorText, saveLine, saveReasonShort, saveReasonText, shortProblem, tooLong, useOtherBoxText, weightGap, weightMissing,
+  type FighterDiff, type Follow, type NextKey, type RemovedBout, type SaveErrorKind, type SaveState,
 } from './logic.ts';
-import { Badge, btn, Chip, cls, ConfirmBox, Fold, inputClass, Notice, Section } from './parts.tsx';
+import { checkFighter, checkNumber, describeChange, foldKana, normalizePassword, readDate, shorten, type FieldKey, type FieldProblem } from './normalize.ts';
+import { Badge, btn, Chip, cls, Fold, inputClass, Notice, Section, type NoticeExtra } from './parts.tsx';
+import { Caution, DangerConfirm, ErrorLine, Example, LockReason, NextSlot, OkLine, Soft, StepNo } from './marks.tsx';
+import { BoutCard, FighterFields, kgText, type FieldFixes, type FieldProblems } from './cards.tsx';
 
 const blankFighter = (): LocalFighter => ({ id: crypto.randomUUID(), gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', photoDataUrl: '' });
-const kgText = (value: string) => value.trim() ? value.trim().replace(/kg$/i, '') + 'kg' : '体重未入力';
 const VIEW_WINDOW_NOTE = '新しい画面が開きます。見終わったら、画面の上の「試合の準備」の名前を押してもどります。';
 const FILE_ACCEPT = '.zip,.xlsx,.csv,application/zip,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv';
 const SETUP_KEY = 'tournament-setup-v3:';
@@ -24,143 +26,108 @@ const BACKUP_AT_KEY = 'tournament-backup-at:';
 /** コピーを作ったときの「保存の時刻」。ページを開き直しても、コピーが古いかを見分けるため */
 const BACKUP_FOR_KEY = 'tournament-backup-for:';
 
-type Msg = { kind: 'ok' | 'error' | 'info' | 'warn'; text: string; area: string; action?: { label: string; onClick: () => void }; sticky?: boolean; tag?: 'undo-restore' };
-type ImportNote = { kind: 'ok' | 'error'; file: string; text: string; noPhoto?: number; staleWarn?: boolean };
+type Msg = { kind: 'ok' | 'error' | 'info' | 'warn'; text: string; area: string; action?: { label: string; onClick: () => void }; sticky?: boolean; tag?: 'undo-restore' | 'backup-made'; extra?: NoticeExtra[] };
+type ImportNote = { kind: 'ok' | 'error'; file: string; text: string; head?: string; hint?: string; noPhoto?: number; staleWarn?: boolean; addedIds?: string[] };
 type TopNote = { id: string; kind: 'info' | 'warn'; text: string };
 type PendingOverwrite = { base: LocalFighter[]; overwritten: LocalFighter[]; differs: FighterDiff[] };
 type PendingLookalike = { base: LocalFighter[]; extra: LocalFighter[] };
 /** 画面の中の確認の箱（いちどに1つだけ）。nonce は「もう一度押した」ときに箱を作り直して、フォーカスを戻すため */
-type Ask = { kind: 'restore'; restored: LocalTournament; nonce: number } | { kind: 'overwrite'; nonce: number } | { kind: 'other'; latest: LocalTournament; nonce: number };
-type FieldKey = 'name' | 'gym' | 'grade' | 'age' | 'height' | 'weight' | 'record' | 'comment' | 'musicUrl';
+type Ask =
+  | { kind: 'restore'; restored: LocalTournament; nonce: number }
+  | { kind: 'overwrite'; nonce: number }
+  | { kind: 'other'; latest: LocalTournament; nonce: number }
+  | { kind: 'remove'; id: string; nonce: number }
+  | { kind: 'discard-edit'; nonce: number }
+  | { kind: 'google'; nonce: number }
+  | { kind: 'new-event'; nonce: number }
+  | { kind: 'move'; index: number; dir: -1 | 1; nonce: number }
+  | { kind: 'rewind'; nonce: number };
 /** yes = つながりの確認ずみ（申し込みページの画面で確かめた）/ entered = URLを入れただけ / no = まだ / unknown = 読めない */
 type SetupState = 'yes' | 'entered' | 'no' | 'unknown';
 
-const FIELD_WORDS: Array<[FieldKey, string]> = [['gym', 'ジム名'], ['name', '選手名'], ['height', '身長'], ['weight', '体重'], ['record', '戦績'], ['grade', '学年'], ['age', '年齢'], ['comment', '意気込み'], ['musicUrl', '入場曲']];
 const EDIT_KEYS: FieldKey[] = ['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'];
-const invalidKeys = (errors: string[]): Set<FieldKey> => new Set(FIELD_WORDS.filter(([, word]) => errors.some((error) => error.includes(word))).map(([key]) => key));
+const toMap = (list: FieldProblem[]): FieldProblems => { const map: FieldProblems = {}; for (const item of list) if (!map[item.key]) map[item.key] = item.text; return map; };
+const BIG = { fontSize: '1.0625rem' } as const;
 
-/* ───────── 選手の入力欄（1人ずつ入れる / 直す で共通） ───────── */
-function FighterFields({ value, onChange, config, prefix, invalid, describedBy }: { value: LocalFighter; onChange: (key: FieldKey, next: string) => void; config: EntryFormConfig; prefix: string; invalid?: Set<FieldKey>; describedBy?: string }) {
-  const rows: Array<{ key: FieldKey; label: string; required: boolean; hint?: string; unit?: string; mode?: 'numeric' | 'decimal' | 'text'; auto?: string; show: boolean }> = [
-    { key: 'name', label: '選手名', required: true, hint: '例: 山田 太郎', show: true },
-    { key: 'gym', label: 'ジム名', required: true, hint: '例: ○○ジム', show: true },
-    { key: 'grade', label: '学年', required: config.grade === 'required', hint: '例: 小6 / 中2 / 社会人', show: config.grade !== 'off' },
-    { key: 'age', label: '年齢', required: config.age === 'required', hint: '例: 15（数字だけ）', mode: 'numeric', show: config.age !== 'off' },
-    { key: 'height', label: '身長', required: true, hint: '例: 170', unit: 'cm', mode: 'decimal', show: true },
-    { key: 'weight', label: '体重', required: true, hint: '例: 65', unit: 'kg', mode: 'decimal', show: true },
-    { key: 'record', label: '戦績', required: true, hint: '初試合なら「初試合」', show: true },
-    { key: 'comment', label: '意気込み', required: config.comment === 'required', hint: '例: 全力でがんばります', show: config.comment !== 'off' },
-    { key: 'musicUrl', label: '入場曲のリンク', required: config.music, hint: 'Apple Music か YouTube のリンク', show: config.music },
-  ];
-  return <div className="grid gap-4 sm:grid-cols-2">{rows.filter((row) => row.show).map((row) => <div key={row.key} className="min-w-0">
-    <div className="flex flex-wrap items-baseline"><label htmlFor={prefix + '-' + row.key} className="text-lg font-bold">{row.label}</label><Badge required={row.required} /></div>
-    <div className="flex items-center gap-2">
-      <input id={prefix + '-' + row.key} className={inputClass} value={value[row.key]} placeholder={row.hint} inputMode={row.mode} autoComplete="off" aria-invalid={invalid?.has(row.key) || undefined} aria-describedby={invalid?.has(row.key) ? describedBy : undefined} onChange={(e) => onChange(row.key, e.target.value)} />
-      {row.unit ? <span className="mt-1 shrink-0 text-lg font-bold" aria-hidden="true">{row.unit}</span> : null}
-    </div>
-  </div>)}</div>;
+/* ───────── 古いSafari（15.4より前）: 画面を作る前に、赤い箱で知らせる ───────── */
+function OldBrowser() {
+  return <main className="tos-read min-h-screen bg-slate-50 p-4 text-slate-950 [color-scheme:light] sm:p-8"><div className="mx-auto max-w-2xl space-y-3">
+    <h1 className="text-2xl font-bold">試合の準備</h1>
+    <ErrorLine>このSafariは古いです。macOSを更新するか、Chromeで開いてください。</ErrorLine>
+    <Soft>この画面は、新しいSafari（15.4以上）か、Chromeで動きます。</Soft>
+  </div></main>;
 }
 
-/* ───────── 対戦カード1枚（<article> はこの中だけ。画像タグは使わない） ───────── */
-type BoutCardProps = {
-  bout: LocalBout; index: number; total: number; fighters: LocalFighter[]; groups: Array<[string, LocalFighter[]]>;
-  byId: Map<string, LocalFighter>; placed: Map<string, number>; bouts: LocalBout[];
-  isCurrent: boolean; isSuggested: boolean; ruleCopied: boolean;
-  onPatch: (index: number, patch: Partial<LocalBout>) => void; onMove: (index: number, direction: -1 | 1) => void; onRemove: (index: number) => void;
-};
-const BoutCard = memo(function BoutCard({ bout, index, total, fighters, groups, byId, placed, bouts, isCurrent, isSuggested, ruleCopied, onPatch, onMove, onRemove }: BoutCardProps) {
-  const red = byId.get(bout.redId), blue = byId.get(bout.blueId);
-  const half = isHalfBout(bout), blank = isBlankBout(bout);
-  const gap = weightGap(red, blue);
-  const warnings = boutWarnings(bout, fighters, bouts);
-  const contract = contractWeight(red, blue);
-  const weightUnknown = !!red && !!blue && gap === null;
-  const inThisBout = (id: string) => id === bout.redId || id === bout.blueId;
-  const title = 'bout-' + index + '-title';
-  // 選択肢は「65kg 山田 太郎（ジム名）」の順。体重が先なので、せまい画面でも切れない
-  const options = (side: 'red' | 'blue') => groups.map(([gym, list]) => <optgroup key={gym} label={gym || 'ジム名なし'}>{list.map((f) => {
-    const other = side === 'red' ? bout.blueId : bout.redId;
-    const mark = f.id === other ? '（もう片方に選択中）' : (placed.get(f.id) ?? 0) - (inThisBout(f.id) ? 1 : 0) > 0 ? '（配置ずみ）' : '';
-    return <option key={f.id} value={f.id} disabled={f.id === other}>{`${kgText(f.weight)} ${f.name}${gym ? '（' + gym + '）' : ''}${mark}`}</option>;
-  })}</optgroup>);
-  const profile = (f: LocalFighter | undefined) => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
-    <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
-    <div className="min-w-0 text-[17px] font-medium leading-snug">
-      <p className="break-words text-lg font-bold">{f.name}</p>
-      <p className="break-words">{kgText(f.weight)}{f.record ? '・' + f.record : ''}</p>
-      <p className="break-words text-slate-700">{[f.age ? f.age + '歳' : '', f.grade].filter(Boolean).join('・')}</p>
-    </div>
-  </div> : null;
-  const centerBadge = gap === null
-    ? (weightUnknown ? <Chip tone="amber">⚠ 体重が未入力の選手がいます</Chip> : null)
-    : gap >= WEIGHT_GAP_WARN_KG ? <Chip tone="amber">体重差 {gap}kg ⚠</Chip> : <Chip tone="green">体重差 {gap}kg ✓</Chip>;
-  return <article id={'bout-' + index} className="scroll-mt-28 rounded-2xl border-2 border-slate-300 bg-white p-3 shadow-sm sm:p-4">
-    <div className="flex flex-wrap items-center gap-2">
-      <h3 id={title} className="mr-auto text-xl font-bold">第{index + 1}試合</h3>
-      {half || blank ? <Chip tone="amber">未完成</Chip> : null}
-      {isSuggested ? <Chip tone="amber">案</Chip> : null}
-      {isCurrent ? <Chip tone="indigo">▶ いま試合当日の画面に出ている試合</Chip> : null}
-    </div>
-    <div className="mt-3 flex flex-wrap gap-2">
-      <button type="button" aria-describedby={title} aria-disabled={index === 0 || undefined} onClick={() => { if (index > 0) onMove(index, -1); }} className={cls(btn.base, btn.outline)}>↑ 上へ</button>
-      <button type="button" aria-describedby={title} aria-disabled={index === total - 1 || undefined} onClick={() => { if (index < total - 1) onMove(index, 1); }} className={cls(btn.base, btn.outline)}>↓ 下へ</button>
-      <button type="button" aria-describedby={title} onClick={() => onRemove(index)} className={cls(btn.base, btn.outline, 'ml-auto')}>消す</button>
-    </div>
-    <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_minmax(0,1fr)]">
-      <div className="min-w-0 rounded-xl border-l-8 border-rose-600 bg-rose-50 p-3">
-        <span className="inline-flex min-h-8 items-center rounded-full bg-rose-600 px-3 text-[17px] font-bold text-white">赤コーナー</span>
-        <select id={'bout-' + index + '-red'} aria-label="赤コーナーの選手" aria-describedby={title + (!bout.redId ? ' bout-' + index + '-red-hint' : '')} aria-invalid={!bout.redId || undefined} className={cls(inputClass, 'border-rose-400')} value={bout.redId} onChange={(e) => onPatch(index, { redId: e.target.value })}>
-          <option value="">赤の選手を選ぶ</option>{options('red')}
-        </select>
-        {!bout.redId ? <p id={'bout-' + index + '-red-hint'} className="mt-1 text-[17px] font-bold text-amber-950">⚠ 赤の選手を選んでください</p> : null}
-        {profile(red)}
-      </div>
-      <div className="flex min-w-0 flex-col items-stretch justify-center gap-2 md:items-center">
-        {centerBadge}
-        <button type="button" aria-describedby={title} onClick={() => onPatch(index, { redId: bout.blueId, blueId: bout.redId })} className={cls(btn.base, btn.outline)}>赤青を入替</button>
-      </div>
-      <div className="min-w-0 rounded-xl border-l-8 border-blue-600 bg-blue-50 p-3">
-        <span className="inline-flex min-h-8 items-center rounded-full bg-blue-600 px-3 text-[17px] font-bold text-white">青コーナー</span>
-        <select id={'bout-' + index + '-blue'} aria-label="青コーナーの選手" aria-describedby={title + (!bout.blueId ? ' bout-' + index + '-blue-hint' : '')} aria-invalid={!bout.blueId || undefined} className={cls(inputClass, 'border-blue-400')} value={bout.blueId} onChange={(e) => onPatch(index, { blueId: e.target.value })}>
-          <option value="">青の選手を選ぶ</option>{options('blue')}
-        </select>
-        {!bout.blueId ? <p id={'bout-' + index + '-blue-hint'} className="mt-1 text-[17px] font-bold text-amber-950">⚠ 青の選手を選んでください</p> : null}
-        {profile(blue)}
-      </div>
-    </div>
-    {red && blue ? <p className="mt-3 text-[17px] font-medium">{contract ? '試合当日の画面には「' + contract + '」と出ます。' : '体重がわからないので、体重の区分（階級）の文字が出ます。'}</p> : null}
-    {warnings.length ? <div className="mt-3 space-y-2">
-      {warnings.map((w) => <p key={w} role="status" className="rounded-xl border-2 border-amber-500 bg-amber-50 p-2 text-[17px] font-bold text-amber-950">⚠ {w}</p>)}
-      <p className="text-[17px] font-medium">このままでも大丈夫です。気になるときだけ選び直してください。</p>
-    </div> : null}
-    <div className="mt-3">
-      <Fold title="ルール・体重の区分（なくてもOK）" className="border-slate-300">
-        <p className="text-[17px] font-medium">ふつうは体重から自動で出ます。</p>
-        {ruleCopied ? <p className="mt-1 text-[17px] font-bold text-emerald-800">まえの試合と同じルールを入れました</p> : null}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <div className="min-w-0"><label htmlFor={'bout-' + index + '-class'} className="text-lg font-bold">体重の区分（階級）</label><input id={'bout-' + index + '-class'} className={inputClass} value={bout.className} placeholder="例: 60kg" onChange={(e) => onPatch(index, { className: e.target.value })} /></div>
-          <div className="min-w-0"><label htmlFor={'bout-' + index + '-rule'} className="text-lg font-bold">ルール</label><input id={'bout-' + index + '-rule'} className={inputClass} value={bout.rule} placeholder="例: キックボクシング 2分2R" onChange={(e) => onPatch(index, { rule: e.target.value })} /></div>
+/* ───────── 保存データが読めないとき ───────── */
+function LoadErrorScreen({ message, eventId }: { message: string; eventId: string }) {
+  const [password, setPassword] = useState('');
+  const [note, setNote] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const lenOk = normalizePassword(password).length >= 10;
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0]; e.currentTarget.value = '';
+    if (!file || busy) return;
+    if (!lenOk) { setNote({ kind: 'error', text: '先に、パスワードを入れてください（10文字以上）。' }); document.getElementById('load-password')?.focus(); return; }
+    setBusy(true); setNote(null);
+    try {
+      let text = '';
+      try { text = await file.text(); } catch { setNote({ kind: 'error', text: RESTORE_TEXT.format }); return; }
+      if (!looksLikeBackup(text)) { setNote({ kind: 'error', text: RESTORE_TEXT.format }); return; }
+      let restored: LocalTournament;
+      try { restored = await decryptWithRetry((pw) => decryptBackup(text, pw), password); }
+      catch (error) { setNote({ kind: 'error', text: RESTORE_TEXT[classifyRestoreError(error)] }); return; }
+      let target = restored.eventId;
+      try { await writePrivateEvent(restored); }
+      catch {
+        // 壊れた記録の上には書かない。新しい大会番号で入れる
+        target = newEventId(Date.now());
+        try { await writePrivateEvent({ ...restored, eventId: target }); }
+        catch { setNote({ kind: 'error', text: '失敗：このパソコンでは保存できませんでした。「プライベートウィンドウ」ではないか確かめて、ふつうのウィンドウで開きます。' }); return; }
+      }
+      setNote({ kind: 'ok', text: '戻しました。開いています…' });
+      location.href = '/private/?event=' + encodeURIComponent(target);
+    } finally { setBusy(false); }
+  };
+  return <main className="tos-read min-h-screen bg-slate-50 p-4 text-slate-950 [color-scheme:light] sm:p-8"><div className="mx-auto max-w-2xl space-y-4 rounded-2xl border-2 border-slate-300 bg-white p-5">
+    <h1 className="text-2xl font-bold">保存してあるデータを、読めませんでした</h1>
+    <ErrorLine>保存データが読めません（消えていません）。{message}</ErrorLine>
+    <ol className="list-decimal space-y-1 pl-6 font-medium"><li>「プライベートウィンドウ」ではないか確認します。</li><li>パソコンの空き容量を確認します。</li><li>それでもだめなら、この大会の作り方を知っている人に聞きます。</li></ol>
+    <NextSlot active label="コピーのファイルから戻す">
+      <div className="space-y-3">
+        <div>
+          <label htmlFor="load-password" className="text-lg font-bold">パスワード（コピーを作ったときのもの）</label>
+          <input id="load-password" type="password" className={inputClass} value={password} autoComplete="off" onChange={(e) => setPassword(e.target.value)} />
         </div>
-      </Fold>
+        <label aria-disabled={!lenOk || undefined} onClick={(e) => { if (!lenOk) { e.preventDefault(); setNote({ kind: 'error', text: '先に、パスワードを入れてください（10文字以上）。' }); } }} className={cls(btn.base, btn.outlineBig, 'w-full cursor-pointer focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700 sm:w-auto', !lenOk && 'tos-locked')}>
+          <span>コピーのファイルから戻す</span>
+          <input type="file" accept=".enc" className="sr-only" onChange={(e) => void pick(e)} />
+        </label>
+        {!lenOk ? <LockReason>先に、上のパスワードを入れてから押します</LockReason> : null}
+        {note ? (note.kind === 'error' ? <ErrorLine role="status">{note.text}</ErrorLine> : <OkLine>{note.text}</OkLine>) : null}
+      </div>
+    </NextSlot>
+    <div className="flex flex-col gap-3 sm:flex-row">
+      <button type="button" className={cls(btn.base, btn.primary, 'w-full sm:w-auto')} onClick={() => location.reload()}>もう一度読み込む</button>
+      <button type="button" className={cls(btn.base, btn.outlineBig, 'w-full sm:w-auto')} onClick={() => { location.href = '/private/?event=' + newEventId(Date.now()); }}>別の大会として はじめる</button>
     </div>
-  </article>;
-});
+    <Soft>この大会の番号：{eventId}（消えていません）</Soft>
+  </div></main>;
+}
 
-/** 「コピー作成ずみ」の印。コピーのあとで変えたなら、古いことを言葉で言う（色だけにしない） */
-function BackupChip({ at, stale }: { at: number; stale: boolean }) {
-  return stale
-    ? <Chip tone="amber">⚠ 前のコピーのあとで変更あり（コピー {clockText(at)}）</Chip>
-    : <Chip tone="green">✓ コピー作成ずみ {clockText(at)}</Chip>;
+export default function PrivateAdminPage() {
+  const supported = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function';
+  return supported ? <PrivateAdmin /> : <OldBrowser />;
 }
 
 /* ───────── 画面本体 ───────── */
-export default function PrivateAdmin() {
-  const [data, setData] = useState<LocalTournament>(() => emptyTournament(DEFAULT_EVENT_ID));
+function PrivateAdmin() {
+  const [data, setData] = useState<LocalTournament>(() => emptyTournament(normalizeEventId('')));
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [everSaved, setEverSaved] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [failStreak, setFailStreak] = useState(0);
+  const [failKind, setFailKind] = useState<SaveErrorKind>('other');
   const [opened, setOpened] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);
   const [topNotes, setTopNotes] = useState<TopNote[]>([]);
@@ -169,26 +136,36 @@ export default function PrivateAdmin() {
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
   const [pendingLookalike, setPendingLookalike] = useState<PendingLookalike | null>(null);
   const [manual, setManual] = useState<LocalFighter>(blankFighter);
-  const [manualErrors, setManualErrors] = useState<string[]>([]);
+  const [manualProblems, setManualProblems] = useState<FieldProblems>({});
+  const [manualFixes, setManualFixes] = useState<FieldFixes>({});
   const [manualNote, setManualNote] = useState('');
+  const [manualDup, setManualDup] = useState<LocalFighter | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<LocalFighter>(blankFighter);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editFixes, setEditFixes] = useState<FieldFixes>({});
+  const [editNote, setEditNote] = useState<{ id: string; text: string } | null>(null);
+  const [otherEditErr, setOtherEditErr] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<{ id: string; text: string } | null>(null);
+  const [photoOk, setPhotoOk] = useState<{ id: string; name: string } | null>(null);
+  const [fighterNote, setFighterNote] = useState('');
   const [listPref, setListPref] = useState<boolean | null>(null);
   const [query, setQuery] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  const [paperDone, setPaperDone] = useState(false);
+  const [blockedMsg, setBlockedMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [justMade, setJustMade] = useState(false);
   const [backupAt, setBackupAt] = useState(0);
   const [copyState, setCopyState] = useState<'ok' | 'fail' | null>(null);
   const [googleFail, setGoogleFail] = useState(false);
+  const [googleNeeds, setGoogleNeeds] = useState<'' | 'title' | 'date'>('');
   const [conflict, setConflict] = useState(false);
   const [suggested, setSuggested] = useState<Set<string>>(() => new Set());
-  const [suggestNote, setSuggestNote] = useState<{ kind: 'warn' | 'ok'; text: string; ids: string[] } | null>(null);
+  const [suggestNote, setSuggestNote] = useState<{ kind: 'warn' | 'ok'; text: string; ids: string[]; wide: number[]; noPartner: string }| null>(null);
   const [ruleCopiedId, setRuleCopiedId] = useState('');
   const [fieldFocused, setFieldFocused] = useState(false);
   const [viewportShrunk, setViewportShrunk] = useState(false);
@@ -196,9 +173,24 @@ export default function PrivateAdmin() {
   const [events, setEvents] = useState<PrivateEventSummary[] | null>(null);
   const [eventsFailed, setEventsFailed] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [noEventParam, setNoEventParam] = useState(false);
+  const [chooseDismissed, setChooseDismissed] = useState(false);
   const [, setJumpTick] = useState(0);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [announce, setAnnounce] = useState('');
+  const [follow, setFollow] = useState<Follow | null>(null);
+  const [target, setTarget] = useState<string | null>(null);
+  const [dateFix, setDateFix] = useState('');
+  const [venueAsk, setVenueAsk] = useState(false);
+  const [cfgTouched, setCfgTouched] = useState(false);
+  const [acks, setAcks] = useState<Set<string>>(() => new Set());
+  const [removedN, setRemovedN] = useState(0);
+  const [placeNote, setPlaceNote] = useState<{ index: number; side: 'red' | 'blue' } | null>(null);
+  const [openError, setOpenError] = useState('');
+  const [openedNote, setOpenedNote] = useState(false);
+  /** 大会名を、一度でも『出ないまま』にしたか（欄から出た・保存や開くを押した）。そのあとから、赤い『まだです』を出す */
+  const [titleTried, setTitleTried] = useState(false);
+  const [rewound, setRewound] = useState(false);
   /** このページを開いてから作った、コピーの中身（古くなったかを見分ける） */
   const [backupSnap, setBackupSnap] = useState<LocalTournament | null>(null);
   const [backupFor, setBackupFor] = useState(0);
@@ -230,12 +222,18 @@ export default function PrivateAdmin() {
   const backupAutoOpened = useRef(false);
   const navRef = useRef<HTMLElement | null>(null);
   const blurTimer = useRef<number | undefined>(undefined);
+  const madeTimer = useRef<number | undefined>(undefined);
+  const placeTimer = useRef<number | undefined>(undefined);
   const pendingInputRef = useRef(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const editingRef = useRef(editingId);
+  editingRef.current = editingId;
   const entryConfig: EntryFormConfig = data.entryConfig ?? DEFAULT_ENTRY_CONFIG;
   const dirty = ready && !loadError && data !== cleanRef.current;
   const keyboardUp = fieldFocused && viewportShrunk;
   // 「この選手を追加」を押す前の入力と、直している途中の入力。保存の対象には、まだ入っていない
-  const manualDirty = !isBlankFighterForm(manual);
+  const manualDirty = !isBlankFighterFormLocal(manual);
   const editDirty = editingId !== null && (() => { const original = data.fighters.find((fighter) => fighter.id === editingId); return !!original && EDIT_KEYS.some((k) => original[k] !== draft[k]); })();
   const pendingInput = ready && !loadError && (manualDirty || editDirty);
   pendingInputRef.current = pendingInput;
@@ -243,7 +241,7 @@ export default function PrivateAdmin() {
   // 「コピー作成ずみ」が、いまの内容と同じか（ちがうなら「前のコピーのあとで変更あり」）
   const backupStale = useMemo(() => backupAt > 0 && !backupIsFresh({ current: data, snapshot: backupSnap, dirty, savedFor: backupFor }), [backupAt, data, backupSnap, dirty, backupFor]);
 
-  const notify = useCallback((kind: Msg['kind'], text: string, area = 'toast', action?: Msg['action'], sticky = false, tag?: Msg['tag']) => { setMsg({ kind, text, area, action, sticky, tag }); if (area === 'backup') setBackupOpen(true); }, []);
+  const notify = useCallback((kind: Msg['kind'], text: string, area = 'toast', action?: Msg['action'], sticky = false, tag?: Msg['tag'], extra?: NoticeExtra[]) => { setMsg({ kind, text, area, action, sticky, tag, extra }); if (area === 'backup') setBackupOpen(true); }, []);
   /** 読み上げ専用の欄に、ひとことだけ入れる（同じ文でも、もう一度読まれるよう、いちど空にする） */
   const say = useCallback((text: string) => {
     announceAtRef.current = Date.now();
@@ -252,8 +250,9 @@ export default function PrivateAdmin() {
     announceTimer.current = window.setTimeout(() => setAnnounce(text), 60);
   }, []);
   /** 保存の結果。見える知らせと、読み上げ（1回だけ）を一緒に出す */
-  const notifySave = useCallback((kind: Msg['kind'], text: string, action?: Msg['action']) => { notify(kind, text, 'save', action); say(text); }, [notify, say]);
+  const notifySave = useCallback((kind: Msg['kind'], text: string, action?: Msg['action'], extra?: NoticeExtra[]) => { notify(kind, text, 'save', action, kind === 'ok', undefined, extra); say(text); }, [notify, say]);
   const addTopNote = useCallback((note: TopNote) => setTopNotes((old) => [...old.filter((item) => item.id !== note.id), note]), []);
+  void addTopNote;
 
   // 状態ラインの読み上げ: 保存の結果（保存済み・保存失敗・保存中）は「保存の知らせ」が1回だけ読む。
   // ここでは、保存の結果ではない変化（入力して未保存になった・別の画面で内容が変わった）だけを読む
@@ -266,13 +265,15 @@ export default function PrivateAdmin() {
     say(line.text);
   }, [line.text, ready, loadError, say]);
 
-  // 確認の箱は、その相手（別の画面との食いちがい・書きかえ待ち）がなくなったら、しまう
+  // 確認の箱は、その相手（別の画面との食いちがい・書きかえ待ち・消す相手）がなくなったら、しまう
   useEffect(() => {
     setAsk((current) => !current ? current
       : current.kind === 'other' && !conflict ? null
       : current.kind === 'overwrite' && !(pendingOverwrite && pendingOverwrite.base === data.fighters) ? null
+      : current.kind === 'remove' && !data.fighters.some((fighter) => fighter.id === current.id) ? null
+      : current.kind === 'discard-edit' && editingId === null ? null
       : current);
-  }, [conflict, pendingOverwrite, data.fighters]);
+  }, [conflict, pendingOverwrite, data.fighters, editingId]);
 
   // 明るい配色（/apply と同じ決まり）。画面を離れたら元に戻る
   useEffect(() => { const before = document.title; return () => { document.title = before; }; }, []);
@@ -330,12 +331,14 @@ export default function PrivateAdmin() {
             const what = gotConfig && gotVenue ? '「選手に書いてもらうこと」と会場を' : gotConfig ? '「選手に書いてもらうこと」を' : '会場を';
             notes.push({ id: 'from-event', kind: 'info', text: '前の大会' + (isTitleReal(fromEvent.title) ? '『' + fromEvent.title + '』' : '') + 'の' + what + '引き継ぎました。名簿と対戦カードは引き継いでいません。まだ保存していません。' });
           }
+          if (gotVenue) setVenueAsk(true);
         }
         if (Object.keys(patch).length) shown = { ...value, ...patch };
       } catch { /* 入れなくても進められる */ }
       setTopNotes(notes);
       setData(shown); setReady(true);
       // ?event= が無い（どの大会か決まっていない）到着のときは、保存してある大会の一覧を出す
+      setNoEventParam(!hasParam);
       if (!hasParam) void loadEvents().then((list) => { if (!cancelled && list.length > 0) setChooserOpen(true); });
     }).catch(() => { if (!cancelled) { setLoadError('このパソコンの保存データを読み取れませんでした。データは消していません。'); setReady(true); } });
     return () => { cancelled = true; };
@@ -378,7 +381,7 @@ export default function PrivateAdmin() {
         if (base && latest.updatedAt === base.updatedAt) return; // 自分の保存
         if (dataRef.current === cleanRef.current) {
           savedRef.current = latest; cleanRef.current = latest; setData(latest); setEverSaved(true);
-          removedRef.current = [];
+          removedRef.current = []; setRemovedN(0);
           notify('info', 'べつの画面で保存された内容に更新しました ' + clockText(latest.updatedAt));
           return;
         }
@@ -391,7 +394,7 @@ export default function PrivateAdmin() {
     });
   }, [ready, loadError, notify]);
 
-  // 知らせは少したつと消える（エラーと「消えない印」つきは残る）
+  // 知らせは少したつと消える（エラーと「消えない印」つきは残る。保存の結果は、次の保存か編集まで残る）
   useEffect(() => {
     if (!msg || msg.kind === 'error' || msg.sticky) return;
     const timer = window.setTimeout(() => setMsg((current) => current === msg ? null : current), msg.action ? 12_000 : 10_000);
@@ -437,7 +440,7 @@ export default function PrivateAdmin() {
     return () => { observer.disconnect(); root.style.removeProperty('--nav-h'); };
   }, [ready, loadError]);
 
-  useEffect(() => () => { window.clearTimeout(blurTimer.current); window.clearTimeout(announceTimer.current); }, []);
+  useEffect(() => () => { window.clearTimeout(blurTimer.current); window.clearTimeout(announceTimer.current); window.clearTimeout(madeTimer.current); window.clearTimeout(placeTimer.current); }, []);
 
   /** 画面が描き直されたあとで、指定した場所にフォーカスを戻す */
   const focusSoon = useCallback((id: string) => { window.setTimeout(() => document.getElementById(id)?.focus(), 0); }, []);
@@ -455,8 +458,17 @@ export default function PrivateAdmin() {
     pendingJump.current = null;
     jump(pending.id, pending.box);
   });
+  /** 場所へ飛んで、その欄に太い黄褐色の枠（tos-target）を付ける。入力か選び直しで、枠は消える */
+  const goTarget = useCallback((id: string, box?: string) => { setTarget(id); pendingJump.current = { id, box }; setJumpTick((n) => n + 1); }, []);
+  useEffect(() => { if (target && !document.getElementById(target)) setTarget(null); }, [target, data]);
   /** コピーのファイルの欄を開いて、パスワードの欄に移る */
   const goBackup = useCallback(() => { setBackupOpen(true); pendingJump.current = { id: 'backup-password', box: 'backup' }; setJumpTick((n) => n + 1); }, []);
+  // 別の画面と食いちがったら、黄色の箱まで画面を動かす（入力中の欄からフォーカスは奪わない。読み上げは赤い文が行う）
+  useEffect(() => {
+    if (!conflict) return;
+    const box = document.getElementById('conflict-box');
+    try { box?.scrollIntoView({ block: 'start', behavior: 'auto' }); } catch { /* 古いブラウザでは、そのまま */ }
+  }, [conflict]);
 
   const byId = useMemo(() => new Map(data.fighters.map((fighter) => [fighter.id, fighter])), [data.fighters]);
   const groups = useMemo(() => {
@@ -480,18 +492,27 @@ export default function PrivateAdmin() {
     lastTouched.current = index;
     const id = dataRef.current.bouts[index]?.id;
     setData((old) => ({ ...old, bouts: old.bouts.map((bout, i) => i === index ? { ...bout, ...patch } : bout) }));
+    setTarget(null);
     if (id) { setSuggested((old) => { if (!old.has(id)) return old; const next = new Set(old); next.delete(id); return next; }); setRuleCopiedId((old) => old === id && ('className' in patch || 'rule' in patch) ? '' : old); }
   }, []);
-  const onMove = useCallback((index: number, direction: -1 | 1) => {
+  const doMove = useCallback((index: number, direction: -1 | 1) => {
     const current = dataRef.current, target = index + direction;
     if (target < 0 || target >= current.bouts.length) return;
     setData((old) => { const next = [...old.bouts]; [next[index], next[target]] = [next[target], next[index]]; return { ...old, bouts: next }; });
-    if (current.currentBout > 0 && (index <= current.currentBout || target <= current.currentBout)) notify('info', '試合当日の画面の「いまの試合」がずれます。');
+    if (current.currentBout > 0 && (index <= current.currentBout || target <= current.currentBout)) notify('warn', '試合当日の画面の「いまの試合」がずれます。');
   }, [notify]);
+  const onMove = useCallback((index: number, direction: -1 | 1) => {
+    const current = dataRef.current, target = index + direction;
+    if (target < 0 || target >= current.bouts.length) return;
+    // いま試合当日の画面に出ている試合（かその手前）を動かすときは、先にたずねる
+    if (current.currentBout > 0 && (index <= current.currentBout || target <= current.currentBout)) { setAsk({ kind: 'move', index, dir: direction, nonce: ++askSeq.current }); return; }
+    doMove(index, direction);
+  }, [doMove]);
   /** 消した試合を、新しいほうから順に戻す */
   const undoRemove = useCallback(() => {
     const result = restoreLastRemoved(dataRef.current.bouts, removedRef.current);
     removedRef.current = result.stack;
+    setRemovedN(result.stack.length);
     const restored = result.restored;
     if (!restored) { setMsg(null); return; }
     setData((old) => ({ ...old, bouts: restoreLastRemoved(old.bouts, [restored]).bouts }));
@@ -509,9 +530,28 @@ export default function PrivateAdmin() {
     setData((old) => ({ ...old, bouts: old.bouts.filter((_, i) => i !== index), currentBout: Math.min(old.currentBout, Math.max(0, old.bouts.length - 2)) }));
     if (isBlankBout(removed)) return;
     removedRef.current = [...removedRef.current, { bout: removed, index }];
+    setRemovedN(removedRef.current.length);
+    const name = (id: string) => current.fighters.find((fighter) => fighter.id === id)?.name ?? '（まだ）';
     const shift = current.currentBout > 0 && index <= current.currentBout ? ' 試合当日の画面の「いまの試合」がずれます。' : '';
-    notify('ok', '第' + (index + 1) + '試合を消しました。' + shift, 'toast', { label: '元にもどす', onClick: () => undoRemoveRef.current() });
+    notify('error', '消しました：第' + (index + 1) + '試合（' + name(removed.redId) + ' vs ' + name(removed.blueId) + '）。まちがえたときは「元にもどす」を押します（このページを閉じるまで戻せます）。' + shift, 'toast', { label: '元にもどす', onClick: () => undoRemoveRef.current() });
   }, [notify]);
+  const onAck = useCallback((key: string) => setAcks((old) => new Set([...old, key])), []);
+  const onFocusSide = useCallback((index: number, side: 'red' | 'blue') => { setTarget('bout-' + index + '-' + side); pendingJump.current = { id: 'bout-' + index + '-' + side }; setJumpTick((n) => n + 1); }, []);
+  /** この人の「直す」欄を開いて、その欄へ移る（直している途中の人がいれば、先にそちらを終えてもらう） */
+  const editFighter = useCallback((id: string, key: FieldKey = 'weight') => {
+    const person = dataRef.current.fighters.find((fighter) => fighter.id === id);
+    if (!person) return;
+    const open = editingRef.current;
+    if (open && open !== id) {
+      const original = dataRef.current.fighters.find((fighter) => fighter.id === open);
+      if (original && EDIT_KEYS.some((k) => original[k] !== draftRef.current[k])) { setOtherEditErr(id); return; }
+    }
+    setOtherEditErr(null); setEditNote(null); setEditFixes({});
+    setDraft({ ...person }); setEditingId(id); setListPref(true); setQuery('');
+    pendingJump.current = { id: 'edit-' + id + '-' + key };
+    setJumpTick((n) => n + 1);
+  }, []);
+  const onEditWeight = useCallback((id: string) => editFighter(id, 'weight'), [editFighter]);
 
   /* ───── 保存 ───── */
   const writeOnce = async (next: LocalTournament) => {
@@ -556,7 +596,16 @@ export default function PrivateAdmin() {
     return run;
   };
   const runSave = async (source?: LocalTournament): Promise<boolean> => {
+    setTitleTried(true);
     setSaveState('saving');
+    // 大会名・会場の前後の空白は、保存のときに自動で取る
+    if (!source) {
+      const raw = dataRef.current;
+      if (raw.title !== raw.title.trim() || raw.venue !== raw.venue.trim()) {
+        const trimmed = { ...raw, title: raw.title.trim() || raw.title, venue: raw.venue.trim() };
+        dataRef.current = trimmed; setData(trimmed);
+      }
+    }
     const base = source ?? dataRef.current;
     let nextState: SaveState = 'idle';
     try {
@@ -564,20 +613,29 @@ export default function PrivateAdmin() {
       failRef.current = 0; setFailStreak(0);
       savedAtRef.current = Date.now();
       if (!backupAutoOpened.current) { backupAutoOpened.current = true; setBackupOpen(true); }
-      const unfinished = saved.bouts.filter(isHalfBout).length + (isTitleReal(saved.title) ? 0 : 1);
+      // 保存の結果は2行: 緑の「保存しました」と、まだ直す所（あれば）を別の黄色の行にする（「保存した＝準備OK」と読まれないため）
+      const left: string[] = [];
+      if (!isTitleReal(saved.title)) left.push('大会の名前がまだ');
+      saved.bouts.forEach((bout, index) => boutProblems(bout, index, saved.fighters).slice(0, 1).forEach((problem) => left.push(shortProblem(problem, index))));
+      const dateBad = !!saved.date.trim() && !isCompleteDate(saved.date);
+      if (dateBad) left.push('日にちが読めません。空にするか直します');
+      const extra: NoticeExtra[] = left.length ? [{ kind: 'warn', text: 'まだ：' + left.slice(0, 2).join('、') + (left.length > 2 ? ' ほか' : '') + '。試合当日の画面を開く前に直します。', action: dateBad ? { label: '直す', ariaLabel: '日にちを直す', onClick: () => goTarget('field-date') } : undefined }] : [];
       // 保存している間にまた入力したときは、「保存しました」は出さない（状態ラインが「未保存」を示す）
-      if (untouched) notifySave('ok', '保存しました。このパソコンの中に残ります。' + (unfinished > 0 ? 'まだ直すところが' + unfinished + 'つあります（試合当日の画面を開く前に直します）。' : ''));
+      if (untouched) notifySave('ok', (isTitleReal(saved.title) ? '保存しました ' : '下書きとして保存しました（大会の名前はまだ） ') + clockText(saved.updatedAt) + '（このパソコンの中）', undefined, extra);
       return true;
     } catch (error) {
       if (error instanceof PrivateSaveConflict) {
         setConflict(true);
-        notifySave('error', '保存しませんでした。別の画面で内容が変わりました。入れた内容は画面に残っています。', { label: '黄色い案内を見る', onClick: () => jump('conflict-box') });
+        notifySave('error', '止まってください：保存しませんでした。別の画面で内容が変わりました。入れた内容は画面に残っています。', { label: '上の「👉 次はここ」の箱を見る', onClick: () => jump('conflict-box') });
       } else {
         nextState = 'failed';
+        const kind = classifySaveError(error, base.eventId);
+        setFailKind(kind);
         failRef.current += 1; setFailStreak(failRef.current);
         const repeated = failRef.current >= 2;
         // 失敗の知らせは、帯の中に1つだけ。「もう一度」だけの堂々めぐりにしないため、いつも「コピーのファイルを作る」の出口を出す
-        notifySave('error', repeated ? 'また失敗しました。コピーのファイルに入れておくと安心。' : saveErrorText(classifySaveError(error, base.eventId)), { label: 'コピーのファイルを作る', onClick: goBackup });
+        // 見出しの「保存失敗」は帯の中の状態ラインが言う（高さをおさえるため、ここでは繰り返さない）。まちがいの文は1回だけ
+        notifySave('error', repeated ? 'また失敗しました。コピーのファイルに入れておくと安心。' + (saveReasonShort(kind) ? saveReasonShort(kind) + '。' : '') : '保存できませんでした。' + (kind === 'bad-id' ? saveReasonText(kind) : saveReasonShort(kind)) + (kind === 'other' ? '' : '。') + '閉じると消えます。', { label: 'コピーのファイルを作る', onClick: goBackup });
       }
       return false;
     } finally { setSaveState(nextState); }
@@ -586,7 +644,7 @@ export default function PrivateAdmin() {
   /** 別の画面で保存された内容を、いまの画面にする */
   const adoptLatest = (latest: LocalTournament) => {
     savedRef.current = latest; cleanRef.current = latest; setData(latest); setConflict(false); setSaveState('idle'); failRef.current = 0; setFailStreak(0);
-    setPendingOverwrite(null); setAsk(null); removedRef.current = []; setMsg(null);
+    setPendingOverwrite(null); setAsk(null); removedRef.current = []; setRemovedN(0); setMsg(null);
   };
   const keepMine = () => {
     setAsk(null);
@@ -613,6 +671,7 @@ export default function PrivateAdmin() {
   const readEntryFile = async (file?: File) => {
     if (!file) return;
     importBusyRef.current = true; setImportBusy(true); setImportNote(null); setPendingOverwrite(null); setPendingLookalike(null);
+    setFollow((old) => old?.kind === 'refile' ? null : old);
     let blocked: string[] = [];
     try {
       const kind = importKind(file.name);
@@ -672,13 +731,18 @@ export default function PrivateAdmin() {
         else text += 'すでにいる人は、全員そのままです。';
         if (merge.photosFilled > 0) text += '写真がなかった' + merge.photosFilled + '人には、写真を足しました。';
       }
-      setImportNote({ kind: 'ok', file: file.name, noPhoto: merge.merged.filter((fighter) => !fighter.photoDataUrl).length, staleWarn: current.length > 0 && already === 0 && same === 0 && merge.added > 0, text });
+      // 前の大会の名簿が残っているかもしれないとき: 今の名簿に同じ管理番号の人が1人もいなくて、新しい人が足された
+      const stale = current.length > 0 && already === 0 && same === 0 && merge.added > 0;
+      setImportNote({ kind: 'ok', file: file.name, noPhoto: merge.merged.filter((fighter) => !fighter.photoDataUrl).length, staleWarn: stale, addedIds: stale ? merge.merged.slice(current.length).map((fighter) => fighter.id) : undefined, text });
       const base = merge.changed ? merge.merged : current;
       if (merge.differs.length > 0) setPendingOverwrite({ base, overwritten: merge.overwritten, differs: merge.differs });
       if (same > 0) setPendingLookalike({ base, extra: merge.lookalike });
       setListPref(true);
     } catch (error) {
-      setImportNote({ kind: 'error', file: file.name, text: importErrorText(error, blocked) });
+      const parts = importErrorParts(error, file.name, blocked);
+      setImportNote({ kind: 'error', file: file.name, text: parts.detail, head: parts.head, hint: parts.hint });
+      setFollow({ kind: 'refile' });
+      pendingJump.current = { id: 'import-error' };
     } finally { importBusyRef.current = false; setImportBusy(false); }
   };
   const onPickFile = (e: ChangeEvent<HTMLInputElement>) => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; void readEntryFile(file); };
@@ -710,41 +774,88 @@ export default function PrivateAdmin() {
     setPendingLookalike(null);
     setImportNote((old) => old ? { ...old, kind: 'ok', staleWarn: false, text: pending.extra.length + '人を、別の人として足しました。' } : old);
   };
+  /** 「前の大会の人かもしれません」: 足した人を取り消して、名簿をもとにもどす */
+  const undoStaleAdd = () => {
+    const ids = new Set(importNote?.addedIds ?? []);
+    if (!ids.size) return;
+    setData((old) => ({
+      ...old,
+      fighters: old.fighters.filter((fighter) => !ids.has(fighter.id)),
+      bouts: old.bouts.map((bout) => ({ ...bout, redId: ids.has(bout.redId) ? '' : bout.redId, blueId: ids.has(bout.blueId) ? '' : bout.blueId })),
+    }));
+    setImportNote((old) => old ? { ...old, kind: 'ok', staleWarn: false, addedIds: undefined, text: '足した' + ids.size + '人を取り消して、名簿をもとにもどしました。' } : old);
+  };
 
   /* 選手を1人ずつ入れる / 直す / 消す / 写真 */
+  const clearManualKey = (key: FieldKey) => { setManualProblems((old) => { if (!old[key]) return old; const next = { ...old }; delete next[key]; return next; }); setManualFixes((old) => { if (!old[key]) return old; const next = { ...old }; delete next[key]; return next; }); };
+  /** 欄から出たとき: 数字・長い空白などを自動で直す。直したら「自動で直しました」を出す。直せないときだけ赤 */
+  const fixFieldOf = (value: LocalFighter, key: FieldKey, setValue: (next: LocalFighter) => void, setFixes: (fn: (old: FieldFixes) => FieldFixes) => void, setProblems?: (fn: (old: FieldProblems) => FieldProblems) => void) => {
+    const result = checkFighter(value, entryConfig, 'edit');
+    const fixed = result.fighter[key];
+    if (fixed !== value[key]) setValue({ ...value, [key]: fixed });
+    const fix = result.fixes.find((item) => item.key === key);
+    setFixes((old) => { const next = { ...old }; if (fix) next[key] = fix.from + ' → ' + fix.to; else delete next[key]; return next; });
+    const problem = result.problems.find((item) => item.key === key && (key === 'height' || key === 'weight' || key === 'age' || key === 'musicUrl' || value[key].trim() !== ''));
+    if (setProblems) setProblems((old) => { const next = { ...old }; if (problem) next[key] = problem.text; else delete next[key]; return next; });
+  };
+  const addFighterNow = (cleaned: LocalFighter) => {
+    setManualProblems({}); setManualFixes({}); setManualDup(null);
+    setData((old) => ({ ...old, fighters: [...old.fighters, cleaned] }));
+    setManual(blankFighter()); setListPref(true); setQuery('');
+    setManualNote(cleaned.name + 'さんを追加しました（現在' + (dataRef.current.fighters.length + 1) + '人）。次は、下の選手の一覧で写真を選びます。');
+    setFollow({ kind: 'photo', id: cleaned.id });
+    pendingJump.current = { id: 'fighter-' + cleaned.id };
+    setJumpTick((n) => n + 1);
+  };
   const addManual = () => {
     // 完全に空のまま、もう一度押したときは何もしない（「追加しました」の案内を消さない）
-    if (manualNote && isBlankFighterForm(manual)) return;
-    const cleaned: LocalFighter = { ...manual, name: manual.name.trim(), gym: manual.gym.trim(), age: tidy(manual.age), height: tidy(manual.height), weight: tidy(manual.weight), record: manual.record.trim() };
-    const errors = entryErrors(cleaned, true, entryConfig);
-    if (errors.length) { setManualErrors(errors); setManualNote(''); return; }
-    setManualErrors([]);
-    setData((old) => ({ ...old, fighters: [...old.fighters, cleaned] }));
-    setManual(blankFighter()); setListPref(true);
-    setManualNote('✓ ' + cleaned.name + 'さんを追加しました（現在' + (data.fighters.length + 1) + '人）。つぎに写真を選んでください。');
-    pendingJump.current = { id: 'fighter-' + cleaned.id };
+    if (manualNote && isBlankFighterFormLocal(manual)) return;
+    const result = checkFighter(manual, entryConfig, 'add');
+    if (result.problems.length) {
+      setManualProblems(toMap(result.problems)); setManualNote(''); setManualDup(null);
+      setManualFixes(Object.fromEntries(result.fixes.map((fix) => [fix.key, fix.from + ' → ' + fix.to])));
+      focusSoon('manual-' + result.problems[0].key);
+      return;
+    }
+    setManualProblems({});
+    if (sameFighterExists(dataRef.current.fighters, result.fighter)) { setManualDup(result.fighter); setManualNote(''); return; }
+    addFighterNow(result.fighter);
   };
   const choosePhoto = async (e: ChangeEvent<HTMLInputElement>, id: string) => {
     const file = e.currentTarget.files?.[0]; e.currentTarget.value = '';
     if (!file) return;
-    setPhotoBusy(id); setPhotoError(null);
+    setPhotoBusy(id); setPhotoError(null); setPhotoOk(null);
     try {
       const photoDataUrl = await photoToDataUrl(file);
       setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === id ? { ...item, photoDataUrl } : item) }));
-    } catch (error) { setPhotoError({ id, text: photoErrorText(error) }); }
+      setPhotoOk({ id, name: dataRef.current.fighters.find((item) => item.id === id)?.name ?? '' });
+      setFollow((old) => old?.kind === 'photo' && old.id === id ? null : old);
+    } catch (error) {
+      const text = !file.type.startsWith('image/') ? 'これは写真ではありません（' + shorten(file.name, 30) + '）。写真アプリの写真を選びます' : file.size > 20 * 1024 * 1024 ? '写真が大きすぎます（20MBまで）。別の写真を選びます' : photoErrorText(error);
+      setPhotoError({ id, text });
+      setFollow({ kind: 'photo', id });
+    }
     finally { setPhotoBusy(null); }
   };
   const applyEdit = () => {
     if (!editingId) return;
-    if (!draft.name.trim()) { notify('error', '選手の名前を入れてください。', 'toast'); return; }
-    const next: LocalFighter = { ...draft, name: draft.name.trim(), gym: draft.gym.trim(), age: tidy(draft.age), height: tidy(draft.height), weight: tidy(draft.weight) };
-    setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === editingId ? { ...next, id: item.id, photoDataUrl: item.photoDataUrl } : item) }));
-    setEditingId(null);
+    const original = dataRef.current.fighters.find((item) => item.id === editingId);
+    if (!original) return;
+    const result = checkFighter(draft, entryConfig, 'edit');
+    if (result.problems.length) { focusSoon('edit-' + editingId + '-' + result.problems[0].key); return; }
+    const next: LocalFighter = { ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl };
+    setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === editingId ? next : item) }));
+    setEditNote({ id: editingId, text: describeChange(original, next) });
+    setEditingId(null); setEditFixes({}); setOtherEditErr(null);
   };
   const removeFighter = (id: string) => {
+    const person = byId.get(id);
+    const hit = data.bouts.map((bout, index) => ({ bout, index })).filter(({ bout }) => bout.redId === id || bout.blueId === id);
     setData((old) => ({ ...old, fighters: old.fighters.filter((item) => item.id !== id), bouts: old.bouts.map((bout) => ({ ...bout, redId: bout.redId === id ? '' : bout.redId, blueId: bout.blueId === id ? '' : bout.blueId })) }));
-    setConfirmDeleteId(null);
-    notify('ok', (byId.get(id)?.name ?? '選手') + 'さんを消しました。');
+    setAsk(null);
+    const emptied = hit.map(({ bout, index }) => '第' + (index + 1) + '試合の' + (bout.redId === id ? '赤' : '青') + 'が空です');
+    setFighterNote((person?.name ?? '選手') + 'さんを消しました。' + (emptied.length ? '\n' + emptied.join('、') + '。' : ''));
+    setFollow((old) => old?.kind === 'photo' && old.id === id ? null : old);
   };
 
   /* 対戦カードをつくる */
@@ -758,36 +869,51 @@ export default function PrivateAdmin() {
     if (last && isBlankBout(last)) { jump('bout-' + (data.bouts.length - 1) + '-red'); return; }
     const bout = newBout();
     edit('bouts', [...data.bouts, bout]);
-    setSuggestNote(null);
+    setSuggestNote(null); setPlaceNote(null);
     if (last && (bout.className || bout.rule)) setRuleCopiedId(bout.id);
     lastTouched.current = data.bouts.length;
     pendingJump.current = { id: 'bout-' + data.bouts.length + '-red' };
   };
   const unplaced = useMemo(() => data.fighters.filter((fighter) => !placed.has(fighter.id)), [data.fighters, placed]);
-  const placeFighter = (fighter: LocalFighter) => {
+  /** 名前の札を押したとき、どこに入るか（押す前に言うため、押したときと同じ決め方を使う） */
+  const placeTarget = (): { index: number; side: 'red' | 'blue' } | null => {
     const room = (i: number) => i >= 0 && i < data.bouts.length && (!data.bouts[i].redId || !data.bouts[i].blueId);
-    let target = lastTouched.current;
-    if (!room(target)) target = data.bouts.findIndex((_, i) => room(i));
-    if (target >= 0) {
-      const bout = data.bouts[target], side = !bout.redId ? 'red' : 'blue';
-      onPatch(target, side === 'red' ? { redId: fighter.id } : { blueId: fighter.id });
-      notify('info', fighter.name + 'さんを第' + (target + 1) + '試合の' + (side === 'red' ? '赤' : '青') + 'コーナーに入れました。');
+    let index = lastTouched.current;
+    if (!room(index)) index = data.bouts.findIndex((_, i) => room(i));
+    if (index < 0) return null;
+    return { index, side: !data.bouts[index].redId ? 'red' : 'blue' };
+  };
+  const placeFighter = (fighter: LocalFighter) => {
+    const spot = placeTarget();
+    window.clearTimeout(placeTimer.current);
+    if (spot) {
+      onPatch(spot.index, spot.side === 'red' ? { redId: fighter.id } : { blueId: fighter.id });
+      setPlaceNote(spot);
     } else {
       const bout = newBout({ redId: fighter.id });
       edit('bouts', [...data.bouts, bout]);
       lastTouched.current = data.bouts.length;
-      notify('info', fighter.name + 'さんを第' + (data.bouts.length + 1) + '試合の赤コーナーに入れました。つぎに青コーナーを選びます。');
+      setPlaceNote({ index: data.bouts.length, side: 'red' });
     }
+    placeTimer.current = window.setTimeout(() => setPlaceNote(null), 15_000);
   };
   const makeSuggestion = () => {
     const made = suggestBouts(data.fighters, data.bouts, () => crypto.randomUUID());
-    if (!made.length) { setSuggestNote({ kind: 'warn', ids: [], text: 'おすすめは作れませんでした。体重が入っていない選手がいると、自動では組めません。「＋ 試合を追加」から、自分で選んでください。' }); return; }
+    if (!made.length) { setSuggestNote({ kind: 'warn', ids: [], wide: [], noPartner: '', text: 'おすすめは作れませんでした。体重が入っていない選手がいると、自動では組めません。「＋ 試合を追加」から、自分で選んでください。' }); return; }
+    // 体重差が10kg以上の組は、案に入れない（けがの危険）
+    const gapOf = (bout: LocalBout) => weightGap(byId.get(bout.redId), byId.get(bout.blueId));
+    const keep = made.filter((bout) => { const gap = gapOf(bout); return gap === null || gap < 10; });
+    const skipped = made.filter((bout) => !keep.includes(bout));
+    const noPartner = skipped.flatMap((bout) => [byId.get(bout.redId)?.name, byId.get(bout.blueId)?.name]).filter(Boolean).join('、');
+    if (!keep.length) { setSuggestNote({ kind: 'warn', ids: [], wide: [], noPartner, text: 'おすすめは作れませんでした。体重の差が10kg以上になる組しかありません。「＋ 試合を追加」から、自分で選んでください。' }); return; }
     const prev = data.bouts[data.bouts.length - 1];
-    const added: LocalBout[] = made.map((bout: LocalBout) => ({ ...bout, className: bout.className || prev?.className || '', rule: bout.rule || prev?.rule || '' }));
+    const added: LocalBout[] = keep.map((bout: LocalBout) => ({ ...bout, className: bout.className || prev?.className || '', rule: bout.rule || prev?.rule || '' }));
     edit('bouts', [...data.bouts, ...added]);
     setSuggested((old) => new Set([...old, ...added.map((bout: LocalBout) => bout.id)]));
     const left = unplaced.length - added.length * 2;
-    setSuggestNote({ kind: 'ok', ids: added.map((bout: LocalBout) => bout.id), text: 'おすすめの組み合わせを' + added.length + 'つ、いちばん下に足しました。' + (left > 0 ? 'のこり' + left + '人は、相手が見つからなかったので、まだ入っていません。' : '') });
+    const wide = added.map((bout, i) => ({ index: data.bouts.length + i, gap: gapOf(bout) })).filter((item) => (item.gap ?? 0) >= 5).map((item) => item.index);
+    setSuggestNote({ kind: 'ok', ids: added.map((bout: LocalBout) => bout.id), wide, noPartner, text: 'おすすめの組み合わせを' + added.length + 'つ、いちばん下に足しました。' + (left > 0 ? 'のこり' + left + '人は、相手が見つからなかったので、まだ入っていません。' : '') });
+    setFollow({ kind: 'review' });
     pendingJump.current = { id: 'bout-' + data.bouts.length };
   };
   /** 案のうち、まだ手を入れていない試合だけを消す。手を入れた試合は残す */
@@ -798,20 +924,25 @@ export default function PrivateAdmin() {
     if (untouched.size === 0) { setSuggestNote(null); return; }
     edit('bouts', data.bouts.filter((bout) => !untouched.has(bout.id)));
     setSuggested((old) => new Set([...old].filter((id) => !untouched.has(id))));
-    setSuggestNote(null);
+    setSuggestNote(null); setFollow((old) => old?.kind === 'review' ? null : old);
     notify('ok', '手を入れていない' + untouched.size + 'つを消しました。' + (kept > 0 ? '手を入れた' + kept + 'つは残しました。' : ''));
   };
 
   /* ───── コピーのファイル（作る / 戻す） ───── */
-  // 2つ目の欄は、なくてもOK（空なら確認なし）。入っていて、1つ目とちがうときだけ止める
-  const passwordProblem = password.length < 10 ? 'あと' + (10 - password.length) + '文字必要です' : password2 && password2 !== password ? 'パスワードが同じではありません' : '';
+  // 2つ目の欄は、なくてもOK（空なら確認なし）。入っていて、1つ目とちがうときだけ止める。全角・前後の空白は、半角・空白なしに直して使う
+  const pwNorm = normalizePassword(password);
+  const pwFixed = password !== '' && pwNorm !== password;
+  const passwordProblem = pwNorm.length < 10 ? 'あと' + (10 - pwNorm.length) + '文字 必要です' : password2 && normalizePassword(password2) !== pwNorm ? 'パスワードが同じではありません' : '';
+  const copyLockedWhy = passwordProblem || (!paperDone ? '紙に書いてからチェックします' : '');
   const download = async () => {
-    if (passwordProblem) { document.getElementById(password.length < 10 ? 'backup-password' : 'backup-password2')?.focus(); return; }
+    if (passwordProblem) { setBlockedMsg('まだ押せません：' + passwordProblem); document.getElementById(pwNorm.length < 10 ? 'backup-password' : 'backup-password2')?.focus(); return; }
+    if (!paperDone) { setBlockedMsg('まだ押せません：先に「紙に書きました」にチェックを入れる'); document.getElementById('paper-done')?.focus(); return; }
     if (backupBusy || Date.now() - downloadDoneAt.current < 3000) return;
+    setBlockedMsg('');
     setBackupBusy(true); setMsg((current) => current && current.area === 'backup' ? null : current);
     try {
       const snapshot = dataRef.current;
-      const encrypted = await encryptBackup(snapshot, password);
+      const encrypted = await encryptBackup(snapshot, pwNorm);
       const name = backupFileName(snapshot.eventId, snapshot.date);
       const url = URL.createObjectURL(new Blob([encrypted], { type: 'application/octet-stream' }));
       const a = document.createElement('a'); a.href = url; a.download = name; a.click();
@@ -823,50 +954,64 @@ export default function PrivateAdmin() {
       // このコピーの中身を覚えておく。あとで変えたら「前のコピーのあとで変更あり」と出す（保存前の入力が入っているコピーは、保存の時刻では結べない）
       backupSnapRef.current = snapshot; setBackupSnap(snapshot);
       rememberBackupFor(snapshot.eventId, snapshot === cleanRef.current ? snapshot.updatedAt : 0);
-      notify('ok', 'ファイルを保存しました：' + name + '。ダウンロードの中にあります。USBメモリか別のパソコンにも入れておくと安心です。パスワードは紙に書いてください。' + (snapshot !== cleanRef.current ? ' まだ保存していない変更も、このファイルに入っています。' : ''), 'backup', undefined, true);
-    } catch { notify('error', 'コピーのファイルを作れませんでした。もう一度「パスワードをつけて、コピーを保存する」を押してください。', 'backup'); }
-    finally { downloadDoneAt.current = Date.now(); setBackupBusy(false); }
+      notify('ok', 'ファイルを保存しました：' + name + '。ダウンロードの中にあります。' + (snapshot !== cleanRef.current ? ' まだ保存していない変更も、このファイルに入っています。' : ''), 'backup', undefined, true, 'backup-made');
+    } catch { notify('error', '失敗：コピーのファイルを作れませんでした。もう一度「パスワードをつけて、コピーを保存する」を押してください。', 'backup'); }
+    finally {
+      downloadDoneAt.current = Date.now(); setBackupBusy(false);
+      setJustMade(true); window.clearTimeout(madeTimer.current); madeTimer.current = window.setTimeout(() => setJustMade(false), 3000);
+    }
+  };
+  /** 失敗の文から「今のデータは変えていません」を分ける（赤い文と、緑の「変わっていません」を別の行にするため） */
+  const splitKept = (text: string): { main: string; kept: boolean } => { const re = /(今|いま)のデータは変えていません。?/; return { main: text.replace(re, '').trim(), kept: re.test(text) }; };
+  const restoreFail = (text: string, kind?: string) => {
+    const { main, kept } = splitKept(text);
+    const extra: NoticeExtra[] = [];
+    if (kept) extra.push({ kind: 'ok', text: '今のデータは変わっていません。' });
+    if (kind === 'password') extra.push({ kind: 'info', text: 'ファイルがこわれているときも、同じ表示になります。パスワードが合っているのに戻らないときは、別のコピーを選びます。' });
+    notify('error', '失敗：' + main, 'backup', undefined, false, undefined, extra);
+    if (kind === 'password') setFollow({ kind: 'pw' });
   };
   const restore = async (file?: File) => {
     if (!file || restoreBusyRef.current) return;
-    if (!password) { notify('error', RESTORE_TEXT.noPassword, 'backup'); document.getElementById('backup-password')?.focus(); return; }
+    if (!pwNorm) { notify('error', RESTORE_TEXT.noPassword, 'backup'); document.getElementById('backup-password')?.focus(); return; }
     restoreBusyRef.current = true;
     setMsg((current) => current && current.area === 'backup' ? null : current);
     setAsk((current) => current?.kind === 'restore' ? null : current);
+    setFollow((old) => old?.kind === 'pw' ? null : old);
     try {
       let text = '';
-      try { text = await file.text(); } catch { notify('error', RESTORE_TEXT.format, 'backup'); return; }
-      if (!looksLikeBackup(text)) { notify('error', RESTORE_TEXT.format, 'backup'); return; }
+      try { text = await file.text(); } catch { restoreFail(RESTORE_TEXT.format); return; }
+      if (!looksLikeBackup(text)) { restoreFail(RESTORE_TEXT.format); return; }
       let restored: LocalTournament;
       try { restored = await decryptWithRetry((pw) => decryptBackup(text, pw), password); }
-      catch (error) { notify('error', RESTORE_TEXT[classifyRestoreError(error)], 'backup'); return; }
+      catch (error) { const kind = classifyRestoreError(error); restoreFail(RESTORE_TEXT[kind], kind); return; }
       const mine = dataRef.current;
       if (restored.eventId !== mine.eventId) {
         const go = () => { location.href = '/private/?event=' + encodeURIComponent(restored.eventId); };
-        notify('error', 'このコピーは『' + (isTitleReal(restored.title) ? restored.title : restored.eventId) + '』用です。いまの画面は別の大会なので、何も変えていません。' + (mine !== cleanRef.current ? '（開くと、保存していない変更について、ブラウザが確認を出します）' : ''), 'backup', { label: 'この大会として開く', onClick: go });
+        notify('warn', 'このコピーは『' + (isTitleReal(restored.title) ? restored.title : restored.eventId) + '』用です。いまの画面は別の大会なので、何も変えていません。' + (mine !== cleanRef.current ? '（開くと、保存していない変更について、ブラウザが確認を出します）' : ''), 'backup', { label: 'この大会として開く', onClick: go });
         return;
       }
-      // ここでは、まだ何も変えない。「コピーのファイルから戻す」のすぐ下に確認の箱を出し、「上書きして戻す」を押したときだけ戻す
+      // ここでは、まだ何も変えない。「コピーのファイルから戻す」のすぐ下に確認の箱を出し、「今の内容を消して、コピーに戻す」を押したときだけ戻す
       setBackupOpen(true);
       setAsk({ kind: 'restore', restored, nonce: ++askSeq.current });
     } finally { restoreBusyRef.current = false; }
   };
-  /** 確認の箱の「上書きして戻す」を押したあと。いまの内容（箱を見ている間に変わっていても、いまの内容）をコピーで置きかえる */
+  /** 確認の箱の「今の内容を消して、コピーに戻す」を押したあと。いまの内容（箱を見ている間に変わっていても、いまの内容）をコピーで置きかえる */
   const finishRestore = async (restored: LocalTournament) => {
     if (restoreBusyRef.current) return;
     restoreBusyRef.current = true;
     try {
       const mine = dataRef.current;
-      if (restored.eventId !== mine.eventId) { notify('error', 'いまの画面は別の大会なので、何も変えていません。', 'backup'); return; }
+      if (restored.eventId !== mine.eventId) { notify('error', '失敗：いまの画面は別の大会なので、何も変えていません。', 'backup'); return; }
       const before = { saved: savedRef.current, screen: mine, dirty: mine !== cleanRef.current };
       try {
         await commit({ ...restored, updatedAt: savedRef.current?.updatedAt ?? mine.updatedAt }, { ...restored, updatedAt: savedRef.current?.updatedAt ?? mine.updatedAt });
       } catch (error) {
         if (error instanceof PrivateSaveConflict) setConflict(true);
-        notify('error', RESTORE_TEXT.write, 'backup');
+        restoreFail(RESTORE_TEXT.write);
         return;
       }
-      setSaveState('idle'); failRef.current = 0; setFailStreak(0); removedRef.current = []; setEditingId(null); setSuggestNote(null);
+      setSaveState('idle'); failRef.current = 0; setFailStreak(0); removedRef.current = []; setRemovedN(0); setEditingId(null); setSuggestNote(null);
       const undo = everSaved && before.saved ? { label: '元にもどす（このページを開いている間だけ）', onClick: () => void undoRestore(before) } : undefined;
       notify('ok', '戻しました。' + (isTitleReal(restored.title) ? restored.title : '名前なし') + '・選手' + restored.fighters.length + '人・試合' + restored.bouts.length + 'つ。すでに保存ずみです。', 'backup', undo, true, undo ? 'undo-restore' : undefined);
     } finally { restoreBusyRef.current = false; }
@@ -880,7 +1025,7 @@ export default function PrivateAdmin() {
       savedRef.current = written; cleanRef.current = written; setConflict(false);
       setData(before.dirty ? { ...before.screen, updatedAt: written.updatedAt } : written);
       notify('ok', '戻す前の内容に、もどしました。', 'backup');
-    } catch { notify('error', '元にもどせませんでした。いまのデータは変えていません。', 'backup'); }
+    } catch { notify('error', '失敗：元にもどせませんでした。いまのデータは変えていません。', 'backup'); }
   };
   const onPickBackup = (e: ChangeEvent<HTMLInputElement>) => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; void restore(file); };
 
@@ -889,34 +1034,38 @@ export default function PrivateAdmin() {
   const answerNo = () => {
     if (!ask) return;
     const kind = ask.kind;
+    const back = ask.kind === 'remove' ? 'remove-' + ask.id : ask.kind === 'discard-edit' ? 'edit-' + (editingId ?? '') + '-name'
+      : kind === 'restore' ? 'restore-file' : kind === 'overwrite' ? 'overwrite-trigger' : kind === 'other' ? 'use-other-trigger'
+      : kind === 'google' ? 'google-link' : kind === 'new-event' ? 'new-event-btn' : kind === 'rewind' ? 'rewind-btn' : '';
     setAsk(null);
     notify('info', RESTORE_TEXT.cancel, kind === 'restore' ? 'backup' : 'toast');
-    focusSoon(kind === 'restore' ? 'restore-file' : kind === 'overwrite' ? 'overwrite-trigger' : 'use-other-trigger');
+    if (back) focusSoon(back);
   };
-  /** あぶないほうのボタン（「上書きして戻す」「書きかえる」「別の画面の内容にする」）。ここを押したときだけ、変える */
+  /** あぶないほうのボタン（「今の内容を消して、コピーに戻す」「書きかえる」「別の画面の内容にする」など）。ここを押したときだけ、変える */
   const answerYes = () => {
     if (!ask) return;
     if (ask.kind === 'restore') { const restored = ask.restored; setAsk(null); void finishRestore(restored).then(() => focusSoon('restore-file')); return; }
     if (ask.kind === 'overwrite') { applyOverwrite(); return; }
+    if (ask.kind === 'remove') { removeFighter(ask.id); return; }
+    if (ask.kind === 'discard-edit') { setAsk(null); setEditingId(null); setEditFixes({}); setOtherEditErr(null); notify('info', '直した内容を消して、やめました。'); return; }
+    if (ask.kind === 'google') { setAsk(null); void goGoogle(); return; }
+    if (ask.kind === 'new-event') { setAsk(null); void startNewEvent(); return; }
+    if (ask.kind === 'move') { const { index, dir } = ask; setAsk(null); doMove(index, dir); return; }
+    if (ask.kind === 'rewind') { setAsk(null); setData((old) => ({ ...old, currentBout: 0 })); setRewound(true); return; }
     const shown = ask.latest;
     setAsk(null);
     adoptOther(shown);
   };
 
   /* ───── ここから下は、読み込みの状態ごとの表示 ───── */
-  if (!ready) return <main className="tos-read min-h-dvh bg-slate-50 p-6 text-slate-950 [color-scheme:light]"><p className="text-xl font-bold">じゅんびしています…</p></main>;
-  if (loadError) return <main className="tos-read min-h-dvh bg-slate-50 p-4 text-slate-950 [color-scheme:light] sm:p-8"><div className="mx-auto max-w-2xl rounded-2xl border-2 border-slate-300 bg-white p-5">
-    <h1 className="text-2xl font-bold">保存してあるデータを、読めませんでした</h1>
-    <p role="alert" className="mt-3 font-medium">{loadError}</p>
-    <ol className="mt-3 list-decimal space-y-1 pl-6 font-medium"><li>「プライベートウィンドウ」ではないか確認します。</li><li>パソコンの空き容量を確認します。</li><li>それでもだめなら、ジムの担当者に連絡します。</li></ol>
-    <button type="button" className={cls(btn.base, btn.primary, 'mt-5 w-full sm:w-auto')} onClick={() => location.reload()}>もう一度読み込む</button>
-  </div></main>;
+  if (!ready) return <main className="tos-read min-h-screen bg-slate-50 p-6 text-slate-950 [color-scheme:light]"><p className="text-xl font-bold">じゅんびしています…</p></main>;
+  if (loadError) return <LoadErrorScreen message={loadError} eventId={data.eventId} />;
 
   /* ───── 計算 ───── */
   const live = '/private/live/?event=' + encodeURIComponent(data.eventId);
   const entryLink = '/private/entry/?' + entryConfigSearch(entryConfig);
   const setupLink = '/private/setup/?event=' + encodeURIComponent(data.eventId);
-  const setEntryMode = (key: 'grade' | 'age' | 'comment', value: EntryFieldMode) => edit('entryConfig', { ...entryConfig, [key]: value });
+  const setEntryMode = (key: 'grade' | 'age' | 'comment', value: EntryFieldMode) => { setCfgTouched(true); edit('entryConfig', { ...entryConfig, [key]: value }); };
   const googleSetup = '/private/google-setup/?' + new URLSearchParams({ event:data.eventId, title:data.title, date:data.date, venue:data.venue, music:entryConfig.music?'on':'off', grade:entryConfig.grade, age:entryConfig.age, comment:entryConfig.comment }).toString();
   const copyEntryLink = async () => {
     try { await navigator.clipboard.writeText(location.origin + entryLink); setCopyState('ok'); }
@@ -924,6 +1073,7 @@ export default function PrivateAdmin() {
   };
 
   const dateOk = isCompleteDate(data.date);
+  const dateRead = readDate(data.date);
   const nFighters = data.fighters.length;
   const nonBlank = data.bouts.filter((bout) => !isBlankBout(bout)).length;
   const halfIndex = data.bouts.findIndex(isHalfBout);
@@ -940,55 +1090,105 @@ export default function PrivateAdmin() {
   const warnCount = data.bouts.reduce((sum, bout) => sum + boutWarnings(bout, data.fighters, data.bouts).length, 0);
   const googleReady = titleReal && dateOk;
   const fresh = nFighters === 0 && data.bouts.length === 0;
+  const emptyStart = fresh && !titleReal;
   const title = titleReal ? data.title : 'まだ名前なし';
   const firstWarn = data.bouts.findIndex((bout) => boutWarnings(bout, data.fighters, data.bouts).length > 0);
   const datePreview = dateOk ? formatDateInput(data.date) : '';
+  const missingW = weightMissing(data.fighters);
+  // 同じ名前＋同じジムの人が名簿に2人以上いる組（同じ人が2回申し込んだときに起こる）。「別の人です」と答えた組は出さない
+  const dupGroups = (() => {
+    const map = new Map<string, LocalFighter[]>();
+    for (const f of data.fighters) { if (!f.name.trim()) continue; const k = sameKey(f); const list = map.get(k); if (list) list.push(f); else map.set(k, [f]); }
+    return [...map.entries()].filter(([k, list]) => list.length > 1 && !acks.has('dupname:' + k));
+  })();
+  const dupIds = new Set(dupGroups.flatMap(([, list]) => list.map((f) => f.id)));
+  const longOnes = tooLong(data.fighters);
   // 失敗の知らせが帯に出ているときは、状態ラインは「! 保存失敗」だけ（同じ文を2回出さない）
-  const failShown = saveState === 'failed' && !!msg && msg.kind === 'error' && msg.area !== 'backup';
-  const lineTone = line.tone === 'bad' ? 'text-rose-800' : line.tone === 'warn' ? 'text-amber-950' : line.tone === 'ok' ? 'text-emerald-800' : 'text-slate-800';
+  const failShown = saveState === 'failed' && !!msg && msg.kind === 'error' && msg.area === 'save';
+  const lineTone = line.tone === 'bad' ? 'text-rose-800' : line.tone === 'warn' ? 'text-stone-900' : line.tone === 'ok' ? 'text-emerald-800' : 'text-slate-800';
+  /** 赤い『✕ まだ』を出してよいか：保存や『開く』を押して、うまくいかなかったあと */
+  const failedTry = titleTried || !!openError;
+  const chooseFirst = noEventParam && !chooseDismissed && !dirty && emptyStart && (events ?? []).some((item) => item.eventId !== data.eventId);
 
   const na = nextAction({ titleReal, dateOk, fighters: nFighters, nonBlankBouts: nonBlank, halfIndex, halfSide, dirty, everSaved, problems: problemCount, opened, saveState, conflict });
   const key: NextKey = na.key;
+  // 黄色の「👉 次はここ」は、ここで決めた1つだけ。上のナビ・次にすること・下の帯・黄色の枠が、みんなこれを見る
+  const blankIndex = data.bouts.findIndex(isBlankBout);
+  const firstIssue = boutIssues[0];
+  const activeFollow: Follow | null = !follow ? null
+    : follow.kind === 'photo' ? (byId.get(follow.id) && !byId.get(follow.id)?.photoDataUrl ? follow : null)
+    : follow.kind === 'review' ? (suggested.size > 0 ? follow : null)
+    : follow;
+  const marker = pickMarker({
+    conflict, asking: ask !== null, chooseFirst, follow: activeFollow, na, saveState, blankIndex, halfIndex, halfSide,
+    fix: firstIssue && firstIssue.side !== 'both' ? { index: firstIssue.index, side: firstIssue.side === 'blue' ? 'blue' : 'red' } : null, titleMissing, copyButton: failShown && !!msg?.action,
+  });
+  const here = marker.where;
+  const barIsSave = here === 'bar' || here === 'bar-copy';
   const goToProblem = () => {
     if (nonBlank === 0) return jump('add-bout');
     const issue = boutIssues[0];
     if (issue) return jump('bout-' + issue.index + (issue.side === 'blue' ? '-blue' : '-red'));
-    if (titleMissing) return jump('field-title');
+    if (titleMissing) { setTitleTried(true); return jump('field-title'); }
     jump('sec-4');
   };
   const banner: Record<NextKey, { hint: string; run: () => void }> = {
     title: { hint: '「1. 大会の情報」の、いちばん上の欄です。日にちは、あとでもOKです。', run: () => jump('field-title') },
     fighters: { hint: '申し込みで集めた選手のファイルを、「2. 選手を入れる」で選びます。', run: () => jump('pick-file', 'pick-file-box') },
     fighters2: { hint: '試合は2人いないと作れません。', run: () => jump('pick-file', 'pick-file-box') },
-    bouts: { hint: '「＋ 試合を追加」を押して、赤と青の選手を選びます。', run: () => jump('add-bout') },
+    bouts: { hint: '「＋ 試合を追加」を押して、赤と青の選手を選びます。', run: () => blankIndex >= 0 ? jump('bout-' + blankIndex + '-red') : jump('add-bout') },
     half: { hint: '選手が1人だけ入っている試合があります。', run: () => jump('bout-' + halfIndex + (halfSide === 'red' ? '-red' : '-blue')) },
-    save: { hint: saveState === 'failed' ? '入れた内容は画面に残っています。もう一度、押してみます。' : 'ここまでの内容を、このパソコンの中に残します。', run: () => { void save(); } },
+    save: { hint: saveState === 'failed' ? '入れた内容は画面に残っています。まず、コピーのファイルを作っておくと安心です。' : 'ここまでの内容を、このパソコンの中に残します。', run: () => { void save(); } },
     fix: { hint: 'まだ直すところがあります。', run: goToProblem },
     open: { hint: '準備は終わりました。試合当日の画面で、確かめます。', run: () => { void openLive(); } },
     done: { hint: '', run: () => undefined },
   };
   const canOpen = validOk;
   async function openLive() {
+    setTitleTried(true);
     if (openingRef.current) return;
-    if (!canOpen) { goToProblem(); return; }
+    if (!canOpen) {
+      const issue = boutIssues[0];
+      const why = nonBlank === 0 ? 'まだ試合がありません' : issue ? issue.text.replace(/。$/, '').replace('選んでください', 'が空です').replace(/の(赤|青)コーナーの選手が空です/, 'の$1コーナーが空です') : titleMissing ? '大会の名前がありません' : 'データのどこかが正しくありません';
+      setOpenError('まだ開けません：' + why);
+      if (nonBlank === 0) goTarget('add-bout'); else if (issue) goTarget('bout-' + issue.index + (issue.side === 'blue' ? '-blue' : '-red')); else if (titleMissing) goTarget('field-title'); else jump('sec-4');
+      return;
+    }
     // 二度押しで、画面がいくつも開かないようにする（2秒）
     openingRef.current = true; window.setTimeout(() => { openingRef.current = false; }, 2000);
     let popup: Window | null = null;
     try { popup = window.open('', '_blank'); } catch { popup = null; }
     if (dirty && !(await save())) { popup?.close(); openingRef.current = false; return; }
-    setOpened(true);
+    setOpened(true); setOpenError(''); setOpenedNote(true);
     if (popup) { try { popup.opener = null; } catch { /* 古い画面では無視 */ } popup.location.href = live; } else location.href = live;
   }
   /** 新しい大会をつくる: 名簿・対戦カードは空。「選手に書いてもらうこと」と会場だけ引き継ぐ */
-  const startNewEvent = async () => {
+  async function startNewEvent() {
     if (newEventRef.current) return;
-    if (pendingInputRef.current) { if (!window.confirm('選手の入力が、まだ追加されていません。\n新しい大会に移ると、その入力は消えます。\nよろしいですか？')) return; pendingInputRef.current = false; }
+    pendingInputRef.current = false;
     newEventRef.current = true; window.setTimeout(() => { newEventRef.current = false; }, 2000);
     if (dirty && !(await save())) { newEventRef.current = false; return; }
     location.href = '/private/?event=' + newEventId(Date.now()) + '#from=' + encodeURIComponent(dataRef.current.eventId);
+  }
+  async function goGoogle() {
+    setGoogleFail(false);
+    if(await save())location.href=googleSetup;else setGoogleFail(true);
+  }
+  /** 黄色の場所が「帯の外」にあるとき、下の青いボタンは、そこへ行くボタンになる */
+  const runMarker = () => {
+    switch (here) {
+      case 'chooser': jump('choose-events'); return;
+      case 'pw': goBackup(); return;
+      case 'file': jump('pick-file', 'pick-file-box'); return;
+      case 'photo': { const id = marker.id ?? ''; jump('fighter-' + id); return; }
+      case 'review': { const first = data.bouts.findIndex((bout) => suggested.has(bout.id)); jump('bout-' + Math.max(0, first)); return; }
+      default: banner[key].run();
+    }
   };
   const onBarPrimary = () => {
+    if (lockedByRestore) return;
     if (na.kind === 'conflict') { jump('conflict-box'); return; }
+    if (!barIsSave && here !== 'none') { runMarker(); return; }
     if (na.kind === 'open' && Date.now() - savedAtRef.current >= 1500) { void openLive(); return; }
     // 保存した直後の二度押しだけ止める。保存のあとに入力がある（未保存）・保存に失敗した、ときは必ず保存する
     const nothingUnsaved = dataRef.current === cleanRef.current && saveState !== 'failed';
@@ -997,27 +1197,37 @@ export default function PrivateAdmin() {
     if (na.kind === 'save' && saveState === 'saving') return;
     banner[key].run();
   };
-  // 保存のあとは、止まったボタンを見せず、すぐ次のボタンに進む（「保存済み」は状態ラインだけが言う）
-  const barDisabled = na.kind === 'save' && saveState === 'saving';
-  const barLabel = na.label;
-  const showSecondarySave = dirty && na.kind !== 'save' && na.kind !== 'conflict' && saveState === 'idle';
-
-  const listOpen = listPref ?? nFighters <= 8;
-  const shownFighters = nFighters > 8 && query.trim() ? data.fighters.filter((fighter) => (fighter.name + fighter.gym).includes(query.trim())) : data.fighters;
-  // 上の4つの手順の名前は、下の見出しと同じ。スマホでは、せまいので短い名前を使う
+  const lockedByRestore = ask?.kind === 'restore';
+  // 下の青いボタンの文: 「👉 次はここ」が帯の中なら、その仕事の名前。帯の外なら「そこへ行く」ボタン（押すと動くだけなので、『〜へ行く』と書く）
+  const goLabel = (where: typeof here, text: string): string => where === 'title' ? '↑ 大会名の欄へ' : where === 'file' ? (text === 'ファイルを選び直す' ? '↑ ファイルを選び直す所へ' : '↑ ファイルを選ぶ所へ') : where === 'add-bout' ? '↑ 試合を作る所へ' : where === 'photo' ? '↑ 写真を選ぶ所へ' : where === 'review' ? '↑ 案の確認へ' : where === 'chooser' ? '↑ 大会を選ぶ所へ' : where === 'pw' ? '↑ パスワードの欄へ' : '↑ ' + text.replace(/を選ぶ$/, 'へ').replace(/へ行く$/, 'へ');
+  const barLabel = na.kind === 'conflict' ? '上の「👉 次はここ」の箱を見る' : barIsSave || here === 'none' ? na.label : goLabel(here, marker.barLabel ?? na.label);
+  /** 保存に失敗したとき：塗りのボタンは、黄色の中の『コピーのファイルを作る』。『もう一度 保存する』は、ふつうの枠だけのボタンにする */
+  const failCopyFirst = failShown && !!msg?.action;
+  const barDisabled = (na.kind === 'save' && saveState === 'saving') || lockedByRestore;
+  const showSecondarySave = dirty && !barIsSave && !(here === 'none' && na.kind === 'save') && na.kind !== 'conflict' && saveState === 'idle' && !lockedByRestore;
   const steps = [['sec-1', '大会の情報', '大会'], ['sec-2', '選手を入れる', '選手'], ['sec-3', '対戦カードを作る', '試合'], ['sec-4', '保存して開く', '開く']] as const;
+  const navText = ask ? '確認の箱に答える' : here === 'none' ? na.label : marker.label;
   const musicNow = entryConfig.music;
   const modeLine = (mode: EntryFieldMode) => mode === 'off' ? '入力画面：この欄は出ません。' : mode === 'optional' ? '入力画面：この欄が出ます（空でもOK）。' : '入力画面：この欄が出ます（必ず書く）。';
-  const manualInvalid = invalidKeys(manualErrors);
   const overwriteReady = pendingOverwrite && pendingOverwrite.base === data.fighters ? pendingOverwrite : null;
   const canUndoSuggestion = !!suggestNote && suggestNote.ids.some((id) => suggested.has(id) && data.bouts.some((bout) => bout.id === id));
-  const restoreLocked = password.length < 10;
+  const restoreLocked = pwNorm.length < 10;
+  const listOpen = listPref ?? nFighters <= 8;
+  const q = foldKana(query);
+  const shownFighters = nFighters > 8 && q ? data.fighters.filter((fighter) => foldKana(fighter.name + fighter.gym).includes(q)) : data.fighters;
+  const draftCheck = editingId ? checkFighter(draft, entryConfig, 'edit') : null;
+  const editProblems: FieldProblems = draftCheck ? toMap(draftCheck.problems) : {};
+  const editFirst = draftCheck?.problems[0];
+  const manualInvalidN = Object.keys(manualProblems).length;
+  const spot = placeTarget();
+  const sideWord = (side: 'red' | 'blue') => (side === 'red' ? '赤' : '青');
+
   const rosterHelp = <>
-    <ol className="mt-3 max-w-[38em] list-decimal space-y-2 pl-6 font-medium">
-      <li>Googleのシートを開く（画面の上の、シートの名前を押す）</li>
-      <li>メニュー「Tournament OS」→「④ OS用の名簿ZIPを作る」を押す</li>
-      <li>できたファイルを探す（「ダウンロード」の中）</li>
-      <li>下の「ファイルを選ぶ」を押して、そのファイルを選ぶ</li>
+    <ol className="mt-3 max-w-[38em] list-none space-y-2 pl-0 font-medium">
+      <li><StepNo n={1} />Googleのシートを開く（画面の上の、シートの名前を押す）</li>
+      <li><StepNo n={2} />メニュー「Tournament OS」→「④ OS用の名簿ZIPを作る」を押す</li>
+      <li><StepNo n={3} />できたファイルを探す（「ダウンロード」の中）</li>
+      <li><StepNo n={4} />下の「ファイルを選ぶ」を押して、そのファイルを選ぶ</li>
     </ol>
     <p className="mt-3 flex flex-wrap items-center gap-2 text-[17px] font-medium">
       <Chip tone="slate">ZIP＝まとめたファイル</Chip>
@@ -1026,12 +1236,11 @@ export default function PrivateAdmin() {
     </p>
   </>;
 
-  /** 次にすること（文だけ。押すボタンは、画面の下の青いボタンの1つ） */
-  const nextCard = <section aria-label="次にすること" className="rounded-2xl border-2 border-indigo-700 bg-white p-4 shadow-sm">
-    {key === 'done' && na.kind === 'open' ? <p className="text-xl font-bold text-emerald-800">✓ ぜんぶ終わりました</p> : <>
-      <p className="text-lg font-bold text-indigo-900">次にすること：{na.label}</p>
-      <p className="mt-1 font-medium">{na.kind === 'conflict' ? '別の画面で内容が変わりました。下の黄色い案内で、どちらを使うか選びます。' : banner[key].hint}</p>
-      <p className="mt-1 text-[17px] font-bold text-indigo-900"><span aria-hidden="true">↓ </span>画面の下の青いボタンを押します。</p>
+  /** 次にすること（文だけ。黄色のところと、下の青いボタンが、この文と同じ仕事をする） */
+  const nextCard = <section aria-label="次にすること" className="rounded-2xl border-2 border-slate-400 bg-white p-4 shadow-sm">
+    {key === 'done' && na.kind === 'open' && !ask ? <OkLine>ぜんぶ終わりました</OkLine> : <>
+      <p className="text-lg font-bold text-slate-950">次にすること：{ask ? '確認の箱に答える' : here === 'none' ? na.label : marker.label}</p>
+      {ask || na.kind === 'conflict' || here === 'bar' || here === 'bar-copy' || here === 'none' ? <p className="mt-1 font-medium">{ask ? '画面の中の確認の箱で、下の2つのボタンのどちらかを押します。' : na.kind === 'conflict' ? '別の画面で内容が変わりました。上の「👉 次はここ」の箱で、どちらを使うか選びます。' : banner[key].hint}</p> : null}
     </>}
   </section>;
 
@@ -1039,35 +1248,48 @@ export default function PrivateAdmin() {
   const backupJump = <div className="rounded-xl border-2 border-slate-300 bg-white p-3">
     <div className="flex flex-wrap items-center gap-3">
       <button type="button" onClick={goBackup} className={cls(btn.base, btn.outlineBig, 'w-full text-balance [word-break:auto-phrase] sm:w-auto')}>別のパソコンへ移す／こわれたときのコピー</button>
-      {backupAt ? <BackupChip at={backupAt} stale={backupStale} /> : <Chip tone="slate">コピーのファイル：まだ</Chip>}
+      {backupAt ? (backupStale ? <Chip tone="amber">⚠ 前のコピーのあとで変更あり（コピー {clockText(backupAt)}）</Chip> : <Chip tone="green">✓ コピー作成ずみ {clockText(backupAt)}</Chip>) : <Chip tone="slate">コピーのファイル：まだ</Chip>}
+      {backupAt && backupStale ? <button type="button" onClick={goBackup} className={cls(btn.base, btn.outline)}>新しく作り直す</button> : null}
     </div>
-    <p className="mt-1 text-[17px] font-medium">押すと、下の「コピーのファイルを作る・戻す」が開きます。コピーのファイルを持っているときも、ここから戻します。</p>
+    <p className="mt-1 text-[17px] font-medium">ここを押しても、まだコピーは作られません。下の「コピーのファイル」の画面が開くだけです。</p>
+    {!backupAt && nFighters >= 1 ? <Caution className="mt-2" role="status">コピー未作成：停電や故障で消えると戻せません。</Caution> : null}
   </div>;
 
-  /** Googleの申し込みページ（べつの作業）。確かめてあるときだけ緑。ほかは、目立たない灰色 */
-  const googleBox = nFighters === 0 ? <section aria-label="この大会の申し込みページ" className={cls('flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border-2 p-3 text-[17px] font-bold', setupState === 'yes' ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : 'border-slate-300 bg-slate-50 text-slate-900')}>
-    <p className="min-w-0">{setupState === 'yes' ? '✓ 申し込みページ：つながりを確かめてあります' : setupState === 'entered' ? 'べつの作業：申し込みページ（URLは入れてあります）' : setupState === 'unknown' ? '? べつの作業：申し込みページの画面で確かめます' : 'べつの作業：申し込みページ（あとでOK）'}</p>
-    {setupState !== 'yes' ? <a href={setupLink} className={cls(btn.base, btn.outline)}>申し込みページをつくる画面へ →</a> : null}
-    <p className="w-full text-[17px] font-medium text-slate-800">{setupState === 'entered' ? 'つながったかは、申し込みページの画面で確かめます。' : 'このパソコンの中の記録で見ています。別のパソコンで作ったときは「まだ」と出ます。'}</p>
-  </section> : null;
+  /** Googleの申し込みページ（べつの作業）。確かめてあるときだけ緑。ほかは、目立たない注意か灰色。選手が入ったあとも、小さく残す */
+  const googleBox = <section aria-label="この大会の申し込みページ" className={cls('space-y-2 rounded-xl border-2 p-3 text-[17px] font-bold', setupState === 'yes' ? 'border-[#166534] bg-[#f0fdf4] text-[#166534]' : 'border-slate-300 bg-slate-50 text-slate-900')}>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <p className="min-w-0">{setupState === 'yes' ? '✓ 申し込みページ：つながりを確かめてあります（できた）' : setupState === 'entered' ? '⚠ 気をつけて：申し込みページは、URLだけ入っています。つながりの確認が まだ' : setupState === 'unknown' ? '? 申し込みページ：画面で確かめます' : '申し込みページ：まだ（あとでOK）'}</p>
+      {setupState !== 'yes' ? <a href={setupLink} className={cls(btn.base, btn.outline)}>申し込みページをつくる画面へ →</a> : null}
+    </div>
+    {setupState !== 'yes' ? <Soft>別の画面に移ります。「戻る」で戻れます。</Soft> : null}
+    {setupState === 'entered' ? <Soft className="font-medium">つながったかは、申し込みページの画面で確かめます。</Soft> : null}
+    <p className="text-[17px] font-bold text-[#b91c1c]"><span aria-hidden="true">✕ </span>別のパソコンで作った人は押さない。もう一度作ると別の受付になります。</p>
+    <p className="text-[17px] font-medium text-slate-800">このパソコンの中の記録で見ています。別のパソコンで作ったときは「まだ」と出ます。</p>
+  </section>;
 
   /** ほか：大会をえらぶ・安心のしくみ（ふだんは閉じておく） */
-  const otherFold = <Fold title="大会をえらぶ・安心のしくみ（ほか）" open={chooserOpen} onToggle={(open) => { setChooserOpen(open); if (open && events === null) void loadEvents(); }} className="border-slate-300">
+  const otherFold = <Fold id="choose-events" title="大会をえらぶ・安心のしくみ（ほか）" open={chooserOpen} onToggle={(open) => { setChooserOpen(open); if (open && events === null) void loadEvents(); }} className="border-slate-300">
     <p className="text-lg font-bold">大会をえらぶ（続きから／新しい大会）</p>
     {events === null ? <p className="mt-2 font-medium">⏳ 保存してある大会を探しています…</p> : <ul className="mt-2 space-y-2">
       {events.map((item) => {
-        const label = '続きから：' + (isTitleReal(item.title) ? item.title : '名前なし') + '　' + (item.date || '日にちなし') + '　選手' + item.fighters + '人';
+        const name = eventListName(item);
+        const label = '続きから：' + name + '　' + (item.date || '日にちなし') + '　選手' + item.fighters + '人';
         return <li key={item.eventId} className="min-w-0 [overflow-wrap:anywhere]">{item.eventId === data.eventId
-          ? <p className="flex min-h-14 min-w-0 items-center rounded-xl border-2 border-emerald-700 bg-emerald-50 px-4 py-2 text-lg font-bold text-emerald-900 [overflow-wrap:anywhere]">✓ いま開いている：{label.replace('続きから：', '')}</p>
+          ? <p className="flex min-h-14 min-w-0 items-center rounded-xl border-2 border-[#166534] bg-[#f0fdf4] px-4 py-2 text-lg font-bold text-[#166534] [overflow-wrap:anywhere]">✓ いま開いている：{label.replace('続きから：', '')}</p>
           : <a href={'/private/?event=' + encodeURIComponent(item.eventId)} className={cls(btn.base, btn.outlineBig, 'w-full justify-start text-left')}>{label}</a>}</li>;
       })}
       {events.length === 0 ? <li className="font-medium">{eventsFailed ? '保存してある大会を読めませんでした。いま開いている大会は、そのまま使えます。' : 'まだ、保存してある大会はありません。'}</li> : null}
     </ul>}
-    <button type="button" onClick={() => { void startNewEvent(); }} className={cls(btn.base, btn.outlineBig, 'mt-4 w-full text-balance sm:w-auto')}>新しい大会をつくる（前回の設定を引き継ぐ）</button>
+    {ask?.kind === 'new-event' ? <DangerConfirm key={ask.nonce} id="confirm-new-event" label="確認：新しい大会へ移るか" tone={dirty ? 'danger' : 'plain'} head={dirty ? '取り消せない' : '気をつけて'}
+      verdict={dirty ? '先に保存します。保存できないと移れません。' : 'いまの大会（' + (titleReal ? data.title : '名前なし') + '・選手' + nFighters + '人）から、空の新しい大会へ移ります。'}
+      lines={[...(dirty ? ['保存していない入力は、保存してから移ります'] : []), ...(pendingInput ? ['追加していない選手の入力は消えます'] : [])]}
+      note={dirty ? '下のボタンを押すまで、何も変わりません。' : 'いまの大会は保存されて、「続きから」でまた開けます。'}
+      safeLabel="やめる（ここにいる）" dangerLabel="新しい大会へ" onYes={answerYes} onNo={answerNo} /> : null}
+    <button id="new-event-btn" type="button" onClick={() => setAsk({ kind: 'new-event', nonce: ++askSeq.current })} className={cls(btn.base, btn.outlineBig, 'mt-4 w-full text-balance sm:w-auto')}>新しい大会をつくる（前回の設定を引き継ぐ）</button>
     <p className="mt-2 max-w-[38em] text-[17px] font-medium">名簿と対戦カードは空で始まります。引き継ぐのは「選手に書いてもらうこと」と会場だけです。</p>
     <div className="mt-5 border-t-2 border-slate-200 pt-4">
       <p className="text-lg font-bold"><span aria-hidden="true">🔒 </span>安心のしくみ</p>
-      <p className="mt-2 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 font-bold text-amber-950">⚠ このパソコンでだけ使えます。別のパソコンやスマホで開くと空です。</p>
+      <Caution className="mt-2">このパソコンでだけ使えます。別のパソコンやスマホで開くと空です。</Caution>
       <p className="mt-2 max-w-[38em] font-medium">選手の名前・写真・体重・試合カードは、このパソコンの中にだけ保存します。インターネットには送りません。</p>
       <p className="mt-2 max-w-[38em] font-medium">同じパソコンの別の画面では、同じ内容が出ます。</p>
       <p className="mt-2 max-w-[38em] font-medium">Googleの受付の設定は、この保存とは別です。</p>
@@ -1075,8 +1297,13 @@ export default function PrivateAdmin() {
     </div>
   </Fold>;
 
+  /** 最初の画面（保存まえ）に、いつも1つ出す注意 */
+  const safeNote = <Caution role="status">この保存は、いま使っているアプリ（Chrome・Safariなど）の中だけです。別のパソコンや別のアプリで開くと空です。バックアップの「コピーのファイル」が対策です。</Caution>;
+  const rewindBox = ask?.kind === 'rewind'
+    ? <DangerConfirm key={ask.nonce} id="confirm-rewind" label="確認：第1試合にもどすか" verdict={'いま 第' + (data.currentBout + 1) + '試合です。第1試合に戻ります。'} lines={['本番の途中なら、押さないでください']} safeLabel="やめる（何も変えない）" dangerLabel="第1試合にもどす" onYes={answerYes} onNo={answerNo} /> : null;
+
   return <>
-  <main className="tos-read min-h-dvh bg-slate-50 pb-[calc(var(--bar-h,13rem)+1rem)] text-slate-950 [color-scheme:light] [word-break:auto-phrase] [overflow-wrap:anywhere]"
+  <main className="tos-read min-h-screen bg-slate-50 pb-[calc(var(--bar-h,13rem)+1rem)] text-slate-950 [color-scheme:light] [word-break:auto-phrase] [overflow-wrap:anywhere]"
     onFocus={(e) => { const t = e.target as HTMLElement; window.clearTimeout(blurTimer.current); setFieldFocused(t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['checkbox', 'file', 'radio', 'button'].includes((t as HTMLInputElement).type))); }}
     // 入力欄から外れた瞬間に下の帯を入れ替えると、押そうとしたボタンが消える。少し待ってから戻す
     onBlur={() => { window.clearTimeout(blurTimer.current); blurTimer.current = window.setTimeout(() => setFieldFocused(false), 300); }}>
@@ -1092,66 +1319,104 @@ export default function PrivateAdmin() {
       <div className="mt-3 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start lg:gap-6">
         {/* 4つの手順: 現在地・できた・まだ（スマホは上にくっつく / PCは左）。いちばん上に置く */}
         <nav ref={navRef} aria-label="4つの手順" className="tos-nav sticky top-0 z-30 -mx-4 border-b-2 border-slate-300 bg-white/95 px-2 py-2 backdrop-blur lg:top-4 lg:mx-0 lg:rounded-2xl lg:border-2 lg:p-2">
-          <ol className="grid grid-cols-4 gap-1 lg:grid-cols-1 lg:gap-2">{steps.map(([id, label, short], i) => {
+          <ol className="grid list-none grid-cols-4 gap-1 p-0 lg:grid-cols-1 lg:gap-2">{steps.map(([id, label, short], i) => {
             const isDone = doneList[i], isNow = nowStep === i;
             return <li key={id} className="min-w-0"><a href={'#' + id} onClick={(e) => { e.preventDefault(); jump(id); }} aria-current={isNow ? 'step' : undefined}
-              className={cls('flex min-h-12 flex-col items-center justify-center rounded-xl border-2 px-1 py-1 text-center text-[17px] font-bold leading-tight lg:items-start lg:px-3 lg:text-left', isDone ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : isNow ? 'border-4 border-indigo-700 bg-indigo-50 text-indigo-950' : 'border-slate-500 bg-slate-50 text-slate-800')}>
+              className={cls('flex min-h-12 flex-col items-center justify-center rounded-xl border-2 px-1 py-1 text-center text-[17px] font-bold leading-tight lg:items-start lg:px-3 lg:text-left', isDone ? 'border-[#166534] bg-[#f0fdf4] text-[#166534]' : isNow ? 'border-4 border-slate-900 bg-white text-slate-950' : 'border-slate-500 bg-slate-50 text-slate-800')}>
               <span className="flex flex-wrap items-center justify-center gap-x-1 lg:justify-start"><span aria-hidden="true" className="shrink-0">{isDone ? '✓' : isNow ? '▶' : ''}{i + 1}</span><span className="sr-only">{i + 1} </span><span className="lg:hidden">{short}</span><span className="hidden lg:inline">{label}</span></span>
               <span aria-hidden="true">{isDone ? 'できた' : isNow ? '次にやる' : 'まだ'}</span>
               <span className="sr-only">{isDone ? 'できた' : isNow ? 'まだ（次にやる）' : 'まだ'}</span>
             </a></li>;
           })}</ol>
-          <p className="mt-1 text-center text-[17px] font-bold text-slate-900 lg:hidden">{nowStep >= 0 ? '▶ 次にやる：' + (nowStep + 1) + ' ' + steps[nowStep][1] : '✓ ぜんぶできました'}</p>
+          <p className="mt-1 text-center text-[17px] font-bold text-slate-900 lg:hidden">{nowStep >= 0 || ask ? '▶ 次にやる：' + navText : '✓ ぜんぶできました'}</p>
         </nav>
 
         <div className="mt-4 min-w-0 max-w-4xl space-y-5 lg:mt-0">
-          {conflict ? <div id="conflict-box" tabIndex={-1} className="rounded-2xl border-2 border-amber-500 bg-amber-50 p-4 focus:outline-none">
-            <p className="font-bold text-amber-950">⚠ 別の画面で、この大会の内容が変わりました。このまま保存すると、そちらの変更が消えます。</p>
-            <p className="mt-1 text-[17px] font-medium">（試合当日の画面や、別の画面を開いたままのときに起こります）</p>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-              <button type="button" className={cls(btn.base, btn.outlineBig)} onClick={keepMine}>いまの入力を残す（保存すると、別の画面の変更は消えます）</button>
-              <button type="button" id="use-other-trigger" className={cls(btn.base, btn.outlineBig)} onClick={useOther}>別の画面の内容を使う（いま入れた分は消えます）</button>
+          {conflict ? <NextSlot id="conflict-box" active label="どちらを使うか、この箱で選ぶ" className="space-y-3 focus:outline-none">
+            <ErrorLine>止まってください：別の画面で、この大会の内容が変わりました。このまま保存すると、そちらの変更が消えます。</ErrorLine>
+            <p className="text-[17px] font-medium">どちらかを選ぶまで、保存はできません。</p>
+            <p className="font-bold">迷ったら：さっき試合当日の画面で、試合を進めただけなら「別の画面の内容を使う」。ここで たくさん入力したなら「いまの入力を残す」。</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <button type="button" className="tos-safe-btn inline-flex w-full items-center justify-center text-center text-lg touch-manipulation" onClick={keepMine}>いまの入力を残す（別の画面の変更が消える）</button>
+                <p className="tos-danger  text-[17px]"><span aria-hidden="true">✕ </span>消えるもの：別の画面で変えた内容</p>
+              </div>
+              <div className="space-y-2">
+                <button type="button" id="use-other-trigger" className="tos-danger-btn inline-flex w-full items-center justify-center text-center text-lg touch-manipulation" onClick={useOther}>別の画面の内容を使う（いま入れた分が消える）</button>
+                <p className="tos-danger  text-[17px]"><span aria-hidden="true">✕ </span>消えるもの：いま入れた分（保存していない入力）</p>
+              </div>
             </div>
-            {ask?.kind === 'other' ? <ConfirmBox key={ask.nonce} id="confirm-other" label="確認：別の画面の内容を使うか" {...useOtherBoxText({ mine: data, latest: ask.latest })} yesLabel="別の画面の内容にする（いまの入力は消える）" noLabel="やめる（何も変えない）" onYes={answerYes} onNo={answerNo} /> : null}
-          </div> : null}
+            {ask?.kind === 'other' ? <ConfirmOther key={ask.nonce} ask={ask} data={data} onYes={answerYes} onNo={answerNo} /> : null}
+          </NextSlot> : null}
 
-          {nextCard}
-          {backupJump}
-          {googleBox}
-          {otherFold}
+          {chooseFirst ? <NextSlot active label="続きから開く大会を選ぶ" className="space-y-3">
+            {otherFold}
+            <button type="button" className={cls(btn.base, btn.outlineBig)} onClick={() => setChooseDismissed(true)}>続きではなく、新しく始める（この空の画面を使う）</button>
+          </NextSlot> : null}
+
+          <div className={cls('space-y-5', chooseFirst && 'opacity-60')}>
+          {emptyStart ? null : nextCard}
+          {!everSaved && !conflict && !emptyStart ? safeNote : null}
+          {!emptyStart ? backupJump : null}
+          {!emptyStart ? googleBox : null}
+          {!emptyStart && !chooseFirst ? otherFold : null}
 
           {/* ───── 1 ───── */}
           <Section id="sec-1" title="1. 大会の情報" done={done1}>
             <p className="max-w-[38em] font-medium">対戦カードの画面に出る、大会の名前と日にちです。Googleのシートに書いたものと同じものを入れます。</p>
             <div className="grid gap-5 sm:grid-cols-2">
-              <div className="min-w-0 sm:col-span-2">
-                <div className="flex flex-wrap items-baseline"><label htmlFor="field-title" className="text-lg font-bold">大会名</label><Badge required /></div>
-                <input id="field-title" className={cls(inputClass, 'scroll-mt-28')} value={titleReal ? data.title : ''} placeholder="例: ○○ジム交流大会" autoComplete="off" aria-describedby="title-hint" onChange={(e) => edit('title', e.target.value)} />
-                <p id="title-hint" className={cls('mt-1 text-[17px] font-bold', titleReal ? 'text-emerald-800' : 'text-amber-950')}>{titleReal ? '✓ 入りました' : '⚠ 大会の名前を入れてください'}</p>
-                <p className="text-[17px] font-medium text-slate-800">できあがり見本：対戦カードの上に「{titleReal ? data.title : '第3回 ○○ジム交流大会'}」と出ます。</p>
-              </div>
+              <NextSlot active={here === 'title'} label={marker.label} className="sm:col-span-2">
+                <div className="min-w-0 sm:col-span-2">
+                  <div className="flex flex-wrap items-baseline"><label htmlFor="field-title" className="text-lg font-bold">大会名</label><Badge required /></div>
+                  <input id="field-title" className={cls(inputClass, 'scroll-mt-28', !titleReal && titleTried && 'tos-input-error', target === 'field-title' && 'tos-target')} value={titleReal ? data.title : ''} autoComplete="off" aria-invalid={(!titleReal && titleTried) || undefined} aria-describedby="title-hint" placeholder="例: 第3回 青空ジム大会"
+                    onChange={(e) => { setTarget(null); edit('title', e.target.value); }} onBlur={(e) => { setTitleTried(true); const next = e.target.value.trim(); if (next !== e.target.value) edit('title', next); }} />
+                  <Example className="mt-1"><code>第3回 青空ジム大会</code></Example>
+                  {titleReal ? <>
+                    <OkLine id="title-hint" className="mt-1">できた</OkLine>
+                    {data.title.trim().length > 60 ? <Caution className="mt-2" role="status">長いです（いま{data.title.trim().length}文字）。60文字までにします。<button type="button" onClick={() => edit('title', data.title.trim().slice(0, 60))} className={cls(btn.base, btn.outline, 'ml-2 mt-1')}>60文字に切る</button></Caution> : null}
+                    <Soft className="mt-1">できあがり見本：対戦カードの上に「{data.title.trim()}」と出ます。</Soft>
+                  </> : <>
+                    {titleTried
+                      ? <ErrorLine id="title-hint" role="status" className="mt-1">大会の名前が まだです（必ず必要）。上の四角に、大会の名前を入れます。</ErrorLine>
+                      : <Soft id="title-hint" className="mt-1">まだ入っていません。上の四角に、大会の名前を入れます（必ず必要）。</Soft>}
+                    <Soft className="mt-1">できあがり見本：対戦カードの上に「第3回 青空ジム大会」と出ます。</Soft>
+                  </>}
+                </div>
+              </NextSlot>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline"><label htmlFor="field-date" className="text-lg font-bold">開催日</label><Badge text="なくてもOK（あとでOK）" /></div>
-                <input id="field-date" className={cls(inputClass, 'scroll-mt-28')} inputMode="numeric" autoComplete="off" placeholder="例: 20271003（数字だけでOK）" aria-describedby="date-hint" value={data.date} onChange={(e) => edit('date', e.target.value)} onBlur={(e) => { if (!isCompleteDate(e.target.value)) return; const next = formatDateInput(e.target.value); if (next !== e.target.value) edit('date', next); }} />
-                {data.date.trim() && !dateOk ? <p id="date-hint" className="mt-1 text-[17px] font-bold text-amber-950">⚠ 日にちまで入れてください。例：20271003（半角でも全角でもOK）</p>
-                  : dateOk ? <p id="date-hint" className="mt-1 text-[17px] font-bold text-emerald-800">→ {datePreview} ✓</p>
-                  : <p id="date-hint" className="mt-1 text-[17px] font-medium text-slate-800">空のままでも、保存できます。入れるなら、数字だけでOK。20271003 → 2027年10月3日</p>}
+                <input id="field-date" className={cls(inputClass, 'scroll-mt-28', dateRead.kind === 'bad' && 'tos-input-error', target === 'field-date' && 'tos-target')} inputMode="numeric" autoComplete="off" placeholder="例: 20271003（数字だけでOK）" aria-describedby="date-hint" value={data.date}
+                  onChange={(e) => { setDateFix(''); setTarget(null); setGoogleNeeds(''); edit('date', e.target.value); }}
+                  onBlur={(e) => { if (!isCompleteDate(e.target.value)) return; const next = formatDateInput(e.target.value); if (next !== e.target.value) { setDateFix(e.target.value.trim() + ' → ' + next); edit('date', next); } }} />
+                <Example className="mt-1"><code>2027年10月3日</code>（2027-10-03 でも 2027/10/3 でも大丈夫。数字は全角でもOK）</Example>
+                {dateRead.kind === 'bad' ? <ErrorLine id="date-hint" role="status" className="mt-1">{dateRead.reason}。</ErrorLine>
+                  : dateRead.kind === 'partial' ? <Caution id="date-hint" className="mt-1" role="status">日にちまで入れてください。例：2027年10月3日（20271003 でもOK）</Caution>
+                  : dateOk ? (dateFix ? <OkLine id="date-hint" className="mt-1">自動で直しました：{dateFix}</OkLine> : <OkLine id="date-hint" className="mt-1">→ {datePreview} ✓</OkLine>)
+                  : <Soft id="date-hint" className="mt-1">空のままでも、保存できます。入れるなら、数字だけでOK。20271003 → 2027年10月3日</Soft>}
+                {dateOk && isPastDate(data.date) ? <Caution id="date-past" className="mt-2" role="status">この日にちは過ぎています。年（2027など）はまちがっていませんか？まちがいなら、上の四角を直します。</Caution> : null}
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline"><label htmlFor="field-venue" className="text-lg font-bold">会場</label><Badge /></div>
-                <input id="field-venue" className={inputClass} placeholder="例: ○○体育館" autoComplete="off" value={data.venue} onChange={(e) => edit('venue', e.target.value)} />
+                <input id="field-venue" className={cls(inputClass, target === 'field-venue' && 'tos-target')} placeholder="例: ○○体育館" autoComplete="off" value={data.venue} onChange={(e) => { setVenueAsk(false); setTarget(null); edit('venue', e.target.value); }} onBlur={(e) => { const next = e.target.value.trim(); if (next !== e.target.value) edit('venue', next); }} />
+                <Example className="mt-1"><code>青空体育館</code></Example>
+                {venueAsk && data.venue.trim() ? <Caution className="mt-2" role="status">前の大会の会場です。合っていますか？
+                  <span className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setVenueAsk(false)} className={cls(btn.base, btn.outline)}>合っている</button>
+                    <button type="button" onClick={() => { setVenueAsk(false); goTarget('field-venue'); }} className={cls(btn.base, btn.outline)}>直す</button>
+                  </span></Caution> : null}
               </div>
             </div>
 
             <Fold title={<span>選手に書いてもらうこと <Chip tone="slate">申し込みページは変わりません</Chip></span>} className="border-slate-300">
-              <p className="max-w-[38em] font-medium">いつも書いてもらうもの：名前・ジム名・写真・身長・体重・戦績</p>
+              <p className="tos-danger  font-bold"><span aria-hidden="true">✕ </span>ここを変えても、Googleの申し込みページは変わりません。</p>
+              <p className="mt-2 max-w-[38em] font-medium">いつも書いてもらうもの：名前・ジム名・写真・身長・体重・戦績</p>
               <p className="mt-1 max-w-[38em] text-[17px] font-medium text-slate-800">ここで変えるのは、この画面の「1人ずつ入れる」と、他のジム用の入力画面です。</p>
               <div className="mt-4 space-y-5">
                 <div role="group" aria-labelledby="music-label">
                   <p id="music-label" className="text-lg font-bold">入場曲を書いてもらう</p>
                   <div className="mt-2 grid grid-cols-2 gap-3 sm:max-w-sm">
-                    {([[true, 'はい'], [false, 'いいえ']] as const).map(([value, label]) => <button key={label} type="button" aria-pressed={musicNow === value} onClick={() => edit('entryConfig', { ...entryConfig, music: value })}
-                      className={cls(btn.base, 'min-h-14 text-xl', musicNow === value ? 'border-4 border-indigo-700 bg-indigo-50 text-indigo-900' : 'border-slate-500 bg-white text-slate-900')}>{musicNow === value ? '✓ えらんだ：' : ''}{label}</button>)}
+                    {([[true, 'はい'], [false, 'いいえ']] as const).map(([value, label]) => <button key={label} type="button" aria-pressed={musicNow === value} onClick={() => { setCfgTouched(true); edit('entryConfig', { ...entryConfig, music: value }); }}
+                      className={cls(btn.base, 'min-h-14 text-xl', musicNow === value ? 'border-4 border-slate-900 bg-slate-100 text-slate-950' : 'border-slate-500 bg-white text-slate-900')}>{musicNow === value ? '✓ えらんだ：' : ''}{label}</button>)}
                   </div>
                   <p className="mt-1 text-[17px] font-medium text-slate-800">{musicNow ? '入力画面：入場曲の欄が出ます。' : '入力画面：入場曲の欄は出ません。'}</p>
                 </div>
@@ -1160,59 +1425,84 @@ export default function PrivateAdmin() {
                   <select id={'cfg-' + k} className={inputClass} value={entryConfig[k]} aria-describedby={'cfg-' + k + '-line'} onChange={(e) => setEntryMode(k, e.target.value as EntryFieldMode)}>
                     <option value="off">出さない</option>
                     <option value="optional">書く（空でもOK）</option>
-                    <option value="required">必ず書く</option>
+                    <option value="required">必ず書く（書かないと追加できません）</option>
                   </select>
                   <p id={'cfg-' + k + '-line'} className="mt-1 text-[17px] font-medium text-slate-800">{modeLine(entryConfig[k])}</p>
                 </div>)}</div>
+                {cfgTouched && dirty ? <Caution role="status">変えました。保存するまで残りません。</Caution> : null}
               </div>
             </Fold>
 
-            <Fold title="ジムの担当者だけ：別の方法で受付をつくる（作った人は押さない）" className="border-slate-300">
-              <p className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3 font-bold text-amber-950">⚠ 受付のURLをもう作った人は、ここは使いません。もう一度押すと、別の受付ができてしまいます。</p>
-              <p className="mt-3 max-w-[38em] font-medium">「申し込みページをつくる画面」を使わずに、この画面の内容から、Googleの受付を作ります。</p>
+            <Fold title="別の方法で受付をつくる（ふつうは押さない）" className="border-slate-300">
+              <p className="tos-error "><span aria-hidden="true">✕ </span>もう申し込みページを作った人は、押さない。もう一度作ると別の受付ができて、前のURLは使えなくなります。</p>
+              <p className="mt-3 max-w-[38em] font-medium">ジムの担当者だけが使います。「申し込みページをつくる画面」を使わずに、この画面の内容から、Googleの受付を作ります。</p>
               <dl className="mt-3 grid gap-1 rounded-xl border-2 border-slate-300 bg-slate-50 p-3 text-[17px] font-medium sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-3">
                 <dt className="font-bold">名前:</dt><dd className="min-w-0 break-words [overflow-wrap:anywhere]">{titleReal ? data.title : '（まだ）'}</dd>
-                <dt className="font-bold">日にち:</dt><dd>{dateOk ? datePreview : '（まだ）'}</dd>
-                <dt className="font-bold">入場曲:</dt><dd>{musicNow ? 'あり' : 'なし'}</dd>
+                <dt className="font-bold">日にち:</dt><dd className="">{dateOk ? datePreview : '（まだ）'}</dd>
+                <dt className="font-bold">入場曲:</dt><dd className="">{musicNow ? 'あり' : 'なし'}</dd>
               </dl>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <a href={googleSetup} aria-disabled={!googleReady || undefined} onClick={async (e) => { e.preventDefault(); if (!googleReady) { jump(titleReal ? 'field-date' : 'field-title'); return; } setGoogleFail(false); if(await save())location.href=googleSetup;else setGoogleFail(true); }} className={cls(btn.base, btn.outlineBig, 'text-balance')}>別の方法で受付をつくる →</a>
+              {googleNeeds === 'title' ? <ErrorLine role="status" className="mt-3">先に、大会の名前を入れてください。</ErrorLine> : null}
+              {googleNeeds === 'date' ? <ErrorLine role="status" className="mt-3">この方法だけ、日にちが必要です。日にちを入れてください。</ErrorLine> : null}
+              {ask?.kind === 'google' ? <DangerConfirm key={ask.nonce} id="confirm-google" label="確認：受付をもう一度つくるか" verdict="受付を もう一度つくりますか？" lines={['もう作った人は、前のURLが使えなくなります']} safeLabel="やめる（何も変えない）" dangerLabel="つくる（前のURLは使えなくなります）" onYes={answerYes} onNo={answerNo} /> : null}
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+                <div className="min-w-0">
+                <a id="google-link" href={googleSetup} aria-disabled={!googleReady || undefined} onClick={(e) => {
+                  e.preventDefault();
+                  if (!titleReal) { setTitleTried(true); setGoogleNeeds('title'); goTarget('field-title'); return; }
+                  if (!dateOk) { setGoogleNeeds('date'); goTarget('field-date'); return; }
+                  setGoogleNeeds(''); setAsk({ kind: 'google', nonce: ++askSeq.current });
+                }} className={cls('tos-danger-btn inline-flex items-center justify-center text-center text-lg touch-manipulation', !googleReady && 'tos-locked')}>別の方法で受付をつくる →</a>
+                {!googleReady ? <div className="mt-1"><LockReason>{!titleReal ? '先に、大会の名前を入れます' : '先に、日にちを入れます'}</LockReason></div> : null}
+                </div>
                 <a href={entryLink} target="_blank" rel="noopener noreferrer" className={cls(btn.base, btn.outlineBig)}>入力画面を見る（他のジム用）</a>
               </div>
-              {!googleReady ? <p className="mt-2 text-[17px] font-bold text-amber-950">⚠ 先に、大会の名前と日にちを入れてください</p> : null}
-              <p className="mt-1 text-[17px] font-medium">「入力画面を見る」は、{VIEW_WINDOW_NOTE}</p>
-              {googleFail ? <p className="mt-2 flex gap-2 text-[17px] font-bold text-rose-800"><span aria-hidden="true">!</span>保存できなかったので、先に進めません。下の「保存する」を押してから、もう一度やってください。</p> : null}
+              <p className="mt-1 text-[17px] font-medium">受付をつくるボタンは、別の画面に移ります。「戻る」で戻れます。「入力画面を見る」は、{VIEW_WINDOW_NOTE}</p>
+              {googleFail ? <ErrorLine role="status" className="mt-2">失敗：保存できなかったので、先に進めません。下の「保存する」を押してから、もう一度やってください。</ErrorLine> : null}
             </Fold>
           </Section>
+          {!everSaved && !conflict && emptyStart ? safeNote : null}
 
           {/* ───── 2 ───── */}
           <Section id="sec-2" title="2. 選手を入れる" done={done2} doneText={'選手 ' + nFighters + '人'} todoText={'まだ（選手 ' + nFighters + '人）'}>
-            <div className="rounded-2xl border-2 border-indigo-700 bg-white p-4">
+            <div className="rounded-2xl border-2 border-slate-400 bg-white p-4">
               <h3 className="text-xl font-bold">申し込みが集まった選手を入れる</h3>
               {nFighters === 0 ? rosterHelp : <div className="mt-3"><Fold title="名簿ファイルの作り方（もう一度読み込むとき）" className="border-slate-300">{rosterHelp}</Fold></div>}
               <div id="pick-file-box" className="mt-4 scroll-mt-28">
-                <label className={cls(btn.base, btn.outlineBig, 'w-full cursor-pointer text-balance focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700 sm:w-auto sm:min-w-[16rem]')}>
-                  <span>ファイルを選ぶ</span>
-                  <input id="pick-file" type="file" accept={FILE_ACCEPT} className="sr-only" onChange={onPickFile} />
-                </label>
+                <NextSlot active={here === 'file'} label={marker.label}>
+                  <label aria-disabled={importBusy || undefined} onClick={(e) => { if (importBusy) e.preventDefault(); }} className={cls(btn.base, btn.outlineBig, 'w-full cursor-pointer text-balance focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700 sm:w-auto sm:min-w-[16rem]', importBusy && 'tos-locked')}>
+                    <span>ファイルを選ぶ</span>
+                    <input id="pick-file" type="file" accept={FILE_ACCEPT} className="sr-only" onChange={onPickFile} />
+                  </label>
+                </NextSlot>
+                {importBusy ? <LockReason>読んでいます。終わるまで押せません。閉じないでください。</LockReason> : null}
                 {nFighters > 0 ? <p className="mt-2 max-w-[38em] text-[17px] font-medium">もう一度読み込んでも、いる人は変わりません。新しい人だけ足されます。</p> : null}
               </div>
               {importBusy ? <p className="mt-3 font-bold text-slate-800">⏳ よみこんでいます…そのままお待ちください。閉じないでください。</p> : null}
               {importNote ? <div className="mt-3 space-y-2">
                 <p id="import-result" tabIndex={-1} className="break-all text-[17px] font-medium text-slate-800 focus:outline-none">選んだファイル: {importNote.file}</p>
-                {importNote.staleWarn ? <Notice kind="warn">前の大会の名簿が残っています。別の大会なら「新しい大会をつくる」から始めてください。</Notice> : null}
-                <Notice kind={importNote.kind === 'ok' ? 'ok' : 'error'} onClose={() => setImportNote(null)} action={overwriteReady ? { label: 'ファイルの内容で' + overwriteReady.differs.length + '人を書きかえる', onClick: askOverwrite, id: 'overwrite-trigger' } : undefined}>
-                  <p>{importNote.text}</p>
-                  {importNote.kind === 'ok' ? <>
-                    {importNote.noPhoto ? <p className="mt-1 font-medium">写真がない選手：{importNote.noPhoto}人（写真は、あとでOKです）</p> : null}
-                    <p className="mt-1">次にすること：{na.label}（下の青いボタン）</p>
-                  </> : null}
-                </Notice>
-                {ask?.kind === 'overwrite' && overwriteReady ? <ConfirmBox key={ask.nonce} id="confirm-overwrite" label="確認：ファイルの内容で名簿を書きかえるか" {...overwriteBoxText(overwriteReady.differs)} yesLabel={'ファイルの内容で書きかえる（' + overwriteReady.differs.length + '人）'} noLabel="やめる（何も変えない）" onYes={answerYes} onNo={answerNo} /> : null}
+                {importNote.kind === 'error' ? <>
+                  <div id="import-error" tabIndex={-1} className="space-y-2 focus:outline-none">
+                    <Notice kind="error" onClose={() => setImportNote(null)}><b>まちがい：{importNote.head}。</b>{importNote.text}</Notice>
+                    <OkLine>今の名簿は変えていません。</OkLine>
+                    {importNote.hint ? <Soft>{importNote.hint}</Soft> : null}
+                  </div>
+                </> : <>
+                  {importNote.staleWarn ? <Caution role="status">前の大会の人かもしれません。別の大会なら、足さないでください。
+                    <span className="mt-2 flex flex-col gap-3 sm:flex-row">
+                      <button type="button" onClick={undoStaleAdd} className="tos-safe-btn inline-flex items-center justify-center text-center text-lg touch-manipulation">足さない（もどす）</button>
+                      <button type="button" onClick={() => setImportNote((old) => old ? { ...old, staleWarn: false } : old)} className={cls(btn.base, btn.outlineBig)}>このまま足す</button>
+                    </span></Caution> : null}
+                  <Notice kind="ok" onClose={() => setImportNote(null)} action={overwriteReady ? { label: 'ファイルの内容で' + overwriteReady.differs.length + '人を書きかえる', onClick: askOverwrite, id: 'overwrite-trigger' } : undefined}>
+                    <b>できた：</b>{importNote.text}
+                    {importNote.noPhoto ? <span className="mt-1 block font-medium">写真がない選手：{importNote.noPhoto}人（写真は、あとでOKです）</span> : null}
+                  </Notice>
+                  {dirty ? <Caution role="note">まだ保存していません。</Caution> : null}
+                </>}
+                {ask?.kind === 'overwrite' && overwriteReady ? <ConfirmBoxOverwrite key={ask.nonce} differs={overwriteReady.differs} onYes={answerYes} onNo={answerNo} /> : null}
                 {pendingLookalike ? <Notice kind="warn" action={{ label: '別の人なら、足す', onClick: applyLookalike }}>
-                  <p>同じ名前の人が{pendingLookalike.extra.length}人 重なっています。足していません。</p>
-                  <p className="mt-1 font-medium">{pendingLookalike.extra.slice(0, 3).map((f) => f.name).join('、')}{pendingLookalike.extra.length > 3 ? ' ほか' : ''}（名前とジムが、前からいる人と同じです）</p>
-                  <p className="mt-1 font-medium">同じ人なら、何もしなくてOKです。別の人のときだけ、下を押します。</p>
+                  <span>同じ名前の人が{pendingLookalike.extra.length}人 重なっています。足していません。</span>
+                  <span className="mt-1 block font-medium">{pendingLookalike.extra.slice(0, 3).map((f) => f.name).join('、')}{pendingLookalike.extra.length > 3 ? ' ほか' : ''}（名前とジムが、前からいる人と同じです）</span>
+                  <span className="mt-1 block font-medium">同じ人なら、何もしなくてOKです。別の人のときだけ、下を押します。</span>
                 </Notice> : null}
               </div> : null}
             </div>
@@ -1222,15 +1512,16 @@ export default function PrivateAdmin() {
             <Fold title="ほかの入れ方（Excel・他のジム・1人ずつ）" className="border-slate-300">
               <div className="space-y-4">
                 <Fold title="Excelの表を使う" className="border-slate-300">
-                  <ol className="max-w-[38em] list-decimal space-y-1 pl-6 font-medium">
-                    <li>「選手入力シートを保存する」を押して、Excelをダウンロードします。</li>
-                    <li>Excelに選手を書いて、保存します。</li>
-                    <li>上の「ファイルを選ぶ」で、そのExcelを選びます。</li>
+                  <ol className="max-w-[38em] list-none space-y-2 pl-0 font-medium">
+                    <li><StepNo n={1} />「選手入力シートを保存する」を押して、Excelをダウンロードします。</li>
+                    <li><StepNo n={2} />Excelに選手を書いて、保存します。</li>
+                    <li><StepNo n={3} />上の「ファイルを選ぶ」で、そのExcelを選びます。</li>
                   </ol>
+                  <p className="tos-danger  mt-2"><span aria-hidden="true">✕ </span>シートの名前（選手入力）を変えない。</p>
                   <a href="/templates/Tournament_OS_選手入力テンプレート.xlsx" download className={cls(btn.base, btn.outlineBig, 'mt-3 w-full sm:w-auto')}>選手入力シートを保存する</a>
                 </Fold>
                 <Fold title="ほかのジムからまとめて受け取る" className="border-slate-300">
-                  <p className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3 font-bold text-amber-950">⚠ これは他のジム用です。選手本人に渡すURLは、「申し込みページをつくる画面」でできます。</p>
+                  <p className="tos-danger "><span aria-hidden="true">✕ </span>選手本人には、このURLを渡さない。これは他のジム用です。選手本人に渡すURLは、「申し込みページをつくる画面」でできます。</p>
                   <ol className="mt-3 max-w-[38em] list-none space-y-1 pl-0 font-medium">
                     <li>① 下のボタンでURLをコピーして、他のジムの代表者に送る</li>
                     <li>② 他のジムの代表者が選手を入力して、ファイルを送り返す</li>
@@ -1241,20 +1532,22 @@ export default function PrivateAdmin() {
                     <a href={entryLink} target="_blank" rel="noopener noreferrer" className={cls(btn.base, btn.outlineBig)}>設定した入力画面を確認</a>
                   </div>
                   <p className="mt-2 text-[17px] font-medium">「設定した入力画面を確認」は、{VIEW_WINDOW_NOTE}</p>
-                  <p aria-live="polite" className="mt-2 font-bold text-emerald-800">{copyState === 'ok' ? '✓ コピーしました' : ''}</p>
-                  {copyState === 'fail' ? <div className="mt-2">
-                    <p className="text-[17px] font-bold text-slate-900">コピーできませんでした。下の四角の中をクリックして、「Ctrl」を押しながら「A」（全部選ぶ）、つづけて「Ctrl」を押しながら「C」（コピー）を押します。</p>
+                  {copyState === 'ok' ? <OkLine className="mt-2">コピーした：次は、他のジムの代表者に送る</OkLine> : null}
+                  {copyState === 'fail' ? <div className="mt-2 space-y-2">
+                    <ErrorLine role="status">コピーできていません。</ErrorLine>
+                    <p className="text-[17px] font-bold text-slate-900">下の四角の中をクリックして、全部選んでコピーします（Windowsは「Ctrl」＋「A」→「Ctrl」＋「C」、Macは「⌘（コマンド）」＋「A」→「⌘」＋「C」）。</p>
                     <input readOnly aria-label="コピーするURL" value={location.origin + entryLink} onFocus={(e) => e.currentTarget.select()} className={cls(inputClass, 'break-all')} />
                   </div> : null}
                 </Fold>
                 <Fold title="1人ずつ入れる" className="border-slate-300">
-                  <FighterFields value={manual} config={entryConfig} prefix="manual" invalid={manualInvalid} describedBy="manual-errors" onChange={(k, v) => { setManual((old) => ({ ...old, [k]: v })); setManualErrors([]); setManualNote(''); }} />
+                  <FighterFields value={manual} config={entryConfig} prefix="manual" problems={manualProblems} fixes={manualFixes}
+                    onChange={(k, v) => { setManual((old) => ({ ...old, [k]: v })); clearManualKey(k); setManualNote(''); setManualDup(null); }}
+                    onBlurField={(k) => fixFieldOf(manual, k, setManual, setManualFixes, (fn) => setManualProblems(fn))} />
                   <button type="button" onClick={addManual} className={cls(btn.base, btn.outlineBig, 'mt-4 w-full sm:w-auto')}>この選手を追加</button>
-                  {manualErrors.length ? <div id="manual-errors" role="status" className="mt-3 rounded-xl border-2 border-rose-600 bg-rose-50 p-3 text-[17px] font-bold text-rose-900">
-                    <p><span aria-hidden="true">! </span>次の{manualErrors.length}か所を直してください。</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-6">{manualErrors.map((error) => <li key={error}>{error}</li>)}</ul>
-                  </div> : null}
-                  {manualNote ? <p role="status" className="mt-3 rounded-xl border-2 border-emerald-700 bg-emerald-50 p-3 font-bold text-emerald-900">{manualNote}</p> : null}
+                  {manualInvalidN ? <ErrorLine id="manual-errors" role="alert" className="mt-3">まちがい：{manualInvalidN}か所を直してください（「✕」がついた所）。</ErrorLine> : null}
+                  {manualDup ? <Caution className="mt-3" role="status">同じ人がもういます（{manualDup.name}・{manualDup.gym}）。別の人なら「別の人として追加」を押します。
+                    <span className="mt-2 flex"><button type="button" onClick={() => addFighterNow(manualDup)} className={cls(btn.base, btn.outlineBig)}>別の人として追加</button></span></Caution> : null}
+                  {manualNote ? <OkLine className="mt-3">{manualNote}</OkLine> : null}
                 </Fold>
               </div>
             </Fold>
@@ -1262,16 +1555,38 @@ export default function PrivateAdmin() {
             {/* 選手の一覧 */}
             <div>
               {nFighters === 0
-                ? <p className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3 font-bold text-amber-950">⚠ まだ0人です。上の「ファイルを選ぶ」から入れます。</p>
+                ? <Caution role="status">まだ0人です。上の「ファイルを選ぶ」から入れます。</Caution>
                 : <div className="space-y-2">
-                  <p className="rounded-xl border-2 border-emerald-700 bg-emerald-50 p-3 font-bold text-emerald-900">✓ {nFighters}人 入っています（写真あり {withPhoto} / なし {nFighters - withPhoto}）</p>
-                  {withPhoto < nFighters ? <p className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3 font-bold text-amber-950">⚠ 写真がない人 {nFighters - withPhoto}人（写真は、あとでOKです）</p> : null}
+                  <p className="tos-ok "><span aria-hidden="true">✓ </span>{nFighters}人 入っています（写真あり {withPhoto} / なし {nFighters - withPhoto}）</p>
+                  {withPhoto < nFighters ? <Caution>写真がない人 {nFighters - withPhoto}人（写真は、あとでOKです）</Caution> : null}
+                  {missingW.length ? <Caution role="status">体重が入っていない人：{missingW.length}人（{missingW.slice(0, 3).map((f) => shorten(f.name, 12)).join('、')}{missingW.length > 3 ? ' ほか' : ''}）。体重がないと試合の体重差が出ません。
+                    <span className="mt-2 flex"><button type="button" onClick={() => editFighter(missingW[0].id, 'weight')} className={cls(btn.base, btn.outline)}>その人を直す</button></span></Caution> : null}
+                  {dupGroups.length ? <Caution role="status">
+                    <span className="block">同じ名前とジムの人が{dupGroups.length}組います：{dupGroups.slice(0, 3).map(([, list]) => list[0].name + '（' + (list[0].gym || 'ジム名なし') + '）').join('、')}{dupGroups.length > 3 ? ' ほか' : ''}。同じ人なら、片方を「消す」で消します。</span>
+                    <span className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => { setListPref(true); setQuery(''); pendingJump.current = { id: 'fighter-' + dupGroups[0][1][0].id }; setJumpTick((n) => n + 1); }} className={cls(btn.base, btn.outline)}>その人へ行く</button>
+                      <button type="button" onClick={() => onAck('dupname:' + dupGroups[0][0])} className={cls(btn.base, btn.outline)}>別の人です（この注意を消す）</button>
+                    </span>
+                  </Caution> : null}
+                  {longOnes.slice(0, 3).map(({ fighter, field, max }) => <div key={fighter.id + field} className="space-y-2">
+                    <ErrorLine role={null}>{field === 'name' ? '名前' : 'ジム名'}が長すぎます（{max}文字まで）：{shorten(field === 'name' ? fighter.name : fighter.gym, 20)}</ErrorLine>
+                    <button type="button" onClick={() => editFighter(fighter.id, field)} className={cls(btn.base, btn.outline)}>長い人を直す</button>
+                  </div>)}
                 </div>}
+              {fighterNote ? <div className="mt-3 space-y-2">
+                <OkLine>{fighterNote.split('\n')[0]}</OkLine>
+                {fighterNote.includes('\n') ? <Caution role="note">{fighterNote.split('\n')[1]}</Caution> : null}
+              </div> : null}
               {nFighters > 0 ? <div className="mt-3"><Fold title={'選手の一覧（' + nFighters + '人）'} open={listOpen} onToggle={setListPref}>
-                {nFighters > 8 ? <div className="mb-3"><label htmlFor="fighter-filter" className="text-lg font-bold">名前やジムで探す</label><input id="fighter-filter" className={inputClass} value={query} placeholder="例: 山田" autoComplete="off" onChange={(e) => setQuery(e.target.value)} /></div> : null}
+                {nFighters > 8 ? <div className="mb-3"><label htmlFor="fighter-filter" className="text-lg font-bold">名前やジムで探す</label><input id="fighter-filter" className={inputClass} value={query} placeholder="例: 山田" autoComplete="off" onChange={(e) => setQuery(e.target.value)} />
+                  <Example className="mt-1"><code>山田</code>（漢字で、名字だけで探します。ひらがな・カタカナでも見つかります）</Example>
+                  {q && shownFighters.length === 0 ? <Caution className="mt-2" role="status">「{query.trim()}」の人はいません。漢字で、名字だけで探します。
+                    <span className="mt-2 flex"><button type="button" onClick={() => setQuery('')} className={cls(btn.base, btn.outline)}>全部見る</button></span></Caution> : null}
+                </div> : null}
                 {listOpen ? <div className="grid gap-3 sm:grid-cols-2">{shownFighters.map((fighter) => {
                   const editing = editingId === fighter.id;
                   const otherEditing = editDirty && !editing;
+                  const photoHere = here === 'photo' && marker.id === fighter.id;
                   return <article key={fighter.id} id={'fighter-' + fighter.id} className={cls('min-w-0 scroll-mt-28 rounded-xl border-2 border-slate-300 bg-white p-3', editing ? 'sm:col-span-2' : '')}>
                     <div className="flex gap-3">
                       <div className="h-24 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-slate-300 bg-slate-100">{fighter.photoDataUrl ? <img src={fighter.photoDataUrl} alt="" className="h-full w-full object-contain" /> : <span className="grid h-full place-items-center px-1 text-center text-[17px] text-slate-700">写真なし</span>}</div>
@@ -1280,31 +1595,44 @@ export default function PrivateAdmin() {
                         <p className="text-[17px] font-medium">{fighter.gym}</p>
                         <p className="text-[17px] font-medium">{kgText(fighter.weight)}{fighter.record ? '・' + fighter.record : ''}</p>
                         {!fighter.photoDataUrl ? <p className="mt-1"><Chip tone="slate">写真：あとでOK</Chip></p> : null}
+                        {dupIds.has(fighter.id) ? <p className="mt-1"><Chip tone="amber">⚠ 同じ名前の人がいます</Chip></p> : null}
                       </div>
                     </div>
                     {editing ? <div className="mt-3 space-y-3 border-t-2 border-slate-200 pt-3">
-                      <FighterFields value={draft} config={entryConfig} prefix={'edit-' + fighter.id} onChange={(k, v) => setDraft((old) => ({ ...old, [k]: v }))} />
-                      <div className="flex flex-wrap gap-3">
-                        <button type="button" onClick={applyEdit} className={cls(btn.base, btn.outlineBig)}>この内容で直す</button>
-                        <button type="button" onClick={() => setEditingId(null)} className={cls(btn.base, btn.outlineBig)}>やめる</button>
+                      <FighterFields value={draft} config={entryConfig} prefix={'edit-' + fighter.id} problems={editProblems} fixes={editFixes}
+                        onChange={(k, v) => { setDraft((old) => ({ ...old, [k]: v })); setEditFixes((old) => { if (!old[k]) return old; const next = { ...old }; delete next[k]; return next; }); }}
+                        onBlurField={(k) => fixFieldOf(draft, k, setDraft, setEditFixes)} />
+                      <div className="flex flex-wrap items-start gap-3">
+                        <button type="button" aria-disabled={!!editFirst || undefined} onClick={applyEdit} className={cls(btn.base, btn.outlineBig, editFirst && 'tos-locked')}>この内容で直す</button>
+                        <button type="button" onClick={() => { if (editDirty) setAsk({ kind: 'discard-edit', nonce: ++askSeq.current }); else { setEditingId(null); setEditFixes({}); } }} className={cls(btn.base, btn.outlineBig)}>やめる</button>
                       </div>
+                      {editFirst ? <LockReason>{(editFirst.text.split('：')[0])}が まちがっています</LockReason> : null}
+                      {ask?.kind === 'discard-edit' ? <DangerConfirm key={ask.nonce} id="confirm-discard" label="確認：直した内容を消してやめるか" verdict="直した内容は消えます。" lines={['いま直した所が、もとにもどります']} safeLabel="続けて直す（何も消さない）" dangerLabel="直した内容を消す" onYes={answerYes} onNo={answerNo} /> : null}
                     </div> : <div className="mt-3 flex flex-wrap gap-2">
-                      <label className={cls(btn.base, btn.outlineBig, 'cursor-pointer focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700')}>
-                        <span>{photoBusy === fighter.id ? '⏳ 読んでいます…' : fighter.photoDataUrl ? '写真を変える' : '写真を選ぶ'}</span>
-                        <input type="file" accept="image/*" aria-label={(fighter.photoDataUrl ? '写真を変える ' : '写真を選ぶ ') + fighter.name} className="sr-only" onChange={(e) => void choosePhoto(e, fighter.id)} />
-                      </label>
+                      {photoHere || photoError?.id === fighter.id ? <p className="w-full text-lg font-bold">{fighter.name} さんの写真</p> : null}
+                      <NextSlot active={photoHere} label={marker.label} className="w-full">
+                        <label className={cls(btn.base, btn.outlineBig, 'cursor-pointer focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700')}>
+                          <span>{photoBusy === fighter.id ? '⏳ 読んでいます…' : fighter.photoDataUrl ? '写真を変える' : '写真を選ぶ'}</span>
+                          <input type="file" accept="image/*" aria-label={(fighter.photoDataUrl ? '写真を変える ' : '写真を選ぶ ') + fighter.name} className="sr-only" onChange={(e) => void choosePhoto(e, fighter.id)} />
+                        </label>
+                      </NextSlot>
                       <button type="button" aria-disabled={otherEditing || undefined} onClick={() => {
                         // 直している途中の入力があるうちは、ほかの人の「直す」を押しても、何もしない（途中の入力が消えないように）
-                        if (otherEditing) { notify('info', '先に、いま直している人の「この内容で直す」か「やめる」を押してください。', 'toast'); jump('fighter-' + editingId); return; }
-                        setDraft({ ...fighter }); setEditingId(fighter.id); setConfirmDeleteId(null);
+                        if (otherEditing) { setOtherEditErr(fighter.id); return; }
+                        editFighter(fighter.id, 'name');
                       }} aria-label={'直す ' + fighter.name} className={cls(btn.base, btn.outline)}>直す</button>
-                      {confirmDeleteId === fighter.id ? <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border-2 border-slate-400 bg-slate-50 p-2">
-                        <p className="w-full text-[17px] font-bold">{fighter.name}さんを消しますか？{placed.has(fighter.id) ? ' この人が入っている試合の選手も空になります。' : ''}</p>
-                        <button type="button" onClick={() => removeFighter(fighter.id)} aria-label={'消す（決定） ' + fighter.name} className={cls(btn.base, btn.outline)}>消す</button>
-                        <button type="button" onClick={() => setConfirmDeleteId(null)} className={cls(btn.base, btn.outline)}>やめる</button>
-                      </div> : <button type="button" onClick={() => setConfirmDeleteId(fighter.id)} aria-label={'消す ' + fighter.name} className={cls(btn.base, btn.outline)}>消す</button>}
+                      <button id={'remove-' + fighter.id} type="button" onClick={() => setAsk({ kind: 'remove', id: fighter.id, nonce: ++askSeq.current })} aria-label={'消す ' + fighter.name} className="tos-danger-btn inline-flex items-center justify-center text-center text-lg touch-manipulation"><span aria-hidden="true">✕ </span>消す：{shorten(fighter.name, 12)}</button>
                     </div>}
-                    {photoError?.id === fighter.id ? <p className="mt-2 flex gap-2 text-[17px] font-bold text-rose-800"><span aria-hidden="true">!</span>{photoError.text}</p> : null}
+                    {otherEditErr === fighter.id && !editing ? <div className="mt-2 space-y-2">
+                      <ErrorLine role="status">先に、いま直している人の「この内容で直す」か「やめる」を押す。</ErrorLine>
+                      {editingId ? <button type="button" onClick={() => jump('fighter-' + editingId)} className={cls(btn.base, btn.outline)}>直している人へ</button> : null}
+                    </div> : null}
+                    {ask?.kind === 'remove' && ask.id === fighter.id ? <DangerConfirm key={ask.nonce} id={'confirm-remove-' + fighter.id} label={'確認：' + fighter.name + 'さんを消すか'} verdict={fighter.name + 'さんを消します。'}
+                      lines={data.bouts.flatMap((bout, index) => bout.redId === fighter.id || bout.blueId === fighter.id ? ['第' + (index + 1) + '試合の' + (bout.redId === fighter.id ? '赤' : '青') + 'コーナーが空になります'] : [])}
+                      safeLabel="やめる" dangerLabel="✕ 消す（もどせません）" onYes={answerYes} onNo={answerNo} /> : null}
+                    {photoError?.id === fighter.id ? <ErrorLine role="status" className="mt-2">{photoError.text}</ErrorLine> : null}
+                    {photoOk?.id === fighter.id ? <OkLine className="mt-2">{photoOk.name}さんの写真を入れました</OkLine> : null}
+                    {editNote?.id === fighter.id && !editing ? <OkLine className="mt-2">直しました{editNote.text ? '（' + editNote.text + '）' : ''}</OkLine> : null}
                   </article>;
                 })}</div> : null}
               </Fold></div> : null}
@@ -1315,23 +1643,45 @@ export default function PrivateAdmin() {
           <Section id="sec-3" title="3. 対戦カードを作る" done={done3} doneText={'試合 ' + nonBlank + 'つ'}>
             <p className="max-w-[38em] font-medium">赤コーナーと青コーナーの選手を選んで、1試合ずつ作ります。</p>
             <p className="text-lg font-bold">試合 {nonBlank} つ ／ 選手 {nFighters}人中 {placedCount}人が入っています</p>
+            {removedN > 0 ? <div><button type="button" onClick={() => undoRemoveRef.current()} className={cls(btn.base, btn.outline)}>消した試合を戻す</button></div> : null}
+            {ask?.kind === 'move' ? <DangerConfirm key={ask.nonce} id="confirm-move" label="確認：いまの試合を動かすか" verdict="いま試合当日の画面に出ている試合です。動かすと進みがずれます。" lines={['試合当日の画面の「いまの試合」がずれます']} safeLabel="やめる（何も変えない）" dangerLabel="動かす" onYes={answerYes} onNo={answerNo} /> : null}
 
-            {unplaced.length > 0 && data.bouts.length > 0 ? <div className="rounded-xl border-2 border-slate-300 bg-slate-50 p-3">
+            {unplaced.length > 0 && data.bouts.length > 0 ? <div className="space-y-2 rounded-xl border-2 border-slate-300 bg-slate-50 p-3">
               <p className="font-bold">まだ試合に入っていない選手 {unplaced.length}人</p>
               <p className="text-[17px] font-medium">名前を押すと、空いている赤か青に入ります。</p>
-              <ul className="mt-2 flex flex-wrap gap-2">{unplaced.map((fighter) => <li key={fighter.id} className="min-w-0"><button type="button" onClick={() => placeFighter(fighter)} className={cls(btn.base, btn.outline, 'max-w-full')}>{fighter.name}</button></li>)}</ul>
+              <Soft>押すと → {spot ? '第' + (spot.index + 1) + '試合の' + sideWord(spot.side) + 'コーナーに入ります' : '新しい試合の赤コーナーに入ります'}</Soft>
+              <ul className="flex list-none flex-wrap gap-2 p-0">{unplaced.map((fighter) => <li key={fighter.id} className="min-w-0"><button type="button" onClick={() => placeFighter(fighter)} className={cls(btn.base, btn.outline, 'max-w-full')}>{fighter.name}</button></li>)}</ul>
+            </div> : null}
+            {placeNote ? <div className="space-y-2">
+              <OkLine>第{placeNote.index + 1}試合の{sideWord(placeNote.side)}に入れました</OkLine>
+              <Caution role="note">違うなら、第{placeNote.index + 1}試合の{sideWord(placeNote.side)}を選び直す。</Caution>
             </div> : null}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
               <div className="min-w-0">
-                <button id="add-bout" type="button" aria-disabled={nFighters < 2 || undefined} onClick={addBout} className={cls(btn.base, btn.outlineBig, 'w-full scroll-mt-28 sm:w-auto sm:min-w-[14rem]')}>＋ 試合を追加</button>
-                {nFighters < 2 ? <p className="mt-1 text-[17px] font-bold text-amber-950">⚠ まず選手を2人以上入れてください</p> : null}
+                <NextSlot active={here === 'add-bout'} label={marker.label}>
+                  <button id="add-bout" type="button" aria-disabled={nFighters < 2 || undefined} onClick={addBout} className={cls(btn.base, btn.outlineBig, 'w-full scroll-mt-28 sm:w-auto sm:min-w-[14rem]', nFighters < 2 && 'tos-locked', target === 'add-bout' && 'tos-target')}>＋ 試合を追加</button>
+                </NextSlot>
+                {nFighters < 2 ? <div className="mt-2"><LockReason>選手が2人以上になると押せます（いま{nFighters}人）</LockReason></div> : null}
               </div>
-              {unplaced.length >= 2 ? <button type="button" onClick={makeSuggestion} className={cls(btn.base, btn.outlineBig, 'text-balance')}>おすすめの組み合わせを自動で作る</button> : null}
+              {unplaced.length >= 2 ? <div className="min-w-0 space-y-2">
+                <Caution role="note">これは案です。使う前に、必ず1つずつ見る。</Caution>
+                <button type="button" onClick={makeSuggestion} className={cls(btn.base, btn.outlineBig, 'text-balance')}>おすすめの組み合わせを自動で作る</button>
+              </div> : null}
             </div>
             {suggestNote ? <div className="space-y-2">
-              <Notice kind={suggestNote.kind} onClose={() => setSuggestNote(null)}>{suggestNote.text}{canUndoSuggestion ? '気に入らないときは「この案を取り消す」を押します。' : ''}</Notice>
-              {canUndoSuggestion ? <button type="button" onClick={undoSuggestion} className={cls(btn.base, btn.outline)}>この案を取り消す</button> : null}
+              <Notice kind={suggestNote.kind} onClose={() => setSuggestNote(null)}>{suggestNote.text}{canUndoSuggestion ? '気に入らないときは「案を全部消す」を押します。' : ''}</Notice>
+              {suggestNote.noPartner ? <Caution role="note">相手がいません：{suggestNote.noPartner}（体重差が10kg以上になるので、案に入れていません）</Caution> : null}
+              {suggestNote.wide.length ? <div className="space-y-2">
+                <ErrorLine role="status">体重差が5kg以上の組が{suggestNote.wide.length}つあります（{suggestNote.wide.map((i) => '第' + (i + 1)).join('・')}試合）。</ErrorLine>
+                <button type="button" onClick={() => jump('bout-' + suggestNote.wide[0])} className={cls(btn.base, btn.outline)}>その試合へ</button>
+              </div> : null}
+              {canUndoSuggestion ? <div className="space-y-2">
+                <NextSlot active={here === 'review'} label={marker.label}>
+                  <button type="button" onClick={() => { setFollow(null); const first = data.bouts.findIndex((bout) => suggested.has(bout.id)); jump('bout-' + Math.max(0, first)); }} className={cls(btn.base, btn.outlineBig)}>1つ目の案を見る</button>
+                </NextSlot>
+                <button type="button" onClick={undoSuggestion} className="tos-danger-btn inline-flex items-center justify-center text-center text-lg touch-manipulation">案を全部消す（この案を取り消す）</button>
+              </div> : null}
             </div> : null}
 
             {data.bouts.length === 0
@@ -1339,7 +1689,7 @@ export default function PrivateAdmin() {
               : <>
                 <div>
                   <p className="font-bold">試合の一覧（押すと、その試合に移ります）</p>
-                  <ul className="mt-2 space-y-1">{data.bouts.map((bout, index) => {
+                  <ul className="mt-2 list-none space-y-1 p-0">{data.bouts.map((bout, index) => {
                     const red = byId.get(bout.redId), blue = byId.get(bout.blueId), kg = contractKg(red, blue);
                     return <li key={bout.id}><button type="button" onClick={() => jump('bout-' + index)} className="flex min-h-12 w-full min-w-0 items-center gap-2 rounded-lg border-2 border-slate-300 bg-white px-3 py-1 text-left text-[17px] font-medium break-words">
                       <b className="shrink-0">第{index + 1}試合</b>
@@ -1348,75 +1698,109 @@ export default function PrivateAdmin() {
                   })}</ul>
                 </div>
                 <div className="space-y-4">{data.bouts.map((bout, index) => <BoutCard key={bout.id} bout={bout} index={index} total={data.bouts.length} fighters={data.fighters} groups={groups} byId={byId} placed={placed} bouts={data.bouts}
-                  isCurrent={data.currentBout > 0 && index === data.currentBout} isSuggested={suggested.has(bout.id)} ruleCopied={ruleCopiedId === bout.id} onPatch={onPatch} onMove={onMove} onRemove={onRemove} />)}</div>
+                  isCurrent={data.currentBout > 0 && index === data.currentBout} isSuggested={suggested.has(bout.id)} ruleCopied={ruleCopiedId === bout.id}
+                  nextSide={here === 'bout' && marker.index === index ? marker.side ?? null : null} nextLabel={marker.label} acks={acks} targetId={target} onPatch={onPatch} onMove={onMove} onRemove={onRemove} onAck={onAck} onFocusSide={onFocusSide} onEditWeight={onEditWeight} />)}</div>
               </>}
           </Section>
 
           {/* ───── 4 ───── */}
           <Section id="sec-4" title="4. 保存して開く" done={done4}>
             <p className="max-w-[38em] font-medium">ここは、さいごの確認です。下のボタンで保存して、試合当日の画面を開きます。</p>
-            <ul className="grid gap-2 sm:grid-cols-2">{([
-              // 5つ目: あとでOK（なくても進める）の行。足りなくても、黄色にしない
-              ['大会の名前', titleReal, titleReal ? '✓' : 'まだ', 'field-title', false],
-              ['日にち', dateOk, dateOk ? '✓' : 'あとでOK', 'field-date', true],
-              ['選手 ' + nFighters + '人', nFighters >= 2, nFighters >= 2 ? '✓' : 'まだ', 'sec-2', false],
-              [nFighters === 0 ? '写真' : '写真 ' + withPhoto + '/' + nFighters, nFighters > 0 && withPhoto === nFighters, nFighters > 0 && withPhoto === nFighters ? '✓' : 'あとでOK', 'sec-2', true],
-              ['試合 ' + nonBlank + 'つ', nonBlank >= 1 && boutIssues.length === 0, nonBlank >= 1 && boutIssues.length === 0 ? '✓' : 'まだ', 'sec-3', false],
-              ['保存', done4, done4 ? '✓' : 'まだ', '', false],
-            ] as const).map(([label, ok, mark, target, later]) => {
-              const tone = cls('flex min-h-12 items-center justify-between gap-2 rounded-xl border-2 px-3 text-lg font-bold', ok ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : later ? 'border-slate-400 bg-slate-100 text-slate-900' : 'border-amber-500 bg-amber-50 text-amber-950');
-              return <li key={label}>{target
-                ? <a href={'#' + target} onClick={(e) => { e.preventDefault(); jump(target); }} className={tone}><span>{label}</span><span>{mark}</span></a>
-                : <div className={tone}><span>{label}</span><span>{mark}</span></div>}</li>;
+            <ul className="grid list-none gap-2 p-0 sm:grid-cols-2">{([
+              // 5つ目: あとでOK（なくても進める）の行。足りなくても、赤にしない。まだ何も試していないうちは、「まだ」も赤にしない（灰色）
+              ['大会の名前', titleReal, 'field-title', false],
+              ['日にち', dateOk, 'field-date', true],
+              ['選手 ' + nFighters + '人', nFighters >= 2, 'sec-2', false],
+              [nFighters === 0 ? '写真' : '写真 ' + withPhoto + '/' + nFighters, nFighters > 0 && withPhoto === nFighters, 'sec-2', true],
+              ['試合 ' + nonBlank + 'つ', nonBlank >= 1 && boutIssues.length === 0, 'sec-3', false],
+              ['保存', done4, '', false],
+            ] as const).map(([label, ok, goto, later]) => {
+              const red = !ok && !later && failedTry;
+              const markText = ok ? '✓' : later ? 'あとでOK' : red ? '✕ まだ' : '○ まだ';
+              const tone = cls('flex min-h-12 items-center justify-between gap-2 rounded-xl border-2 px-3 text-lg font-bold', ok ? 'border-[#166534] bg-[#f0fdf4] text-[#166534]' : red ? 'border-[#b91c1c] bg-[#fef2f2] text-[#991b1b]' : 'border-slate-400 bg-slate-100 text-slate-900');
+              return <li key={label}>{goto
+                ? <a href={'#' + goto} onClick={(e) => { e.preventDefault(); jump(goto); }} className={tone}><span>{label}</span><span>{markText}</span></a>
+                : <div className={tone}><span>{label}</span><span>{markText}</span></div>}</li>;
             })}</ul>
-            {problemCount > 0 ? <div className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3">
-              <p className="font-bold text-amber-950">⚠ 直すところ</p>
-              <ul className="mt-2 space-y-2">
-                {titleMissing ? <li className="flex flex-wrap items-center gap-2"><span className="min-w-0 flex-1">大会の名前が入っていません。</span><button type="button" onClick={() => jump('field-title')} className={cls(btn.base, btn.outline)}>名前の欄へ</button></li> : null}
+            {nFighters > 0 && withPhoto === 0 ? <Caution>写真がないと、当日の画面に顔が出ません。</Caution> : null}
+            {problemCount > 0 ? <div className="rounded-xl border-2 border-[#b91c1c] bg-[#fef2f2] p-3">
+              <p className="tos-danger "><span aria-hidden="true">✕ </span>直すところ</p>
+              <ul className="mt-2 list-none space-y-2 p-0">
+                {titleMissing ? <li className="flex flex-wrap items-center gap-2"><span className="min-w-0 flex-1">大会の名前が入っていません。</span><button type="button" onClick={() => goTarget('field-title')} className={cls(btn.base, btn.outline)}>名前の欄へ</button></li> : null}
                 {boutIssues.map((issue) => <li key={issue.index + issue.side} className="flex flex-wrap items-center gap-2"><span className="min-w-0 flex-1 break-words">{issue.text}</span><button type="button" onClick={() => jump('bout-' + issue.index + (issue.side === 'blue' ? '-blue' : '-red'))} className={cls(btn.base, btn.outline)}>第{issue.index + 1}試合へ</button></li>)}
-                {otherCore ? <li>データのどこかが正しくありません。画面を読み込み直しても直らないときは、ジムの担当者に連絡してください。</li> : null}
+                {otherCore ? <li>データのどこかが正しくありません。画面を読み込み直しても直らないときは、この大会の作り方を知っている人に聞いてください。</li> : null}
               </ul>
             </div> : null}
-            {warnCount > 0 ? <div className="flex flex-wrap items-center gap-2 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 font-bold text-amber-950">
-              <p className="min-w-0 flex-1">⚠ 気をつけたいところが{warnCount}つあります。このまま保存しても、だいじょうぶです。</p>
+            {warnCount > 0 ? <Caution><span className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1">気をつけたいところが{warnCount}つあります。このまま保存しても、だいじょうぶです。</span>
               {firstWarn >= 0 ? <button type="button" onClick={() => jump('bout-' + firstWarn)} className={cls(btn.base, btn.outline)}>見直す：第{firstWarn + 1}試合へ</button> : null}
-            </div> : null}
-            {done4 ? <div className="rounded-2xl border-2 border-emerald-700 bg-emerald-50 p-4">
-              <p className="text-2xl font-bold text-emerald-900">じゅんび OK ✓</p>
-              <p className="mt-1 max-w-[38em] font-medium">試合当日は、このパソコンで「試合当日の画面を開く」を押します。</p>
-              {data.currentBout > 0 ? <div className="mt-3">
+            </span></Caution> : null}
+            {done4 ? <div className="space-y-3 rounded-2xl border-2 border-[#166534] bg-[#f0fdf4] p-4">
+              <p className="text-2xl font-bold text-[#166534]"><span aria-hidden="true">✓ </span>じゅんび OK</p>
+              <p className="max-w-[38em] font-medium">試合当日は、このパソコンで「試合当日の画面を開く」を押します。</p>
+              {data.currentBout > 0 ? <div className="space-y-2">
+                <p className="tos-danger "><span aria-hidden="true">✕ </span>本番の途中なら押さない。</p>
                 <p className="text-[17px] font-medium">リハーサルのあとは、これを押すと、試合当日の画面が第1試合から始まります。</p>
-                <button type="button" onClick={() => setData((old) => ({ ...old, currentBout: 0 }))} className={cls(btn.base, btn.outline, 'mt-2')}>試合当日の画面を第1試合にもどす</button>
+                <button id="rewind-btn" type="button" onClick={() => setAsk({ kind: 'rewind', nonce: ++askSeq.current })} className="tos-danger-btn inline-flex items-center justify-center text-center text-lg touch-manipulation">試合当日の画面を第1試合にもどす</button>
+                {rewindBox}
               </div> : null}
+              {rewound && data.currentBout === 0 ? <OkLine>もどしました。保存すると、試合当日の画面も第1試合になります。</OkLine> : null}
             </div> : null}
+            {missingW.length > 0 && nonBlank > 0 ? <Caution role="note">体重なしの人が{missingW.length}人います。当日の画面に体重の区分が出ません。</Caution> : null}
+            {openError ? <ErrorLine role="status">{openError}</ErrorLine> : null}
             <div className="grid gap-3 sm:grid-cols-2">
-              <button type="button" aria-disabled={saveState === 'saving' || undefined} onClick={() => { void save(); }} className={cls(btn.base, btn.outlineBig)}>ここまでを保存する</button>
-              <button type="button" aria-disabled={!canOpen || undefined} onClick={() => { void openLive(); }} className={cls(btn.base, btn.outlineBig)}>試合当日の画面を開く</button>
+              <div className="space-y-1">
+                <button type="button" aria-disabled={saveState === 'saving' || undefined} onClick={() => { if (conflict) { jump('conflict-box'); return; } void save(); }} className={cls(btn.base, btn.outlineBig, 'w-full', (saveState === 'saving' || conflict) && 'tos-locked')}>ここまでを保存する</button>
+                {saveState === 'saving' ? <LockReason>保存しています。終わるまで押せません</LockReason> : conflict ? <LockReason>先に、上の「👉 次はここ」の箱に答えます</LockReason> : null}
+              </div>
+              <div className="space-y-1">
+                <button type="button" aria-disabled={!canOpen || undefined} onClick={() => { void openLive(); }} className={cls(btn.base, btn.outlineBig, 'w-full', !canOpen && 'tos-locked')}>試合当日の画面を開く</button>
+                {!canOpen ? <LockReason>まだ開けません。上の「✕ 直すところ」を直します</LockReason> : null}
+              </div>
             </div>
+            {openedNote ? <OkLine>開きました。この画面はそのまま閉じずに残します。</OkLine> : null}
             {!dateOk ? <p className="max-w-[38em] text-[17px] font-bold text-slate-900">日にちが空でも開けます。</p> : null}
-            <p className="max-w-[38em] text-[17px] font-medium">{!canOpen ? '⚠ まだ開けません。上の「次にすること」と「直すところ」を見てください。' : VIEW_WINDOW_NOTE}</p>
+            <p className="max-w-[38em] text-[17px] font-medium">{!canOpen ? '上の「次にすること」と「直すところ」を見てください。' : VIEW_WINDOW_NOTE}{canOpen ? '（新しい画面が開かない設定のときは、この画面で開きます。戻るには、画面の「戻る」ボタン（←）を押します。）' : ''}</p>
           </Section>
 
+          {emptyStart ? <>
+            {backupJump}
+            {googleBox}
+            {chooseFirst ? null : otherFold}
+          </> : null}
+
           {/* ───── コピーのファイル（別のパソコンへ移す・こわれたとき） ───── */}
-          <Fold id="backup" title={<span>コピーのファイルを作る・戻す{backupAt ? <> <BackupChip at={backupAt} stale={backupStale} /></> : <> <Chip tone="slate">別のパソコンに移すときは必要</Chip></>}</span>} open={backupOpen} onToggle={setBackupOpen} className="border-slate-300">
+          <Fold id="backup" title={<span>コピーのファイルを作る・戻す{backupAt ? <> {backupStale ? <Chip tone="amber">⚠ 前のコピーのあとで変更あり（コピー {clockText(backupAt)}）</Chip> : <Chip tone="green">✓ コピー作成ずみ {clockText(backupAt)}</Chip>}</> : <> <Chip tone="slate">別のパソコンに移すときは必要</Chip></>}</span>} open={backupOpen} onToggle={setBackupOpen} className="border-slate-300">
             <p className="max-w-[38em] font-medium">別のパソコンに移すときと、パソコンがこわれたときに使います。名簿・写真・対戦カード・書いてもらうことの設定が入ります。Googleの受付の設定は入りません。</p>
-            <p className="mt-2 max-w-[38em] text-lg font-bold">このパスワードは忘れると戻せません。紙にも書いてください。</p>
-            <div className="mt-4 max-w-md">
-              <label htmlFor="backup-password" className="text-lg font-bold">パスワード（作るときも、戻すときも、この欄を使います）</label>
-              <input id="backup-password" type={showPassword ? 'text' : 'password'} className={inputClass} value={password} placeholder="10文字以上のパスワード" autoComplete="new-password" onChange={(e) => setPassword(e.target.value)} />
-              <p className={cls('mt-1 text-[17px] font-bold', password.length >= 10 ? 'text-emerald-800' : 'text-slate-800')}>{password.length}/10文字{password.length >= 10 ? ' ✓' : ''}</p>
-              <div className="mt-2"><button type="button" onClick={() => setShowPassword((v) => !v)} aria-pressed={showPassword} className={cls(btn.base, btn.outline)}>{showPassword ? '文字をかくす' : '文字を見る'}</button></div>
-            </div>
+            <p className="tos-danger  mt-2 max-w-[38em] text-lg"><span aria-hidden="true">✕ </span>このパスワードを忘れると戻せません。紙にも書いてください。</p>
+            <NextSlot active={here === 'pw'} label={marker.label} className="mt-4 max-w-md">
+              <div className="max-w-md">
+                <label htmlFor="backup-password" className="text-lg font-bold">パスワード（作るときも、戻すときも、この欄を使います）</label>
+                <input id="backup-password" type={showPassword ? 'text' : 'password'} className={inputClass} value={password} placeholder="10文字以上のパスワード" autoComplete="new-password" onChange={(e) => { setPassword(e.target.value); setPaperDone(false); setBlockedMsg(''); setFollow((old) => old?.kind === 'pw' ? null : old); }} />
+                <Example className="mt-1">半角の英数字10文字以上</Example>
+                <p className={cls('mt-1 text-[17px] font-bold', pwNorm.length >= 10 ? 'text-[#166534]' : 'text-slate-800')}>{pwNorm.length}/10文字{pwNorm.length >= 10 ? ' ✓' : ''}</p>
+                {pwFixed ? <OkLine quiet className="mt-1">全角と空白は半角に直して使います。</OkLine> : null}
+                <div className="mt-2"><button type="button" onClick={() => setShowPassword((v) => !v)} aria-pressed={showPassword} className={cls(btn.base, btn.outline)}>{showPassword ? '文字をかくす' : '文字を見る'}</button></div>
+              </div>
+            </NextSlot>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <div className="min-w-0 rounded-xl border-2 border-slate-300 bg-slate-50 p-3">
+              <div className="min-w-0 space-y-3 rounded-xl border-2 border-slate-300 bg-slate-50 p-3">
                 <p className="text-lg font-bold">コピーを作る</p>
-                <div className="mt-2">
+                <div>
                   <label htmlFor="backup-password2" className="text-lg font-bold">同じパスワードをもう一度</label><Badge />
-                  <input id="backup-password2" type={showPassword ? 'text' : 'password'} className={inputClass} value={password2} placeholder="もう一度、同じものを入れる" autoComplete="new-password" onChange={(e) => setPassword2(e.target.value)} />
-                  <p className={cls('mt-1 text-[17px] font-bold', password2 && password2 === password ? 'text-emerald-800' : password2 ? 'text-amber-950' : 'text-slate-800')}>{password2 ? (password2 === password ? '✓ 同じです' : '⚠ パスワードが同じではありません') : '入れると、打ち間違いを防げます。入れなくても、コピーは作れます。'}</p>
+                  <input id="backup-password2" type={showPassword ? 'text' : 'password'} className={cls(inputClass, password2 && normalizePassword(password2) !== pwNorm && 'tos-input-error')} value={password2} placeholder="もう一度、同じものを入れる" autoComplete="new-password" onChange={(e) => { setPassword2(e.target.value); setBlockedMsg(''); }} />
+                  {password2 ? (normalizePassword(password2) === pwNorm ? <OkLine quiet className="mt-1">同じです</OkLine> : <ErrorLine id="pw2-error" role={null} className="mt-1">パスワードが同じではありません（上と同じものを入れる）</ErrorLine>) : <Soft className="mt-1">入れると、打ち間違いを防げます。入れなくても、コピーは作れます。</Soft>}
                 </div>
-                <button type="button" aria-disabled={!!passwordProblem || backupBusy || undefined} onClick={() => void download()} className={cls(btn.base, btn.outlineBig, 'mt-3 w-full')}>{backupBusy ? '作っています…' : 'パスワードをつけて、コピーを保存する'}</button>
-                {passwordProblem ? <p className="mt-1 text-[17px] font-bold text-amber-950">⚠ 押せません：{passwordProblem}</p> : null}
+                <Caution role="note">
+                  <label htmlFor="paper-done" className="flex min-h-12 cursor-pointer items-center gap-3 text-lg font-bold">
+                    <input id="paper-done" type="checkbox" checked={paperDone} onChange={(e) => { setPaperDone(e.target.checked); setBlockedMsg(''); }} className="h-6 w-6 shrink-0 accent-slate-900" />
+                    <span>紙に書きました</span>
+                  </label>
+                  <span className="block text-[17px] font-medium">パスワードを紙に書いたら、チェックを入れます。</span>
+                </Caution>
+                {blockedMsg ? <ErrorLine role="status">{blockedMsg}</ErrorLine> : null}
+                <button type="button" aria-disabled={!!copyLockedWhy || backupBusy || justMade || undefined} onClick={() => void download()} className={cls(btn.base, btn.outlineBig, 'w-full', (copyLockedWhy || backupBusy || justMade) && 'tos-locked')}>{backupBusy ? '作っています…' : 'パスワードをつけて、コピーを保存する'}</button>
+                {copyLockedWhy ? <LockReason>押せません：{copyLockedWhy}</LockReason> : backupBusy ? <LockReason>作っています。終わるまで押せません</LockReason> : justMade ? <LockReason>作りました。少し待ちます</LockReason> : null}
               </div>
               <div className="min-w-0 rounded-xl border-2 border-slate-300 bg-slate-50 p-3">
                 <p className="text-lg font-bold">コピーのファイルから戻す</p>
@@ -1424,16 +1808,26 @@ export default function PrivateAdmin() {
                   <li>1 上のパスワードを入れる（ファイルを作ったときのもの）</li>
                   <li>2 下の「コピーのファイルから戻す」を押して、ファイルを選ぶ</li>
                 </ol>
-                <label aria-disabled={restoreLocked || undefined} onClick={(e) => { if (restoreLocked) e.preventDefault(); }} className={cls(btn.base, btn.outlineBig, 'mt-3 w-full cursor-pointer focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700')}>
+                <label aria-disabled={restoreLocked || undefined} onClick={(e) => { if (restoreLocked) e.preventDefault(); }} className={cls(btn.base, btn.outlineBig, 'mt-3 w-full cursor-pointer focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-indigo-700', restoreLocked && 'tos-locked')}>
                   <span>コピーのファイルから戻す</span>
                   <input id="restore-file" type="file" accept=".enc" aria-disabled={restoreLocked || undefined} onClick={(e) => { if (restoreLocked) e.preventDefault(); }} className="sr-only" onChange={onPickBackup} />
                 </label>
-                {restoreLocked ? <p className="mt-1 text-[17px] font-bold text-amber-950">⚠ 押せません：先に、上のパスワードを入れてください</p> : null}
-                {ask?.kind === 'restore' ? <ConfirmBox key={ask.nonce} id="confirm-restore" label="確認：コピーのファイルから戻すか" {...restoreBoxText({ restored: ask.restored, current: data, dirty, everSaved })} yesLabel="上書きして戻す" noLabel="やめる（何も変えない）" onYes={answerYes} onNo={answerNo} /> : null}
+                {restoreLocked ? <LockReason>押せません：先に、上のパスワードを入れてください</LockReason> : null}
+                {ask?.kind === 'restore' ? <DangerConfirm key={ask.nonce} id="confirm-restore" label="確認：コピーのファイルから戻すか" {...restoreBoxText({ restored: ask.restored, current: data, dirty, everSaved })} safeLabel="やめる（何も変えない）" dangerLabel="今の内容を消して、コピーに戻す" head="消える" note={everSaved ? '下のボタンを押すまで、何も変わりません。戻したあとも、このページを開いている間は「元にもどす」で戻せます。' : undefined} onYes={answerYes} onNo={answerNo}>
+                  {oldCopyText(ask.restored.updatedAt, Date.now()) ? <Caution className="mt-2" role="note">{oldCopyText(ask.restored.updatedAt, Date.now())}。</Caution> : null}
+                </DangerConfirm> : null}
               </div>
             </div>
-            {msg && msg.area === 'backup' ? <div className="mt-4"><Notice kind={msg.kind} action={msg.tag === 'undo-restore' && dirty ? undefined : msg.action} onClose={() => setMsg(null)}>{msg.text}</Notice></div> : null}
+            {msg && msg.area === 'backup' ? <div className="mt-4 space-y-2">
+              <Notice kind={msg.kind} action={msg.tag === 'undo-restore' && dirty ? undefined : msg.action} onClose={() => setMsg(null)} extra={msg.extra}>{msg.text}</Notice>
+              {msg.tag === 'backup-made' ? <>
+                <p className="tos-danger "><span aria-hidden="true">✕ </span>パスワードは紙に。忘れると戻せません。</p>
+                <Caution role="note">ダウンロードの中のファイルを、USBメモリにも入れておく。</Caution>
+              </> : null}
+              {msg.tag === 'undo-restore' ? <p className="tos-danger "><span aria-hidden="true">✕ </span>元にもどせるのは、この画面を閉じるまで。</p> : null}
+            </div> : null}
           </Fold>
+          </div>
         </div>
       </div>
     </div>
@@ -1442,19 +1836,27 @@ export default function PrivateAdmin() {
     {/* ボタンを押した瞬間に入力欄から外れても、帯の中身が入れ替わらないよう、押す前のフォーカスを動かさない */}
     <div ref={barRef} onMouseDown={(e) => { if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }} className="fixed inset-x-0 bottom-0 z-40 w-full [overflow-wrap:anywhere] border-t-2 border-slate-400 bg-white pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(15,23,42,0.12)]">
       <div className="mx-auto max-w-6xl px-4 pt-2">
-        {msg && msg.area !== 'backup' ? <div className="pb-2 lg:pl-[16.5rem]"><div className="max-w-4xl"><Notice compact inlineClose={failShown} live={msg.area === 'save' ? 'off' : undefined} kind={msg.kind} action={failShown ? undefined : msg.action} onClose={() => setMsg(null)}>{msg.text}</Notice></div></div> : null}
+        {msg && msg.area !== 'backup' ? <div className="pb-2 lg:pl-[16.5rem]"><div className="max-w-4xl"><Notice compact inlineClose={failShown} live={msg.area === 'save' ? 'off' : undefined} kind={msg.kind} action={failShown ? undefined : msg.action} onClose={msg.kind === 'ok' && msg.area === 'save' ? undefined : () => setMsg(null)} extra={msg.extra}
+          lead={failShown ? <><span id="save-state" tabIndex={-1} aria-live="off" className="sr-only">保存失敗</span>{failStreak < 2 ? <span aria-hidden="true">失敗：</span> : null}</> : undefined}>{msg.text}</Notice></div></div> : null}
         <div className="tos-bar-grid lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-center lg:gap-6">
-          {/* 失敗のときは、状態ラインと同じ行に「コピーのファイルを作る」を置く（帯が高くならず、いつも見える） */}
+          {/* 失敗のときは、状態ライン（保存失敗）を知らせの中に入れ、「コピーのファイルを作る」を黄色の枠で1行に置く（帯が高くならず、いつも見える） */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <p id="save-state" tabIndex={-1} aria-live="off" className={cls('text-lg font-bold leading-snug', lineTone)}>{failShown ? line.short : line.text}</p>
-            {failShown && msg?.action ? <button type="button" onClick={msg.action.onClick} className={cls(btn.base, btn.outline, 'px-3')}>{msg.action.label}</button> : null}
+            {!failShown ? <p id="save-state" tabIndex={-1} aria-live="off" className={cls('text-lg font-bold leading-snug', lineTone)}>{line.text}</p> : null}
+            {failShown && msg?.action ? <NextSlot active={here === 'bar-copy'} label="" tight row style={BAR_FRAME}>
+              <button type="button" onClick={msg.action.onClick} style={{ padding: '0 8px', fontSize: '17px', minHeight: '48px' }} className={cls(btn.base, btn.primary)}>{msg.action.label}</button>
+            </NextSlot> : null}
           </div>
           <div className="mt-1 max-w-4xl lg:mt-0">
-            {!keyboardUp ? <div className="flex items-stretch gap-2">
-              <button type="button" aria-disabled={barDisabled || undefined} onClick={onBarPrimary} className={cls(btn.base, btn.primary, 'min-w-0 flex-1 text-balance text-lg [word-break:keep-all] sm:text-xl')}>{barLabel}</button>
-              {showSecondarySave ? <button type="button" onClick={() => { void save(); }} className={cls(btn.base, btn.outlineBig, 'shrink-0')}>保存する</button> : null}
-            </div> : na.kind !== 'conflict' ? <button type="button" aria-disabled={saveState === 'saving' || undefined} onClick={() => { void save(); }} className={cls(btn.base, btn.outline, 'w-full sm:w-auto')}>保存</button> : null}
-            {!keyboardUp && na.kind === 'save' && saveState === 'idle' ? <p className="tos-bar-note mt-1 text-[17px] font-medium text-slate-800">保存すると、このパソコンの中に残ります。</p> : null}
+            <NextSlot active={here === 'bar'} label={marker.label} tight style={BAR_FRAME}>
+              {here === 'bar' && na.kind === 'save' && saveState === 'idle' && dirty && !keyboardUp ? <p className="tos-danger  mb-1 text-[17px]"><span aria-hidden="true">✕ </span>保存しないと、閉じたら消えます。</p> : null}
+              {!keyboardUp ? <div className="flex items-stretch gap-2">
+                <button type="button" aria-disabled={barDisabled || undefined} onClick={onBarPrimary} style={failShown ? { minHeight: '48px' } : undefined} className={cls(btn.base, failCopyFirst ? btn.outlineBig : btn.primary, 'min-w-0 flex-1 text-balance text-lg [word-break:keep-all] sm:text-xl', lockedByRestore && 'tos-locked')}>{barLabel}</button>
+                {showSecondarySave ? <button type="button" onClick={() => { void save(); }} className={cls(btn.base, btn.outlineBig, 'shrink-0')}>保存する</button> : null}
+              </div> : na.kind !== 'conflict' ? <button type="button" aria-disabled={saveState === 'saving' || undefined} onClick={() => { void save(); }} className={cls(btn.base, btn.outline, 'w-full sm:w-auto')}>保存</button> : null}
+            </NextSlot>
+            {lockedByRestore ? <LockReason>先に、確認の箱に答えます</LockReason> : null}
+            {!keyboardUp && na.kind === 'save' && saveState === 'idle' && !lockedByRestore && here === 'bar' && !dirty ? <p className="tos-bar-note  mt-1 text-[17px] font-medium text-slate-800">保存すると、このパソコンの中に残ります。</p> : null}
+            {!keyboardUp && !barIsSave && here !== 'none' && !lockedByRestore ? <p className="tos-bar-note  mt-1 text-[17px] font-medium text-slate-800">↑ 「👉 次はここ」と書いてある所へ行きます</p> : null}
           </div>
         </div>
       </div>
@@ -1463,4 +1865,23 @@ export default function PrivateAdmin() {
   {/* 読み上げ専用（見えない）。保存の結果は、ここで1回だけ読む。見える知らせと状態ラインは読み上げない。<main> の外に置くので、画面の文字の数には入らない */}
   <span id="save-announce" aria-live="polite" aria-atomic="true" className="sr-only">{announce}</span>
   </>;
+}
+
+/** 下の帯の中の黄色の枠は、すき間を小さくする（帯が高くなりすぎないように） */
+const BAR_FRAME = { padding: '4px 6px', borderWidth: '3px', borderRadius: '12px', boxShadow: 'none' } as const;
+
+/** 1つも入れていない手入力フォームか（二度押しで同じ説明が出続けないように） */
+function isBlankFighterFormLocal(f: LocalFighter): boolean {
+  return (['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'] as const).every((key) => !f[key].trim());
+}
+
+/** 別の画面の内容を使う前の確認の箱 */
+function ConfirmOther({ ask, data, onYes, onNo }: { ask: Extract<Ask, { kind: 'other' }>; data: LocalTournament; onYes: () => void; onNo: () => void }) {
+  const text = useOtherBoxText({ mine: data, latest: ask.latest });
+  return <DangerConfirm id="confirm-other" label="確認：別の画面の内容を使うか" {...text} safeLabel="やめる（何も変えない）" dangerLabel="別の画面の内容にする（いまの入力は消える）" onYes={onYes} onNo={onNo} />;
+}
+
+/** ファイルの内容で名簿を書きかえる前の確認の箱 */
+function ConfirmBoxOverwrite({ differs, onYes, onNo }: { differs: FighterDiff[]; onYes: () => void; onNo: () => void }) {
+  return <DangerConfirm id="confirm-overwrite" label="確認：ファイルの内容で名簿を書きかえるか" {...overwriteBoxText(differs)} safeLabel="やめる（何も変えない）" dangerLabel={'ファイルの内容で書きかえる（' + differs.length + '人・もどせません）'} onYes={onYes} onNo={onNo} />;
 }

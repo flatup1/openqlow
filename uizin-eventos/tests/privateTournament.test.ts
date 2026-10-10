@@ -63,7 +63,7 @@ test('読み込み失敗・空名簿・別大会復元・進行保存失敗で�
   const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
   assert.match(admin,/setLoadError/);assert.match(admin,/!result\.fighters\.length/);assert.match(admin,/restored\.eventId !== mine\.eventId/);assert.match(admin,/setAsk\(\{ kind: 'restore', restored/);assert.match(admin,/id="confirm-restore"/);assert.ok(admin.indexOf('restored.eventId !== mine.eventId')<admin.indexOf("setAsk({ kind: 'restore'"),'別の大会かどうかは、確認より先に見る');
   const live=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
-  assert.match(live,/const saved=await writePrivateEvent\(next\);setData\(saved\)/);assert.match(live,/savingRef\.current/);
+  assert.match(live,/const saved=await writePrivateEvent\(next\);(?:curRef\.current=saved\.currentBout;)?setData\(saved\)/);assert.match(live,/savingRef\.current/);
 });
 test('再取り込みは管理番号で更新・追加し、写真・元の選手・対戦カード・試合順を消さない',()=>{
   const original=importFighters('管理番号,選手名,体重\nF1,赤,55\nF2,青,58').fighters;

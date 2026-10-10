@@ -886,9 +886,9 @@ scenario('L', 'MC questions: now-bar, pager at the top, jump to a bout, music su
   const sumText = await live.locator('#live-list-music-summary').innerText();
   const want = new Set(); v.bouts.forEach((b) => [b.redId, b.blueId].forEach((x) => { const f = v.fighters.find((y) => y.id === x); if (!safeMusicUrl(f.musicUrl)) want.add(x); }));
   check(sumText.replace(/\s+/g, ' ').includes('入場曲がまだの選手：' + want.size + '人'), t + ': 「入場曲がまだの選手：' + want.size + '人」 (saw "' + short(sumText, 80) + '")');
-  await live.getByRole('button', { name: 'その試合だけ見る' }).click();
+  await live.getByRole('button', { name: '曲がない試合だけ見る' }).click();
   const filtered = await readRows(live);
-  check(filtered.length >= 1 && filtered.every((r) => /入場曲なし|曲のリンクを確認/.test(r.text)), t + ': 「その試合だけ見る」 shows only bouts where someone has no music (' + filtered.length + ' rows)');
+  check(filtered.length >= 1 && filtered.every((r) => /入場曲なし|曲のリンクを確認/.test(r.text)), t + ': 「曲がない試合だけ見る」 shows only bouts where someone has no music (' + filtered.length + ' rows)');
   check((await pageLabelOf(live)).includes('件目'), t + ': the pager counts items while filtered (' + (await pageLabelOf(live)) + ')');
   await live.getByRole('button', { name: 'ぜんぶの試合を見る' }).click();
   check((await rowLis(live).count()) === 10, t + ': 「ぜんぶの試合を見る」 brings the normal list back');
@@ -959,7 +959,7 @@ scenario('L', 'MC questions: now-bar, pager at the top, jump to a bout, music su
   const z = await openLive(ctx, idZ, { list: false });
   const zr = await z.evaluate(() => { const p = [...document.querySelectorAll('main p')].find((x) => x.innerText.includes('対戦カードがありません')); const a = document.querySelector('main a[href^="/private/"]'); const b = a.getBoundingClientRect(); return { has: !!p, header: !!document.querySelector('header'), switcher: !!document.querySelector('[role=group][aria-label="表示のしかた"]'), aw: Math.round(b.width), ah: Math.round(b.height), label: a.innerText.trim() }; });
   const zc = await z.evaluate(`(${CONTRAST})()([...document.querySelectorAll('main p')].find((x) => x.innerText.includes('対戦カードがありません')))`);
-  check(zr.has && zr.header && zr.switcher && zr.ah >= 48 && zr.label === '準備の画面へ', t + ': 0 bouts (single view): header + switcher + message + a 48px 「準備の画面へ」 button (' + JSON.stringify(zr) + ')');
+  check(zr.has && zr.header && zr.switcher && zr.ah >= 48 && zr.label === '準備画面へ戻る', t + ': 0 bouts (single view): header + switcher + message + a 48px 「準備画面へ戻る」 button (' + JSON.stringify(zr) + ')');
   check(zc >= 4.5, t + ': 0 bouts (single view): the message is readable (contrast ' + zc.toFixed(2) + ')');
   await audit(z, 'L zero bouts ' + t, { header: true });
   await z.close();

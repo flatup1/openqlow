@@ -140,7 +140,7 @@ const addBout = async (p, red, blue) => {
   if (blue) await p.locator('#bout-' + n + '-blue').selectOption(blue);
 };
 const openBackup = async (p) => { if (!(await p.locator('#backup').evaluate((d) => d.open))) await p.locator('#backup > summary').click(); };
-const setPasswords = async (p, a, b = a) => { await openBackup(p); await p.locator('#backup-password').fill(a); await p.locator('#backup-password2').fill(b); };
+const setPasswords = async (p, a, b = a) => { await openBackup(p); await p.locator('#backup-password').fill(a); await p.locator('#backup-password2').fill(b); await p.locator('#paper-done').check(); };
 const restoreInput = (p) => p.locator('input[accept=".enc"]');
 const idbGet = (p, id) => p.evaluate((id) => new Promise((res, rej) => {
   const r = indexedDB.open('tournament-os-private-v1', 1);
@@ -709,7 +709,7 @@ scenario('G', 'cancelled choosers and confirms change nothing', async (vp) => {
   check(await askBox(page).count() === 1, 'restore asks before overwriting (a box in the page)');
   check(await boxNextTo(page, '#confirm-restore', '#restore-file') && await focusIsSafe(page), 'the restore box sits next to the restore button and focus is on the safe button');
   const msg = await askBox(page).innerText().catch(() => '');
-  check((msg.split('\n')[0] || '').includes('上書き') && msg.includes('戻したい大会') && /選手が4人から2人に減ります/.test(msg) && msg.includes('まだ保存していない変更'), 'the question says what is restored, what is lost and that unsaved changes exist: ' + short(msg, 200));
+  check((msg.split('\n')[0] || '').includes('入れかわ') && msg.includes('戻したい大会') && /選手が4人から2人に減ります/.test(msg) && msg.includes('まだ保存していない変更'), 'the question says what is restored, what is lost and that unsaved changes exist: ' + short(msg, 200));
   check(await val(page, '#field-title') === 'いまのデータ' && (await val(page, '#field-venue')) === '未保存の会場' && JSON.stringify(await idbGet(page, id)) === before, 'opening the box alone: screen and stored data untouched');
   await boxPress(page, SAFE_NO);
   await settle(500);
@@ -846,7 +846,7 @@ scenario('I', 'backup and restore round trip', async (vp) => {
     await restoreInput(B).setInputFiles({ name: 'x.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(file) });
     await askBox(B).waitFor({ timeout: 8000 });
     emptyAsk = await askBox(B).innerText();
-    await boxPress(B, '上書きして戻す');
+    await boxPress(B, '今の内容を消して、コピーに戻す');
     await waitNotice(B, '戻しました', 10000);
   });
   check(B.__dlg.log.length === 0 && emptyAsk.includes('空です'), 'restore on an empty screen still asks once (in the page) and says nothing is lost');
@@ -915,7 +915,7 @@ scenario('J', 'wrong password, corrupt, non-backup and other-event files', async
   await quiet(ctx, 'restoring the right file', async () => {
     await restoreInput(page).setInputFiles({ name: 'good.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(good) });
     await askBox(page).waitFor({ timeout: 8000 }); asks = await askBox(page).count();
-    await boxPress(page, '上書きして戻す');
+    await boxPress(page, '今の内容を消して、コピーに戻す');
     await waitNotice(page, '戻しました', 10000);
   });
   check(asks === 1 && page.__dlg.log.length === 0, 'the right file asks once (in the page) before overwriting');
@@ -943,6 +943,7 @@ scenario('N', 'new event from the chooser and resume without the URL', async (vp
   await page.locator('summary', { hasText: '大会をえらぶ' }).click();
   await page.getByText('いま開いている：前の大会').first().waitFor();
   await btn(page, '新しい大会をつくる（前回の設定を引き継ぐ）').click();
+  await btn(page, '新しい大会へ').click();
   await page.waitForURL(/event=taikai-/, { timeout: 8000 });
   await page.locator('#field-title').waitFor();
   const nid = new URL(page.url()).searchParams.get('event');
@@ -965,6 +966,7 @@ scenario('N', 'new event from the chooser and resume without the URL', async (vp
   await p2.locator('#field-venue').fill('失敗前の会場');
   await p2.locator('summary', { hasText: '大会をえらぶ' }).click();
   await btn(p2, '新しい大会をつくる（前回の設定を引き継ぐ）').click();
+  await btn(p2, '新しい大会へ').click();
   await settle(1200);
   check(p2.url().includes('event=' + id) && await val(p2, '#field-venue') === '失敗前の会場' && (await stateOf(p2)).includes('保存失敗'), 'if saving fails, 新しい大会をつくる stays put, keeps the text and says 保存失敗');
   await ctx.close();
@@ -995,7 +997,7 @@ scenario('P', 'draft vs saved vs match-day screen vs Google setup', async (vp) =
   const good = nodeBackup({ ...seed(id, { title: '戻した大会名', fighters: 2, bouts: [[0, 1]] }), updatedAt: Date.now() }, 'draft-password-1');
   await restoreInput(page).setInputFiles({ name: 'g.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(good) });
   await askBox(page).waitFor({ timeout: 8000 });
-  await boxPress(page, '上書きして戻す');
+  await boxPress(page, '今の内容を消して、コピーに戻す');
   await waitNotice(page, '戻しました', 10000);
   await live.getByRole('heading', { name: '戻した大会名' }).waitFor({ timeout: 6000 }).catch(() => {});
   check(await live.getByRole('heading', { name: '戻した大会名' }).count() === 1, 'a confirmed restore reaches the match-day screen');
@@ -1158,8 +1160,9 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   const page = await ctx.newPage();
   await page.goto(base + '/private/setup/?event=' + id);
   await page.getByText('いまここ 1 / 3').first().waitFor();
-  await audit(page, 'setup step 1 ' + vp.name);
-  await page.getByRole('button', { name: /「準備できました」と出た/ }).click();
+  // Step 1 has no filled main button when template-link.json has no valid copyUrl (no action yet); at most one is allowed.
+  { const a1 = await audit(page, 'setup step 1 ' + vp.name, { primary: null }); check(a1.primary.length <= 1, 'setup step 1 ' + vp.name + ': at most 1 emphasised primary button (saw ' + a1.primary.length + ')'); }
+  await page.getByRole('button', { name: /✓がなくても進む/ }).click();
   await page.getByText('いまここ 2 / 3').first().waitFor();
   const input = page.locator('#endpoint');
   const a2 = await audit(page, 'setup step 2 empty ' + vp.name, { primary: null });
@@ -1183,7 +1186,7 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   await ctx.setOffline(false);
   mode = 'ok';
   await page.getByRole('button', { name: 'もう一度確かめる' }).click();
-  await page.getByText('次は、シートのメニュー「Tournament OS」→「② 受付を開始」を押してください。').first().waitFor({ timeout: 8000 });
+  await page.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor({ timeout: 8000 });
   check(!(await page.getByRole('button', { name: '次へ進む' }).getAttribute('aria-disabled')), 'a good check unlocks 次へ進む');
   await audit(page, 'setup step 2 connected ' + vp.name);
   await page.getByRole('button', { name: '次へ進む' }).dblclick();
@@ -1192,12 +1195,13 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   const onStep3 = await page.getByText('いまここ 3 / 3').count() === 1;
   check(onStep3, 'double click on 次へ進む lands on step 3 (the second click must not hit something else after the screen changes)');
   if (!onStep3) { await page.getByRole('button', { name: '次へ進む' }).click(); await page.getByText('いまここ 3 / 3').first().waitFor(); }
-  await audit(page, 'setup step 3 ' + vp.name);
+  // Step 3: when the next action is a Google-sheet action, 「もう一度確かめる」 is an outline button (0 filled); otherwise exactly 1.
+  { const a3 = await audit(page, 'setup step 3 ' + vp.name, { primary: null }); check(a3.primary.length <= 1, 'setup step 3 ' + vp.name + ': at most 1 emphasised primary button (saw ' + a3.primary.length + ')'); }
   {
     const c1 = await newCtx(vp.mobile, { allowed: [ENDPOINT] }); c1.__ext = ctx.__ext;
     const q = await c1.newPage();
     await q.goto(base + '/private/setup/?event=' + id + '-dbl'); await q.getByText('いまここ 1 / 3').first().waitFor();
-    await q.getByRole('button', { name: /「準備できました」と出た/ }).dblclick();
+    await q.getByRole('button', { name: /✓がなくても進む/ }).dblclick();
     await settle(600);
     check(await q.getByText('いまここ 2 / 3').count() === 1, 'double click on the step-1 button lands on step 2, not back on step 1');
     await c1.close();
@@ -1216,7 +1220,7 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   await p2.goto(base + '/private/setup/?event=' + id + '-ls');
   await p2.getByText('いまここ 1 / 3').first().waitFor();
   check(await p2.getByText('この画面の進みぐあいを、覚えておけません').count() === 1, 'when storage is refused, the screen says progress cannot be remembered');
-  await p2.getByRole('button', { name: /「準備できました」と出た/ }).click();
+  await p2.getByRole('button', { name: /✓がなくても進む/ }).click();
   await p2.locator('#endpoint').fill(ENDPOINT);
   await p2.waitForTimeout(900);
   check(await p2.locator('#endpoint').inputValue() === ENDPOINT, 'typed URL stays on screen when storage is refused');
@@ -1227,7 +1231,7 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   const p3 = await ctx3.newPage();
   await p3.goto(base + '/private/setup/?event=' + id + '-kb'); await p3.getByText('いまここ 1 / 3').first().waitFor();
   const log = [];
-  check(await tabUntil(p3, { text: '「準備できました」と出た' }, 80, log), 'Tab reaches the step-1 button');
+  check(await tabUntil(p3, { text: '✓がなくても進む' }, 80, log), 'Tab reaches the step-1 button');
   await p3.keyboard.press('Enter');
   await p3.getByText('いまここ 2 / 3').first().waitFor();
   // step 2 puts the cursor in the URL box by itself; step back once so Tab still has to reach it by keyboard
@@ -1235,7 +1239,7 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   if (autoFocused) { log.push(await p3.evaluate(RING)); await p3.keyboard.press('Shift+Tab'); }
   check(await tabUntil(p3, { sel: '#endpoint' }, 80, log), 'Tab reaches the URL box' + (autoFocused ? ' (the cursor was already put there; went back one stop and Tab came back)' : ''));
   await p3.keyboard.insertText(ENDPOINT);
-  await p3.getByText('次は、シートのメニュー「Tournament OS」→「② 受付を開始」を押してください。').first().waitFor({ timeout: 8000 });
+  await p3.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor({ timeout: 8000 });
   check(await tabUntil(p3, { text: '次へ進む' }, 80, log), 'Tab reaches 次へ進む');
   await p3.keyboard.press('Enter');
   await p3.getByText('いまここ 3 / 3').first().waitFor();

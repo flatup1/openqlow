@@ -104,6 +104,7 @@ try {
   /* ───── コピーのファイル: 作る / 戻す ───── */
   await openBackup();
   await page.locator('#backup-password').fill(PASSWORD);
+  await page.locator('#paper-done').check(); // 「紙に書きました」: パスワードを変えると外れる
   const makeCopy = page.getByRole('button', { name: 'パスワードをつけて、コピーを保存する', exact: true });
   // 2つ目の欄は「なくてもOK」: 空なら、そのまま作れる。入っていて、1つ目とちがうときだけ止まる
   check(await makeCopy.getAttribute('aria-disabled') !== 'true', 'The copy button is usable while the second password is empty');

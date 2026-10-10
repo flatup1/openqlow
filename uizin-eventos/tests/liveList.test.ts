@@ -4,6 +4,7 @@ import type { LocalBout, LocalFighter } from '../core/privateTournament.ts';
 import {
   EMPTY_LIST_MESSAGE, MISSING_FIGHTER, NO_CONTRACT, buildPageRows, buildRow, clampPage, musicLabel, musicState, nowModel, pageButtonText, pageCount, pageJumpList, pageLabel, pageOfBout, pageRange, pageRangeText, pagerState,
   parseBoutNumber, parseViewParam, summarizeMusic, totalLabel, withViewParam,
+  boutNumberProblem, filterNote, isRepeatPress, jumpDoneText, moveNotice, nextHint, openWarning, saveFailNotice, undoSecondsLeft,
 } from '../app/private/live/listLogic.ts';
 
 const fighter = (id: string, over: Partial<LocalFighter> = {}): LocalFighter => ({ id, gym: 'テストジム', name: '架空' + id, grade: '', age: '', height: '170', weight: '60', record: '', comment: '', musicUrl: '', photoDataUrl: '', ...over });
@@ -260,4 +261,75 @@ test('parseBoutNumber: 「第 __ 試合へ」。半角・全角の数字だけ�
   assert.equal(parseBoutNumber('-3', 35), null);
   assert.equal(parseBoutNumber('3.5', 35), null);
   assert.equal(parseBoutNumber('1', 0), null);
+});
+
+test('parseBoutNumber: 「12番」「12号」「12試合目」「12。」「１２，」も通す。小数・マイナス・大きすぎは通さない', () => {
+  for (const text of ['12番', '12号', '12試合目', '第12番目', '12。', '12.', '１２，', ' １２ ', '12、']) assert.equal(parseBoutNumber(text, 35), 11, text);
+  for (const text of ['3.5', '３．５', '-3', '1e1', '12人', '123456', '十二']) assert.equal(parseBoutNumber(text, 35), null, text);
+});
+
+test('boutNumberProblem: 原因別の短い言葉。どれも「1から35までの数字」を含む。入れられる入力は null', () => {
+  assert.equal(boutNumberProblem('12', 35), null);
+  assert.equal(boutNumberProblem('12番', 35), null);
+  assert.equal(boutNumberProblem('', 35)?.kind, 'empty');
+  assert.equal(boutNumberProblem('abc', 35)?.kind, 'text');
+  assert.equal(boutNumberProblem('0', 35)?.kind, 'zero');
+  assert.equal(boutNumberProblem('99', 35)?.kind, 'big');
+  assert.equal(boutNumberProblem('9999999', 35)?.kind, 'big');
+  for (const text of ['', 'abc', '0', '99']) assert.ok(boutNumberProblem(text, 35)!.message.includes('1から35までの数字'), text);
+  assert.match(boutNumberProblem('99', 35)!.message, /35試合までです（入れた数字は99）/);
+});
+
+test('jumpDoneText: 見るだけで、いまの試合は変わらないと書く', () => {
+  const text = jumpDoneText(22, 2, 7);
+  assert.ok(text.includes('第23試合のところへ来ました（3ページ目）'));
+  assert.ok(text.includes('見るだけ') && text.includes('第8試合 のまま'));
+});
+
+test('moveNotice: 動かした直後の言葉と、もどす／すすむボタンの名前', () => {
+  assert.deepEqual(moveNotice('next', 6, 7), { text: '第7試合 → 第8試合に進みました', undoLabel: '第7試合にもどす' });
+  assert.deepEqual(moveNotice('prev', 6, 5), { text: '第6試合にもどりました', undoLabel: '第7試合にすすむ' });
+  assert.equal(moveNotice('list', 3, 5).undoLabel, '第4試合にもどす');
+  assert.match(moveNotice('list', 3, 5).text, /^第6試合に変えました。まちがえたら右のボタン/);
+  for (const via of ['next', 'list'] as const) assert.match(moveNotice(via, 1, 2).undoLabel, /^第\d+試合にもどす$/);
+});
+
+test('undoSecondsLeft: 10秒は大きい箱、そのあとは0（小さい1行）', () => {
+  assert.equal(undoSecondsLeft(1000, 1000), 10);
+  assert.equal(undoSecondsLeft(1000, 4500), 7);
+  assert.equal(undoSecondsLeft(1000, 11000), 0);
+  assert.equal(undoSecondsLeft(5000, 1000), 10);
+});
+
+test('isRepeatPress: 同じ向きのボタンが0.45秒以内に続いたときだけ（ダブルタップ）', () => {
+  assert.equal(isRepeatPress(null, 'next', 1000), false);
+  assert.equal(isRepeatPress({ dir: 'next', at: 1000 }, 'next', 1200), true);
+  assert.equal(isRepeatPress({ dir: 'next', at: 1000 }, 'next', 1450), false);
+  assert.equal(isRepeatPress({ dir: 'next', at: 1000 }, 'prev', 1100), false);
+});
+
+test('saveFailNotice: 保存できなかった／試合は進めていません、と、次に押すもの。どれも写真のことを2行目以降に書く', () => {
+  const n = saveFailNotice('next', 2);
+  assert.ok(n.text.startsWith('失敗：') && n.text.includes('保存できなかった') && n.text.includes('試合は進めていません'));
+  assert.ok(n.more.includes('まだ第3試合のままです') && n.more.includes('次の試合 →'));
+  assert.ok(n.tip.includes('写真'));
+  assert.ok(saveFailNotice('prev', 2).more.includes('← 前の試合'));
+  assert.ok(saveFailNotice('list', 2).text.includes('この行は開けませんでした'));
+  assert.ok(saveFailNotice('undo', 2).text.includes('保存できなかった'));
+});
+
+test('filterNote / openWarning / nextHint', () => {
+  assert.equal(filterNote(12, 120), '一部の試合だけ表示中です（120試合中 12試合）。');
+  assert.equal(openWarning(5), '押すと、いまの試合が 第6試合 に変わります');
+  assert.equal(nextHint(7, 35), '次は 第9試合');
+  assert.equal(nextHint(34, 35), '');
+});
+
+test('buildRow: 赤と青が同じ選手・契約未入力の印', () => {
+  const byId = new Map([fighter('r', { weight: '' })].map((f) => [f.id, f]));
+  const same = buildRow(bout(0, { redId: 'r', blueId: 'r' }), 0, byId, true, 0);
+  assert.equal(same.sameFighter, true);
+  assert.equal(same.noContract, true);
+  assert.equal(buildRow(bout(0, { redId: '', blueId: '' }), 0, byId, true, 0).sameFighter, false);
+  assert.equal(buildRow(bout(0, { redId: 'r', blueId: 'x', className: 'ライト' }), 0, byId, true, 0).noContract, false);
 });
