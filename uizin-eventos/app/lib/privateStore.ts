@@ -139,3 +139,28 @@ export async function photoToDataUrl(file: File): Promise<string> {
   if (!dataUrl.startsWith('data:image/jpeg;base64,') || dataUrl.length > 1_800_100) throw new Error('写真を小さくできませんでした。別の写真を選んでください。');
   return dataUrl;
 }
+
+export type PrivateEventSummary = { eventId: string; title: string; date: string; updatedAt: number; fighters: number; bouts: number };
+
+/**
+ * このパソコンに保存してある大会の一覧（新しい順、10件まで）。読むだけで、何も書かない。
+ * 写真は持たず、人数と試合数だけに潰す。
+ */
+export async function listPrivateEvents(): Promise<PrivateEventSummary[]> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const found: PrivateEventSummary[] = [];
+    const transaction = db.transaction(STORE, 'readonly');
+    const request = transaction.objectStore(STORE).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const value: unknown = cursor.value;
+      if (isLocalTournament(value)) found.push({ eventId: value.eventId, title: value.title, date: value.date, updatedAt: value.updatedAt, fighters: value.fighters.length, bouts: value.bouts.length });
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => { db.close(); resolve(found.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10)); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('保存してある大会を読めませんでした。')); };
+  });
+}
