@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UIZIN 受付スタッフ用・5ステップ</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Meiryo",
+                 "Noto Sans JP", "IPAPGothic", "IPAGothic", sans-serif;
+    color: #000; background: #eee;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .sheet {
+    width: 210mm; height: 297mm; padding: 9mm 11mm;
+    margin: 0 auto; background: #fff; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .head { display: flex; align-items: flex-end; justify-content: space-between;
+          border-bottom: 2.4px solid #000; padding-bottom: 2mm; flex: 0 0 auto; }
+  .brand { font-size: 10.5pt; font-weight: 700; letter-spacing: .2em; }
+  .doc-title { font-size: 16pt; font-weight: 700; letter-spacing: .06em; margin-top: .6mm; }
+  .head-right { font-size: 8pt; text-align: right; line-height: 1.6; white-space: nowrap; }
+  .head-right .big { font-size: 10pt; font-weight: 700; }
+  .fillbox { display: inline-block; min-width: 26mm; border-bottom: 1px solid #555; }
+  .sec-title { font-size: 9.6pt; font-weight: 700; background: #000; color: #fff;
+               padding: .9mm 2.4mm; letter-spacing: .05em; }
+  .sec-title .sub { font-weight: 400; font-size: 7.8pt; letter-spacing: 0; }
+  .sec-body { border: 1px solid #000; border-top: none; padding: 2mm 2.6mm 1.2mm; }
+  .chk { list-style: none; }
+  .chk li { display: flex; align-items: flex-start; gap: 2mm; margin-bottom: 1.3mm;
+            font-size: 8.8pt; line-height: 1.35; }
+  .chk li::before { content: ""; flex: 0 0 auto; width: 3.4mm; height: 3.4mm;
+                    border: 1.3px solid #000; margin-top: .4mm; }
+  .chk.plain li::before { display: none; }
+  @media print { body { background: #fff; } .sheet { margin: 0; box-shadow: none; page-break-after: always; } .sheet:last-child { page-break-after: auto; } }
+  @media screen { .sheet { box-shadow: 0 2px 14px rgba(0,0,0,.25); margin: 7mm auto; } }
+
+    
+  .ptable { display: flex; border: 1.6px solid #000; }
+  .pcell { flex: 1; border-left: 1px solid #000; text-align: center; padding: 1mm .5mm; }
+  .pcell:first-child { border-left: none; }
+  .pcell .pd { font-size: 8.4pt; font-weight: 700; }
+  .pcell .pr { font-size: 8.6pt; font-weight: 700; margin-top: .3mm; }
+
+    .sheet { font-size: 10pt; }
+    .steps { margin-top: 3mm; flex: 0 0 auto; }
+    .box { flex: 0 0 auto; }
+    .three { flex: 0 0 auto; }
+    .step { display: flex; align-items: stretch; border: 2px solid #000; margin-bottom: 2.6mm; }
+    .step .n { flex: 0 0 15mm; background: #000; color: #fff; font-size: 20pt; font-weight: 700;
+               display: flex; align-items: center; justify-content: center; }
+    .step .c { flex: 1; padding: 2mm 3mm; }
+    .step .t { font-size: 13pt; font-weight: 700; line-height: 1.25; }
+    .step .d { font-size: 9.4pt; line-height: 1.45; margin-top: .8mm; }
+    .step .d b { background: #000; color: #fff; padding: 0 1mm; }
+    .box { border: 2px solid #000; padding: 2mm 3mm; margin-top: 2.4mm; }
+    .box .t { font-size: 11pt; font-weight: 700; margin-bottom: 1.2mm; }
+    .box ul { list-style: none; }
+    .box li { font-size: 9.4pt; line-height: 1.5; padding-left: 4.5mm; position: relative; }
+    .box li::before { content: "▶"; position: absolute; left: 0; font-size: 7pt; top: .8mm; }
+    .three { display: flex; gap: 2.5mm; margin-top: 2.4mm; }
+    .three div { flex: 1; border: 1.6px solid #000; padding: 1.6mm 2mm; font-size: 8.8pt; line-height: 1.4; }
+    .memo { flex: 0 0 auto; height: 56mm; border: 1.6px solid #000; margin-top: 2.4mm; padding: 1.6mm 2.5mm 1.6mm; display: flex; flex-direction: column; }
+    .memo .t { font-size: 10pt; font-weight: 700; }
+    .memo .lines { flex: 1 1 auto; margin-top: 1.4mm; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 7.4mm, #999 7.4mm, #999 7.5mm); }
+    .three b { display: block; font-size: 10.5pt; }
+    .foot { margin-top: auto; flex: 0 0 auto; padding-top: 1.6mm; border-top: 1px solid #999; font-size: 7.8pt; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div class="sheet">
+  <div class="head">
+    <div>
+      <div class="brand">UIZIN</div>
+      <div class="doc-title">受付スタッフ用・5ステップ</div>
+    </div>
+    <div class="head-right"><div class="big">2026年9月23日</div><div>この順番で進めてください</div></div>
+  </div>
+
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div class="c"><div class="t">名前を確認</div><div class="d">選手名＋<b>所属ジム</b>を確認。同姓同名・兄弟姉妹があるため、名前だけで判断しない。</div></div></div><div class="step"><div class="n">2</div><div class="c"><div class="t">参加費の精算を確認</div><div class="d">未精算の選手は<b>先に精算</b>。精算が終わるまでメディカル・計量へ進めない。未精算者リストは主催者が用意。</div></div></div><div class="step"><div class="n">3</div><div class="c"><div class="t">書類を確認して受け取る</div><div class="d">メディカルチェック／参加誓約／保護者署名の3つ。<b>未成年は保護者署名がないと出場不可</b>。声かけは「体調をご確認いただいて、内容を読んで保護者の方のご署名をお願いします」でOK。</div></div></div><div class="step"><div class="n">4</div><div class="c"><div class="t">計量</div><div class="d"><b>書類の提出と引き換えに計量</b>。着衣計量。契約体重は<b>最終対戦カードの数値</b>を見る（申込時の申告体重ではない）。</div></div></div><div class="step"><div class="n">5</div><div class="c"><div class="t">✓ と シール</div><div class="d">計量チェックリストに<b>✓</b>を入れる → <b>青シール「あお○番」</b>を渡す。番号はメディカル用紙にも記入。</div></div></div>
+  </div>
+
+  <div class="box">
+    <div class="t">計量オーバーの対応</div>
+    <div class="ptable"><div class="pcell"><div class="pd">＋500g以内</div><div class="pr">OK・減点なし</div></div><div class="pcell"><div class="pd">＋501g〜999g</div><div class="pr">1点減点</div></div><div class="pcell"><div class="pd">＋1.0kg〜1.999kg</div><div class="pr">2点減点</div></div><div class="pcell"><div class="pd">＋2kg以上</div><div class="pr">要相談</div></div></div>
+    <ul style="margin-top:1.4mm">
+      <li><b>＋500g以内は減点なし。</b>体重オーバー扱いにしない（着衣計量の許容範囲）。</li>
+      <li>減点1（＋501g〜999g）＝<b>黄色シール</b>。減点2の識別方法は主催者確認中。</li>
+      <li><b>＋2kg以上は失格ではなく「要相談」。</b>主催者・責任者の判断を待つ。</li>
+    </ul>
+  </div>
+
+  <div class="box">
+    <div class="t">スタッフだけで決めないこと（→ 主催者・責任者・レフェリーへ確認）</div>
+    <ul>
+      <li>500g以内か迷う／減点かどうか迷う／＋2kg以上だった</li>
+      <li>発熱・強い体調不良・大きなケガ・試合に支障がある痛み・その他気になる状態</li>
+      <li>「大丈夫そうだからOK」と自己判断しない。<b>安全を最優先。</b></li>
+    </ul>
+  </div>
+
+  <div class="memo">
+    <div class="t">メモ（未精算・保護者不在・確認待ちの選手など）</div>
+    <div class="lines"></div>
+  </div>
+
+  <div class="three">
+    <div><b>支払い済み</b>参加費を払った</div>
+    <div><b>受付済み</b>必要書類の確認が終わった</div>
+    <div><b>計量済み</b>体重確認が終わった</div>
+  </div>
+
+  <div class="foot">
+    <b>この3つは同じ意味ではありません。</b>「支払い済みだから計量も終わっている」とは判断しないでください。<br>
+    計量済みと言えるのは、精算確認 → 書類提出 → 計量実施 → 減点の確認 → 計量表に✓ まで終わった時点です。その後にシールを使います。
+  </div>
+</div>
+</body>
+</html>
