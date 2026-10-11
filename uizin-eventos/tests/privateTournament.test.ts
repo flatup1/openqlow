@@ -64,7 +64,7 @@ test('読み込み失敗・空名簿・別大会復元・進行保存失敗で�
   const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
   assert.match(admin,/setLoadError/);assert.match(admin,/!result\.fighters\.length/);assert.match(admin,/restored\.eventId !== mine\.eventId/);assert.match(admin,/setAsk\(\{ kind: 'restore', restored/);assert.match(admin,/id="confirm-restore"/);assert.ok(admin.indexOf('restored.eventId !== mine.eventId')<admin.indexOf("setAsk({ kind: 'restore'"),'別の大会かどうかは、確認より先に見る');
   const live=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
-  assert.match(live,/const saved=await writePrivateEvent\(next\);setData\(saved\)/);assert.match(live,/savingRef\.current/);
+  assert.match(live,/const saved=await writePrivateEvent\(next\);(?:curRef\.current=saved\.currentBout;)?setData\(saved\)/);assert.match(live,/savingRef\.current/);
 });
 test('再取り込みは管理番号で更新・追加し、写真・元の選手・対戦カード・試合順を消さない',()=>{
   const original=importFighters('管理番号,選手名,体重\nF1,赤,55\nF2,青,58').fighters;
@@ -286,4 +286,20 @@ test('クラス: 申込ページ用のURLは、クラスなしなら今までと
   assert.equal(classesOf(oldHash + '&cls=on&cuN=Bクラス'), undefined, '名前が同じなら、クラスの設定ごと捨てる');
   assert.equal('classes' in publicEntryConfig(oldHash + '&cls=on&cuN=Bクラス'), false);
   assert.equal(publicEntryConfig(oldHash + '&cls=on&cuN=Bクラス').title, 't');
+});
+
+test('クラス: 準備の画面は、クラスを黄・赤の言葉で出す（札には言葉、ちがいは赤で⚠、止めない）', () => {
+  const cards = readFileSync(new URL('../app/private/cards.tsx', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../app/private/page.tsx', import.meta.url), 'utf8');
+  assert.match(cards, /boutClassWarning\(red, blue\)/);
+  assert.match(cards, /<ErrorLine role="status" mark="⚠ ">\{classWarn\}<\/ErrorLine>/, '赤い箱に ⚠ と言葉');
+  assert.match(cards, /クラス：\{f\.fighterClass\}/, '選手の札にクラスの言葉');
+  assert.match(cards, /\$\{f\.name\}\$\{f\.fighterClass \? '（' \+ f\.fighterClass \+ '）' : ''\}/, '選ぶ欄は「名前（Aクラス）」');
+  assert.match(cards, /id=\{classId\}/);
+  assert.match(page, /クラス：\{fighter\.fighterClass\}/, '名簿の札にクラスの言葉');
+  assert.match(page, /⚠クラスちがい/, '試合の一覧にも言葉');
+  assert.match(page, /classChoices\(data\.fighters, classOptIn\)/, 'クラスを使わない大会には欄を出さない');
+  assert.match(page, /tidyClass\(result\.fighter\)/);
+  assert.match(page, /tidyClass\(\{ \.\.\.result\.fighter/);
+  assert.ok(!/classWarn[^\n]*disabled|classWarn[^\n]*aria-disabled/.test(cards), 'クラスのちがいで、ボタンを止めない');
 });

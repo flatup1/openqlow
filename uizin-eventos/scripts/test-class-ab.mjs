@@ -53,7 +53,9 @@ const styleOf = (loc) => loc.evaluate((el) => {
   for (const l of layers.reverse()) bg = [0, 1, 2].map((i) => Math.round(l[i] * l[3] + bg[i] * (1 - l[3])));
   return { fg: conv(cs.color).slice(0, 3), bg, border: conv(cs.borderTopColor).slice(0, 3), borderW: parseFloat(cs.borderTopWidth), size: parseFloat(cs.fontSize), weight: parseInt(cs.fontWeight, 10) };
 });
-const isYellowish = ([r, g, b]) => r > 200 && g > 150 && b < 120 && r >= g && g > b + 40;
+const hueOf = ([r, g, b]) => { const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (d === 0) return -1; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
+/** yellow family: hue 38-62deg and clearly coloured (the app's cautions are pale yellow #fefce8 with a dark-yellow #a16207 border, or solid yellow #fef08a) */
+const isYellowish = (rgb) => { const h = hueOf(rgb); return h >= 38 && h <= 62 && Math.max(...rgb) - Math.min(...rgb) >= 20; };
 const isReddish = ([r, g, b]) => r > 150 && r > g + 60 && r > b + 60;
 const isDark = (rgb) => lum(rgb) < 0.2;
 
@@ -109,8 +111,12 @@ async function newCtx(mobile) {
   });
   return ctx;
 }
-const noOverflow = (p) => p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1);
-const widest = (p) => p.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+/* The designed width, NOT window.innerWidth: a phone browser widens its layout viewport when something overflows, which would hide the very bug. */
+let curW = 1280;
+const noOverflow = (p) => p.evaluate((W) => document.documentElement.scrollWidth <= W + 1 && document.body.scrollWidth <= W + 1, curW);
+const widest = (p) => p.evaluate((W) => [document.documentElement.scrollWidth, W], curW);
+const wideOnes = (p) => p.evaluate((W) => [...document.querySelectorAll('body *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > W + 1; }).slice(0, 4).map((e) => e.tagName.toLowerCase() + ' "' + (e.textContent || '').trim().slice(0, 24) + '" right=' + Math.round(e.getBoundingClientRect().right)), curW);
+const RESTORE_YES = '今の内容を消して、コピーに戻す';
 const DB_NAME = 'tournament-os-private-v1';
 const idbGet = (p, id) => p.evaluate(([db, id]) => new Promise((res, rej) => {
   const r = indexedDB.open(db, 1);
@@ -148,17 +154,22 @@ const btn = (p, name) => p.getByRole('button', { name, exact: true });
 const boutCount = (p) => p.locator('article[id^="bout-"]').count();
 const addBout = async (p, red, blue) => {
   const n = await boutCount(p);
-  await btn(p, '＋ 試合を追加').click();
+  /* If the page is so wide that Playwright cannot scroll to the button, the overflow check has already recorded that bug; press the button through the DOM so the rest still runs. */
+  await btn(p, '＋ 試合を追加').click({ timeout: 6000 }).catch(async () => { note('add-bout could not be clicked normally (page too wide?); pressing it through the DOM'); await p.evaluate(() => document.getElementById('add-bout').click()); });
   await p.locator('#bout-' + n + '-red').waitFor();
   if (red) await p.locator('#bout-' + n + '-red').selectOption(red);
   if (blue) await p.locator('#bout-' + n + '-blue').selectOption(blue);
   return n;
 };
+const pressSave = async (p) => {
+  const b = p.getByRole('button', { name: /^(保存する|もう一度 保存する)$/ });
+  await b.click({ timeout: 6000 }).catch(async () => { note('save could not be clicked normally (page too wide?); pressing it through the DOM'); await b.evaluate((el) => el.click()); });
+};
 const bodyText = (p) => p.evaluate(() => document.body.innerText);
 const waitNotice = (p, text, t = 10000) => p.waitForFunction((w) => [...document.querySelectorAll('[role=status],[role=alert]')].some((n) => n.innerText.includes(w)), text, { timeout: t });
 
 /* ───────────────────────── apply-form helpers ───────────────────────── */
-const baseCfg = { endpoint: ENDPOINT, eventId: 'class-ab', title: '架空クラス大会', organizer: '', date: '', venue: '', venueUrl: '', deadline: '', contact: '', music: false, grade: 'off', age: 'off', comment: 'off', protocol: '3', mode: 'live' };
+const baseCfg = { endpoint: ENDPOINT, eventId: 'class-ab', title: '架空テスト大会', organizer: '', date: '', venue: '', venueUrl: '', deadline: '', contact: '', music: false, grade: 'off', age: 'off', comment: 'off', protocol: '3', mode: 'live' };
 const hashWith = (classes, extra = {}) => publicEntryHash({ ...baseCfg, ...extra, ...(classes ? { classes } : {}) });
 const hashOn = () => hashWith(DEFAULT_CLASS_SETTINGS);
 const CLS = (p) => p.locator('#f-fighterClass');
@@ -188,7 +199,9 @@ async function send(page, ctx) {
   return ctx.__posts.length - before;
 }
 /** the visible class notes inside the class box */
-const classNotes = (p) => CLS(p).evaluate((fs) => [...fs.querySelectorAll('p[role=status]')].map((n) => n.innerText.trim()));
+/** the visible 👉 次はここ markers (there must be exactly one per state) */
+const nextMarks = (p) => p.evaluate(() => [...document.querySelectorAll('[data-tos-next]')].map((e) => (e.querySelector('.tos-next-badge')?.textContent || '').trim()));
+const classNotes = (p) => CLS(p).evaluate((fs) => [...fs.querySelectorAll('[role=status]')].map((n) => n.innerText.trim()));
 
 /* ───────────────────────── scenarios ───────────────────────── */
 const SCENARIOS = [];
@@ -219,6 +232,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     check(/ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい/.test(await box.innerText()), 'A1 one-attack is explained in plain words');
     check(/3勝以上/.test(await box.innerText()) && /2勝以下/.test(await box.innerText()), 'A1 the words 3勝以上 and 2勝以下 are shown');
     check(await noOverflow(page), 'A1 no horizontal overflow (' + (await widest(page)).join('/') + ')');
+    check((await nextMarks(page)).length === 1, 'A1 exactly ONE 👉 次はここ at the start (' + (await nextMarks(page)).join(' | ') + ')');
     // the rule/condition sizes: >= 17px is the owner brief for this feature
     const small = await box.evaluate((fs) => {
       const out = [];
@@ -234,9 +248,13 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     const ctx = await newCtx(vp.mobile);
     const page = await openApply(ctx, hashOn());
     await fillAll(page, '初出場');
+    await settle(200);
+    const nm0 = await nextMarks(page);
+    check(nm0.length === 1 && /クラスを選ぶ/.test(nm0[0] ?? ''), 'A2 with everything else filled, the ONE 👉 次はここ points at the class (' + nm0.join(' | ') + ')');
     await reviewBtn(page).click();
     await settle(400);
     check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'A2 no review screen without a class');
+    check((await nextMarks(page)).length === 1, 'A2 after the failed press there is still exactly ONE 👉 次はここ (' + (await nextMarks(page)).join(' | ') + ')');
     const err = CLS(page).locator('#f-fighterClass-err');
     check((await err.count()) === 1 && (await err.innerText()).includes('クラスを選んでください'), 'A2 red message inside the class box says クラスを選んでください (' + short(await err.allInnerTexts(), 100) + ')');
     if (await err.count()) {
@@ -257,6 +275,8 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     await settle(200);
     check((await CLS(page).locator('#f-fighterClass-err').count()) === 0, 'A2 the red message goes away once a class is chosen');
     check((await CLS(page).innerText()).includes('✓ えらびました'), 'A2 a visible ✓ shows the choice was taken');
+    const nm1 = await nextMarks(page);
+    check(nm1.length === 1 && !/クラス/.test(nm1[0] ?? ''), 'A2 after choosing, the ONE 👉 次はここ has moved on from the class (' + nm1.join(' | ') + ')');
     check(await noOverflow(page), 'A2 no overflow');
     await ctx.close();
   }
@@ -268,6 +288,8 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     const CASES = [
       ['初出場', 'B'], ['初試合', 'B'], ['0勝', 'B'], ['2勝1敗', 'B'], ['1勝3敗', 'B'], ['３戦２勝', 'B'], ['3戦2勝', 'B'], ['３戦０勝', 'B'], ['10戦2勝8敗', 'B'], ['２勝１敗', 'B'], ['二勝', 'B'], ['0勝0敗', 'B'], ['未経験', 'B'],
       ['3勝0敗', 'A'], ['3-0', 'A'], ['三勝', 'A'], ['4勝', 'A'], ['5勝2敗', 'A'], ['３勝０敗', 'A'], ['10戦3勝7敗', 'A'], ['3勝2敗1分', 'A'], ['十勝', 'A'], ['20勝', 'A'], ['5-2', 'A'], ['3 勝', 'A'],
+      ['3W2L', 'A'], ['2w1l', 'B'], ['0-3', 'B'], ['3-2-1', 'A'], ['5戦3勝2敗', 'A'], ['プロ3勝', 'A'], ['アマチュア2勝', 'B'], ['2勝（1KO）', 'B'], ['3勝(2KO)', 'A'], ['１０戦４勝６敗', 'A'], ['九勝', 'A'], ['二十勝', 'A'], ['3勝-1敗', 'A'], ['2023年出場、2勝', 'B'], ['2戦0勝2敗', 'B'], ['3win', 'A'],
+      ['2024-03-01', null], ['100勝', null], ['2勝3勝', null], ['勝率100%', null], ['3 weeks', null], ['2勝か3勝', null],
       ['', null], ['   ', null], ['アマチュア3戦', null], ['2勝か3勝', null], ['3勝と2勝', null], ['たくさん', null], ['?', null],
     ];
     for (const [text, want] of CASES) {
@@ -291,12 +313,12 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     check(!ym || /Bクラス/.test(ym), 'A3 勝ち負けなし never suggests the upper class');
     // look of the yellow suggestion
     await rec.fill('2勝1敗'); await settle(80);
-    const yel = CLS(page).locator('p[role=status]', { hasText: '戦績からは、' });
+    const yel = CLS(page).locator('[role=status]', { hasText: '戦績からは、' });
     check((await yel.count()) === 1, 'A3 exactly one yellow suggestion');
     const ys = await styleOf(yel);
     check(isYellowish(ys.bg) || isYellowish(ys.border), 'A3 the suggestion is YELLOW (bg ' + ys.bg + ' border ' + ys.border + ')');
     check(isDark(ys.fg) && contrast(ys.fg, ys.bg) >= 4.5, 'A3 dark text on yellow, >= 4.5:1 (' + contrast(ys.fg, ys.bg).toFixed(2) + ')');
-    check(/💡|👉|★/.test(await yel.innerText()), 'A3 the suggestion has an icon as well as words');
+    check(/⚠|👉/.test(await yel.innerText()), 'A3 the suggestion has an icon (⚠) as well as words');
     check(ys.size >= 17, 'A3 the suggestion text is >= 17px (' + ys.size + 'px)');
     const side = await CLS(page).locator('p', { hasText: '目安です' }).first().evaluate((n) => parseFloat(getComputedStyle(n).fontSize));
     check(side >= 17, 'A3 the 目安です note is >= 17px (' + side + 'px)');
@@ -319,7 +341,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     await classPick(page, pick);
     await settle(150);
     const notes = await classNotes(page);
-    const red = CLS(page).locator('p[role=status]', { hasText: '戦績と合っていますか？' });
+    const red = CLS(page).locator('[role=status]', { hasText: '戦績と合っていますか？' });
     check((await red.count()) === 1, 'A4 [' + record + ' + ' + pick + '] the red line 戦績と合っていますか？ is shown');
     if (await red.count()) {
       const rs = await styleOf(red);
@@ -332,6 +354,16 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     check(notes.some((n) => /戦績からは、/.test(n)), 'A4 the yellow suggestion stays beside the red line');
     check((await CLS(page).innerText()).includes('そのまま送れます'), 'A4 it says it can be sent as it is');
     check(await noOverflow(page), 'A4 no overflow');
+    // the review page repeats the gentle red line, and going back keeps the choice
+    await reviewBtn(page).click();
+    await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
+    const rvText = await page.getByRole('region', { name: '送る前の確認' }).innerText();
+    check(rvText.includes('クラス') && rvText.includes(classes_name(pick)) && rvText.includes('戦績と合っていますか？') && rvText.includes('そのまま送れます'), 'A4 the review screen shows the class and the gentle ⚠ line, and says it can be sent');
+    check((await nextMarks(page)).length === 1, 'A4 the review screen has exactly ONE 👉 次はここ (' + (await nextMarks(page)).join(' | ') + ')');
+    await page.getByRole('button', { name: '戻って直す（送信しません）', exact: true }).click();
+    await settle(200);
+    check((await box_checked(page)) === 1 && await CLS(page).locator('input[value=' + pick + ']').isChecked(), 'A4 going back from the review keeps the chosen class');
+    check(ctx.__posts.length === 0, 'A4 going back posts nothing');
     // it must still go through
     const sent = await send(page, ctx);
     check(sent === 1, 'A4 the mismatch does NOT block sending (posts ' + sent + ')');
@@ -347,7 +379,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     await fillAll(page, record);
     await classPick(page, pick);
     await settle(150);
-    check((await CLS(page).locator('p[role=status]', { hasText: '戦績と合っていますか' }).count()) === 0, 'A5 [' + record + ' + ' + name + '] no red line when it matches');
+    check((await CLS(page).locator('[role=status]', { hasText: '戦績と合っていますか' }).count()) === 0, 'A5 [' + record + ' + ' + name + '] no red line when it matches');
     await reviewBtn(page).click();
     await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
     const rv = await page.getByRole('region', { name: '送る前の確認' }).innerText().catch(async () => (await bodyText(page)));
@@ -369,7 +401,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     await fillAll(page, 'アマチュア3戦');
     await classPick(page, 'lower');
     await settle(150);
-    check((await CLS(page).locator('p[role=status]', { hasText: '戦績と合っていますか' }).count()) === 0, 'A6 unreadable record + a choice: no red line');
+    check((await CLS(page).locator('[role=status]', { hasText: '戦績と合っていますか' }).count()) === 0, 'A6 unreadable record + a choice: no red line');
     check((await send(page, ctx)) === 1, 'A6 and it sends');
     await ctx.close();
   }
@@ -381,10 +413,10 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     await classPick(page, 'lower');
     await rec.fill('5勝');
     await settle(100);
-    check((await CLS(page).locator('p[role=status]', { hasText: '戦績と合っていますか' }).count()) === 1, 'A7 typing 5勝 after choosing B raises the red line');
+    check((await CLS(page).locator('[role=status]', { hasText: '戦績と合っていますか' }).count()) === 1, 'A7 typing 5勝 after choosing B raises the red line');
     await rec.fill('1勝');
     await settle(100);
-    check((await CLS(page).locator('p[role=status]', { hasText: '戦績と合っていますか' }).count()) === 0, 'A7 fixing the record to 1勝 clears it');
+    check((await CLS(page).locator('[role=status]', { hasText: '戦績と合っていますか' }).count()) === 0, 'A7 fixing the record to 1勝 clears it');
     await rec.fill('');
     await settle(100);
     check((await classNotes(page)).length === 0, 'A7 empty record clears all notes');
@@ -429,6 +461,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     await ctx.close();
   }
 });
+const classes_name = (k) => DEFAULT_CLASS_SETTINGS[k].name;
 const box_checked = (p) => CLS(p).locator('input[type=radio]:checked').count();
 
 /** B. /private/ : roster import, backup, fighter cards, bout card warning */
@@ -477,7 +510,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check((await page.locator('[role=status]', { hasText: 'クラスがちがいます' }).count()) >= 1, 'B1 B vs A (swapped) also warns');
     check(await noOverflow(page), 'B1 no overflow with the warning');
     // the bout never blocks saving: save and read back
-    await page.getByRole('button', { name: /^(保存する|もう一度 保存する)$/ }).click();
+    await pressSave(page);
     await page.waitForFunction(() => document.querySelector('#save-state')?.innerText.includes('保存済み'), null, { timeout: 8000 }).catch(() => {});
     const saved = await idbGet(page, id);
     check(saved && saved.fighters.filter((f) => f.fighterClass === 'Aクラス').length === 2 && saved.fighters.filter((f) => f.fighterClass === 'Bクラス').length === 1, 'B1 saved data keeps the classes');
@@ -485,8 +518,12 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check(saved && saved.bouts.length === 1, 'B1 the cross-class bout saved (warning never blocks)');
     await page.reload();
     await page.locator('#field-title').waitFor();
-    await settle(600);
-    check(((await bodyText(page)).match(/クラス：Aクラス/g) || []).length === 2, 'B1 classes survive a reload');
+    await page.waitForFunction(() => /クラス：Aクラス/.test(document.body.innerText), null, { timeout: 8000 }).catch(() => {});
+    const afterReload = (await page.locator('article[id^="fighter-"]').allInnerTexts()).join('\n');
+    check((afterReload.match(/クラス：Aクラス/g) || []).length === 2 && (afterReload.match(/クラス：Bクラス/g) || []).length === 1, 'B1 classes survive a reload (fighter cards: ' + (afterReload.match(/クラス：\S+/g) || []).join(',') + ')');
+    const boutAfter = await page.locator('article[id^="bout-"]').first().innerText();
+    check(/クラス：Bクラス/.test(boutAfter) && /クラス：Aクラス/.test(boutAfter), 'B1 the bout card shows the class word of both corners (' + short(boutAfter.match(/クラス：\S+/g) ?? [], 60) + ')');
+    check((await boutCount(page)) === 1 && (await page.locator('[role=status]', { hasText: 'クラスがちがいます' }).count()) >= 1, 'B1 the cross-class warning is still there after a reload');
     await ctx.close();
   }
   /* B2 CSV without クラス: unchanged */
@@ -503,7 +540,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check((await page.locator('[role=status]', { hasText: 'クラスがちがいます' }).count()) === 0, 'B2 no class warning without classes');
     check(!/クラスちがい/.test(await bodyText(page)), 'B2 no class word in the bout line');
     check(await noOverflow(page), 'B2 no overflow');
-    await page.getByRole('button', { name: /^(保存する|もう一度 保存する)$/ }).click();
+    await pressSave(page);
     await page.waitForFunction(() => document.querySelector('#save-state')?.innerText.includes('保存済み'), null, { timeout: 8000 }).catch(() => {});
     const saved = await idbGet(page, id);
     check(saved && saved.fighters.length === 4 && saved.fighters.every((f) => !('fighterClass' in f)), 'B2 old-shaped fighters stay old-shaped (no fighterClass keys)');
@@ -517,6 +554,12 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     await importCsv(page, csv);
     await waitNotice(page, '2人分を読み込みました');
     check(!/クラス：/.test(await bodyText(page)), 'B3 an empty クラス column is the same as none');
+    await ctx.close();
+    const ctx3 = await newCtx(vp.mobile);
+    const p3 = await openPrivate(ctx3, 'cls-b3e-' + tag);
+    await importCsv(p3, ['管理番号,ジム名,選手名,身長,体重,戦績,class', 'F01,架空ジム,架空英語見出し,170,60,5勝,Aクラス'].join('\n'));
+    await waitNotice(p3, '1人分を読み込みました');
+    check(/クラス：Aクラス/.test(await bodyText(p3)), 'B3 an English "class" header is read too');
     await ctx.close();
   }
   /* B4 old backup (pre-change shape) restores; new shape restores; real backup file carries the class */
@@ -532,7 +575,8 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     await page.locator('#backup-password').fill(pw);
     await page.locator('input[accept=".enc"]').setInputFiles({ name: 'old.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(file) });
     const ask = page.getByRole('alertdialog');
-    if (await ask.waitFor({ timeout: 4000 }).then(() => true).catch(() => false)) await ask.getByRole('button', { name: '上書きして戻す', exact: true }).click();
+    check(await ask.waitFor({ timeout: 8000 }).then(() => true).catch(() => false), 'B4 the restore asks once before it writes');
+    await ask.getByRole('button', { name: RESTORE_YES, exact: true }).click();
     await waitNotice(page, '戻しました', 12000).catch(() => {});
     const t = await bodyText(page);
     check(t.includes('戻しました') && t.includes('選手2人'), 'B4 the old backup restores (' + short((t.match(/戻しました[^。]*。[^。]*。/) || [''])[0], 90) + ')');
@@ -543,9 +587,14 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     // a backup written by the NEW app: download it and open it with the password
     const dl = page.waitForEvent('download', { timeout: 15000 });
     await page.locator('#backup-password2').fill(pw);
-    await page.getByRole('button', { name: /パスワードをつけて、コピーを保存する/ }).click();
+    await page.locator('#paper-done').check();
+    await page.getByRole('button', { name: 'パスワードをつけて、コピーを保存する', exact: true }).click();
     const d = await dl.catch(() => null);
-    check(!!d, 'B4 a backup file can still be made');
+    check(!!d, 'B4 a backup file can still be made after restoring an old one');
+    if (d) {
+      const plain = nodeOpen(await readFile(await d.path(), 'utf8'), pw);
+      check(plain.fighters.length === 2 && plain.fighters.every((f) => !('fighterClass' in f)), 'B4 re-saving an old backup adds no fighterClass key');
+    }
     await ctx.close();
     // new-shape backup with classes comes back with its classes
     const ctx2 = await newCtx(vp.mobile);
@@ -556,10 +605,13 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     await p2.locator('#backup-password').fill(pw);
     await p2.locator('input[accept=".enc"]').setInputFiles({ name: 'new.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(nodeBackup(withCls, pw)) });
     const ask2 = p2.getByRole('alertdialog');
-    if (await ask2.waitFor({ timeout: 4000 }).then(() => true).catch(() => false)) await ask2.getByRole('button', { name: '上書きして戻す', exact: true }).click();
+    await ask2.waitFor({ timeout: 8000 }).catch(() => {});
+    await ask2.getByRole('button', { name: RESTORE_YES, exact: true }).click();
     await waitNotice(p2, '戻しました', 12000).catch(() => {});
     const t2 = await bodyText(p2);
     check(/クラス：Aクラス/.test(t2) && /クラス：Bクラス/.test(t2), 'B4 a backup with classes restores with the class words');
+    const rs = await idbGet(p2, id2);
+    check(rs && rs.fighters.map((f) => f.fighterClass).join() === 'Aクラス,Bクラス', 'B4 the restored record keeps the exact class text');
     check(await noOverflow(p2), 'B4 no overflow after restore');
     await ctx2.close();
   }
@@ -576,27 +628,96 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     await page.locator('input[accept=".enc"]').setInputFiles({ name: 'bad.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(nodeBackup(bad, pw)) });
     await settle(1800);
     const ask = page.getByRole('alertdialog');
+    note('B5 a dialog box is open: ' + (await ask.count()) + (await ask.count() ? ' text: ' + short(await ask.innerText(), 90) : ''));
+    check((await ask.count()) === 0, 'B5 a backup with a 200-char class never reaches the overwrite question (it is refused first)');
     if (await ask.count()) await ask.getByRole('button', { name: 'やめる（何も変えない）' }).click().catch(() => {});
     await settle(300);
     const t = await bodyText(page);
+    const msgB5 = await page.evaluate(() => [...document.querySelectorAll('[role=status],[role=alert]')].map((n) => n.innerText).join(' || '));
+    note('B5 visible messages: ' + short(msgB5, 300));
+    check(/戻せ|読めません|使えない|ちがう|まちがい|こわれ|形/.test(msgB5) && !msgB5.includes('戻しました'), 'B5 the refusal is visible in plain words (' + short(msgB5, 100) + ')');
+    check((await page.locator('#field-title').inputValue()) === '変えたくない大会', 'B5 nothing on the screen changed');
     check(!t.includes('戻しました'), 'B5 a 200-char class inside a backup is not silently accepted (' + short((t.match(/戻せ[^。]*。/) || ['(no refusal text)'])[0], 80) + ')');
     check(await noOverflow(page), 'B5 no overflow');
     check(pageErrors.every((e) => e.scenario !== cur), 'B5 no script error (' + short(pageErrors.filter((e) => e.scenario === cur).map((e) => e.message).join('|'), 100) + ')');
     await ctx.close();
   }
-  /* B6 the manual add form: the class choice only appears when asked for / roster has classes; blank is allowed */
+  /* B6 the manual add / edit forms */
   {
     const ctx = await newCtx(vp.mobile);
     const id = 'cls-b6-' + tag;
     const page = await openPrivate(ctx, id);
-    await importCsv(page, csvCls);
+    // roster WITHOUT classes: the form stays as it was, with one opt-in button
+    await importCsv(page, csvPlain);
     await waitNotice(page, '4人分を読み込みました');
-    const sel = page.locator('select[id$="-fighterClass"]');
-    note('class selects visible on /private/: ' + (await sel.count()));
+    await openFoldsOf(page, '#manual-name');
+    check((await page.locator('#manual-fighterClass').count()) === 0, 'B6 a roster without classes: no class box in the add form');
+    const optIn = page.getByRole('button', { name: 'クラスも入れる（Aクラス・Bクラス）', exact: true });
+    check((await optIn.count()) === 1, 'B6 the add form offers one button クラスも入れる（Aクラス・Bクラス）');
+    await optIn.click();
+    check((await page.getByText('クラスを入れられます').count()) >= 1, 'B6 pressing it shows a visible ✓ クラスを入れられます');
+    const sel = page.locator('#manual-fighterClass');
+    check((await sel.count()) === 1, 'B6 the class box is there after the button');
+    const opts = await sel.locator('option').allInnerTexts();
+    check(opts.join('|') === 'えらばない|Aクラス|Bクラス', 'B6 choices are えらばない / Aクラス / Bクラス (' + opts.join('|') + ')');
+    check((await sel.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))) >= 17, 'B6 the class box text is >= 17px');
+    for (const [f, v] of [['name', '架空追加クラス選手'], ['gym', '架空追加ジム'], ['height', '170'], ['weight', '65'], ['record', '1勝2敗']]) await page.locator('#manual-' + f).fill(v);
+    await sel.selectOption('Bクラス');
+    await page.getByRole('button', { name: 'この選手を追加', exact: true }).click();
+    await waitNotice(page, '追加しました', 6000).catch(() => {});
+    await settle(200);
+    const card = page.locator('article[id^="fighter-"]', { hasText: '架空追加クラス選手' });
+    check((await card.count()) === 1 && (await card.innerText()).includes('クラス：Bクラス'), 'B6 the added fighter shows クラス：Bクラス');
+    // one with えらばない: no key
+    for (const [f, v] of [['name', '架空追加無し選手'], ['gym', '架空追加ジム2'], ['height', '170'], ['weight', '65'], ['record', '初試合']]) await page.locator('#manual-' + f).fill(v);
+    await sel.selectOption('');
+    await page.getByRole('button', { name: 'この選手を追加', exact: true }).click();
+    await settle(300);
+    await pressSave(page);
+    await waitState2(page);
+    const saved = await idbGet(page, id);
+    const sb = saved && saved.fighters.find((f) => f.name === '架空追加クラス選手'), sn = saved && saved.fighters.find((f) => f.name === '架空追加無し選手');
+    check(sb && sb.fighterClass === 'Bクラス', 'B6 the saved record has fighterClass Bクラス');
+    check(sn && !('fighterClass' in sn), 'B6 えらばない saves no fighterClass key');
     check(await noOverflow(page), 'B6 no overflow');
+    // edit: change the class of an existing fighter from the card
+    await openEdit(page, '架空追加クラス選手');
+    const esel = page.locator('select[id^="edit-"][id$="-fighterClass"]');
+    check((await esel.count()) === 1 && (await esel.inputValue()) === 'Bクラス', 'B6 the edit form starts on the saved class');
+    await esel.selectOption('Aクラス');
+    await page.getByRole('button', { name: 'この内容で直す', exact: true }).click();
+    await settle(300);
+    const t = await bodyText(page);
+    check(/クラス\s*Bクラス\s*→\s*Aクラス/.test(t), 'B6 the edit note says what changed: クラス Bクラス → Aクラス');
+    check((await card.innerText()).includes('クラス：Aクラス'), 'B6 the card now shows Aクラス');
+    // edit a fighter whose class is not in the list (hand-edited CSV): it is kept, not wiped
     await ctx.close();
+    const ctx2 = await newCtx(vp.mobile);
+    const id2 = 'cls-b6x-' + tag;
+    const p2 = await openPrivate(ctx2, id2);
+    await importCsv(p2, [HEAD_CLS, rowOf('F01', '赤', '5勝', 'Aクラス'), rowOf('F02', '青', '初試合', 'Zクラス')].join('\n'));
+    await waitNotice(p2, '2人分を読み込みました');
+    await openEdit(p2, '架空青選手');
+    const e2 = p2.locator('select[id^="edit-"][id$="-fighterClass"]');
+    const o2 = await e2.locator('option').allInnerTexts();
+    check((await e2.inputValue()) === 'Zクラス' && o2.includes('Zクラス'), 'B6 an unknown class is kept visible in the edit box (' + o2.join('|') + ')');
+    await p2.getByRole('button', { name: 'やめる', exact: true }).click().catch(() => {});
+    await ctx2.close();
   }
 });
+const waitState2 = (p) => p.waitForFunction(() => document.querySelector('#save-state')?.innerText.includes('保存済み'), null, { timeout: 8000 }).catch(() => {});
+async function openFoldsOf(p, sel) {
+  for (let i = 0; i < 6 && !(await p.locator(sel).isVisible().catch(() => false)); i++) {
+    const closed = await p.evaluate((s) => { const el = document.querySelector(s); let hit = null; for (let n = el; n; n = n.parentElement) if (n.tagName === 'DETAILS' && !n.open) hit = n; if (!hit) return false; hit.querySelector(':scope > summary').setAttribute('data-open-me', '1'); return true; }, sel);
+    if (!closed) break;
+    await p.locator('[data-open-me="1"]').first().click();
+    await p.evaluate(() => document.querySelectorAll('[data-open-me]').forEach((e) => e.removeAttribute('data-open-me')));
+  }
+}
+async function openEdit(p, name) {
+  await p.getByRole('button', { name: '直す ' + name, exact: true }).click();
+  await p.locator('select[id^="edit-"][id$="-fighterClass"], input[id^="edit-"][id$="-name"]').first().waitFor();
+}
 
 /** C. live screens */
 scenario('C', 'live: single + list show the class word on both corners', async (vp) => {
@@ -704,7 +825,7 @@ scenario('D', 'mistakes: injection, unknown class, 200 chars, full-width spaces'
   check(lines.some((x) => /^クラス：Cクラス$/.test(x.trim())), 'D a class that is not in the A/B list is kept as typed (the OS has no list to check)');
   check(!lines.some((x) => /‮/.test(x)) || true, '');
   check(!lines.some((x) => /[\n\t]/.test(x)), 'D tabs/newlines in a class are flattened');
-  check(await noOverflow(page), 'D no overflow with hostile classes (' + (await widest(page)).join('/') + ')');
+  check(await noOverflow(page), 'D no overflow with hostile classes (' + (await widest(page)).join('/') + '; wide: ' + (await wideOnes(page)).join(' | ') + ')');
   // bouts
   const n0 = await addBout(page, 'F05', 'F06');
   await settle(150);
@@ -719,13 +840,14 @@ scenario('D', 'mistakes: injection, unknown class, 200 chars, full-width spaces'
   if (await w.count()) {
     const wt = await w.innerText();
     check(wt.includes('<script>') && (await page.evaluate(() => window.__xss)) === 0, 'D the warning prints the hostile class as plain text only');
-    check((await widest(page))[0] <= window_w(vp) + 1, 'D the warning with a long hostile class does not overflow (' + (await widest(page)).join('/') + ')');
+    const wb = await w.boundingBox();
+    check(wb && wb.x >= -1 && wb.x + wb.width <= window_w(vp) + 1, 'D the warning itself, with a long hostile class, stays inside the screen (x ' + Math.round(wb?.x ?? -1) + ' w ' + Math.round(wb?.width ?? -1) + ')');
   } else check(false, 'D warning appears for <script> vs 200-char class');
   // options in the dropdown
   const opts = await page.locator('#bout-' + n0 + '-red option').allInnerTexts();
   check(opts.every((o) => o.length < 400), 'D the dropdown options stay a sane length (max ' + Math.max(...opts.map((o) => o.length)) + ')');
   // saving then live views with the hostile data
-  await page.getByRole('button', { name: /^(保存する|もう一度 保存する)$/ }).click();
+  await pressSave(page);
   await page.waitForFunction(() => document.querySelector('#save-state')?.innerText.includes('保存済み'), null, { timeout: 8000 }).catch(() => {});
   const saved = await idbGet(page, id);
   check(saved && saved.fighters.length === evil.length, 'D hostile roster saved (' + (saved ? saved.fighters.length : 0) + ')');
@@ -807,6 +929,7 @@ try {
     if (ONLY.length && !ONLY.includes(s.id)) continue;
     for (const vp of VPS) {
       cur = s.id + '@' + vp.name;
+      curW = vp.mobile ? 390 : 1280;
       const t0 = Date.now();
       const before = failures.length;
       console.log('== ' + cur + ' ' + s.title);

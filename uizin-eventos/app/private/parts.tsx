@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
+import { DangerConfirm } from './marks.tsx';
 
-/* 準備の画面（/private/）の共通部品。色の意味は全画面で同じ:
-   indigo=次にやる1つ / emerald=できた・保存 / amber=足りない・注意 / 灰=ほか・消す / rose=赤コーナーと本当のエラー / blue=青コーナー */
+/* 準備の画面（/private/）の共通部品。色の意味は全画面で同じ（色だけにせず、いつも記号と言葉を付ける）:
+   黄の濃い塗り=👉次はここ（marks.tsx） / 薄い黄=⚠気をつけて / 赤=✕まちがい・取り消せない / 緑=✓できた・保存 / 灰の点線=🔒今は押せない / indigoの塗り=ふつうの主ボタン（1つだけ）/ 赤コーナー(rose)・青コーナー(blue)は今まで通り */
 
 export const btn = {
   base: 'inline-flex items-center justify-center gap-2 rounded-xl border-2 px-4 text-center font-bold [overflow-wrap:anywhere] touch-manipulation focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-indigo-700 aria-disabled:cursor-not-allowed aria-disabled:border-dashed aria-disabled:border-slate-600 aria-disabled:bg-slate-100 aria-disabled:text-slate-700 ',
@@ -15,14 +16,14 @@ export const btn = {
 };
 export const cls = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
-export const inputClass = 'mt-1 block min-h-14 w-full min-w-0 rounded-xl border-2 border-slate-500 bg-white px-3 py-2 text-lg font-medium text-slate-950 placeholder:text-slate-500 focus:border-indigo-700 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-indigo-700 aria-[invalid=true]:border-amber-600 aria-[invalid=true]:ring-4 aria-[invalid=true]:ring-amber-200';
+export const inputClass = 'mt-1 block min-h-14 w-full min-w-0 rounded-xl border-2 border-slate-500 bg-white px-3 py-2 text-lg font-medium text-slate-950 placeholder:text-slate-500 focus:border-indigo-700 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-indigo-700';
 
 type Tone = 'green' | 'amber' | 'slate' | 'rose' | 'blue' | 'indigo';
 const toneClass: Record<Tone, string> = {
-  green: 'border-emerald-700 bg-emerald-50 text-emerald-900',
-  amber: 'border-amber-500 bg-amber-50 text-amber-950',
+  green: 'border-[#166534] bg-[#f0fdf4] text-[#166534]',
+  amber: 'border-[#a16207] bg-[#fefce8] text-[#1c1917]',
   slate: 'border-slate-400 bg-slate-100 text-slate-900',
-  rose: 'border-rose-600 bg-rose-50 text-rose-900',
+  rose: 'border-[#b91c1c] bg-[#fef2f2] text-[#991b1b]',
   blue: 'border-blue-600 bg-blue-50 text-blue-900',
   indigo: 'border-indigo-700 bg-indigo-50 text-indigo-900',
 };
@@ -36,36 +37,45 @@ export function DoneChip({ done, doneText = 'できた', todoText = 'まだ' }: 
   return done ? <Chip tone="green">{doneText} ✓</Chip> : <Chip tone="slate">{todoText}</Chip>;
 }
 
-/** 必須 / なくてもOK の札。ラベルの文字には混ぜない（ラベルの名前を変えないため） */
+/** 必須（赤い札）/ なくてもOK（灰の札）。ラベルの文字には混ぜない（ラベルの名前を変えないため） */
 export function Badge({ required, text }: { required?: boolean; text?: string }) {
   return required
-    ? <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-2 text-[17px] font-bold text-amber-950">必須</span>
+    ? <span className="ml-2 inline-flex items-center rounded-md border-2 border-indigo-700 bg-indigo-50 px-2 text-[17px] font-bold text-indigo-900">必須</span>
     : <span className="ml-2 inline-flex items-center rounded-md bg-slate-200 px-2 text-[17px] font-bold text-slate-800">{text ?? 'なくてもOK'}</span>;
 }
 
 /**
  * 知らせ。いつも role="status"（テストと読み上げの両方のため）。error だけ aria-live を強くする。
+ * 色と言葉: ok=緑「✓」/ error=赤「✕」/ warn=薄い黄「⚠ 気をつけて：」/ info=白に灰の枠。
  * live="off": 同じ内容を別の場所が読み上げるとき（読み上げが2回にならないように）
- * ボタンは文の下の行に出す。ok は少したつと消え、error は残る
+ * ボタンは文の下の行に出す。ok は少したつと消え（保存の結果は次の保存まで残る）、error は残る
+ * extra: 結果の2行目（例: 保存した＋まだ直す所）。別の箱で、すぐ下に出す
  */
-export function Notice({ kind, children, onClose, action, className = '', compact = false, inlineClose = false, live }: { kind: 'ok' | 'error' | 'info' | 'warn'; children: ReactNode; onClose?: () => void; action?: { label: string; onClick: () => void; id?: string }; className?: string; compact?: boolean; inlineClose?: boolean; live?: 'off' | 'polite' | 'assertive' }) {
-  const tone = kind === 'ok' ? toneClass.green : kind === 'error' ? toneClass.rose : kind === 'warn' ? toneClass.amber : toneClass.slate;
-  const icon = kind === 'ok' ? '✓' : kind === 'error' ? '!' : kind === 'warn' ? '⚠' : 'i';
-  const iconTone = kind === 'ok' ? 'bg-emerald-700' : kind === 'error' ? 'bg-rose-600' : kind === 'warn' ? 'bg-amber-600' : 'bg-slate-600';
-  // compact: 下の帯の中で使う。画面の高さを取りすぎないよう、余白と行の高さを小さくし、ボタンは文の下にそのまま並べる（内側のスクロールは使わない）
-  return <div role="status" aria-live={live ?? (kind === 'error' ? 'assertive' : 'polite')} className={cls('min-w-0 rounded-xl border-2 text-[17px] font-bold shadow-sm', compact ? 'p-2 leading-snug' : 'p-3 leading-relaxed', tone, className)}>
-    <div className={cls('flex min-w-0 items-start', compact ? 'gap-2' : 'gap-3')}>
-      {inlineClose ? null : <span aria-hidden="true" className={cls('mt-0.5 grid shrink-0 place-items-center rounded-full text-[17px] text-white', compact ? 'h-6 w-6' : 'h-7 w-7', iconTone)}>{icon}</span>}
-      <div className="min-w-0 flex-1 break-words">
-        {/* inlineClose: 「✕ とじる」を文の右はしに小さく置く（下の帯の高さをおさえるため）。字は2行で、ことばも見える */}
-        {inlineClose && onClose ? <button type="button" aria-label="✕ とじる" onClick={onClose} className={cls(btn.base, btn.outline, 'float-right ml-2 w-[4.5rem] flex-col gap-0 whitespace-nowrap px-1 leading-tight')}><span aria-hidden="true">✕</span><span aria-hidden="true" className="text-[17px]">とじる</span></button> : null}
-        {inlineClose ? <span aria-hidden="true" className="mr-1">{icon}</span> : null}{children}
-      </div>
+export type NoticeExtra = { kind: 'ok' | 'warn' | 'error' | 'info'; text: ReactNode; action?: { label: string; ariaLabel?: string; onClick: () => void } };
+export function Notice({ kind, children, onClose, action, className = '', compact = false, inlineClose = false, live, extra, lead: leadNode }: { kind: 'ok' | 'error' | 'info' | 'warn'; children: ReactNode; onClose?: () => void; action?: { label: string; onClick: () => void; id?: string }; className?: string; compact?: boolean; inlineClose?: boolean; live?: 'off' | 'polite' | 'assertive'; extra?: NoticeExtra[]; lead?: ReactNode }) {
+  const tone = kind === 'ok' ? 'tos-ok' : kind === 'error' ? 'tos-error' : kind === 'warn' ? 'tos-caution' : 'rounded-xl border-2 border-slate-400 bg-white text-slate-900';
+  const lead = kind === 'ok' ? '✓ ' : kind === 'error' ? '✕ ' : kind === 'warn' ? '⚠ 気をつけて：' : 'i ';
+  // compact: 下の帯の中で使う。画面の高さを取りすぎないよう、余白と行の高さを小さくする（内側のスクロールは使わない）
+  const squeeze = compact ? { padding: '6px 10px', lineHeight: 1.35 } : undefined;
+  const flow = { ...squeeze, display: 'flow-root' } as const;
+  const main = <div role="status" aria-live={live ?? (kind === 'error' ? 'assertive' : 'polite')} style={flow} className={cls('min-w-0 text-[17px] font-bold shadow-sm', kind === 'info' ? (compact ? 'p-2' : 'p-3') : '', tone, className)}>
+    <div className="min-w-0 break-words">
+      {/* inlineClose: 「✕ とじる」を文の右はしに小さく置く（下の帯の高さをおさえるため）。字は2行で、ことばも見える */}
+      {inlineClose && onClose ? <button type="button" aria-label="✕ とじる" onClick={onClose} className={cls(btn.base, btn.outline, 'float-right ml-2 w-[4.5rem] flex-col gap-0 whitespace-nowrap px-1 leading-tight')}><span aria-hidden="true">✕</span><span aria-hidden="true" className="text-[17px]">とじる</span></button> : null}
+      <span aria-hidden="true" className={kind === 'warn' ? 'font-extrabold' : ''}>{lead}</span>{leadNode}{children}
     </div>
-    {action || (onClose && !inlineClose) ? <div className={cls('mt-2 flex w-full flex-wrap gap-2', compact ? 'pl-0' : 'pl-10')}>
+    {action || (onClose && !inlineClose) ? <div className="mt-2 flex w-full flex-wrap gap-2">
       {action ? <button type="button" id={action.id} onClick={action.onClick} className={cls(btn.base, btn.outline, compact ? 'px-2' : 'px-3')}>{action.label}</button> : null}
       {onClose && !inlineClose ? <button type="button" onClick={onClose} className={cls(btn.base, btn.outline, compact ? 'px-2' : 'px-3')}>✕ とじる</button> : null}
     </div> : null}
+  </div>;
+  if (!extra?.length) return main;
+  return <div className="min-w-0 space-y-1">
+    {main}
+    {extra.map((line, i) => <p key={i} role="note" style={squeeze} className={cls('min-w-0 break-words text-[17px] font-bold', line.kind === 'ok' ? 'tos-ok' : line.kind === 'warn' ? 'tos-caution' : line.kind === 'error' ? 'tos-error' : 'rounded-xl border-2 border-slate-400 bg-white p-2')}>
+      <span aria-hidden="true">{line.kind === 'ok' ? '✓ ' : line.kind === 'error' ? '✕ ' : line.kind === 'warn' ? '⚠ 気をつけて：' : 'i '}</span>{line.text}
+      {line.action ? <button type="button" aria-label={line.action.ariaLabel} onClick={line.action.onClick} className={cls(btn.base, btn.outline, 'ml-2 mt-1 px-3')}>{line.action.label}</button> : null}
+    </p>)}
   </div>;
 }
 
@@ -89,36 +99,9 @@ export function Section({ id, title, done, doneText, todoText, children }: { id:
 
 /**
  * 画面の中の確認の箱（window.confirm の代わり）。押したボタンのすぐ近くに出す。
- * 1行目＝結論（何がどう変わるか）。ボタンは2つだけ。さいしょにフォーカスが乗るのは「安全なほう」（やめる）。
+ * 1行目＝「✕ 取り消せない：」＋結論（何がどう変わるか）。ボタンは2つだけ。さいしょにフォーカスが乗るのは「安全なほう」（やめる）。
  * Escape で「やめる」。まわりの画面はふつうに使えるが、あぶないほうは「yesLabel」のボタンを押したときだけ。
  */
 export function ConfirmBox({ id, label, verdict, lines, yesLabel, noLabel, onYes, onNo }: { id: string; label: string; verdict: string; lines: string[]; yesLabel: string; noLabel: string; onYes: () => void; onNo: () => void }) {
-  const safeRef = useRef<HTMLButtonElement | null>(null);
-  const noRef = useRef(onNo);
-  noRef.current = onNo;
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  // 開いたら「やめる」にフォーカス。箱ぜんたい（質問・2つのボタン）が、上のナビと下の帯に隠れずに見えるようにする。
-  // 低い画面（スマホを横にした・拡大した）で入りきらないときは、質問の文から見せる
-  useEffect(() => {
-    safeRef.current?.focus({ preventScroll: true });
-    const box = boxRef.current;
-    if (!box) return;
-    const root = getComputedStyle(document.documentElement);
-    const room = window.innerHeight - (parseFloat(root.scrollPaddingTop) || 0) - (parseFloat(root.scrollPaddingBottom) || 0);
-    try { box.scrollIntoView({ block: box.getBoundingClientRect().height <= room ? 'nearest' : 'start' }); } catch { /* 古いブラウザでは、そのまま */ }
-  }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); noRef.current(); } };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-  return <div ref={boxRef} id={id} role="alertdialog" aria-label={label} aria-describedby={id + '-verdict'} className="mt-3 w-full min-w-0 scroll-mt-28 rounded-xl border-4 border-amber-500 bg-amber-50 p-3 text-slate-950">
-    <p id={id + '-verdict'} className="text-lg font-bold leading-snug text-amber-950"><span aria-hidden="true">⚠ </span>{verdict}</p>
-    {lines.length ? <ul className="mt-2 list-none space-y-1 pl-0 text-[17px] font-medium">{lines.map((line, i) => <li key={i} className="break-words">{line}</li>)}</ul> : null}
-    <p className="mt-2 text-[17px] font-bold">下のボタンを押すまで、何も変わりません。</p>
-    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-      <button ref={safeRef} type="button" onClick={onNo} className={cls(btn.base, btn.indigoOutline, 'w-full sm:w-auto')}>{noLabel}</button>
-      <button type="button" onClick={onYes} className={cls(btn.base, 'min-h-14 w-full border-rose-700 bg-white text-lg text-rose-900 hover:bg-rose-50 sm:w-auto')}>{yesLabel}</button>
-    </div>
-  </div>;
+  return <DangerConfirm id={id} label={label} verdict={verdict} lines={lines} safeLabel={noLabel} dangerLabel={yesLabel} onYes={onYes} onNo={onNo} />;
 }

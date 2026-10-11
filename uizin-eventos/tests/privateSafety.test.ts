@@ -91,7 +91,7 @@ test('newEventId: 英小文字と数字だけの新しい番号', () => {
 const base: NextActionState = { titleReal: true, dateOk: true, fighters: 4, nonBlankBouts: 2, halfIndex: -1, dirty: false, everSaved: true, problems: 0, opened: false, saveState: 'idle', conflict: false };
 
 test('nextAction: 食いちがい > 保存中 > 保存失敗 > 次の入力 > 保存 > 開く', () => {
-  assert.deepEqual(nextAction({ ...base, conflict: true, saveState: 'failed', titleReal: false }), { kind: 'conflict', key: 'save', label: '黄色い案内を見る' });
+  assert.deepEqual(nextAction({ ...base, conflict: true, saveState: 'failed', titleReal: false }), { kind: 'conflict', key: 'save', label: '上の「👉 次はここ」の箱を見る' });
   assert.equal(nextAction({ ...base, saveState: 'saving', dirty: true }).label, '保存中…');
   const failed = nextAction({ ...base, saveState: 'failed', dirty: true, titleReal: false });
   assert.equal(failed.kind, 'save'); assert.equal(failed.label, 'もう一度 保存する');
@@ -192,18 +192,18 @@ test('restoreLastRemoved: 消した試合を新しいほうから順に戻す。
 });
 
 /* ───── コピーのファイル ───── */
-test('restoreConfirmText: 数字つき。「上書き」を必ず含み、減るときは先頭で警告する', () => {
+test('restoreConfirmText: 数字つき。「入れかわります」を必ず含み、減るときは先頭で警告する', () => {
   const restored: LocalTournament = { ...emptyTournament('t1'), title: '第2回テスト大会', updatedAt: new Date(2027, 9, 3, 14, 3).getTime(), fighters: [fighter('A'), fighter('B')], bouts: [bout('1', 'A', 'B')] };
   const current: LocalTournament = { ...emptyTournament('t1'), title: '今', fighters: [fighter('A'), fighter('B'), fighter('C'), fighter('D')], bouts: [bout('1', 'A', 'B'), bout('2', 'C', 'D')] };
   const text = restoreConfirmText({ restored, current, dirty: true, everSaved: true });
-  assert.match(text, /^いまの内容が、コピーの内容に上書きされます。\n！選手が4人から2人に減ります。\n！試合が2つから1つに減ります。\nこう変わります：選手4人→2人・試合2つ→1つ\n/);
+  assert.match(text, /^いまの内容は消えて、コピーの内容に入れかわります。\n！選手が4人から2人に減ります。\n！試合が2つから1つに減ります。\nこう変わります：選手4人→2人・試合2つ→1つ\n/);
   assert.match(text, /『第2回テスト大会』のコピー（選手2人・写真0枚・試合1つ・10月3日 14:03）を戻します。/);
-  assert.match(text, /いまの内容（選手4人・試合2つ、まだ保存していない変更あり）は、保存ずみのものも上書きされます。/);
+  assert.match(text, /いまの内容（選手4人・試合2つ、まだ保存していない変更あり）は、保存ずみのものも消えます。/);
   assert.match(text, /よろしいですか？$/);
   const empty = restoreConfirmText({ restored: { ...restored, fighters: [], bouts: [] }, current, dirty: false, everSaved: true });
-  assert.ok(empty.startsWith('いまの内容が、コピーの内容に上書きされます。\n！このコピーは空です。'));
+  assert.ok(empty.startsWith('いまの内容は消えて、コピーの内容に入れかわります。\n！このコピーは空です。'));
   const fresh = restoreConfirmText({ restored, current: emptyTournament('t1'), dirty: false, everSaved: false });
-  assert.match(fresh, /（いまの内容は空です）/); assert.ok(fresh.includes('上書き')); assert.ok(!fresh.includes('減ります'));
+  assert.match(fresh, /（いまの内容は空です）/); assert.ok(fresh.includes('入れかわ')); assert.ok(!fresh.includes('減ります'));
 });
 
 test('backupFileName: 大会番号と日付8桁。日付が不正なら nodate', () => {

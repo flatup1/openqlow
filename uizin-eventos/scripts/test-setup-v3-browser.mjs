@@ -39,7 +39,15 @@ try {
     check((await page.getByPlaceholder('例: 20271003').count()) === 0 && (await page.getByLabel('会場', { exact: true }).count()) === 0, 'no tournament fields are typed on this screen');
     check(await page.getByText('「設定」タブ').first().isVisible(), 'tells where to type');
     check(await page.getByText('ためしの申し込みが1件、自動で送られます').isVisible(), 'self test is automatic');
-    await page.getByRole('button', { name: /「準備できました」と出た/ }).click();
+    // 本物の道筋：4つの作業の「できた ✓」を順に押し、本物の「準備できました」ボタンで進む（近道の「✓がなくても進む」では進まない）
+    const realAdvance = page.getByRole('button', { name: /「準備できました」と出た → 次へ/ });
+    check(await realAdvance.count() === 0 || (await realAdvance.getAttribute('aria-disabled')) === 'true', 'the real 「準備できました」 button is locked until the 4 tasks are ticked');
+    for (let i = 1; i <= 4; i++) {
+      await page.getByRole('button', { name: 'できた ✓', exact: true }).first().click();
+      await page.getByText(new RegExp('✓ できた')).first().waitFor();
+    }
+    check(await realAdvance.isVisible() && (await realAdvance.getAttribute('aria-disabled')) !== 'true', 'after the 4 ticks the real 「準備できました」 button is live');
+    await realAdvance.click();
 
     // 2. 公開してURLを貼る
     check(await page.getByText('いまここ 2 / 3').isVisible(), 'moves to step 2');
@@ -49,19 +57,19 @@ try {
     await input.fill('https://example.com/exec');
     check(await page.getByRole('button', { name: 'もう一度確かめる' }).isDisabled(), 'a non-Google URL is never checked');
     await input.fill(endpoint);
-    await page.getByText('次は、シートのメニュー「Tournament OS」→「② 受付を開始」を押してください。').first().waitFor();
+    await page.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor();
     check(!(await next2.isDisabled()), 'auto check enables next without pasting any code');
     check(await page.getByText('架空テスト大会', { exact: true }).isVisible() && await page.getByText('2099年12月1日', { exact: true }).isVisible() && await page.getByText('架空主催', { exact: true }).isVisible(), 'shows the settings read from the sheet');
     for (const [state, text] of [[{ build: '3.0.0' }, 'Googleの版が古いです'], [{ ready: false }, 'まだ最初の設定が終わっていません'], [{ settingsProblem: '「設定」タブの、次の欄を入れてください：会場' }, '次の欄を入れてください：会場'], [{ testComplete: false }, '自動テストがまだです']]) {
       pingState = { ...READY, ...state };
       await page.getByRole('button', { name: 'もう一度確かめる' }).click();
       await page.getByText(text).first().waitFor();
-      const blocksNext = ['Googleの版が古いです', 'まだ最初の設定が終わっていません', '次の欄を入れてください：会場'].includes(text);
+      const blocksNext = ['Googleの版が古いです', 'まだ最初の設定が終わっていません', '次の欄を入れてください：会場', '自動テストがまだです'].includes(text);
       check((await next2.isDisabled()) === blocksNext, 'next button state for: ' + text);
     }
     pingState = { ...READY };
     await page.getByRole('button', { name: 'もう一度確かめる' }).click();
-    await page.getByText('次は、シートのメニュー「Tournament OS」→「② 受付を開始」を押してください。').first().waitFor();
+    await page.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor();
 
     // 自動確認が使えないとき（貼って確かめる）
     await page.locator('summary', { hasText: '自動で確かめられないとき' }).click();
@@ -70,7 +78,7 @@ try {
     await page.getByText('貼った文字を読めません').waitFor();
     check(await next2.isDisabled(), 'garbage paste does not unlock the next step');
     await page.getByPlaceholder('{"app":"tournament-os", …}').fill(JSON.stringify(READY));
-    await page.getByText('次は、シートのメニュー「Tournament OS」→「② 受付を開始」を押してください。').first().waitFor();
+    await page.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor();
     check(!(await next2.isDisabled()), 'pasted public status unlocks the next step');
     await next2.click();
 
