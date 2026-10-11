@@ -1,4 +1,5 @@
 import type { EntryFieldMode } from './entryPackage.ts';
+import { CLASS_LIMITS, DEFAULT_CLASS_SETTINGS, parseClassSettings, type ClassSettings } from './classRules.ts';
 
 export type PublicEntryConfig = {
   endpoint: string;
@@ -17,6 +18,8 @@ export type PublicEntryConfig = {
   protocol?: string;
   entryKey?: string;
   mode?: 'test' | 'live';
+  /** クラス分けをするときだけ入る（しないときは項目ごと無い）。 */
+  classes?: ClassSettings;
 };
 
 export const EMPTY_PUBLIC_ENTRY_CONFIG: PublicEntryConfig = {
@@ -41,7 +44,18 @@ export function isVenueUrl(value: string): boolean {
 
 export function publicEntryHash(config: PublicEntryConfig): string {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(config)) params.set(key, typeof value === 'boolean' ? (value ? 'on' : 'off') : value);
+  for (const [key, value] of Object.entries(config)) {
+    if (key === 'classes') continue;
+    params.set(key, typeof value === 'boolean' ? (value ? 'on' : 'off') : value as string);
+  }
+  if (config.classes?.enabled) {
+    const c = config.classes, d = DEFAULT_CLASS_SETTINGS;
+    params.set('cls', 'on');
+    const put = (key: string, value: string, fallback: string) => { if (value !== fallback) params.set(key, value); };
+    put('cuN', c.upper.name, d.upper.name); put('cuC', c.upper.condition, d.upper.condition); put('cuR', c.upper.rule, d.upper.rule);
+    put('clN', c.lower.name, d.lower.name); put('clC', c.lower.condition, d.lower.condition); put('clR', c.lower.rule, d.lower.rule);
+    if (c.upperMinWins !== d.upperMinWins) params.set('cw', String(c.upperMinWins));
+  }
   return '#' + params.toString();
 }
 
@@ -51,6 +65,18 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
     const value = params.get(key);
     return value === 'off' || value === 'optional' || value === 'required' ? value : fallback;
   };
+  let classes: ClassSettings | undefined;
+  if (params.get('cls') === 'on') {
+    const d = DEFAULT_CLASS_SETTINGS;
+    const text = (key: string, fallback: string, max: number) => (params.get(key) || fallback).slice(0, max);
+    const wins = params.get('cw') || '';
+    classes = parseClassSettings({
+      enabled: true,
+      upper: { name: text('cuN', d.upper.name, CLASS_LIMITS.name), condition: text('cuC', d.upper.condition, CLASS_LIMITS.condition), rule: text('cuR', d.upper.rule, CLASS_LIMITS.rule) },
+      lower: { name: text('clN', d.lower.name, CLASS_LIMITS.name), condition: text('clC', d.lower.condition, CLASS_LIMITS.condition), rule: text('clR', d.lower.rule, CLASS_LIMITS.rule) },
+      upperMinWins: /^\d{1,2}$/.test(wins) && Number(wins) >= 1 ? Number(wins) : d.upperMinWins,
+    });
+  }
   return {
     endpoint: params.get('endpoint')?.trim() ?? '',
     eventId: params.get('eventId')?.trim() || 'my-tournament',
@@ -61,5 +87,6 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
     ...(params.has('protocol') ? { protocol: params.get('protocol') || '' } : {}),
     ...(params.has('entryKey') ? { entryKey: params.get('entryKey') || '' } : {}),
     ...(params.has('mode') ? { mode: params.get('mode') === 'test' ? 'test' as const : 'live' as const } : {}),
+    ...(classes ? { classes } : {}),
   };
 }

@@ -454,7 +454,10 @@ export default function SetupV3() {
     </div>
   </Fold>;
 
-  const settingRows: ReadonlyArray<readonly [string, string]> = [['大会名', '○○ジム交流大会'], ['開催日', '2027年10月3日'], ['会場', '○○体育館'], ['主催者名', '○○ジム'], ['問い合わせ先', '03-0000-0000'], ['申込締切', '2027年9月20日'], ['入場曲', '「あり」か「なし」（▼から選びます）']];
+  const classes = ping?.classMode ? ping.classes : undefined;
+  const classProblem = (() => { if (!ping) return ''; try { entryConfigFromPing(ping, endpoint, 'live'); return ''; } catch (e) { const m = e instanceof Error ? e.message : ''; return m.startsWith('クラス') ? m : ''; } })();
+
+  const settingRows: ReadonlyArray<readonly [string, string]> = [['大会名', '○○ジム交流大会'], ['開催日', '2027年10月3日'], ['会場', '○○体育館'], ['主催者名', '○○ジム'], ['問い合わせ先', '03-0000-0000'], ['申込締切', '2027年9月20日'], ['入場曲', '「あり」か「なし」（▼から選びます）'], ['クラス分け', '「なし」か「あり」（分けるときだけ「あり」。はじめは「なし」です）']];
 
   return <main className="tos-read min-h-screen bg-indigo-50 px-4 pb-40 pt-5 text-lg font-medium leading-[1.85] text-slate-950 [color-scheme:light] [overflow-wrap:anywhere] [word-break:auto-phrase] sm:px-6">
     <div className="mx-auto max-w-3xl">
@@ -520,7 +523,9 @@ export default function SetupV3() {
               <div className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-slate-800">例）{v}</div>
             </div>)}
           </div>
-          <p>全部で7つです。日にちは「2027年10月3日」のように書きます（年は見本です。本当の日にちを書きます）。</p>
+          <p>必ず書くのは7つです。日にちは「2027年10月3日」のように書きます（年は見本です。本当の日にちを書きます）。</p>
+          <p>この大会でAクラス・Bクラスに分けるときだけ、表の下のほうの「クラス分け」を「あり」にします。クラスの名前・条件・ルールは、はじめから入っています。直したいときだけ書き換えます。</p>
+          <p>例（この大会）：Aクラス＝3勝以上・首相撲あり／膝蹴りあり／蹴り足キャッチ。Bクラス＝2勝以下・パンチとキックのみ。クラス分けは、新しいひな形をコピーしたときだけ使えます。</p>
           <p>まちがえたり、書き忘れたりしても大丈夫です。次の画面で「ここを直してください」と教えます。</p>
         </StepCard>
 
@@ -646,6 +651,8 @@ export default function SetupV3() {
 
         <section aria-labelledby="made-url" className="space-y-3 rounded-2xl border-2 border-slate-300 bg-slate-50 p-4">
           <h3 id="made-url" className="text-xl font-bold">選手に渡すURL</h3>
+          {classes ? <Box tone="ok" role="status"><p className="font-bold">✓ クラス分け：あり（{classes.upper.name}／{classes.lower.name}）。申込ページに出ます。</p></Box> : null}
+          {classProblem ? <Box tone="bad" role="alert"><p className="font-bold">✕ {classProblem}</p><p>直したら、シートのメニュー「Tournament OS」→「① 最初の設定」をもう一度押して、ここで「確かめる」を押します。</p></Box> : null}
           {urlReady ? <input ref={liveBoxRef} readOnly aria-label="選手に渡すURL" value={liveUrl} onFocus={(e) => e.currentTarget.select()} className={field + ' break-all'} /> : <p>まだありません。受付が始まると、ここに出ます。</p>}
           <button type="button" aria-disabled={!urlReady || undefined} aria-describedby="live-reason" onClick={() => { if (!urlReady) return; void copy('live', liveUrl, '選手に渡すURLをコピーしました。LINEなどに貼って送ります。'); }} className={urlReady ? (everCopiedLive ? btnDone : btnPrimary) : btnOff}>{copied === 'live' ? '✓ コピーしました（もう一度押せます）' : '完成：選手へ渡すURLをコピー'}</button>
           <p id="live-reason" className="text-[17px]">{urlReady ? (copyFailed === 'live' ? COPY_FAIL : copied === 'live' ? '✓ コピーしました ' + copiedAt + '。LINEの文字を入れる場所で、右クリック→「貼り付け」を押します（キーボードなら「Ctrl」を押しながら「V」）。' : 'このURLを、選手にLINEなどで送ります。') : 'まだ押せません：シートで「② 受付を開始」を押してください。'}</p>

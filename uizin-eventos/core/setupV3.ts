@@ -1,15 +1,19 @@
-import { isAppsScriptUrl, type PublicEntryConfig } from './publicEntry.ts';
+import { isAppsScriptUrl, publicEntryHash, type PublicEntryConfig } from './publicEntry.ts';
+import { parseClassSettings, type ClassSettings } from './classRules.ts';
 import { formatDateInput } from './dateInput.ts';
 import type { EntryFieldMode } from './entryPackage.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
-export const EXPECTED_RECEPTION_BUILD = '3.20261004.4';
+export const EXPECTED_RECEPTION_BUILD = '3.20261010.5';
+/** クラス分けが入る前の版（3.20261004.4）も、そのまま使える。 */
+export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', EXPECTED_RECEPTION_BUILD] as const;
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;
   eventId?: string; testComplete?: boolean; settingsProblem?: string; storageProblem?: string;
   title?: string; date?: string; venue?: string; venueUrl?: string; organizer?: string; contact?: string; deadline?: string;
   music?: boolean; grade?: EntryFieldMode; age?: EntryFieldMode; comment?: EntryFieldMode; error?: string;
+  classMode?: boolean; classes?: ClassSettings;
 };
 
 export function pingUrl(endpoint: string): string {
@@ -29,6 +33,7 @@ export function parsePing(value: unknown): Ping {
     app: 'tournament-os', protocol: 3, build: v.build.slice(0, 40), ready: v.ready, accepting: flag('accepting'), eventId: text('eventId', 64), testComplete: flag('testComplete'), settingsProblem: text('settingsProblem', 600), storageProblem: text('storageProblem', 600),
     title: text('title'), date: text('date', 20), venue: text('venue'), venueUrl: text('venueUrl', 500), organizer: text('organizer'), contact: text('contact'), deadline: text('deadline', 20),
     music: flag('music'), grade: mode('grade'), age: mode('age'), comment: mode('comment'), error: text('error', 40),
+    classMode: flag('classMode'), classes: v.classMode === true ? parseClassSettings(v.classes) : undefined,
   };
 }
 
@@ -44,7 +49,7 @@ export type Diagnosis = { stage: Stage; ok: boolean; message: string };
 
 /** 画面に出す「次の1つ」。迷う原因（古い版・設定前・設定の間違い）を1行で言う。 */
 export function diagnose(ping: Ping): Diagnosis {
-  if (ping.build !== EXPECTED_RECEPTION_BUILD) return { stage: 'old-build', ok: false, message: 'Googleの版が古いです。ひな形をもう一度コピーするか、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押してください。' };
+  if (!(ACCEPTED_RECEPTION_BUILDS as readonly string[]).includes(ping.build)) return { stage: 'old-build', ok: false, message: 'Googleの版が古いです。ひな形をもう一度コピーするか、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押してください。' };
   if (!ping.ready) return { stage: 'not-setup', ok: false, message: 'まだ最初の設定が終わっていません。Googleのシートのメニュー「Tournament OS」→「① 最初の設定」を押してください。' };
   if (ping.settingsProblem) return { stage: 'bad-settings', ok: false, message: 'シートの「設定」タブを直してください。' + ping.settingsProblem };
   if (ping.storageProblem) return { stage: 'storage-full', ok: false, message: ping.storageProblem };
@@ -57,10 +62,14 @@ export function diagnose(ping: Ping): Diagnosis {
 export function entryConfigFromPing(ping: Ping, endpoint: string, mode: 'test' | 'live'): PublicEntryConfig {
   const need = [ping.eventId, ping.title, ping.date, ping.venue, ping.organizer, ping.contact, ping.deadline];
   if (!isAppsScriptUrl(endpoint) || need.some((v) => !v)) throw new Error('シートの「設定」タブが、まだ全部入っていません。');
-  return {
+  if (ping.classMode && !ping.classes) throw new Error('クラス分けが「あり」ですが、クラスの内容を読めませんでした。「設定」タブのクラスの欄を確かめてください。');
+  const config: PublicEntryConfig = {
     endpoint: endpoint.trim(), protocol: '3', mode, eventId: ping.eventId!, title: ping.title!, organizer: ping.organizer!, date: formatDateInput(ping.date!), venue: ping.venue!, venueUrl: ping.venueUrl || '',
     deadline: ping.deadline!, contact: ping.contact!, music: ping.music === true, grade: ping.grade || 'optional', age: ping.age || 'optional', comment: ping.comment || 'optional',
+    ...(ping.classes ? { classes: ping.classes } : {}),
   };
+  if (publicEntryHash(config).length > 4500) throw new Error('クラスの条件やルールの文が長すぎます。「設定」タブで短くしてください。');
+  return config;
 }
 
 /** ひな形（オーナーが自分のシートを公開用にしたもの）のURLから、会長が開く「コピーを作る」リンクを作る。 */

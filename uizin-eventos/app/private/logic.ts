@@ -69,6 +69,7 @@ export function sameExceptProgress(a: LocalTournament, b: LocalTournament): bool
   if (a.fighters.length !== b.fighters.length || a.bouts.length !== b.bouts.length) return false;
   const fighterKeys = ['id', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl', 'photoDataUrl'] as const;
   for (let i = 0; i < a.fighters.length; i++) for (const key of fighterKeys) if (a.fighters[i][key] !== b.fighters[i][key]) return false;
+  for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].fighterClass ?? '') !== (b.fighters[i].fighterClass ?? '')) return false;
   const boutKeys = ['id', 'redId', 'blueId', 'className', 'rule'] as const;
   for (let i = 0; i < a.bouts.length; i++) for (const key of boutKeys) if (a.bouts[i][key] !== b.bouts[i][key]) return false;
   return true;
@@ -250,7 +251,7 @@ export function saveErrorText(kind: SaveErrorKind): string {
 /* ───────── 名簿の読み込み: 前からいる人は、黙って変えない ───────── */
 
 const FIGHTER_FIELDS: Array<[keyof LocalFighter, string]> = [
-  ['name', '名前'], ['gym', 'ジム名'], ['grade', '学年'], ['age', '年齢'], ['height', '身長'], ['weight', '体重'], ['record', '戦績'], ['comment', '意気込み'], ['musicUrl', '入場曲'],
+  ['name', '名前'], ['gym', 'ジム名'], ['grade', '学年'], ['age', '年齢'], ['height', '身長'], ['weight', '体重'], ['record', '戦績'], ['comment', '意気込み'], ['musicUrl', '入場曲'], ['fighterClass', 'クラス'],
 ];
 
 export type FighterDiff = { name: string; fields: Array<{ label: string; from: string; to: string }> };
@@ -291,7 +292,7 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
   const merged = current.map((fighter) => {
     const next = incomingById.get(fighter.id);
     if (!next) return fighter;
-    const fields = FIGHTER_FIELDS.filter(([key]) => fighter[key] !== next[key]).map(([key, label]) => ({ label, from: String(fighter[key]), to: String(next[key]) }));
+    const fields = FIGHTER_FIELDS.filter(([key]) => (fighter[key] ?? '') !== (next[key] ?? '')).map(([key, label]) => ({ label, from: String(fighter[key] ?? ''), to: String(next[key] ?? '') }));
     if (next.photoDataUrl && fighter.photoDataUrl && next.photoDataUrl !== fighter.photoDataUrl) fields.push({ label: '写真', from: 'あり', to: '別の写真' });
     if (fields.length) differs.push({ name: fighter.name || '名前なし', fields }); else same++;
     if (!fighter.photoDataUrl && next.photoDataUrl) { photosFilled++; return { ...fighter, photoDataUrl: next.photoDataUrl }; }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyTournament, isLocalTournament, validateTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
-import { backupIsFresh, boutProblems, dropBlankBouts, importErrorText, ImportProblem, isBlankBout, isHalfBout, isTitleReal, nextActionKey, overwriteBoxText, overwriteConfirmText, restoreBoxText, restoreConfirmText, sameExceptProgress, unplacedFighters, useOtherBoxText, weightGap, type NextState } from '../app/private/logic.ts';
+import { backupIsFresh, boutProblems, dropBlankBouts, importErrorText, ImportProblem, isBlankBout, isHalfBout, isTitleReal, mergeKeepExisting, nextActionKey, overwriteBoxText, overwriteConfirmText, restoreBoxText, restoreConfirmText, sameExceptProgress, unplacedFighters, useOtherBoxText, weightGap, type NextState } from '../app/private/logic.ts';
 
 const fighter = (id: string, over: Partial<LocalFighter> = {}): LocalFighter => ({ id, gym: 'テストジム', name: '架空' + id, grade: '', age: '', height: '', weight: '60', record: '', comment: '', musicUrl: '', photoDataUrl: '', ...over });
 const bout = (id: string, redId = '', blueId = ''): LocalBout => ({ id, redId, blueId, className: '', rule: '' });
@@ -117,4 +117,32 @@ test('「コピー作成ずみ」は、あとで変えたら古い扱い（進�
   assert.equal(backupIsFresh({ current: copy, snapshot: null, dirty: true, savedFor: 100 }), false);
   assert.equal(backupIsFresh({ current: { ...copy, updatedAt: 101 }, snapshot: null, dirty: false, savedFor: 100 }), false);
   assert.equal(backupIsFresh({ current: copy, snapshot: null, dirty: false, savedFor: 0 }), false);
+});
+
+test('クラス: 前からいる人にクラスがなく、ファイルにあるときは「クラス （空）→Aクラス」と出る（undefined は出さない）', () => {
+  const current = [fighter('A'), fighter('B')];
+  const incoming = [fighter('A', { fighterClass: 'Aクラス' }), fighter('B')];
+  const result = mergeKeepExisting(current, incoming);
+  assert.equal(result.differs.length, 1);
+  assert.deepEqual(result.differs[0].fields, [{ label: 'クラス', from: '', to: 'Aクラス' }]);
+  assert.ok(!JSON.stringify(result).includes('undefined'));
+  const text = overwriteConfirmText(result.differs);
+  assert.ok(text.includes('クラス （空）→Aクラス') && !text.includes('undefined'));
+  // 同じ並び（クラスなし同士・クラスあり同士）は、ちがいなし
+  assert.equal(mergeKeepExisting(current, [fighter('A'), fighter('B')]).differs.length, 0);
+  const withClass = [fighter('A', { fighterClass: 'Bクラス' })];
+  assert.equal(mergeKeepExisting(withClass, [fighter('A', { fighterClass: 'Bクラス' })]).differs.length, 0);
+  // 逆（ファイルにクラスがない）でも undefined は出ない
+  const back = mergeKeepExisting(withClass, [fighter('A')]);
+  assert.deepEqual(back.differs[0].fields, [{ label: 'クラス', from: 'Bクラス', to: '' }]);
+});
+
+test('クラス: 変わったら「進み具合だけの違い」ではない。進み具合だけなら同じ', () => {
+  const a = base({ bouts: [bout('1', 'A', 'B')], currentBout: 0 });
+  const withClass = { ...a, fighters: a.fighters.map((f) => f.id === 'A' ? { ...f, fighterClass: 'Aクラス' } : f) };
+  assert.equal(sameExceptProgress(a, withClass), false);
+  assert.equal(sameExceptProgress(withClass, withClass), true);
+  assert.equal(sameExceptProgress(withClass, { ...withClass, currentBout: 0, updatedAt: withClass.updatedAt + 9 }), true);
+  // 空文字とクラスなしは同じ扱い
+  assert.equal(sameExceptProgress(a, { ...a, fighters: a.fighters.map((f) => ({ ...f, fighterClass: '' })) }), true);
 });

@@ -32,6 +32,7 @@ export function harness(opts: Opts = {}) {
     const validations = new Map<string, any>();
     const stored = (v: any, r: number, c: number, viaSetValue = false) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v) && (formats.get(r + ':' + c) !== '@' || (opts.ignoreTextFormat && !viaSetValue)) ? Number(v) : v;
     const s: any = { name, rows: [] as any[][],
+      maxRows: 1000, getMaxRows: () => s.maxRows,
       getLastRow: () => s.rows.length,
       appendRow: (values: any[]) => { const r = s.rows.length + 1; s.rows.push(values.map((v, c) => stored(v, r, c + 1))); },
       getDataRange: () => s.getRange(1, 1, s.rows.length, s.rows[0]?.length || 1),

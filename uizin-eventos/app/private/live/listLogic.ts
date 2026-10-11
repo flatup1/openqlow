@@ -1,3 +1,4 @@
+import { boutClassWarning } from '../../../core/classRules.ts';
 import { contractWeight, safeMusicUrl, type LocalBout, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
 
 /** 試合当日の画面の見かた。1試合ずつ（ふだん）か、一覧か。 */
@@ -146,6 +147,8 @@ export type CornerModel = {
   present: boolean;
   name: string;
   gym: string;
+  /** クラスの名前（Aクラスなど）。ないときは ''。見せるだけで、色は使わない */
+  fighterClass: string;
   photoDataUrl: string;
   music: MusicState;
   musicUrl: string;
@@ -159,6 +162,8 @@ export type RowModel = {
   rule: string;
   red: CornerModel;
   blue: CornerModel;
+  /** 赤と青のクラスがちがう（どちらも入っていて、ちがうとき） */
+  classMix: boolean;
   openLabel: string;
 };
 
@@ -170,6 +175,7 @@ function corner(side: 'red' | 'blue', fighter: LocalFighter | undefined, musicEn
     present: !!fighter,
     name: fighter ? fighter.name.trim() || '名前未入力' : MISSING_FIGHTER,
     gym: fighter?.gym.trim() ?? '',
+    fighterClass: fighter?.fighterClass?.trim() ?? '',
     photoDataUrl: fighter?.photoDataUrl ?? '',
     music: state,
     musicUrl: state === 'link' && fighter ? safeMusicUrl(fighter.musicUrl) : '',
@@ -189,6 +195,7 @@ export function buildRow(bout: LocalBout, index: number, byId: Map<string, Local
     rule: bout.rule.trim(),
     red: r,
     blue: b,
+    classMix: boutClassWarning(red, blue) !== '',
     openLabel: 'この試合を開く ' + title + ' 赤コーナー ' + r.name + ' 対 青コーナー ' + b.name,
   };
 }

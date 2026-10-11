@@ -1,5 +1,6 @@
 import { fingerprint, pick, toRows } from './csv.ts';
 import type { EntryFormConfig } from './entryPackage.ts';
+import { cleanClassLabel } from './classRules.ts';
 
 export type LocalFighter = {
   id: string;
@@ -13,6 +14,8 @@ export type LocalFighter = {
   comment: string;
   musicUrl: string;
   photoDataUrl: string;
+  /** クラスの名前（例：Aクラス）。申込のときに選んだ名前の文字。ないときは項目ごと無い。 */
+  fighterClass?: string;
 };
 
 export type LocalBout = {
@@ -57,6 +60,7 @@ export function importFighters(csv: string): { fighters: LocalFighter[]; blocked
     const name = pick(row, '選手名', '名前', '選手名（リングネーム）', 'fighter_name', 'name');
     const gym = pick(row, 'ジム名', '所属gym', '所属', 'gym', 'team');
     const stable = pick(row, '管理番号', 'id') || fingerprint(String(index), name, gym);
+    const cls = cleanClassLabel(pick(row, 'クラス', 'class', 'fighter_class'));
     return {
       id: stable,
       gym,
@@ -69,6 +73,7 @@ export function importFighters(csv: string): { fighters: LocalFighter[]; blocked
       comment: pick(row, '意気込み', '試合への意気込み', 'comment'),
       musicUrl: pick(row, '入場曲', '入場曲url', '入場曲URL（Apple Music推奨）', 'music_url'),
       photoDataUrl: '',
+      ...(cls ? { fighterClass: cls } : {}),
     };
   }).filter((fighter) => fighter.name.trim() !== '');
   if (new Set(fighters.map((fighter) => fighter.id)).size !== fighters.length) throw new Error('同じ管理番号が2つあります。原本で重複を確認してください。今ある名簿は変えていません。');
@@ -145,5 +150,5 @@ export function isLocalTournament(value: unknown): value is LocalTournament {
   const text = (item: unknown) => typeof item === 'string' && item.length <= 5000;
   if (data.entryConfig !== undefined && (!data.entryConfig || typeof data.entryConfig.music !== 'boolean' || !['grade','age','comment'].every(key => ['off','optional','required'].includes(data.entryConfig![key as 'grade'|'age'|'comment'])))) return false;
   if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
-  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
+  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { boutWarnings, contractWeight, importFighters, mergeFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
+import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { isAppsScriptUrl, isVenueUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
 
 test('汎用CSVの日本語見出しを選手情報へ変換する', () => {
@@ -218,4 +219,71 @@ test('対戦カードの注意：体重差・同じジム・複数試合を警�
   const two = [bout('1', 'A', 'B'), bout('2', 'A', 'C')];
   assert.ok(boutWarnings(two[0], fighters, two).some((w) => w.includes('2 試合')));
   assert.deepEqual(boutWarnings(bout('3', '', ''), fighters, []), []);
+});
+
+test('クラス: 取り込みは「クラス」列を読み、無い名簿には項目を足さない。クラスは個人情報ではなく止めない', () => {
+  const withClass = importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス');
+  assert.deepEqual(withClass.blockedHeaders, []);
+  assert.equal(withClass.fighters[0].fighterClass, 'Aクラス');
+  assert.equal(importFighters('管理番号,選手名,class\nF1,赤,Bクラス').fighters[0].fighterClass, 'Bクラス');
+  assert.equal(importFighters('id,name,fighter_class\nF1,赤,Bクラス').fighters[0].fighterClass, 'Bクラス');
+  const old = importFighters('管理番号,選手名\nF1,赤').fighters[0];
+  assert.equal('fighterClass' in old, false);
+  assert.deepEqual(old, { id: 'F1', gym: '', name: '赤', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', photoDataUrl: '' });
+  const blankCell = importFighters('管理番号,選手名,クラス\nF1,赤,').fighters[0];
+  assert.equal('fighterClass' in blankCell, false, '空のクラスは項目ごと無い');
+  assert.equal(importFighters('管理番号,選手名,クラス\nF1,赤,' + 'あ'.repeat(60)).fighters[0].fighterClass?.length, 40);
+  assert.equal(privateHeadersOk(), true);
+});
+function privateHeadersOk() { return importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス').blockedHeaders.length === 0; }
+
+test('クラス: 復元前の検証は、クラスなしの旧データを今までどおり通し、おかしなクラスだけ断る', () => {
+  const base = { id: 'x', gym: '', name: 'n', grade: '', age: '', height: '', weight: '51', record: '', comment: '', musicUrl: '', photoDataUrl: '' };
+  const data = emptyTournament('local-test');
+  assert.equal(isLocalTournament({ ...data, fighters: [base] }), true);
+  assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass: 'Aクラス' }] }), true);
+  assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass: '' }] }), true);
+  assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass: 'あ'.repeat(40) }] }), true);
+  for (const fighterClass of [5, [], null, {}, 'あ'.repeat(41)]) assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass }] }), false);
+  const withClass = { ...data, fighters: [{ ...base, fighterClass: 'Aクラス' }, { ...base, id: 'y' }] };
+  assert.equal(isLocalTournament(JSON.parse(JSON.stringify(withClass))), true);
+  assert.equal('fighterClass' in emptyTournament(), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(withClass)).fighters[0].fighterClass, 'Aクラス');
+});
+
+test('クラス: 再取り込みでもクラスは名簿に残る', () => {
+  const current = importFighters('管理番号,選手名\nF1,赤').fighters;
+  const merged = mergeFighters(current, importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス').fighters);
+  assert.equal(merged[0].fighterClass, 'Aクラス');
+});
+
+test('クラス: 申込ページ用のURLは、クラスなしなら今までと同じで、あれば短く往復できる', () => {
+  const cfg = { endpoint: 'https://script.google.com/macros/s/AKfycbyTEST_ONLY/exec', eventId: 'test-cup', title: 't', organizer: 'o', date: 'd', venue: 'v', venueUrl: '', deadline: '2099-11-30', contact: 'c', music: false, grade: 'optional' as const, age: 'optional' as const, comment: 'optional' as const, protocol: '3', mode: 'live' as const };
+  const oldHash = publicEntryHash(cfg);
+  assert.doesNotMatch(oldHash, /cls|classes/);
+  const oldRead = publicEntryConfig(oldHash);
+  assert.deepEqual(oldRead, cfg);
+  assert.equal('classes' in oldRead, false);
+  const withDefaults = { ...cfg, classes: DEFAULT_CLASS_SETTINGS };
+  const h = publicEntryHash(withDefaults);
+  assert.match(h, /cls=on/); assert.doesNotMatch(h, /cuN|cuC|cuR|clN|clC|clR|cw=/);
+  assert.deepEqual(publicEntryConfig(h), withDefaults);
+  const custom = { ...cfg, classes: { enabled: true as const, upper: { name: '上級', condition: '5勝以上', rule: '首相撲あり' }, lower: { name: '初級', condition: '4勝以下', rule: 'パンチのみ' }, upperMinWins: 5 } };
+  const hc = publicEntryHash(custom);
+  for (const key of ['cuN=', 'cuC=', 'cuR=', 'clN=', 'clC=', 'clR=', 'cw=5']) assert.ok(hc.includes(key), key);
+  assert.deepEqual(publicEntryConfig(hc), custom);
+  assert.equal(publicEntryConfig(hc + '&unknown=1').title, 't', '知らない項目は無視');
+  const classesOf = (hash: string) => publicEntryConfig(hash).classes;
+  assert.equal(classesOf(oldHash + '&cls=off'), undefined);
+  assert.equal(classesOf(oldHash)?.upperMinWins, undefined);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=x')?.upperMinWins, 3);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=0')?.upperMinWins, 3);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=100')?.upperMinWins, 3);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=7')?.upperMinWins, 7);
+  assert.equal(classesOf(oldHash + '&cls=on&cuN=' + 'あ'.repeat(30))?.upper.name.length, 12, '長すぎる名前は切る');
+  assert.equal(classesOf(oldHash + '&cls=on&cuC=' + 'あ'.repeat(100))?.upper.condition.length, 60);
+  assert.equal(classesOf(oldHash + '&cls=on&cuR=' + 'あ'.repeat(200))?.upper.rule.length, 80);
+  assert.equal(classesOf(oldHash + '&cls=on&cuN=Bクラス'), undefined, '名前が同じなら、クラスの設定ごと捨てる');
+  assert.equal('classes' in publicEntryConfig(oldHash + '&cls=on&cuN=Bクラス'), false);
+  assert.equal(publicEntryConfig(oldHash + '&cls=on&cuN=Bクラス').title, 't');
 });

@@ -42,7 +42,7 @@ function MusicChip({ corner }: { corner: CornerModel }) {
 
 function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: boolean }) {
   const look = LOOK[corner.side];
-  const label = corner.label + ' ' + corner.name + (corner.gym ? ' ' + corner.gym : '');
+  const label = corner.label + ' ' + corner.name + (corner.gym ? ' ' + corner.gym : '') + (corner.fighterClass ? ' ' + corner.fighterClass : '');
   return <div role="group" aria-label={label} className={'min-w-0 overflow-hidden rounded-xl border-[3px] bg-white ' + look.border}>
     <p className={'px-3 py-0.5 text-2xl font-black leading-snug ' + look.band}><span aria-hidden="true">{look.mark} </span>{corner.label}</p>
     <div className="p-2">
@@ -51,6 +51,7 @@ function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: b
         <div className="min-w-0 flex-1">
           <p className={'text-[28px] font-black leading-tight [overflow-wrap:anywhere] ' + (corner.present ? 'text-slate-950' : 'text-slate-600')}>{corner.name}</p>
           {corner.gym ? <p className="text-[17px] font-bold leading-snug text-slate-700 [overflow-wrap:anywhere]">{corner.gym}</p> : null}
+          {corner.fighterClass ? <p className="mt-0.5"><span className="inline-block rounded-full border-2 border-slate-700 bg-white px-3 text-[17px] font-black text-slate-900 [overflow-wrap:anywhere]">{corner.fighterClass}</span></p> : null}
         </div>
       </div>
       {musicEnabled && corner.music !== 'empty' ? <div className="mt-1.5"><MusicChip corner={corner} /></div> : null}
@@ -74,6 +75,7 @@ function Row({ row, musicEnabled, saving, flash, onOpen }: { row: RowModel; musi
     <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-3 px-1 text-center md:flex-col md:justify-center md:gap-0">
       <p className="text-[17px] font-black text-slate-600" aria-hidden="true">VS</p>
       <p className="text-[28px] font-black leading-tight [overflow-wrap:anywhere]"><span className="sr-only">契約 </span>{row.contract}</p>
+      {row.classMix ? <p className="w-full rounded-lg border-2 border-rose-700 bg-rose-50 px-2 text-[17px] font-black text-rose-900"><span aria-hidden="true">⚠ </span>クラスがちがう</p> : null}
       {row.rule ? <p className="w-full text-[17px] leading-snug text-slate-700 [overflow-wrap:anywhere]">ルール：{row.rule}</p> : null}
     </div>
     <Corner corner={row.blue} musicEnabled={musicEnabled} />

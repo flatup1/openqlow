@@ -1,8 +1,9 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { boutWarnings, contractWeight, emptyTournament, importFighters, validateTournament, WEIGHT_GAP_WARN_KG, type LocalBout, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
 import { suggestBouts } from '../../core/boutSuggest.ts';
+import { boutClassWarning, DEFAULT_CLASS_SETTINGS } from '../../core/classRules.ts';
 import { formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, entryErrors, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { bytesToArrayBuffer, decryptBackup, encryptBackup, listPrivateEvents, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, watchPrivateEvent, writePrivateEvent, type PrivateEventSummary } from '../lib/privateStore.ts';
@@ -16,6 +17,8 @@ import {
 import { Badge, btn, Chip, cls, ConfirmBox, Fold, inputClass, Notice, Section } from './parts.tsx';
 
 const blankFighter = (): LocalFighter => ({ id: crypto.randomUUID(), gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', photoDataUrl: '' });
+/** 名簿に出てくるクラスの名前（空は除く。同じ名前は1つ） */
+const knownClasses = (fighters: LocalFighter[]): string[] => [...new Set(fighters.map((f) => (f.fighterClass ?? '').trim()).filter(Boolean))];
 const kgText = (value: string) => value.trim() ? value.trim().replace(/kg$/i, '') + 'kg' : '体重未入力';
 const VIEW_WINDOW_NOTE = '新しい画面が開きます。見終わったら、画面の上の「試合の準備」の名前を押してもどります。';
 const FILE_ACCEPT = '.zip,.xlsx,.csv,application/zip,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv';
@@ -31,7 +34,8 @@ type PendingOverwrite = { base: LocalFighter[]; overwritten: LocalFighter[]; dif
 type PendingLookalike = { base: LocalFighter[]; extra: LocalFighter[] };
 /** 画面の中の確認の箱（いちどに1つだけ）。nonce は「もう一度押した」ときに箱を作り直して、フォーカスを戻すため */
 type Ask = { kind: 'restore'; restored: LocalTournament; nonce: number } | { kind: 'overwrite'; nonce: number } | { kind: 'other'; latest: LocalTournament; nonce: number };
-type FieldKey = 'name' | 'gym' | 'grade' | 'age' | 'height' | 'weight' | 'record' | 'comment' | 'musicUrl';
+type TextKey = 'name' | 'gym' | 'grade' | 'age' | 'height' | 'weight' | 'record' | 'comment' | 'musicUrl';
+type FieldKey = TextKey | 'fighterClass';
 /** yes = つながりの確認ずみ（申し込みページの画面で確かめた）/ entered = URLを入れただけ / no = まだ / unknown = 読めない */
 type SetupState = 'yes' | 'entered' | 'no' | 'unknown';
 
@@ -40,8 +44,8 @@ const EDIT_KEYS: FieldKey[] = ['name', 'gym', 'grade', 'age', 'height', 'weight'
 const invalidKeys = (errors: string[]): Set<FieldKey> => new Set(FIELD_WORDS.filter(([, word]) => errors.some((error) => error.includes(word))).map(([key]) => key));
 
 /* ───────── 選手の入力欄（1人ずつ入れる / 直す で共通） ───────── */
-function FighterFields({ value, onChange, config, prefix, invalid, describedBy }: { value: LocalFighter; onChange: (key: FieldKey, next: string) => void; config: EntryFormConfig; prefix: string; invalid?: Set<FieldKey>; describedBy?: string }) {
-  const rows: Array<{ key: FieldKey; label: string; required: boolean; hint?: string; unit?: string; mode?: 'numeric' | 'decimal' | 'text'; auto?: string; show: boolean }> = [
+function FighterFields({ value, onChange, config, prefix, invalid, describedBy, classOptions }: { value: LocalFighter; onChange: (key: FieldKey, next: string) => void; config: EntryFormConfig; prefix: string; invalid?: Set<FieldKey>; describedBy?: string; classOptions?: string[] }) {
+  const rows: Array<{ key: TextKey; label: string; required: boolean; hint?: string; unit?: string; mode?: 'numeric' | 'decimal' | 'text'; auto?: string; show: boolean }> = [
     { key: 'name', label: '選手名', required: true, hint: '例: 山田 太郎', show: true },
     { key: 'gym', label: 'ジム名', required: true, hint: '例: ○○ジム', show: true },
     { key: 'grade', label: '学年', required: config.grade === 'required', hint: '例: 小6 / 中2 / 社会人', show: config.grade !== 'off' },
@@ -52,13 +56,22 @@ function FighterFields({ value, onChange, config, prefix, invalid, describedBy }
     { key: 'comment', label: '意気込み', required: config.comment === 'required', hint: '例: 全力でがんばります', show: config.comment !== 'off' },
     { key: 'musicUrl', label: '入場曲のリンク', required: config.music, hint: 'Apple Music か YouTube のリンク', show: config.music },
   ];
-  return <div className="grid gap-4 sm:grid-cols-2">{rows.filter((row) => row.show).map((row) => <div key={row.key} className="min-w-0">
+  // クラスの選び方（名簿にクラスがあるときか、「クラスも入れる」を押したときだけ出る）。今の値が選べる名前に無いときも、消えないように足す
+  const current = value.fighterClass ?? '';
+  const classChoices = classOptions && classOptions.length ? (current && !classOptions.includes(current) ? [...classOptions, current] : classOptions) : [];
+  return <div className="grid gap-4 sm:grid-cols-2">{rows.filter((row) => row.show).map((row) => <Fragment key={row.key}><div className="min-w-0">
     <div className="flex flex-wrap items-baseline"><label htmlFor={prefix + '-' + row.key} className="text-lg font-bold">{row.label}</label><Badge required={row.required} /></div>
     <div className="flex items-center gap-2">
       <input id={prefix + '-' + row.key} className={inputClass} value={value[row.key]} placeholder={row.hint} inputMode={row.mode} autoComplete="off" aria-invalid={invalid?.has(row.key) || undefined} aria-describedby={invalid?.has(row.key) ? describedBy : undefined} onChange={(e) => onChange(row.key, e.target.value)} />
       {row.unit ? <span className="mt-1 shrink-0 text-lg font-bold" aria-hidden="true">{row.unit}</span> : null}
     </div>
-  </div>)}</div>;
+  </div>{row.key === 'record' && classChoices.length ? <div className="min-w-0">
+    <div className="flex flex-wrap items-baseline"><label htmlFor={prefix + '-fighterClass'} className="text-lg font-bold">クラス</label><Badge text="なくてもOK" /></div>
+    <select id={prefix + '-fighterClass'} className={inputClass} value={current} onChange={(e) => onChange('fighterClass', e.target.value)}>
+      <option value="">えらばない</option>
+      {classChoices.map((name) => <option key={name} value={name}>{name}</option>)}
+    </select>
+  </div> : null}</Fragment>)}</div>;
 }
 
 /* ───────── 対戦カード1枚（<article> はこの中だけ。画像タグは使わない） ───────── */
@@ -73,6 +86,7 @@ const BoutCard = memo(function BoutCard({ bout, index, total, fighters, groups, 
   const half = isHalfBout(bout), blank = isBlankBout(bout);
   const gap = weightGap(red, blue);
   const warnings = boutWarnings(bout, fighters, bouts);
+  const classWarn = boutClassWarning(red, blue);
   const contract = contractWeight(red, blue);
   const weightUnknown = !!red && !!blue && gap === null;
   const inThisBout = (id: string) => id === bout.redId || id === bout.blueId;
@@ -81,13 +95,14 @@ const BoutCard = memo(function BoutCard({ bout, index, total, fighters, groups, 
   const options = (side: 'red' | 'blue') => groups.map(([gym, list]) => <optgroup key={gym} label={gym || 'ジム名なし'}>{list.map((f) => {
     const other = side === 'red' ? bout.blueId : bout.redId;
     const mark = f.id === other ? '（もう片方に選択中）' : (placed.get(f.id) ?? 0) - (inThisBout(f.id) ? 1 : 0) > 0 ? '（配置ずみ）' : '';
-    return <option key={f.id} value={f.id} disabled={f.id === other}>{`${kgText(f.weight)} ${f.name}${gym ? '（' + gym + '）' : ''}${mark}`}</option>;
+    return <option key={f.id} value={f.id} disabled={f.id === other}>{`${kgText(f.weight)} ${f.name}${f.fighterClass ? '（' + f.fighterClass + '）' : ''}${gym ? '（' + gym + '）' : ''}${mark}`}</option>;
   })}</optgroup>);
   const profile = (f: LocalFighter | undefined) => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
     <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
     <div className="min-w-0 text-[17px] font-medium leading-snug">
       <p className="break-words text-lg font-bold">{f.name}</p>
       <p className="break-words">{kgText(f.weight)}{f.record ? '・' + f.record : ''}</p>
+      {f.fighterClass ? <p className="break-words">クラス：{f.fighterClass}</p> : null}
       <p className="break-words text-slate-700">{[f.age ? f.age + '歳' : '', f.grade].filter(Boolean).join('・')}</p>
     </div>
   </div> : null;
@@ -129,7 +144,8 @@ const BoutCard = memo(function BoutCard({ bout, index, total, fighters, groups, 
       </div>
     </div>
     {red && blue ? <p className="mt-3 text-[17px] font-medium">{contract ? '試合当日の画面には「' + contract + '」と出ます。' : '体重がわからないので、体重の区分（階級）の文字が出ます。'}</p> : null}
-    {warnings.length ? <div className="mt-3 space-y-2">
+    {warnings.length || classWarn ? <div className="mt-3 space-y-2">
+      {classWarn ? <p role="status" className="rounded-xl border-2 border-rose-600 bg-rose-50 p-2 text-[17px] font-bold text-rose-900">⚠ {classWarn}</p> : null}
       {warnings.map((w) => <p key={w} role="status" className="rounded-xl border-2 border-amber-500 bg-amber-50 p-2 text-[17px] font-bold text-amber-950">⚠ {w}</p>)}
       <p className="text-[17px] font-medium">このままでも大丈夫です。気になるときだけ選び直してください。</p>
     </div> : null}
@@ -173,6 +189,7 @@ export default function PrivateAdmin() {
   const [manualNote, setManualNote] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<LocalFighter>(blankFighter);
+  const [classOptIn, setClassOptIn] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<{ id: string; text: string } | null>(null);
@@ -236,7 +253,7 @@ export default function PrivateAdmin() {
   const keyboardUp = fieldFocused && viewportShrunk;
   // 「この選手を追加」を押す前の入力と、直している途中の入力。保存の対象には、まだ入っていない
   const manualDirty = !isBlankFighterForm(manual);
-  const editDirty = editingId !== null && (() => { const original = data.fighters.find((fighter) => fighter.id === editingId); return !!original && EDIT_KEYS.some((k) => original[k] !== draft[k]); })();
+  const editDirty = editingId !== null && (() => { const original = data.fighters.find((fighter) => fighter.id === editingId); return !!original && (EDIT_KEYS.some((k) => original[k] !== draft[k]) || (original.fighterClass ?? '') !== (draft.fighterClass ?? '')); })();
   const pendingInput = ready && !loadError && (manualDirty || editDirty);
   pendingInputRef.current = pendingInput;
   const line = saveLine({ conflict, saveState, dirty, everSaved, savedClock: clockText(data.updatedAt), pending: pendingInput });
@@ -715,7 +732,7 @@ export default function PrivateAdmin() {
   const addManual = () => {
     // 完全に空のまま、もう一度押したときは何もしない（「追加しました」の案内を消さない）
     if (manualNote && isBlankFighterForm(manual)) return;
-    const cleaned: LocalFighter = { ...manual, name: manual.name.trim(), gym: manual.gym.trim(), age: tidy(manual.age), height: tidy(manual.height), weight: tidy(manual.weight), record: manual.record.trim() };
+    const cleaned: LocalFighter = { ...manual, name: manual.name.trim(), gym: manual.gym.trim(), age: tidy(manual.age), height: tidy(manual.height), weight: tidy(manual.weight), record: manual.record.trim(), fighterClass: (manual.fighterClass ?? '').trim() || undefined };
     const errors = entryErrors(cleaned, true, entryConfig);
     if (errors.length) { setManualErrors(errors); setManualNote(''); return; }
     setManualErrors([]);
@@ -737,7 +754,7 @@ export default function PrivateAdmin() {
   const applyEdit = () => {
     if (!editingId) return;
     if (!draft.name.trim()) { notify('error', '選手の名前を入れてください。', 'toast'); return; }
-    const next: LocalFighter = { ...draft, name: draft.name.trim(), gym: draft.gym.trim(), age: tidy(draft.age), height: tidy(draft.height), weight: tidy(draft.weight) };
+    const next: LocalFighter = { ...draft, name: draft.name.trim(), gym: draft.gym.trim(), age: tidy(draft.age), height: tidy(draft.height), weight: tidy(draft.weight), fighterClass: (draft.fighterClass ?? '').trim() || undefined };
     setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === editingId ? { ...next, id: item.id, photoDataUrl: item.photoDataUrl } : item) }));
     setEditingId(null);
   };
@@ -924,6 +941,9 @@ export default function PrivateAdmin() {
   };
 
   const dateOk = isCompleteDate(data.date);
+  // クラスの選び方は、名簿にクラスがあるときか「クラスも入れる」を押したときだけ出す
+  const classNames = knownClasses(data.fighters);
+  const classOptions = classNames.length ? classNames : classOptIn ? [DEFAULT_CLASS_SETTINGS.upper.name, DEFAULT_CLASS_SETTINGS.lower.name] : [];
   const nFighters = data.fighters.length;
   const nonBlank = data.bouts.filter((bout) => !isBlankBout(bout)).length;
   const halfIndex = data.bouts.findIndex(isHalfBout);
@@ -1248,7 +1268,9 @@ export default function PrivateAdmin() {
                   </div> : null}
                 </Fold>
                 <Fold title="1人ずつ入れる" className="border-slate-300">
-                  <FighterFields value={manual} config={entryConfig} prefix="manual" invalid={manualInvalid} describedBy="manual-errors" onChange={(k, v) => { setManual((old) => ({ ...old, [k]: v })); setManualErrors([]); setManualNote(''); }} />
+                  {classOptions.length === 0 ? <button type="button" onClick={() => setClassOptIn(true)} className={cls(btn.base, btn.outline, 'mb-4 w-full sm:w-auto')}>クラスも入れる（{DEFAULT_CLASS_SETTINGS.upper.name}・{DEFAULT_CLASS_SETTINGS.lower.name}）</button>
+                    : classOptIn && classNames.length === 0 ? <p role="status" className="mb-4 font-bold text-emerald-800">✓ クラスを入れられます</p> : null}
+                  <FighterFields value={manual} config={entryConfig} prefix="manual" classOptions={classOptions} invalid={manualInvalid} describedBy="manual-errors" onChange={(k, v) => { setManual((old) => ({ ...old, [k]: v })); setManualErrors([]); setManualNote(''); }} />
                   <button type="button" onClick={addManual} className={cls(btn.base, btn.outlineBig, 'mt-4 w-full sm:w-auto')}>この選手を追加</button>
                   {manualErrors.length ? <div id="manual-errors" role="status" className="mt-3 rounded-xl border-2 border-rose-600 bg-rose-50 p-3 text-[17px] font-bold text-rose-900">
                     <p><span aria-hidden="true">! </span>次の{manualErrors.length}か所を直してください。</p>
@@ -1278,12 +1300,13 @@ export default function PrivateAdmin() {
                       <div className="min-w-0 flex-1 break-words">
                         <p className="text-lg font-bold">{fighter.name}</p>
                         <p className="text-[17px] font-medium">{fighter.gym}</p>
+                        {fighter.fighterClass ? <p className="mt-1"><Chip tone="slate">クラス：{fighter.fighterClass}</Chip></p> : null}
                         <p className="text-[17px] font-medium">{kgText(fighter.weight)}{fighter.record ? '・' + fighter.record : ''}</p>
                         {!fighter.photoDataUrl ? <p className="mt-1"><Chip tone="slate">写真：あとでOK</Chip></p> : null}
                       </div>
                     </div>
                     {editing ? <div className="mt-3 space-y-3 border-t-2 border-slate-200 pt-3">
-                      <FighterFields value={draft} config={entryConfig} prefix={'edit-' + fighter.id} onChange={(k, v) => setDraft((old) => ({ ...old, [k]: v }))} />
+                      <FighterFields value={draft} config={entryConfig} prefix={'edit-' + fighter.id} classOptions={classOptions} onChange={(k, v) => setDraft((old) => ({ ...old, [k]: v }))} />
                       <div className="flex flex-wrap gap-3">
                         <button type="button" onClick={applyEdit} className={cls(btn.base, btn.outlineBig)}>この内容で直す</button>
                         <button type="button" onClick={() => setEditingId(null)} className={cls(btn.base, btn.outlineBig)}>やめる</button>
@@ -1341,9 +1364,10 @@ export default function PrivateAdmin() {
                   <p className="font-bold">試合の一覧（押すと、その試合に移ります）</p>
                   <ul className="mt-2 space-y-1">{data.bouts.map((bout, index) => {
                     const red = byId.get(bout.redId), blue = byId.get(bout.blueId), kg = contractKg(red, blue);
+                    const classMix = boutClassWarning(red, blue) !== '';
                     return <li key={bout.id}><button type="button" onClick={() => jump('bout-' + index)} className="flex min-h-12 w-full min-w-0 items-center gap-2 rounded-lg border-2 border-slate-300 bg-white px-3 py-1 text-left text-[17px] font-medium break-words">
                       <b className="shrink-0">第{index + 1}試合</b>
-                      <span className="min-w-0 flex-1 break-words">{red?.name ?? '（赤まだ）'} vs {blue?.name ?? '（青まだ）'}{kg ? ' ・' + kg : ''}</span>
+                      <span className="min-w-0 flex-1 break-words">{red?.name ?? '（赤まだ）'} vs {blue?.name ?? '（青まだ）'}{kg ? ' ・' + kg : ''}{classMix ? ' ⚠クラスちがい' : ''}</span>
                     </button></li>;
                   })}</ul>
                 </div>

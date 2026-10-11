@@ -1,5 +1,5 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261004.4';
+const RECEPTION_BUILD = '3.20261010.5';
 const MIN_FREE_BYTES = 200 * 1024 * 1024;
 /** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
@@ -13,7 +13,15 @@ const SETTING_ROWS = [
   ['入場曲', '', '必ず選びます（あり／なし）。入場曲を聞くかどうかを、最初に決めます'],
   ['学年', '任意', '必須／任意／なし'],
   ['年齢', '任意', '必須／任意／なし'],
-  ['意気込み', '任意', '必須／任意／なし']
+  ['意気込み', '任意', '必須／任意／なし'],
+  ['クラス分け', 'なし', 'あり／なし。Aクラス・Bクラスに分けるときだけ「あり」（▼から選びます）。例：あり'],
+  ['上のクラスの名前', 'Aクラス', '選手に見えます。12文字まで。例：Aクラス'],
+  ['上のクラスの条件', '3勝以上（例：3勝0敗、4勝、5勝2敗）', '選手に見えます。60文字まで。例：3勝以上（勝った数だけで決めます。負け・引き分けは数えません）'],
+  ['上のクラスのルール', '首相撲あり／膝蹴りあり／蹴り足キャッチ（ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）', '選手に見えます。80文字まで。例：首相撲あり／膝蹴りあり／蹴り足キャッチ'],
+  ['下のクラスの名前', 'Bクラス', '選手に見えます。12文字まで。例：Bクラス'],
+  ['下のクラスの条件', 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', '選手に見えます。60文字まで。例：アマチュア。2勝以下'],
+  ['下のクラスのルール', 'パンチとキックのみ', '選手に見えます。80文字まで。例：パンチとキックのみ'],
+  ['上のクラスにする勝ち数', '3', '数字（1〜99）。この勝ち数「以上」は上のクラスです。例：3（3勝ちょうどは上のクラス）。変えたら、上と下の「条件」の文も直してください']
 ];
 const SELFTEST_JPEG = '/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALIAP//Z';
 let SETTINGS_CACHE_ = null;
@@ -37,7 +45,7 @@ function ensureSettingsSheet_(book) {
   sheet.getRange(2, 1, SETTING_ROWS.length, 3).setValues(SETTING_ROWS);
   // 選び間違い・入れ間違いを防ぐ「▼から選ぶ」欄。使えない環境でも、設定は読めるので止めない。
   try {
-    [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']]].forEach(function (pair) {
+    [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']]].forEach(function (pair) {
       const index = SETTING_ROWS.findIndex(function (row) { return row[0] === pair[0]; });
       if (index >= 0) sheet.getRange(index + 2, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(pair[1], true).setAllowInvalid(false).build());
     });
@@ -51,9 +59,12 @@ function S_() {
   if (!id) throw entryError_('setup', '「Tournament OS」メニューの「① 最初の設定」を押してください。', false);
   const sheet = SpreadsheetApp.openById(id).getSheetByName('設定');
   if (!sheet) throw entryError_('setup', '「設定」タブが見つかりません。「① 最初の設定」を押してください。', false);
-  const rows = sheet.getRange(2, 1, SETTING_ROWS.length, 2).getDisplayValues(), v = {};
+  // 古い設定タブ（11行）でも読める：行が足りない分は空として読む。
+  const count = typeof sheet.getMaxRows === 'function' ? Math.max(1, Math.min(SETTING_ROWS.length, sheet.getMaxRows() - 1)) : SETTING_ROWS.length;
+  const rows = sheet.getRange(2, 1, count, 2).getDisplayValues(), v = {};
   rows.forEach(function (row) { v[String(row[0]).trim()] = String(row[1]).trim(); });
-  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), raw: v };
+  const classes = { enabled: v['クラス分け'] === 'あり', upper: { name: v['上のクラスの名前'], condition: v['上のクラスの条件'], rule: v['上のクラスのルール'] }, lower: { name: v['下のクラスの名前'], condition: v['下のクラスの条件'], rule: v['下のクラスのルール'] }, upperMinWins: Number(String(v['上のクラスにする勝ち数'] || '').normalize('NFKC')) || 0 };
+  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, raw: v };
   return SETTINGS_CACHE_;
 }
 /** 設定の間違いを、直す場所つきで返す。空なら問題なし。 */
@@ -68,17 +79,47 @@ function settingsProblems_(s) {
   if (!raw['入場曲']) missing.push('入場曲（あり／なしを選ぶ）');
   if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
   if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
-  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + ' のどれかにしてください'); });
+  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + ' のどれかにしてください'); });
+  // クラスの欄は「クラス分け＝あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）
+  if (raw['クラス分け'] === 'あり') {
+    const sides = [['上', '上のクラス'], ['下', '下のクラス']], norm = function (t) { return String(t || '').normalize('NFKC').trim().toLowerCase(); };
+    [['の名前', 12], ['の条件', 60], ['のルール', 80]].forEach(function (kind) {
+      sides.forEach(function (side) { if (!String(raw[side[1] + kind[0]] || '').trim()) missing.push(side[1] + kind[0]); });
+    });
+    // 順番は 名前（上・下）→ 条件 → ルール になるよう、上の forEach の並びを保つ
+    if (norm(raw['上のクラスの名前']) && norm(raw['上のクラスの名前']) === norm(raw['下のクラスの名前'])) bad.push('「上のクラスの名前」と「下のクラスの名前」は、ちがう名前にしてください');
+    sides.forEach(function (side) {
+      [['の名前', 12], ['の条件', 60], ['のルール', 80]].forEach(function (kind) {
+        const label = side[1] + kind[0], text = String(raw[label] || '').trim();
+        if (text.length > kind[1]) bad.push('「' + label + '」は' + kind[1] + '文字までにしてください');
+        if (kind[0] === 'の名前' && /^[=+\-@]/.test(text)) bad.push('「' + label + '」は、「=」「+」「-」「@」で始めないでください');
+      });
+    });
+    const wins = String(raw['上のクラスにする勝ち数'] || '').normalize('NFKC').trim();
+    if (!/^\d{1,2}$/.test(wins) || Number(wins) < 1) bad.push('「上のクラスにする勝ち数」は、1から99の数字で入れてください（例：3）');
+  }
   const out = [];
   if (missing.length) out.push('「設定」タブの、次の欄を入れてください：' + missing.join('、'));
   return out.concat(bad);
 }
-const PRIVATE_HEADERS = ['受付番号','申込日時','大会ID','所属ジム','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','連絡先氏名','連絡先電話番号','連絡先メールアドレス','同意','リクエストID'];
-const OS_HEADERS = ['管理番号','ジム名','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL'];
+const PRIVATE_HEADERS = ['受付番号','申込日時','大会ID','所属ジム','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','連絡先氏名','連絡先電話番号','連絡先メールアドレス','同意','リクエストID','クラス'];
+const OS_HEADERS = ['管理番号','ジム名','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','クラス'];
 function assertOwner_() {
   const props = PropertiesService.getScriptProperties(), owner = Session.getEffectiveUser().getEmail().toLowerCase(), saved = props.getProperty('ownerEmail');
   if (!owner || (saved && owner !== saved)) throw entryError_('owner', 'このシートを作った本人のGoogleで開き直してください。', false);
   return owner;
+}
+/** 見出しの状態：ok＝そのまま／old＝最後の「クラス」の1マスだけ無い（古い表）／bad＝ほかが違う。 */
+function headerState_(sheet, headers) {
+  const n = headers.length, row = sheet.getRange(1, 1, 1, n).getDisplayValues()[0];
+  if (JSON.stringify(row) === JSON.stringify(headers)) return 'ok';
+  return JSON.stringify(row) === JSON.stringify(headers.slice(0, n - 1).concat([''])) ? 'old' : 'bad';
+}
+/** 古い表に、最後の見出し1マスだけ足す。ほかのマスは書き換えない。 */
+function upgradeHeader_(sheet, headers) {
+  const n = headers.length;
+  sheet.getRange(1, n).setValue(headers[n - 1]).setFontWeight('bold');
+  try { sheet.getRange(1, n).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
 }
 function entryError_(code,message,retryable) { const error=new Error(message); error.code=code; error.retryable=retryable; return error; }
 function withLock_(callback) { const lock=LockService.getScriptLock(); if(!lock.tryLock(25000))throw entryError_('busy','受付が混み合っています。',true);try{return callback();}finally{lock.releaseLock();} }
@@ -94,7 +135,7 @@ function setupTournament() {
     ensureSettingsSheet_(book);
     SETTINGS_CACHE_ = null;
     const problems = settingsProblems_(S_());
-    if (problems.length) throw new Error(problems.join('。') + '。入れたら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : ''));
+    if (problems.length) throw new Error('シートの「設定」タブを直してください。' + problems.join('。') + '。直したら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : ''));
     if (props.getProperty('ownerEmail') && props.getProperty('ownerEmail') !== owner) throw new Error('別の大会が入っています。このシートをもう一度コピーして、新しい大会を作ってください。');
     const storage = storageProblem_();
     if (storage && !props.getProperty('photoFolderId')) throw new Error(storage);
@@ -102,12 +143,19 @@ function setupTournament() {
     if (!props.getProperty('eventId')) props.setProperty('eventId', 'tos-' + Utilities.getUuid().replace(/-/g, '').slice(0, 10));
     SETTINGS_CACHE_ = null;
     if (!props.getProperty('accepting')) props.setProperty('accepting', 'false');
-    [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS取込用（連絡先なし）', OS_HEADERS], ['テスト申込', PRIVATE_HEADERS], ['テストOS取込用', OS_HEADERS]].forEach(function (pair) {
+    const pairs = [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS取込用（連絡先なし）', OS_HEADERS], ['テスト申込', PRIVATE_HEADERS], ['テストOS取込用', OS_HEADERS]];
+    // 先に全部の見出しを見て、1つでも違えば何も書き換えずに止まる
+    pairs.forEach(function (pair) { const existing = book.getSheetByName(pair[0]); if (existing && existing.getLastRow() > 0 && headerState_(existing, pair[1]) === 'bad') throw new Error('申込表の見出しが変わっています。元のデータは消さず、見出しを確認してください。'); });
+    pairs.forEach(function (pair) {
       const sheet = book.getSheetByName(pair[0]) || book.insertSheet(pair[0]);
       if (sheet.getLastRow() === 0) {
         sheet.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]).setFontWeight('bold');
         try { sheet.getRange(1, 1, 1, pair[1].length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
-      } else if (JSON.stringify(sheet.getRange(1, 1, 1, pair[1].length).getDisplayValues()[0]) !== JSON.stringify(pair[1])) throw new Error('申込表の見出しが変わっています。元のデータは消さず、見出しを確認してください。');
+      } else {
+        const state = headerState_(sheet, pair[1]);
+        if (state === 'old') upgradeHeader_(sheet, pair[1]);
+        else if (state === 'bad') throw new Error('申込表の見出しが変わっています。元のデータは消さず、見出しを確認してください。');
+      }
     });
     if (!props.getProperty('photoFolderId')) { const folder = DriveApp.createFolder('Tournament OS 顔写真 - ' + S_().tournamentName); props.setProperty('photoFolderId', folder.getId()); }
     if (!props.getProperty('testFolderId')) { const folder = DriveApp.getFolderById(props.getProperty('photoFolderId')).createFolder('テスト写真'); props.setProperty('testFolderId', folder.getId()); }
@@ -122,7 +170,7 @@ function selfTest_() {
   const resources = checkResources_();
   if (testComplete_(resources.book)) return true;
   const s = S_();
-  saveEntry_({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG });
+  saveEntry_({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG });
   if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
   return true;
 }
@@ -132,7 +180,10 @@ function checkResources_(){
   if(props.getProperty('ownerEmail')!==owner||props.getProperty('eventId')!==S_().eventId)throw entryError_('setup','この大会の初期設定を確認してください。',false);
   const book=SpreadsheetApp.openById(props.getProperty('spreadsheetId')),sheetFile=DriveApp.getFileById(book.getId()),folder=DriveApp.getFolderById(props.getProperty('photoFolderId'));
   if(!isPrivateOwned_(sheetFile,owner)||!isPrivateOwned_(folder,owner)||!isPrivateOwned_(DriveApp.getFolderById(props.getProperty('testFolderId')),owner))throw entryError_('sharing','申込表と写真フォルダの共有を「制限付き・主催者本人だけ」にしてください。',false);
-  [['申込原本（個人情報あり）',PRIVATE_HEADERS],['OS取込用（連絡先なし）',OS_HEADERS],['テスト申込',PRIVATE_HEADERS],['テストOS取込用',OS_HEADERS]].forEach(function(pair){const sheet=book.getSheetByName(pair[0]);if(!sheet||JSON.stringify(sheet.getRange(1,1,1,pair[1].length).getDisplayValues()[0])!==JSON.stringify(pair[1]))throw entryError_('headers','申込表の見出しが変わっています。データを消さず、主催者が確認してください。',false);});
+  const tables=[['申込原本（個人情報あり）',PRIVATE_HEADERS],['OS取込用（連絡先なし）',OS_HEADERS],['テスト申込',PRIVATE_HEADERS],['テストOS取込用',OS_HEADERS]].map(function(pair){const sheet=book.getSheetByName(pair[0]);return{sheet:sheet,headers:pair[1],state:sheet?headerState_(sheet,pair[1]):'bad'};});
+  // どれか1つでも違っていたら、何も書き換えずに止まる。全部そろって（または古い形だけ）のときだけ、足りない1マスを足す。
+  if(tables.some(function(t){return t.state==='bad';}))throw entryError_('headers','申込表の見出しが変わっています。データを消さず、主催者が確認してください。',false);
+  tables.forEach(function(t){if(t.state==='old')upgradeHeader_(t.sheet,t.headers);});
   return{book:book,folder:folder};
 }
 /** ⑤ いまの状態。画面（OS）が読むのは、公開してよい項目だけ。主催者のメール・鍵・申込の内容は含めない。 */
@@ -143,7 +194,10 @@ function statusInfo_() {
   if (!ready) return info;
   const resources = checkResources_(), s = S_(), problems = settingsProblems_(s);
   info.eventId = s.eventId; info.testComplete = testComplete_(resources.book); info.settingsProblem = problems.join('。'); info.storageProblem = storageProblem_();
-  if (!problems.length) { info.title = s.tournamentName; info.date = s.date; info.venue = s.venue; info.venueUrl = s.venueUrl; info.organizer = s.organizer; info.contact = s.contact; info.deadline = s.deadline; info.music = s.music; info.grade = s.grade; info.age = s.age; info.comment = s.comment; }
+  if (!problems.length) { info.title = s.tournamentName; info.date = s.date; info.venue = s.venue; info.venueUrl = s.venueUrl; info.organizer = s.organizer; info.contact = s.contact; info.deadline = s.deadline; info.music = s.music; info.grade = s.grade; info.age = s.age; info.comment = s.comment;
+    // クラス分けが「あり」のときだけ足す。クラスの文は選手に見せるもの（公開してよい）。連絡先・DriveのIDは入れない。
+    if (s.classes.enabled) { info.classMode = true; info.classes = { enabled: true, upper: { name: s.classes.upper.name, condition: s.classes.upper.condition, rule: s.classes.upper.rule }, lower: { name: s.classes.lower.name, condition: s.classes.lower.condition, rule: s.classes.lower.rule }, upperMinWins: s.classes.upperMinWins }; }
+  }
   return info;
 }
 function showStatus() {
@@ -202,8 +256,8 @@ function testComplete_(book){
   if(!requestId||props.getProperty('lastTestBuild')!==RECEPTION_BUILD)return false;
   const sheet=book.getSheetByName('テスト申込'),os=book.getSheetByName('テストOS取込用'),row=findRow_(sheet,18,requestId);
   if(!row)return false;
-  const values=sheet.getRange(row,1,1,18).getDisplayValues()[0],osRow=findRow_(os,1,values[0]);
-  if(!osRow||JSON.stringify(os.getRange(osRow,1,1,11).getDisplayValues()[0])!==JSON.stringify([values[0]].concat(values.slice(3,13))))return false;
+  const values=sheet.getRange(row,1,1,19).getDisplayValues()[0],osRow=findRow_(os,1,values[0]);
+  if(!osRow||JSON.stringify(os.getRange(osRow,1,1,12).getDisplayValues()[0])!==JSON.stringify([values[0]].concat(values.slice(3,13),[values[18]])))return false;
   const photoId=String(values[12]).match(/\/d\/([\w-]+)/);if(!photoId)return false;
   const file=DriveApp.getFileById(photoId[1]),parents=file.getParents();let inside=false;
   while(parents.hasNext())if(parents.next().getId()===props.getProperty('testFolderId'))inside=true;
@@ -219,11 +273,15 @@ function doPost(e){
   try{return resultPage_(saveEntry_(p),'',null,p);}
   catch(error){console.error('Tournament OS受付: '+(error.code||'storage'));return resultPage_('',error.code?error.message:'Googleへの保存を最後まで確認できませんでした。',error,p);}
 }
+/** 送られた「upper／lower」の印から、設定タブの今の名前を返す。送られた文字そのものは保存しない。 */
+function classLabel_(p){const c=S_().classes;if(!c.enabled)return'';return p.fighterClass==='upper'?c.upper.name:c.lower.name;}
 function text_(p,key,max,required){const text=String(p[key]==null?'':p[key]).trim();if((required&&!text)||text.length>max)throw entryError_('input','入力内容を確認して、エントリー画面へ戻ってください。',false);return text;}
 function validateEntry_(p){
   if((p.protocol!=='2'&&p.protocol!=='3')||p.eventId!==S_().eventId||(p.mode!=='test'&&p.mode!=='live'))throw entryError_('event','大会の受付URLが違います。主催者から新しいURLをもらってください。',false);
   if(p.website)throw entryError_('spam','送信を受け付けられませんでした。',false);
   if(p.consent!=='yes')throw entryError_('consent','規約と個人情報の取扱いへの同意が必要です。',false);
+  const cs=S_().classes;
+  if(cs.enabled&&p.fighterClass!=='upper'&&p.fighterClass!=='lower')throw entryError_('class','クラスが選ばれていません。申込ページを開き直して、'+cs.upper.name+'か'+cs.lower.name+'を選んでから送ってください。',false);
   const request=text_(p,'requestId',100,true);if(!/^[\w-]{32,100}$/.test(request))throw entryError_('input','申込を確認する番号が正しくありません。',false);
   const limits={gym:120,name:80,height:10,weight:10,record:300,contactName:100,contactPhone:30,contactEmail:200,photoDataUrl:1800100};
   Object.keys(limits).forEach(function(key){text_(p,key,limits[key],true);});
@@ -242,9 +300,9 @@ function saveEntry_(p){
     if(!sheet||!os)throw entryError_('setup','申込表が見つかりません。主催者へご連絡ください。',false);
     const existing=findRow_(sheet,18,requestId);let values;
     if(existing){
-      values=sheet.getRange(existing,1,1,18).getDisplayValues()[0];
+      values=sheet.getRange(existing,1,1,19).getDisplayValues()[0];
       const expected=[String(p.gym).trim(),String(p.name).trim(),S_().grade==='off'?'':String(p.grade||'').trim(),S_().age==='off'?'':String(p.age||'').trim(),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),S_().comment==='off'?'':String(p.comment||'').trim(),S_().music?String(p.musicUrl||'').trim():''];
-      if(JSON.stringify(values.slice(3,12))!==JSON.stringify(expected)||JSON.stringify(values.slice(13,17))!==JSON.stringify([String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes']))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
+      if(JSON.stringify(values.slice(3,12))!==JSON.stringify(expected)||JSON.stringify(values.slice(13,17))!==JSON.stringify([String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||String(values[18]||'')!==classLabel_(p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
       const photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),values[0],p.photoDataUrl,true);
       if(photoUrl!==values[12])throw entryError_('photo','保存済みの写真と申込表が一致しません。主催者へご連絡ください。',false);
     }
@@ -256,22 +314,22 @@ function saveEntry_(p){
       props.setProperties({rateMinute:minute,rateCount:String(count+1)});
       const receiptNo=receipt_(requestId,isTest),photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),receiptNo,p.photoDataUrl);
       const common=[clean_(p.gym,120),clean_(p.name,80),S_().grade==='off'?'':clean_(p.grade,30),S_().age==='off'?'':clean_(p.age,3),String(Number(p.height)),String(Number(p.weight)),clean_(p.record,300),S_().comment==='off'?'':clean_(p.comment,500),S_().music?clean_(p.musicUrl,500):'',photoUrl];
-      values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId]);
+      values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId,clean_(classLabel_(p),40)]);
       // Googleの自動変換で電話番号の先頭0や数字だけの選手名を失わない。
       const newRow=sheet.getLastRow()+1;
-      sheet.getRange(newRow,3,1,16).setNumberFormat('@');
-      sheet.getRange(newRow,1,1,18).setValues([values]);
+      sheet.getRange(newRow,3,1,17).setNumberFormat('@');
+      sheet.getRange(newRow,1,1,19).setValues([values]);
       // 実際に書かれた電話番号が送った文字と違えば（先頭0が消えた等）、文字として書き直す。
       const phoneCell=sheet.getRange(newRow,15);
       if(phoneCell.getDisplayValue()!==String(values[14])){phoneCell.setNumberFormat('@').setValue(String(values[14]));}
-      values=sheet.getRange(findRow_(sheet,18,requestId),1,1,18).getDisplayValues()[0];
+      values=sheet.getRange(findRow_(sheet,18,requestId),1,1,19).getDisplayValues()[0];
     }
-    const osValues=[values[0]].concat(values.slice(3,13)).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);
-    os.getRange(osRow||os.getLastRow()+1,1,1,11).setNumberFormat('@');
-    if(osRow)os.getRange(osRow,1,1,11).setValues([osValues]);else os.appendRow(osValues);
+    const osValues=[values[0]].concat(values.slice(3,13),[values[18]]).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);
+    os.getRange(osRow||os.getLastRow()+1,1,1,12).setNumberFormat('@');
+    if(osRow)os.getRange(osRow,1,1,12).setValues([osValues]);else os.appendRow(osValues);
     SpreadsheetApp.flush();
     const savedRow=findRow_(os,1,values[0]);
-    if(!savedRow||JSON.stringify(os.getRange(savedRow,1,1,11).getDisplayValues()[0])!==JSON.stringify([values[0]].concat(values.slice(3,13))))throw entryError_('storage','大会用の名簿の保存を確認できませんでした。',true);
+    if(!savedRow||JSON.stringify(os.getRange(savedRow,1,1,12).getDisplayValues()[0])!==JSON.stringify([values[0]].concat(values.slice(3,13),[values[18]])))throw entryError_('storage','大会用の名簿の保存を確認できませんでした。',true);
     if(isTest){props.setProperty('lastTestBuild',RECEPTION_BUILD);props.setProperty('lastTestRequest',requestId);}
     return values[0];
   });
@@ -301,7 +359,7 @@ function resultPage_(receiptNo,message,error,p){
   const success=Boolean(receiptNo),retry=!success&&(!error||error.retryable!==false),title=success?'申し込みが完了しました':'保存結果の確認が必要です';
   const detail=success?(p.mode==='test'?'テスト受付番号：':'受付番号：')+receiptNo:message;let retryForm='';
   if(retry){const endpoint=ScriptApp.getService().getUrl();if(/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint||'')){
-    const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','photoDataUrl'];
+    const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','fighterClass','photoDataUrl'];
     retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ申込番号で保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
   return HtmlService.createHtmlOutput('<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:32px 16px;background:#f1f5f9;color:#0f172a;text-align:center}.box{max-width:540px;margin:auto;border:2px solid #bbf7d0;border-radius:24px;padding:28px;background:white}h1{font-size:26px}b{display:block;margin:20px 0;font-size:20px;overflow-wrap:anywhere}button{font-size:18px;font-weight:bold;padding:18px;border:0;border-radius:14px;background:#1d4ed8;color:white}p{line-height:1.8}</style></head><body><main class="box"><h1>'+title+'</h1><b>'+escape_(detail)+'</b>'+retryForm+'<p>'+(success?'受付番号をスクリーンショットで保存してください。この画面は閉じて大丈夫です。':'受付番号が出るまで完了ではありません。解決しない場合は主催者へご連絡ください。')+'</p></main></body></html>').setTitle(title).addMetaTag('viewport','width=device-width,initial-scale=1');
 }
@@ -320,12 +378,13 @@ function exportTestTournament(){
     if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');
     const original=resources.book.getSheetByName('テスト申込'),sourceRow=findRow_(original,18,props.getProperty('lastTestRequest'));
     const receipt=original.getRange(sourceRow,1).getDisplayValues()[0][0],sheet=resources.book.getSheetByName('テストOS取込用'),row=findRow_(sheet,1,receipt);
-    const rows=[sheet.getRange(1,1,1,11).getDisplayValues()[0],sheet.getRange(row,1,1,11).getDisplayValues()[0]];
+    const rows=[sheet.getRange(1,1,1,12).getDisplayValues()[0],sheet.getRange(row,1,1,12).getDisplayValues()[0]];
     return exportRows_(rows,DriveApp.getFolderById(props.getProperty('testFolderId')),'TEST_Tournament_OS_');
   });
 }
 function exportRows_(rows,folder,prefix){
-    const csv='\uFEFF'+rows.map(function(row){return row.slice(0,10).map(function(cell){return'"'+clean_(cell,2000).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
+    const withClass=rows[0].length>11&&String(rows[0][11])==='クラス',csvRows=rows.map(function(r){return r.slice(0,10).concat(withClass?[r[11]]:[]);});
+    const csv='\uFEFF'+csvRows.map(function(row){return row.map(function(cell){return'"'+clean_(cell,2000).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
     const files=[Utilities.newBlob(csv,'text/csv','players.csv')];
     let totalBytes=csv.length*3;
     rows.slice(1).forEach(function(row){const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。受付番号 '+row[0]);const file=DriveApp.getFileById(id[1]);if(file.isTrashed()||!isPrivateOwned_(file,assertOwner_()))throw new Error('写真の保存・共有を確認してください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});

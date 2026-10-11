@@ -261,3 +261,26 @@ test('parseBoutNumber: 「第 __ 試合へ」。半角・全角の数字だけ�
   assert.equal(parseBoutNumber('3.5', 35), null);
   assert.equal(parseBoutNumber('1', 0), null);
 });
+
+test('buildRow: クラスは選手に入っているときだけ出る。ちがうクラス同士のときだけ classMix', () => {
+  const plain = new Map([fighter('r'), fighter('u')].map((f) => [f.id, f]));
+  const none = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, plain, true, 0);
+  assert.equal(none.red.fighterClass, '');
+  assert.equal(none.blue.fighterClass, '');
+  assert.equal(none.classMix, false);
+  assert.equal(none.openLabel, 'この試合を開く 第1試合 赤コーナー 架空r 対 青コーナー 架空u');
+  const mixed = new Map([fighter('r', { fighterClass: ' Aクラス ' }), fighter('u', { fighterClass: 'Bクラス' })].map((f) => [f.id, f]));
+  const row = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, mixed, true, 0);
+  assert.equal(row.red.fighterClass, 'Aクラス');
+  assert.equal(row.blue.fighterClass, 'Bクラス');
+  assert.equal(row.classMix, true);
+  const same = new Map([fighter('r', { fighterClass: 'Ａクラス' }), fighter('u', { fighterClass: 'Aクラス' })].map((f) => [f.id, f]));
+  assert.equal(buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, same, true, 0).classMix, false);
+  const oneSide = new Map([fighter('r', { fighterClass: 'Aクラス' }), fighter('u')].map((f) => [f.id, f]));
+  const half = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, oneSide, true, 0);
+  assert.equal(half.classMix, false);
+  assert.equal(half.red.fighterClass, 'Aクラス');
+  const ghost = buildRow(bout(0, { redId: 'r', blueId: 'ghost' }), 0, oneSide, true, 0);
+  assert.equal(ghost.blue.fighterClass, '');
+  assert.equal(ghost.classMix, false);
+});
