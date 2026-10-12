@@ -163,4 +163,72 @@ assert.doesNotMatch(
 // 3番（/journey）は AIKA VPS。こちらはお客さま側の経路なので、担当を明記する。
 assert.match(script, /AIKA VPS/, "受け口が別サーバーだと明記する");
 
+// ---- 転送が終わらないとき（輪になっているとき）を「ページが無い」と誤報しないこと ----
+//
+// 2026-10-02 に「301 を追いかけずに落第にする」誤報を直したが、抜け穴が残っていた。
+// 追いかけた先が また転送 だった場合（転送が輪になっている場合）を拾えず、
+// 最後の else に落ちて こう出していた:
+//
+//   ❌ https://flatupnarita.jp/webos/ が 301（200が正解）
+//   次の一手: XServer の public_html/webos/ に index.html があるか確かめる
+//
+// 2026-10-12 の本番の検査で実際にこれが出た。ファイルの有無はこの症状と
+// 関係がないので、すでに上げてある人に見当違いの作業をさせる案内だった。
+//
+// ここは文字列の検査では足りない（分岐の抜け穴が問題なので、実際に通す）。
+// 手元に「延々と転送し続けるサーバー」を立てて、検査を本当に走らせて確かめる。
+{
+  const { createServer } = await import("node:http");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+
+  const server = createServer((req, res) => {
+    const port = server.address().port;
+    const next = req.url.startsWith("/a") ? "/b/" : "/a/";
+    res.writeHead(301, { Location: `http://127.0.0.1:${port}${next}` });
+    res.end();
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+
+  try {
+    // --public: GitHubやSSHを見ない（手元で完結させる）
+    const result = await run("bash", ["deploy/scripts/check-prod.sh", "--public"], {
+      env: {
+        ...process.env,
+        OPENQLOW_WEBOS_URL: `http://127.0.0.1:${port}/a/`,
+        // 3番は外へ出る検査なので、同じ手元のサーバーへ向ける（結果は見ない）
+        OPENQLOW_JOURNEY_URL: `http://127.0.0.1:${port}/a/`,
+      },
+      timeout: 120000,
+    }).catch(err => err); // 失敗があれば exit 1 で返るので、それも結果として受け取る
+
+    const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+
+    assert.match(
+      out,
+      /転送が輪になっていて/,
+      "転送が輪になっているときは、そう名指しする",
+    );
+    assert.doesNotMatch(
+      out,
+      /index\.html があるか確かめる/,
+      "転送が終わらないことを「ファイルが無い」と案内しない（原因が別）",
+    );
+    assert.match(
+      out,
+      /まずブラウザで .* を開き/,
+      "訪問者に何が見えるかは、ブラウザで確かめるよう案内する",
+    );
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+// 転送を追いかける回数に上限を置くこと。
+// 既定の50回まで付き合うと、輪になっているときに先に時間切れになり、
+// 「輪になっている」と言えなくなる（原因が消える）。
+assert.match(script, /--max-redirs 10/, "転送の追いかけに上限を置く");
+
 console.log("check-prod tests passed");
