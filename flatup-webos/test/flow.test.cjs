@@ -192,6 +192,7 @@ async function runAdultRoute(app, choices) {
   await app.click("button", pick.gender);
   await app.click("button", pick.goal);
   await app.click("button", pick.experience);
+  assert(!app.find("button", "平日の昼"), "体験対応のない平日の昼を選択肢に出さない");
   await app.click("button", pick.availability);
 }
 
