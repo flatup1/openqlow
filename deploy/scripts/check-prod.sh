@@ -168,9 +168,13 @@ echo "--- 4. WebOSのページ ---"
 # 誤って案内してしまう（実際にそう誤報した）。最後まで追いかけて、着いた先で判定する。
 WEBOS_TARGET="${WEBOS_URL}"
 WEBOS_CODE="$(http_code "${WEBOS_URL}")"
+WEBOS_FOLLOW_STATUS=0
 if [[ "$WEBOS_CODE" =~ ^3[0-9][0-9]$ ]]; then
-  WEBOS_FOLLOWED="$(curl -s -o /dev/null -L -m 15 \
-    -w '%{http_code} %{url_effective}' "${WEBOS_URL}" 2>/dev/null)"
+  # --max-redirs 10: まともな転送は1〜2回で終わる。輪になっているときに
+  # 既定の50回まで付き合うと、先に -m の時間切れになって原因が分からなくなる。
+  # curl の終了コードで理由が分かる: 47＝転送が多すぎる（輪）、28＝時間切れ。
+  WEBOS_FOLLOWED="$(curl -s -o /dev/null -L --max-redirs 10 -m 15 \
+    -w '%{http_code} %{url_effective}' "${WEBOS_URL}" 2>/dev/null)" || WEBOS_FOLLOW_STATUS=$?
   WEBOS_FINAL_CODE="${WEBOS_FOLLOWED%% *}"
   WEBOS_FINAL_URL="${WEBOS_FOLLOWED#* }"
   [[ "$WEBOS_FINAL_CODE" =~ ^[0-9]{3}$ ]] || WEBOS_FINAL_CODE="000"
@@ -222,6 +226,25 @@ elif [[ "$WEBOS_CODE" == "000" ]]; then
   # ここを「本番が落ちている」と言ってしまうと、いらない不安と作業を生む。
   ng "${WEBOS_URL} につながりません（この端末からネットに出られていない可能性）"
   TODO+=("別のネットワーク（スマホ回線など）から もう一度 npm run check")
+elif [[ "$WEBOS_CODE" =~ ^3[0-9][0-9]$ ]]; then
+  # 最後まで追いかけたのに、まだ転送で終わった。
+  # これは「ページが無い」のではなく「転送の設定が終わらない」状態。
+  #
+  # 2026-10-12 に実際に起きた。検査はここを拾えず、下の else に落ちて
+  #   ❌ ... が 301（200が正解）
+  #   次の一手: XServer の public_html/webos/ に index.html があるか確かめる
+  # と出した。ファイルの有無はこの症状と関係がないため、見当違いの作業を
+  # させるところだった（2026-10-02 に直したはずの誤報の、残っていた抜け穴）。
+  case "$WEBOS_FOLLOW_STATUS" in
+    47) ng "転送が輪になっていて、ページにたどり着けません（同じ住所を行き来しています）" ;;
+    28) ng "転送の途中で時間切れ（15秒）になり、ページにたどり着けませんでした" ;;
+    *)  ng "転送の先がまた転送で、ページにたどり着けませんでした" ;;
+  esac
+  echo "   （最後に見た住所: ${WEBOS_TARGET}）"
+  # ブラウザで見るのが唯一の確かな確認手段。訪問者に何が見えているかは、
+  # curl の結果からは断定できない。
+  TODO+=("まずブラウザで ${WEBOS_URL} を開き、訪問者に何が見えるか確かめる")
+  TODO+=("転送の設定を見直す。ファイルの有無ではなく、.htaccess の RewriteRule と www への転送が輪になっていないかを見る（編集前にバックアップを取る）")
 else
   ng "${WEBOS_URL} が ${WEBOS_CODE}（200が正解）"
   TODO+=("XServer の public_html/webos/ に index.html があるか確かめる")
