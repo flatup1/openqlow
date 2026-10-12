@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { saveRecord } from "../state/file_store.js";
 import {
+  applyImageChoiceCommand,
   attachMediaSelectionCommand,
+  candidatePreviewUrls,
+  imageChoiceCandidates,
   listMediaCandidates,
   mediaDirectoryForEnv,
   parseInsertMediaCommand,
@@ -77,8 +80,40 @@ const empty = await attachMediaSelectionCommand(root, "挿入", { mediaDir: empt
 assert.equal(empty.ok, false);
 assert.match(empty.message, /候補がありません/);
 
+// 回帰テスト: 表示したプレビューの「画像N」と、番号で選んだ画像が必ず同じになること。
+// （以前は表示=新しい順、選択=名前順で、見た画像と違うものが投稿されていた）
+const choiceDir = await mkdtemp(path.join(os.tmpdir(), "openqlow-media-choice-"));
+const choiceRoot = await mkdtemp(path.join(os.tmpdir(), "openqlow-choice-root-"));
+const names = ["aaa-old.jpg", "bbb-mid.jpg", "ccc-new.jpg", "ddd-clip.mp4"];
+const base = Date.parse("2026-06-08T00:00:00.000Z");
+for (const [i, name] of names.entries()) {
+  const file = path.join(choiceDir, name);
+  await writeFile(file, "x");
+  // 名前順と新しい順を逆にする（aaa が一番古い、ccc が一番新しい）。
+  const t = new Date(base + i * 60_000);
+  await utimes(file, t, t);
+}
+const choiceEnv = {
+  OPENQLOW_MEDIA_DIR: choiceDir,
+  OPENQLOW_PUBLIC_MEDIA_DIR: choiceDir,
+  OPENQLOW_PUBLIC_MEDIA_BASE_URL: "https://x.example/openqlow/media/",
+};
+const previews = await candidatePreviewUrls(choiceEnv);
+const choices = await imageChoiceCandidates(choiceEnv);
+assert.deepEqual(previews, choices.map((candidate) => candidate.publicUrl));
+assert.equal(choices[0].name, "ccc-new.jpg", "画像1は一番新しい画像");
+assert.ok(!choices.some((candidate) => candidate.kind === "video"), "動画は画像候補に入れない");
+
+await saveRecord(choiceRoot, { ...record("FG-20260608-010"), status: "pending_approval" });
+const picked = await applyImageChoiceCommand(choiceRoot, "画像 1", { env: choiceEnv });
+assert.equal(picked.ok, true, picked.message);
+const choiceSaved = JSON.parse(await readFile(path.join(choiceRoot, "state", "FG-20260608-010.json"), "utf8")) as DraftRecord;
+assert.deepEqual(choiceSaved.mediaFiles, [path.join(choiceDir, "ccc-new.jpg")], "画像1の表示と投稿対象が一致");
+
 await rm(root, { recursive: true, force: true });
 await rm(mediaDir, { recursive: true, force: true });
 await rm(emptyDir, { recursive: true, force: true });
+await rm(choiceDir, { recursive: true, force: true });
+await rm(choiceRoot, { recursive: true, force: true });
 
 console.log("media library tests passed");

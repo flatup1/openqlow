@@ -78,26 +78,36 @@ export async function listMediaCandidates(mediaDir = mediaDirectoryForEnv()): Pr
   return candidates;
 }
 
+/** 画像選択で使う候補の既定数（プレビューと番号選択で必ず同じ数にする）。 */
+export const IMAGE_CHOICE_LIMIT = 3;
+
 /**
- * 候補画像（画像1, 画像2…）の公開URLを順番に返す。
- * 写真ゲートで「見えてから選ぶ」ため、LINEに実画像を表示するのに使う。
- * 画像（image）のみ対象。公開URLが解決できないものは除外。
+ * 「画像1, 画像2…」の候補一覧。プレビュー表示と番号選択の両方がこれを使う。
+ * 両者の並びが違うと「見た画像と違うものが投稿される」事故になるため、必ず1か所で決める。
+ * 画像のみ・新しい順・公開URLが解決できるものだけ、上位 limit 件。
  */
+export async function imageChoiceCandidates(
+  env: Record<string, string | undefined> = process.env,
+  limit = IMAGE_CHOICE_LIMIT,
+): Promise<Array<MediaCandidate & { publicUrl: string }>> {
+  const sorted = (await listMediaCandidates(mediaDirectoryForEnv(env)))
+    .filter((candidate) => candidate.kind === "image")
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const result: Array<MediaCandidate & { publicUrl: string }> = [];
+  for (const candidate of sorted) {
+    if (result.length >= limit) break;
+    const publicUrl = await resolvePublicMediaUrl(candidate.path, env);
+    if (publicUrl) result.push({ ...candidate, publicUrl });
+  }
+  return result;
+}
+
+/** 写真ゲートで LINE に表示する候補画像の公開URL（画像1, 画像2… の順）。 */
 export async function candidatePreviewUrls(
   env: Record<string, string | undefined> = process.env,
-  limit = 3,
+  limit = IMAGE_CHOICE_LIMIT,
 ): Promise<string[]> {
-  // 直近に送った写真ほど上に。古い写真が候補に溜まる問題の解消（新しい順）。
-  const candidates = (await listMediaCandidates(mediaDirectoryForEnv(env)))
-    .filter((candidate) => candidate.kind === "image")
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, limit);
-  const urls: string[] = [];
-  for (const candidate of candidates) {
-    const url = await resolvePublicMediaUrl(candidate.path, env);
-    if (url) urls.push(url);
-  }
-  return urls;
+  return (await imageChoiceCandidates(env, limit)).map((candidate) => candidate.publicUrl);
 }
 
 export async function latestPendingRecord(root: string): Promise<DraftRecord | undefined> {
@@ -201,7 +211,7 @@ export async function attachMediaSelectionCommand(
 export async function applyImageChoiceCommand(
   root: string,
   text: string,
-  opts: { mediaDir?: string; limit?: number } = {},
+  opts: { mediaDir?: string; limit?: number; env?: Record<string, string | undefined> } = {},
 ): Promise<AttachMediaResult> {
   const command = parseImageChoiceCommand(text);
   if (!command) return { ok: false, message: "画像は `画像 1` または `画像なし` の形で送ってください。" };
@@ -230,7 +240,11 @@ export async function applyImageChoiceCommand(
     };
   }
 
-  const candidates = (await listMediaCandidates(opts.mediaDir ?? mediaDirectoryForEnv())).slice(0, opts.limit ?? 5);
+  // プレビューと同じ一覧から選ぶ（並び順・件数・フィルタを揃える）。
+  const candidates = await imageChoiceCandidates(
+    opts.env ?? (opts.mediaDir ? { OPENQLOW_MEDIA_DIR: opts.mediaDir } : process.env),
+    opts.limit ?? IMAGE_CHOICE_LIMIT,
+  );
   const selected = candidates[command.index - 1];
   if (!selected) return { ok: false, message: `OPENQLOW: ${command.index} 番の画像候補はありません。` };
   return attachMediaToLatestPending(root, selected.path);

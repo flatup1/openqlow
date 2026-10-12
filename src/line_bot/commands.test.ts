@@ -207,6 +207,9 @@ async function testImageChoiceCommandSelectsAndClearsMedia(): Promise<void> {
   const mediaDir = await mkdtemp(path.join(tmpdir(), "openqlow-line-image-media-"));
   process.env.OPENQLOW_ROOT = root;
   process.env.OPENQLOW_MEDIA_DIR = mediaDir;
+  // 表示（プレビュー）と選択は同じ公開URL付き一覧を使うため、公開設定も揃える。
+  process.env.OPENQLOW_PUBLIC_MEDIA_DIR = mediaDir;
+  process.env.OPENQLOW_PUBLIC_MEDIA_BASE_URL = "https://media.example.com/openqlow/media/";
   await saveRecord(root, pendingRecord("FG-20260608-303"));
   await writeFile(path.join(mediaDir, "choice.png"), "fake", "utf8");
 
