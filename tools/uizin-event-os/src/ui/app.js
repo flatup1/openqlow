@@ -7,6 +7,7 @@ const PRESS_LOCK_MS = 1000;
 const HOLD_MS = 2000;
 const VIEW_TIMEOUT_MS = 5000;
 const VIEW_STALE_MS = 6000;
+const SAFE_OFF_GUARD_MS = 3000;
 
 const store = {
   get(key, fallback, session) {
@@ -48,6 +49,7 @@ let pin = store.get("eos-pin", "", true);
 
 let view = null;
 let viewAt = 0;
+let safeOnSince = 0;
 let locked = false;
 let fetching = false;
 let fetchAgain = false;
@@ -95,10 +97,16 @@ async function fetchView() {
       pin = "";
       store.remove("eos-pin", true);
       toast(body.message || "PINが違います", true);
+    } else if (res.status === 401) {
+      // 合言葉が古い（大会が変わった等）。覚えている合言葉を消し、URL を開き直してもらう。
+      store.remove("eos-token");
+      staleLamps();
+      toast(body.message || "この画面の合言葉が古くなりました。Mac の起動画面の URL を開き直してください", true);
     } else if (!res.ok) {
       staleLamps();
       toast(body.message || "画面を読み込めませんでした", true);
     } else {
+      if (body.view.fixed.safe.on && !(view && view.fixed.safe.on)) safeOnSince = Date.now();
       view = body.view;
       viewAt = Date.now();
       render();
@@ -132,7 +140,8 @@ function markOffline() {
 function lockButtons() {
   locked = true;
   document.body.classList.add("locked");
-  setTimeout(() => {
+  clearTimeout(lockButtons.timer);
+  lockButtons.timer = setTimeout(() => {
     locked = false;
     document.body.classList.remove("locked");
   }, PRESS_LOCK_MS);
@@ -141,7 +150,8 @@ function lockButtons() {
 // opts.force：確認ダイアログの後など、続けて送るとき。opts.askConfirm：「確認が必要」の返事を赤い知らせにしない。
 async function send(type, args, extra, opts) {
   const options = opts || {};
-  // 🛟 は何度押しても同じ結果なので、連打よけの待ち時間でも必ず送る。
+  // 🛟（安全運転にする）は何度押しても同じ結果なので、連打よけの待ち時間でも必ず送る。
+  if (type === "safe_on") safeOnSince = Date.now();
   if (locked && type !== "safe_on" && !options.force) {
     toast("⏳ 前に押したボタンを受け付けています。画面が変わってから押してください", false);
     return null;
@@ -500,7 +510,22 @@ function wire() {
   $("cam-sub").addEventListener("click", () => send("camera", { to: "sub" }));
   $("undo").addEventListener("click", undo);
   $("op-undo").addEventListener("click", undo);
-  $("safe").addEventListener("click", () => send(view && view.fixed.safe.on ? "safe_off" : "safe_on"));
+  // 🛟 は1回で安全運転にする。慌てて何度も押しても通常に戻らないように、「✅ 通常に戻す」は
+  // 安全運転になってから3秒は受け付けず、その後も確認してから戻す。
+  $("safe").addEventListener("click", async () => {
+    if (!(view && view.fixed.safe.on)) {
+      send("safe_on");
+      return;
+    }
+    if (Date.now() - safeOnSince < SAFE_OFF_GUARD_MS) {
+      toast("🛟 安全運転中です。落ち着いたら「✅ 通常に戻す」を押してください", false);
+      return;
+    }
+    const rev = view.rev;
+    if (await confirmDialog("安全運転をやめて、通常に戻します（カメラと場面が自動の切り替えに戻ります）。よいですか？")) {
+      send("safe_off", {}, { expectedRev: rev }, { force: true });
+    }
+  });
   wirePanelButtons();
 
   $("role-btn").addEventListener("click", () => {
