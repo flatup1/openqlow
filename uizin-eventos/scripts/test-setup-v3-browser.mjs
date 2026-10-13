@@ -10,7 +10,8 @@ if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base)) throw new Error('This test must r
 const endpoint = 'https://script.google.com/macros/s/TOS_V3_SIMULATION/exec';
 const copyUrl = 'https://docs.google.com/spreadsheets/d/' + 'T'.repeat(30) + '/copy';
 const READY = { app: 'tournament-os', protocol: 3, build: EXPECTED_RECEPTION_BUILD, ready: true, accepting: false, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: '架空テスト大会', date: '2099-12-01', venue: '架空体育館', venueUrl: '', organizer: '架空主催', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
-const browser = await chromium.launch({ headless: true, channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' });
+const EXE = process.env.TOS_CHROME_PATH || '';
+const browser = await chromium.launch({ headless: true, ...(EXE ? { executablePath: EXE } : { channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' }) });
 let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 try {
@@ -38,6 +39,8 @@ try {
     check((await page.getByRole('link', { name: /ひな形のコピーを作る/ }).getAttribute('href')) === copyUrl, 'copy link comes from template-link.json');
     check((await page.getByPlaceholder('例: 20271003').count()) === 0 && (await page.getByLabel('会場', { exact: true }).count()) === 0, 'no tournament fields are typed on this screen');
     check(await page.getByText('「設定」タブ').first().isVisible(), 'tells where to type');
+    // 作業4は、いまの作業ではないので、説明をたたんである（長くなって「👉 次はここ」が遠くなるのを防ぐ）。「やり方を先に読む」でひらくと見える
+    await page.getByText('やり方を先に読む').last().click();
     check(await page.getByText('ためしの申し込みが1件、自動で送られます').isVisible(), 'self test is automatic');
     // 本物の道筋：4つの作業の「できた ✓」を順に押し、本物の「準備できました」ボタンで進む（近道の「✓がなくても進む」では進まない）
     const realAdvance = page.getByRole('button', { name: /「準備できました」と出た → 次へ/ });

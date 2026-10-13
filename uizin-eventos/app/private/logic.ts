@@ -1,10 +1,11 @@
 // 準備の画面（/private/）だけで使う、画面に依存しない小さな計算。
 // 通信・保存・乱数・日時の読み取りはしません（画面側が担当します）。
-import { contractWeight, type LocalBout, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
-import { cleanClassLabel, DEFAULT_CLASS_SETTINGS, normalizeClass } from '../../core/classRules.ts';
+import { contractWeight, sameFighterKey, type LocalBout, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
+import { cleanClassLabel, DEFAULT_CLASS_SETTINGS, normalizeClass, normalizeClassLoose, type ClassSettings } from '../../core/classRules.ts';
 import { dateDigits, formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
-import { DEFAULT_ENTRY_CONFIG, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
+import { classesFromParam, DEFAULT_ENTRY_CONFIG, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { isValidEventId } from './eventId.ts';
+import { checkMusic, checkNumber, FIELD_LABEL, type FieldKey } from './normalize.ts';
 
 export const UNSET_TITLE = '大会名未設定';
 export const FALLBACK_ERROR = 'うまくいきませんでした。もう一度やってみてください。直らないときは、ジムの担当者に連絡してください。';
@@ -126,7 +127,7 @@ export function contractKg(red?: LocalFighter, blue?: LocalFighter): string {
 
 /** 取り込みエラーを、画面に出す固定の文に直す（外部ライブラリの文は出さない） */
 export class ImportProblem extends Error {
-  kind: 'no-list' | 'no-sheet' | 'blocked' | 'dup' | 'too-large' | 'too-many' | 'empty' | 'ext' | 'encoding';
+  kind: 'no-list' | 'no-sheet' | 'blocked' | 'dup' | 'too-large' | 'too-many-files' | 'too-many' | 'empty' | 'ext' | 'encoding';
   constructor(kind: ImportProblem['kind']) { super(kind); this.name = 'ImportProblem'; this.kind = kind; }
 }
 
@@ -144,19 +145,21 @@ export function importProblemKind(error: unknown): ImportProblem['kind'] | '' {
   return error instanceof ImportProblem ? error.kind
     : text.includes('同じ管理番号') ? 'dup'
     : text.includes('3000人') ? 'too-many'
+    : text.includes('ファイルが多すぎ') ? 'too-many-files'
     : text.includes('大きすぎ') || text.includes('多すぎ') ? 'too-large' : '';
 }
 
 export function importErrorText(error: unknown, blockedHeaders: string[] = []): string {
   const kind = importProblemKind(error);
   switch (kind) {
-    case 'no-list': return 'このファイルには選手の一覧が入っていません。シートのメニュー「Tournament OS」→「④ OS用の名簿ZIPを作る」で作ったファイルを選んでください。' + KEEP;
+    case 'no-list': return 'ZIPの中に players.csv が見つかりません。フォルダごと圧縮し直さず、シートのメニュー「Tournament OS」→「④ OS用の名簿ZIPを作る」で作ったZIPを、そのまま選んでください。' + KEEP;
     case 'no-sheet': return 'このExcelには「選手入力」というシートがありません。「選手入力シートを保存する」で保存したExcelに、選手を書いてから選んでください。' + KEEP;
     case 'blocked': { const words = blockedWords(blockedHeaders); return 'このファイルには、読み込めない情報（' + (words.length ? words.join('、') : '電話番号 など') + '）が入っています。その部分を消して、もう一度選んでください。' + KEEP; }
     case 'dup': return '同じ選手が2回入っています。Excelで重なっている行を1つ消して、もう一度選んでください。' + KEEP;
-    case 'too-large': return 'ファイルが大きすぎます。' + KEEP;
+    case 'too-large': return '読める大きさ（100MBまで）を超えています。写真を小さくして、④でZIPを作り直してください。' + KEEP;
+    case 'too-many-files': return 'ZIPの中のファイルが多すぎます（3000まで）。④で作ったZIPを、そのまま選んでください。' + KEEP;
     case 'too-many': return '選手が多すぎます（3000人までです）。' + KEEP;
-    case 'empty': return 'このファイルから選手を1人も読み取れませんでした。1行目の見出しと、選手の名前を確かめてください。' + KEEP;
+    case 'empty': return 'このファイルから選手を1人も読み取れませんでした。1行目の見出し（例：選手名・ジム名・体重・戦績・クラス）と、選手の名前を確かめてください。' + KEEP;
     case 'ext': return 'ZIPかExcel（.xlsx）か、CSVを選んでください。' + KEEP;
     case 'encoding': return 'ExcelのCSVは読めないことがあります。Excelのファイル（.xlsx）のまま選ぶか、「CSV UTF-8」で保存し直してください。' + KEEP;
     default: return 'このファイルは読み込めませんでした。申し込みのZIPファイルか、「選手入力シート」のExcelを選んでください。' + KEEP;
@@ -186,6 +189,24 @@ export function decodeCsvBytes(bytes: Uint8Array): string {
   } catch { /* shift_jis に対応していない環境 */ }
   if (!garbled) return utf8;
   throw new ImportProblem('encoding');
+}
+
+/* ───────── ZIP の中の名前を読む（フォルダごと圧縮した ZIP・Mac のごみを許す） ───────── */
+/** 区切りを / にそろえる */
+export const zipEntryName = (raw: string): string => raw.replace(/\\/g, '/').replace(/^\.?\//, '');
+export const isZipJunk = (name: string): boolean => /(?:^|\/)__MACOSX\//i.test(name) || /(?:^|\/)(?:\.DS_Store|Thumbs\.db|desktop\.ini)$/i.test(name) || /(?:^|\/)\._[^/]*$/.test(name);
+/** 名簿のCSV：いちばん外か、フォルダ1つの中の players.csv（大文字・小文字は気にしない） */
+export const isRosterCsvName = (name: string): boolean => /^(?:[^/]+\/)?players\.csv$/i.test(name);
+export const isPhotoName = (name: string): boolean => /^(?:[^/]+\/)?photos\/[^/]+\.(?:jpe?g|png|webp)$/i.test(name);
+/** 見つかった中身から、名簿のCSVと写真を選ぶ。外にあるCSVを先に使い、無ければフォルダ1つの中のものを使う。無ければ null */
+export function pickZipRoster(entries: ReadonlyArray<readonly [string, string]>): { csv: string; photos: Array<readonly [string, string]> } | null {
+  const csvs = entries.filter(([, name]) => isRosterCsvName(name));
+  if (!csvs.length) return null;
+  const top = csvs.find(([, name]) => !name.includes('/')) ?? csvs[0];
+  const prefix = top[1].includes('/') ? top[1].slice(0, top[1].indexOf('/') + 1) : '';
+  const photos = entries.filter(([, name]) => isPhotoName(name) && name.toLowerCase().startsWith(prefix.toLowerCase() + 'photos/'))
+    .map(([raw, name]) => [raw, 'photos/' + name.slice(name.lastIndexOf('/') + 1)] as const);
+  return { csv: top[0], photos };
 }
 
 /** 写真エラーを、次にやることつきの固定文に直す */
@@ -240,9 +261,9 @@ export type SaveLine = { tone: 'ok' | 'warn' | 'bad' | 'neutral'; text: string; 
 
 /** pending: 「この選手を追加」を押す前の入力・直している途中の入力がある（保存の対象には、まだ入っていない） */
 export function saveLine(s: { conflict: boolean; saveState: SaveState; dirty: boolean; everSaved: boolean; savedClock: string; pending?: boolean }): SaveLine {
-  if (s.conflict) return { tone: 'bad', text: '! 保存できません：別の画面で内容が変わりました', short: '! 保存できません' };
+  if (s.conflict) return { tone: 'bad', text: '✕ 保存できません：別の画面で内容が変わりました', short: '✕ 保存できません' };
   if (s.saveState === 'saving') return { tone: 'neutral', text: '⏳ 保存中…（そのままお待ちください）', short: '⏳ 保存中…' };
-  if (s.saveState === 'failed') return { tone: 'bad', text: '! 保存失敗（入れた内容は画面に残っています）', short: '! 保存失敗' };
+  if (s.saveState === 'failed') return { tone: 'bad', text: '✕ 保存失敗（入れた内容は画面に残っています）', short: '✕ 保存失敗' };
   if (s.dirty) return { tone: 'warn', text: '● 未保存（入れた内容は、まだ保存していません）', short: '● 未保存' };
   if (!s.everSaved) return { tone: 'warn', text: '● 未保存（まだ一度も保存していません）', short: '● 未保存' };
   if (s.pending) return { tone: 'warn', text: '● 未保存（選手の入力が、まだ追加されていません）', short: '● 未保存' };
@@ -251,13 +272,14 @@ export function saveLine(s: { conflict: boolean; saveState: SaveState; dirty: bo
 
 /* ───────── 保存に失敗した理由を分ける ───────── */
 
-export type SaveErrorKind = 'bad-id' | 'quota' | 'unavailable' | 'other';
+export type SaveErrorKind = 'bad-id' | 'bad-data' | 'quota' | 'unavailable' | 'other';
 
 export function classifySaveError(error: unknown, eventId = ''): SaveErrorKind {
   if (eventId && !isValidEventId(eventId)) return 'bad-id';
   const name = error instanceof Error || (typeof DOMException !== 'undefined' && error instanceof DOMException) ? (error as Error).name : '';
   const text = error instanceof Error ? error.message : '';
-  if (text.includes('保存するデータを確認してください')) return 'bad-id';
+  // 大会番号が正しいのに「データを確認」と言われたら、原因は大会番号ではなく、どこかの欄（長すぎる文字など）
+  if (text.includes('保存するデータを確認してください')) return 'bad-data';
   if (name === 'QuotaExceededError' || /quota/i.test(text) || /空き容量/.test(text)) return 'quota';
   if (text.includes('保存場所を開けません') || text.includes('保存場所の更新') || name === 'InvalidStateError' || name === 'SecurityError' || name === 'NotFoundError') return 'unavailable';
   return 'other';
@@ -266,6 +288,7 @@ export function classifySaveError(error: unknown, eventId = ''): SaveErrorKind {
 export function saveErrorText(kind: SaveErrorKind): string {
   switch (kind) {
     case 'bad-id': return 'この画面のアドレスの大会番号が使えません。「新しい大会をつくる」から作り直してください。入れた内容は画面に残っています。';
+    case 'bad-data': return '保存できませんでした。どこかの欄が長すぎます。選手の一覧の「長い…」の知らせを見てください。入れた内容は画面に残っています。';
     case 'quota': return '保存できませんでした。パソコンの空きが足りません。入れた内容は残っています。';
     case 'unavailable': return '保存できませんでした。保存場所が開けません。入れた内容は残っています。ほかの画面を閉じてみてください。';
     default: return '保存できませんでした。入れた内容は残っています。';
@@ -275,7 +298,7 @@ export function saveErrorText(kind: SaveErrorKind): string {
 /* ───────── 名簿の読み込み: 前からいる人は、黙って変えない ───────── */
 
 const FIGHTER_FIELDS: Array<[keyof LocalFighter, string]> = [
-  ['name', '名前'], ['gym', 'ジム名'], ['grade', '学年'], ['age', '年齢'], ['height', '身長'], ['weight', '体重'], ['record', '戦績'], ['comment', '意気込み'], ['musicUrl', '入場曲'], ['fighterClass', 'クラス'],
+  ['name', '名前'], ['gym', 'ジム名'], ['grade', '学年'], ['age', '年齢'], ['height', '身長'], ['weight', '体重'], ['record', '戦績'], ['comment', '意気込み'], ['musicUrl', '入場曲'],
 ];
 
 export type FighterDiff = { name: string; fields: Array<{ label: string; from: string; to: string }> };
@@ -292,6 +315,8 @@ export type MergeKeepResult = {
   overwritten: LocalFighter[];
   /** 写真がなかった人に、ファイルの写真を足した数 */
   photosFilled: number;
+  /** クラスが空だった人に、ファイルのクラスを足した数（親が申し込みで選んだ値なので、黙って足してよい） */
+  classesFilled: number;
   /** merged が今の名簿と変わるか（変わらなければ、画面を「未保存」にしない） */
   changed: boolean;
   /** 管理番号はちがうが、名前とジムが前からいる人と同じ人（管理番号の空欄で行がずれたときに起こる）。既定では足さない */
@@ -300,8 +325,16 @@ export type MergeKeepResult = {
 
 /** 名前とジムが同じかを見るための印（全角・半角と空白の差は無視する） */
 export const sameKey = (fighter: LocalFighter): string => fighter.name.normalize('NFKC').replace(/\s+/g, '') + '|' + fighter.gym.normalize('NFKC').replace(/\s+/g, '');
+/** 名前が空でないときの印（試合の注意と同じ決め方。core と同じ） */
+export { sameFighterKey };
 
-export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighter[]): MergeKeepResult {
+/**
+ * 前からいる人は黙って変えない。新しい人だけ足す。
+ * クラスだけは別あつかい：前のクラスが空なら、ファイルのクラスを足す（classesFilled）。
+ * ファイルに「クラス」の列が無い（hasClassColumn=false）ときは、クラスを比べず、前のクラスを消さない。
+ */
+export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighter[], opts: { hasClassColumn?: boolean } = {}): MergeKeepResult {
+  const hasClassColumn = opts.hasClassColumn !== false;
   if (new Set(incoming.map((fighter) => fighter.id)).size !== incoming.length) throw new Error('同じ管理番号が2つあります。元の名簿は変えていません。');
   const byId = new Map(current.map((fighter) => [fighter.id, fighter]));
   const incomingById = new Map(incoming.map((fighter) => [fighter.id, fighter]));
@@ -312,22 +345,35 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
   const lookalikeIds = new Set(lookalike.map((fighter) => fighter.id));
   const added = fresh.filter((fighter) => !lookalikeIds.has(fighter.id));
   const differs: FighterDiff[] = [];
-  let same = 0, photosFilled = 0;
+  let same = 0, photosFilled = 0, classesFilled = 0;
   const merged = current.map((fighter) => {
     const next = incomingById.get(fighter.id);
     if (!next) return fighter;
     const fields = FIGHTER_FIELDS.filter(([key]) => (fighter[key] ?? '') !== (next[key] ?? '')).map(([key, label]) => ({ label, from: String(fighter[key] ?? ''), to: String(next[key] ?? '') }));
+    const mine = (fighter.fighterClass ?? '').trim(), theirs = (next.fighterClass ?? '').trim();
+    let fillClass = false;
+    if (hasClassColumn) {
+      if (!mine && theirs) fillClass = true;
+      else if (!sameClassName(mine, theirs)) fields.push({ label: 'クラス', from: mine, to: theirs });
+    }
     if (next.photoDataUrl && fighter.photoDataUrl && next.photoDataUrl !== fighter.photoDataUrl) fields.push({ label: '写真', from: 'あり', to: '別の写真' });
     if (fields.length) differs.push({ name: fighter.name || '名前なし', fields }); else same++;
-    if (!fighter.photoDataUrl && next.photoDataUrl) { photosFilled++; return { ...fighter, photoDataUrl: next.photoDataUrl }; }
-    return fighter;
+    let out = fighter;
+    if (!fighter.photoDataUrl && next.photoDataUrl) { photosFilled++; out = { ...out, photoDataUrl: next.photoDataUrl }; }
+    if (fillClass) { classesFilled++; out = { ...out, fighterClass: theirs }; }
+    return out;
   });
   const all = merged.concat(added);
   const overwritten = current.map((fighter) => {
     const next = incomingById.get(fighter.id);
-    return next ? { ...next, photoDataUrl: next.photoDataUrl || fighter.photoDataUrl } : fighter;
+    if (!next) return fighter;
+    const out: LocalFighter = { ...next, photoDataUrl: next.photoDataUrl || fighter.photoDataUrl };
+    // クラスの列が無いファイル・空のクラスで、前のクラスを消さない（親が選んだ値）
+    const keep = (fighter.fighterClass ?? '').trim();
+    if (!(next.fighterClass ?? '').trim() && keep && !hasClassColumn) out.fighterClass = fighter.fighterClass;
+    return out;
   }).concat(added);
-  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, changed: added.length > 0 || photosFilled > 0, lookalike };
+  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0, lookalike };
 }
 
 /** 「ファイルの内容に書きかえる」前の確認の文の材料。1行目＝結論（何人が変わるか）、あとは例 */
@@ -381,12 +427,24 @@ export function knownClasses(fighters: LocalFighter[]): string[] {
 /**
  * 「1人ずつ入れる」「直す」で選べるクラス。名簿にクラスが無く、「クラスも入れる」も押していないときは、空（欄を出さない）。
  * 名簿のクラスが初期の2つ（Aクラス・Bクラス）だけなら、2つとも選べる。シートで別の名前にしているときは、名簿に出ている名前だけ。
+ * （受付で決めたクラス設定を持っているときは、画面側が、その2つの名前を先に使う：classNamesOf）
  */
 export function classChoices(fighters: LocalFighter[], optIn: boolean): string[] {
   const names = knownClasses(fighters);
   const { upper, lower } = DEFAULT_CLASS_SETTINGS;
   if (names.length === 0) return optIn ? [upper.name, lower.name] : [];
   return names.every((name) => normalizeClass(name, DEFAULT_CLASS_SETTINGS) !== '') ? [upper.name, lower.name] : names;
+}
+
+/** 受付のクラス設定の2つの名前（設定が無いときは null）。シートで名前を変えていても、2つとも選べるようにするため */
+export const classNamesOf = (settings: ClassSettings | undefined): string[] | null => settings && settings.enabled ? [settings.upper.name, settings.lower.name] : null;
+
+/** この大会で使うクラス設定（受付で決めた設定。無くて、名簿が初期の名前だけなら初期の設定。それ以外は null＝条件の文は出さない） */
+export function effectiveClassSettings(saved: ClassSettings | undefined, fighters: LocalFighter[], optIn: boolean): ClassSettings | null {
+  if (saved && saved.enabled) return saved;
+  const names = knownClasses(fighters);
+  if (names.length === 0) return optIn ? DEFAULT_CLASS_SETTINGS : null;
+  return names.every((name) => normalizeClass(name, DEFAULT_CLASS_SETTINGS) !== '') ? DEFAULT_CLASS_SETTINGS : null;
 }
 
 /** クラスの文字を整える（制御文字を取り、前後の空白を取り、40文字まで）。空なら項目ごと無くす */
@@ -405,6 +463,50 @@ export const classChanged = (a: LocalFighter, b: LocalFighter): boolean => (a.fi
 export function describeClassChange(before: LocalFighter, after: LocalFighter): string {
   if (!classChanged(before, after)) return '';
   return 'クラス ' + ((before.fighterClass ?? '').trim() || '（空）') + ' → ' + ((after.fighterClass ?? '').trim() || '（空）');
+}
+
+/* ───────── ファイルから取り込んだ人の整え（手で入れるときと同じ約束：全角の数字・単位・入場曲の空白を直す） ───────── */
+
+export type ImportNormalized = {
+  fighters: LocalFighter[];
+  /** 自動で直した欄の数 */
+  fixed: number;
+  /** 直した人の数 */
+  fixedPeople: number;
+  /** 直した例（「体重 ６５kg → 65」） */
+  examples: string[];
+  /** 直せなかった欄（読めない数字・使えない入場曲のリンク）。そのままにして、赤で知らせる */
+  unreadable: Array<{ id: string; name: string; field: FieldKey; from: string }>;
+};
+
+export function normalizeImported(fighters: LocalFighter[], classes?: ClassSettings): ImportNormalized {
+  let fixed = 0;
+  const people = new Set<string>();
+  const examples: string[] = [];
+  const unreadable: ImportNormalized['unreadable'] = [];
+  const out = fighters.map((fighter) => {
+    const next: LocalFighter = { ...fighter };
+    const note = (key: FieldKey, from: string, to: string) => { fixed++; people.add(fighter.id); if (examples.length < 3) examples.push(FIELD_LABEL[key] + ' ' + from.slice(0, 16) + ' → ' + (to || '（空）')); };
+    for (const key of ['height', 'weight', 'age'] as const) {
+      const raw = fighter[key];
+      if (!raw.trim()) continue;
+      const done = checkNumber(key, raw);
+      if (done.problem) { unreadable.push({ id: fighter.id, name: fighter.name, field: key, from: raw.trim().slice(0, 20) }); continue; }
+      if (done.fixed && done.value !== '' && done.value !== raw) { next[key] = done.value; note(key, raw.trim(), done.value); }
+    }
+    if (fighter.musicUrl.trim()) {
+      const music = checkMusic(fighter.musicUrl);
+      if (music.problem) unreadable.push({ id: fighter.id, name: fighter.name, field: 'musicUrl', from: fighter.musicUrl.trim().slice(0, 20) });
+      else if (music.value !== fighter.musicUrl) { next.musicUrl = music.value; if (music.fixed) note('musicUrl', fighter.musicUrl.trim().slice(0, 12) + '…', '空白を取りました'); }
+    }
+    const cls = (fighter.fighterClass ?? '').trim();
+    if (cls) {
+      const tidy2 = normalizeClassLoose(cls, classes ?? DEFAULT_CLASS_SETTINGS);
+      if (tidy2 !== fighter.fighterClass) { next.fighterClass = tidy2; fixed++; people.add(fighter.id); if (examples.length < 3) examples.push('クラス ' + cls.slice(0, 12) + ' → ' + tidy2.slice(0, 12)); }
+    }
+    return next;
+  });
+  return { fighters: out, fixed, fixedPeople: people.size, examples, unreadable };
 }
 
 /* ───────── 消した試合を、順に戻す ───────── */
@@ -471,9 +573,9 @@ function restoreParts(a: { restored: LocalTournament; current: LocalTournament; 
   const n = a.restored.fighters.length, m = a.restored.bouts.length, p = a.restored.fighters.filter((f) => f.photoDataUrl).length;
   const n2 = a.current.fighters.length, m2 = a.current.bouts.length;
   const warn: string[] = [];
-  if (n2 > 0 && n === 0 && m === 0) warn.push('！このコピーは空です。');
-  if (n < n2) warn.push('！選手が' + n2 + '人から' + n + '人に減ります。');
-  if (m < m2) warn.push('！試合が' + m2 + 'つから' + m + 'つに減ります。');
+  if (n2 > 0 && n === 0 && m === 0) warn.push('⚠ このコピーは空です。');
+  if (n < n2) warn.push('⚠ 減ります：選手が' + n2 + '人から' + n + '人になります。');
+  if (m < m2) warn.push('⚠ 減ります：試合が' + m2 + 'つから' + m + 'つになります。');
   const title = isTitleReal(a.restored.title) ? a.restored.title : '名前なし';
   const empty = n2 === 0 && m2 === 0 && !a.everSaved && !a.dirty;
   // 1行目は結論。「何が消えるか」を先に言う
@@ -526,7 +628,7 @@ export function backupFileName(eventId: string, date: string): string {
 
 const MODES: EntryFieldMode[] = ['off', 'optional', 'required'];
 
-/** #m=on|off  #g/#a/#c=off|optional|required。決まった言葉以外は無視。1つも使えなければ null */
+/** #m=on|off  #g/#a/#c=off|optional|required  #cs=クラス設定。決まった言葉以外は無視。1つも使えなければ null */
 export function entryConfigFromHash(hash: string): EntryFormConfig | null {
   const given = new URLSearchParams(hash.replace(/^#/, ''));
   const config: EntryFormConfig = { ...DEFAULT_ENTRY_CONFIG };
@@ -537,6 +639,9 @@ export function entryConfigFromHash(hash: string): EntryFormConfig | null {
     const value = given.get(param) as EntryFieldMode | null;
     if (value && MODES.includes(value)) { config[key] = value; used = true; }
   }
+  // cs=クラス設定（受付の画面が、シートの「設定」タブから読み取ったもの。形が正しいときだけ使う）
+  const classes = classesFromParam(given.get('cs'));
+  if (classes) { config.classes = classes; used = true; }
   return used ? config : null;
 }
 
@@ -568,6 +673,7 @@ export function oldCopyText(copyAt: number, now: number): string {
 export function saveReasonText(kind: SaveErrorKind): string {
   switch (kind) {
     case 'bad-id': return 'この画面のアドレスの大会番号が使えません。「新しい大会をつくる」から作り直します';
+    case 'bad-data': return 'どこかの欄が長すぎます。選手の一覧の「長い…」の知らせを見てください';
     case 'quota': return 'パソコンの空きが足りません';
     case 'unavailable': return '保存場所が開けません';
     default: return 'くわしい理由はわかりません';
@@ -578,7 +684,8 @@ export function saveReasonText(kind: SaveErrorKind): string {
 export function saveReasonShort(kind: SaveErrorKind): string {
   switch (kind) {
     case 'bad-id': return '大会番号が使えません';
-    case 'quota': return '空きが足りません';
+    case 'bad-data': return 'どこかの欄が長すぎます';
+    case 'quota': return 'パソコンの空きが足りません';
     case 'unavailable': return '保存場所が開けません';
     default: return '';
   }
@@ -605,14 +712,28 @@ export function gapLevel(gap: number | null): 'none' | 'caution' | 'danger' {
 /** 体重が読めない人（体重なし・読めない体重） */
 export const weightMissing = (fighters: LocalFighter[]): LocalFighter[] => fighters.filter((fighter) => parseKg(fighter.weight) === null);
 
-/** 名前やジム名が長すぎる人 */
-export function tooLong(fighters: LocalFighter[]): Array<{ fighter: LocalFighter; field: 'name' | 'gym'; max: number }> {
-  const found: Array<{ fighter: LocalFighter; field: 'name' | 'gym'; max: number }> = [];
+/** 欄ごとの文字数の上限（手で入れるときの検査 checkFighter と同じ。ここを超えても保存はできるが、5000文字を超えると保存がすべて失敗する） */
+export const TEXT_LIMITS = { name: 80, gym: 120, grade: 30, record: 300, comment: 500, musicUrl: 500 } as const;
+export type LongField = keyof typeof TEXT_LIMITS;
+
+/** 文字が長すぎる人（1人につき、最初の1つの欄だけ。直すと、次の欄が出る） */
+export function tooLong(fighters: LocalFighter[]): Array<{ fighter: LocalFighter; field: LongField; max: number }> {
+  const found: Array<{ fighter: LocalFighter; field: LongField; max: number }> = [];
   for (const fighter of fighters) {
-    if (fighter.name.length > 80) found.push({ fighter, field: 'name', max: 80 });
-    else if (fighter.gym.length > 120) found.push({ fighter, field: 'gym', max: 120 });
+    const field = (Object.keys(TEXT_LIMITS) as LongField[]).find((key) => String(fighter[key] ?? '').length > TEXT_LIMITS[key]);
+    if (field) found.push({ fighter, field, max: TEXT_LIMITS[field] });
   }
   return found;
+}
+
+/** 体重が入っているのに、数字として読めない人（例：「六十五」）。体重が空の人は含めない */
+export const weightUnreadable = (fighters: LocalFighter[]): LocalFighter[] => fighters.filter((fighter) => fighter.weight.trim() !== '' && parseKg(fighter.weight) === null);
+
+/** 身長と体重を入れかえて書いたように見える人（身長のほうが小さい。例：身長65・体重170）。子どもでも、cm の数のほうが kg より大きい */
+export function heightWeightSwapped(fighter: LocalFighter): boolean {
+  const h = Number(fighter.height.trim().replace(/cm$/i, '').trim());
+  const w = parseKg(fighter.weight);
+  return fighter.height.trim() !== '' && Number.isFinite(h) && h > 0 && w !== null && h < w && h <= 140;
 }
 
 /** 同じ名前＋同じジムの人が、もういるか（全角・半角と空白の差は無視する） */
@@ -633,6 +754,7 @@ export function importErrorParts(error: unknown, fileName: string, blockedHeader
     case 'blocked': return { head: '個人情報の列があります：' + (words.length ? words.join('、') : '電話番号 など'), detail, hint: 'Googleシートの④で作ったZIPなら、この列は入りません' };
     case 'no-list': case 'no-sheet': return { head: 'これは名簿ではありません（' + fileName + '）', detail, hint: '' };
     case 'too-large': return { head: 'ファイルが大きすぎます（' + fileName + '）', detail, hint: '' };
+    case 'too-many-files': return { head: 'ZIPの中のファイルが多すぎます（' + fileName + '）', detail, hint: '' };
     default: break;
   }
   if (!kind) return { head: 'ファイルがこわれています。別のファイルを選ぶ（' + fileName + '）', detail, hint: '' };
@@ -683,15 +805,19 @@ export function pickMarker(a: MarkerInput): Marker {
   if (a.asking) return { where: 'none', label: '' };
   if (a.chooseFirst) return { where: 'chooser', label: '続きから開く大会を選ぶ', barLabel: '続きから開く大会を選ぶ' };
   if (a.follow?.kind === 'pw') return { where: 'pw', label: 'パスワード欄を直して、もう一度ファイルを選ぶ' };
-  if (a.follow?.kind === 'refile') return { where: 'file', label: '「選手名簿.zip」をもう一度選ぶ', barLabel: 'ファイルを選び直す' };
+  if (a.follow?.kind === 'refile') return { where: 'file', label: '「Tournament_OS_（英数字）.zip」をもう一度選ぶ', barLabel: 'ファイルを選び直す' };
   if (a.follow?.kind === 'photo') return { where: 'photo', id: a.follow.id, label: '写真を選ぶ（あとででもOK）', barLabel: '写真を選ぶ' };
   if (a.follow?.kind === 'review') return { where: 'review', label: '案を1つずつ確かめる', barLabel: '案を1つずつ確かめる' };
   const { na } = a;
   if (na.kind === 'save' && a.saveState === 'failed') return a.copyButton === false ? { where: 'bar', label: 'もう一度 保存' } : { where: 'bar-copy', label: 'コピーのファイルを作る' };
   if (na.kind === 'save' && a.saveState === 'saving') return { where: 'bar', label: '保存が終わるまで待つ' };
+  // 空の試合カード（赤も青も空）が画面で待っているときは、保存や「開く」より先に、その赤コーナーを選ぶ（黄色はいつも1つ）
+  if (a.blankIndex >= 0 && (na.key === 'bouts' || na.key === 'save' || na.key === 'fix' || na.key === 'open')) {
+    return { where: 'bout', index: a.blankIndex, side: 'red', label: '第' + (a.blankIndex + 1) + '試合の赤コーナーを選ぶ（空の試合があります）', barLabel: '赤コーナーを選ぶ' };
+  }
   switch (na.key) {
     case 'title': return { where: 'title', label: 'ここに大会の名前を入れる' };
-    case 'fighters': return { where: 'file', label: 'ここにZIPを選ぶ（ファイル名：選手名簿.zip）' };
+    case 'fighters': return { where: 'file', label: 'ここにZIPを選ぶ（ファイル名の例：Tournament_OS_tos-1234567890.zip）' };
     case 'fighters2': return { where: 'file', label: 'ここで選手をもう1人入れる' };
     case 'bouts':
       return a.blankIndex >= 0
@@ -702,7 +828,7 @@ export function pickMarker(a: MarkerInput): Marker {
     case 'fix':
       if (a.fix) return { where: 'bout', index: a.fix.index, side: a.fix.side, label: '第' + (a.fix.index + 1) + '試合の' + sideWord(a.fix.side) + 'コーナーを選び直す', barLabel: '直すところへ行く' };
       return a.titleMissing ? { where: 'title', label: 'ここに大会の名前を入れる' } : { where: 'bar', label: '直すところを見る' };
-    case 'open': return { where: 'bar', label: '当日の画面を開く' };
+    case 'open': return { where: 'bar', label: '試合当日の画面を開く' };
     default: return { where: 'none', label: '' };
   }
 }

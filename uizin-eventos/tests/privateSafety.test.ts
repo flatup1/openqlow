@@ -122,20 +122,24 @@ test('saveLine: 4つの状態が1か所の言葉で決まる', () => {
   assert.equal(saveLine({ ...s, dirty: true }).text, '● 未保存（入れた内容は、まだ保存していません）');
   assert.equal(saveLine({ ...s, everSaved: false }).text, '● 未保存（まだ一度も保存していません）');
   assert.equal(saveLine({ ...s, saveState: 'saving', dirty: true }).text, '⏳ 保存中…（そのままお待ちください）');
-  assert.equal(saveLine({ ...s, saveState: 'failed', dirty: true }).text, '! 保存失敗（入れた内容は画面に残っています）');
+  assert.equal(saveLine({ ...s, saveState: 'failed', dirty: true }).text, '✕ 保存失敗（入れた内容は画面に残っています）');
   assert.equal(saveLine({ ...s, saveState: 'failed', dirty: false }).tone, 'bad', '失敗は編集しても消えない');
-  assert.equal(saveLine({ ...s, conflict: true, saveState: 'failed' }).text, '! 保存できません：別の画面で内容が変わりました');
+  assert.equal(saveLine({ ...s, conflict: true, saveState: 'failed' }).text, '✕ 保存できません：別の画面で内容が変わりました');
 });
 
 test('classifySaveError: 失敗の理由を分けて、次に押すものを言う', () => {
   const quota = new Error('x'); quota.name = 'QuotaExceededError';
   assert.equal(classifySaveError(quota, 'ok-id'), 'quota');
-  assert.equal(classifySaveError(new Error('保存するデータを確認してください。'), 'ok-id'), 'bad-id');
+  // 大会番号が正しいのに「データを確認」と言われたら、原因は大会番号ではなく欄の中身（長すぎる文字など）
+  assert.equal(classifySaveError(new Error('保存するデータを確認してください。'), 'ok-id'), 'bad-data');
+  assert.equal(classifySaveError(new Error('保存するデータを確認してください。'), 'Bad Id!'), 'bad-id', '大会番号が使えないときは、そちらが先');
   assert.equal(classifySaveError(new Error('x'), 'Bad Id!'), 'bad-id');
   assert.equal(classifySaveError(new Error('ブラウザ内の保存場所を開けませんでした。'), 'ok-id'), 'unavailable');
   assert.equal(classifySaveError(new Error('別の画面が保存場所の更新を止めています。'), 'ok-id'), 'unavailable');
   assert.equal(classifySaveError(new Error('???'), 'ok-id'), 'other');
-  for (const kind of ['bad-id', 'quota', 'unavailable', 'other'] as const) assert.ok(saveErrorText(kind).length > 20);
+  for (const kind of ['bad-id', 'bad-data', 'quota', 'unavailable', 'other'] as const) assert.ok(saveErrorText(kind).length > 20);
+  assert.match(saveErrorText('bad-data'), /長すぎます/);
+  assert.ok(!saveErrorText('bad-data').includes('新しい大会をつくる'), '長すぎる欄を、大会番号のせいにしない');
   assert.match(saveErrorText('other'), /^保存できませんでした。入れた内容は残っています。$/);
   assert.match(saveErrorText('quota'), /空きが足りません/);
   assert.match(saveErrorText('bad-id'), /「新しい大会をつくる」/);
@@ -196,12 +200,12 @@ test('restoreConfirmText: 数字つき。「入れかわります」を必ず含
   const restored: LocalTournament = { ...emptyTournament('t1'), title: '第2回テスト大会', updatedAt: new Date(2027, 9, 3, 14, 3).getTime(), fighters: [fighter('A'), fighter('B')], bouts: [bout('1', 'A', 'B')] };
   const current: LocalTournament = { ...emptyTournament('t1'), title: '今', fighters: [fighter('A'), fighter('B'), fighter('C'), fighter('D')], bouts: [bout('1', 'A', 'B'), bout('2', 'C', 'D')] };
   const text = restoreConfirmText({ restored, current, dirty: true, everSaved: true });
-  assert.match(text, /^いまの内容は消えて、コピーの内容に入れかわります。\n！選手が4人から2人に減ります。\n！試合が2つから1つに減ります。\nこう変わります：選手4人→2人・試合2つ→1つ\n/);
+  assert.match(text, /^いまの内容は消えて、コピーの内容に入れかわります。\n⚠ 減ります：選手が4人から2人になります。\n⚠ 減ります：試合が2つから1つになります。\nこう変わります：選手4人→2人・試合2つ→1つ\n/);
   assert.match(text, /『第2回テスト大会』のコピー（選手2人・写真0枚・試合1つ・10月3日 14:03）を戻します。/);
   assert.match(text, /いまの内容（選手4人・試合2つ、まだ保存していない変更あり）は、保存ずみのものも消えます。/);
   assert.match(text, /よろしいですか？$/);
   const empty = restoreConfirmText({ restored: { ...restored, fighters: [], bouts: [] }, current, dirty: false, everSaved: true });
-  assert.ok(empty.startsWith('いまの内容は消えて、コピーの内容に入れかわります。\n！このコピーは空です。'));
+  assert.ok(empty.startsWith('いまの内容は消えて、コピーの内容に入れかわります。\n⚠ このコピーは空です。'));
   const fresh = restoreConfirmText({ restored, current: emptyTournament('t1'), dirty: false, everSaved: false });
   assert.match(fresh, /（いまの内容は空です）/); assert.ok(fresh.includes('入れかわ')); assert.ok(!fresh.includes('減ります'));
 });
@@ -270,5 +274,5 @@ test('saveLine: 追加前の入力があるときは、保存済みと言わな�
   const s = { conflict: false, saveState: 'idle' as const, dirty: false, everSaved: true, savedClock: '14:03' };
   assert.equal(saveLine({ ...s, pending: true }).text, '● 未保存（選手の入力が、まだ追加されていません）');
   assert.equal(saveLine({ ...s, pending: false }).text, '✓ 保存済み 14:03');
-  assert.equal(saveLine({ ...s, pending: true, saveState: 'failed' }).short, '! 保存失敗', '失敗のほうが先');
+  assert.equal(saveLine({ ...s, pending: true, saveState: 'failed' }).short, '✕ 保存失敗', '失敗のほうが先');
 });

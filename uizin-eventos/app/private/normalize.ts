@@ -28,6 +28,8 @@ export function readNumber(raw: string, integer = false): NumberRead {
   if (!text) return { ok: true, value: '', fixed: false, from };
   text = text.replace(/^約/, '').replace(UNIT, '').replace(/(\d)[,、](?=\d)/g, '$1.').replace(/\.$/, '');
   if (integer) text = text.replace(/^(\d+)\.0+$/, '$1');
+  // 年齢のように、整数だけの欄に小数（15.5）は読めない（赤で知らせる）
+  if (integer && text.includes('.')) return { ok: false };
   text = text.replace(/^0+(?=\d)/, '');
   if (!/^\d+(?:\.\d+)?$/.test(text) || text.length > 10) return { ok: false };
   return { ok: true, value: text, fixed: text !== from, from };
@@ -155,10 +157,16 @@ export function checkFighter(input: LocalFighter, config: EntryFormConfig, mode:
     // 最後の門は今までと同じ検査。上で拾えなかったまちがいがあっても、ここで止まる
     if (!problems.length) {
       const left = entryErrors(out, true, config);
-      if (left.length) problems.push({ key: 'name', text: left[0].replace(/。$/, '') });
+      if (left.length) problems.push({ key: fieldOfEntryError(left[0]), text: left[0].replace(/。$/, '') });
     }
   }
   return { fighter: out, problems, fixes };
+}
+
+/** 最後の門（entryErrors）の文が、どの欄のことかを文の頭で見分ける。見分けられないときだけ名前の欄 */
+export function fieldOfEntryError(text: string): FieldKey {
+  const heads: Array<[string, FieldKey]> = [['ジム名', 'gym'], ['選手名', 'name'], ['身長', 'height'], ['体重', 'weight'], ['戦績', 'record'], ['学年', 'grade'], ['年齢', 'age'], ['試合への意気込み', 'comment'], ['入場曲', 'musicUrl']];
+  return heads.find(([word]) => text.startsWith(word))?.[1] ?? 'name';
 }
 
 /** 「体重 52 → 53」のような、直した所の短い言い方（最大2つ） */

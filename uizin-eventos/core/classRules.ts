@@ -53,13 +53,24 @@ function kanjiToNumber(text: string): number | null {
 }
 
 const ZERO_WORDS = new Set(['初試合', '初出場', '初参戦', '初めて', 'はじめて', '初', '未経験', '経験なし', '経験無し', '戦績なし', '戦績無し', 'なし', '無し', 'ゼロ', 'デビュー前', '試合経験なし']);
+/** 文のどこにあっても「勝ちが0」と読める言い方（「勝」の数や「3-1」の形が無いときだけ使う） */
+const ZERO_ANYWHERE = /初出場|初試合|初参戦|初めて|はじめて|未経験|未勝利|勝ちなし|勝ち無し|勝利なし|勝無し|経験なし|経験無し|戦績なし|戦績無し|デビュー前|アマ初|アマチュア初/;
+/** 「初試合ではありません」のように、打ち消しているときは決めない */
+const NEGATED = /ではな|じゃな|でない|ではあり/;
+/** 長すぎる戦績は読まない（サーバーの上限は300文字。長い数字の並びで画面が止まらないようにする） */
+export const MAX_RECORD_CHARS = 400;
 
 /** 戦績の文字から「勝った数」を読む。決められないときは null（目安を出さない）。 */
 export function parseWins(record: string): number | null {
-  if (typeof record !== 'string') return null;
+  if (typeof record !== 'string' || record.length > MAX_RECORD_CHARS) return null;
   // 0) 文字をそろえる
   let s = record.normalize('NFKC').toLowerCase().replace(/[ー‐‑–—−―]/g, '-').replace(/\s+/g, ' ').trim();
-  if (!s) return null;
+  if (!s || s.length > MAX_RECORD_CHARS * 3) return null;
+  // 小数点つきの数（3.5勝）は、勝ちの数ではない。まちがった数を出すより、目安を出さない
+  if (/\d\.\d/.test(s)) return null;
+  // 4けた以上の数字（年・日づけ・長い数字の並び）は、勝ちの数ではない。1つの印にして、あとの検索が長くならないようにする
+  const hadLong = /\d{4,}/.test(s);
+  s = s.replace(/\d{4,}/g, 'N');
   // 1) 漢数字（「勝」の直前だけ）
   s = s.replace(/[〇零一二三四五六七八九十]+(?=勝)/g, (m) => {
     const n = kanjiToNumber(m);
@@ -76,14 +87,19 @@ export function parseWins(record: string): number | null {
     if (found.some((n) => n !== found[0])) return null;
     wins = found[0];
   } else {
-    // 4) 3-1 / 3-1-0 の形（先頭が勝ち）
-    const h = s.match(/(\d+)\s*-\s*(\d+)(?:\s*-\s*(\d+))?/);
+    // 4) 3-1 / 3-1-0 の形（先頭が勝ち）。日づけ（2024-05-12）のように長い数字があるときは使わない
+    const h = hadLong ? null : s.match(/(\d+)\s*-\s*(\d+)(?:\s*-\s*(\d+))?/);
+    const lost = s.match(/(\d+)\s*戦\s*(\d+)\s*敗/);
     if (h) wins = Number(h[1]);
-    else if (!/\d/.test(s)) {
-      // 5) 「初出場」「未経験」など
+    else if (lost && Number(lost[1]) === Number(lost[2])) wins = 0; // 1戦1敗＝ぜんぶ負け
+    else if (/^0+(?:戦|試合)?$/.test(s)) wins = 0;
+    else {
+      // 5) 「初出場」「未経験」など。「空手3年・初試合」のように年数の数字があってもよいが、試合の数（◯戦・◯試合・◯敗）があるときは決めない
       const t = s.replace(/(?:です|でした|予定|[。.!\s])+$/, '');
-      if (ZERO_WORDS.has(t) || /(?:未経験|経験なし|経験無し|試合なし)$/.test(t)) wins = 0;
-    } else if (/^0+(?:戦|試合)?$/.test(s)) wins = 0;
+      const hasCount = /\d\s*(?:戦|試合|回|敗|分)/.test(s);
+      if (!/\d/.test(s) && (ZERO_WORDS.has(t) || /(?:未経験|経験なし|経験無し|試合なし)$/.test(t))) wins = 0;
+      else if (ZERO_ANYWHERE.test(s) && !NEGATED.test(s) && !hasCount) wins = 0;
+    }
   }
   // 6)・7) それ以外・大きすぎる数は読まない
   if (wins === null || !Number.isInteger(wins) || wins < 0 || wins > 99) return null;
@@ -105,6 +121,28 @@ export function normalizeClass(value: string, s: ClassSettings): string {
   if (same(value, s.upper.name)) return s.upper.name;
   if (same(value, s.lower.name)) return s.lower.name;
   return '';
+}
+
+/** クラスの名前を、くらべるための印にする（全角・半角、大文字・小文字、前後の空白のちがいは同じ） */
+export const classNameKey = (name: string): string => String(name ?? '').normalize('NFKC').trim().toLowerCase();
+
+/**
+ * 取り込んだファイルの「クラス」の文字を、設定の名前にそろえる。
+ * 「Aクラス」「ａクラス」のほか、頭文字だけの「A」「B」（名前が A・B で始まるとき）と「上」「下」も読む。読めないものは、そのまま返す。
+ */
+export function normalizeClassLoose(value: string, s: ClassSettings): string {
+  const exact = normalizeClass(value, s);
+  if (exact) return exact;
+  if (!s.enabled || typeof value !== 'string') return value;
+  const v = classNameKey(value).replace(/\s+/g, '');
+  const initial = (side: ClassSide) => classNameKey(side.name).slice(0, 1);
+  if (v.length === 1 && /[a-z]/.test(v)) {
+    if (v === initial(s.upper) && v !== initial(s.lower)) return s.upper.name;
+    if (v === initial(s.lower) && v !== initial(s.upper)) return s.lower.name;
+  }
+  if (['上', '上位', '上のクラス', '上級'].includes(v)) return s.upper.name;
+  if (['下', '下位', '下のクラス', '初級'].includes(v)) return s.lower.name;
+  return value;
 }
 
 export function classKey(name: string, s: ClassSettings): 'upper' | 'lower' | '' {
@@ -137,6 +175,42 @@ export function boutClassWarning(red?: LocalFighter, blue?: LocalFighter): strin
   const b = (blue?.fighterClass ?? '').trim();
   if (!r || !b || same(r, b)) return '';
   return 'クラスがちがいます（赤：' + r + '／青：' + b + '）。ルールがちがうので、組み合わせを確かめてください。';
+}
+
+/** ルールの長い文から、先頭の短い言い方だけを取る（「（」の前まで。80文字の説明を、注意の文に入れないため）。 */
+export function shortRule(rule: string): string {
+  const head = String(rule ?? '').split('（')[0].trim();
+  return (head || String(rule ?? '').trim()).slice(0, 40);
+}
+
+/**
+ * 準備画面の対戦カードの赤い注意（赤と青のクラスがちがうとき）。
+ * headline = 何がまちがいかと、おすすめ（「クラスがちがいます」を先頭に置く）。rules = それぞれのクラスのルール（設定にあるときだけ）。
+ * 設定（受付で決めたクラスの名前と、ルールの文）が無ければ、ルールの行は出さない。
+ */
+export function classMixMessage(red: LocalFighter | undefined, blue: LocalFighter | undefined, s?: ClassSettings | null): { headline: string; rules: string[] } | null {
+  if (boutClassWarning(red, blue) === '') return null;
+  const r = (red?.fighterClass ?? '').trim(), b = (blue?.fighterClass ?? '').trim();
+  const rules: string[] = [];
+  if (s && s.enabled) {
+    const seen = new Set<string>();
+    for (const label of [r, b]) {
+      const key = classKey(label, s);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const side = key === 'upper' ? s.upper : s.lower;
+      rules.push(side.name + 'のルール：' + shortRule(side.rule));
+    }
+  }
+  return { headline: 'クラスがちがいます：赤は' + r + '、青は' + b + 'です。ルールがちがう2人です。おすすめは、同じクラスの2人に選び直すことです。', rules };
+}
+
+/** 準備画面の対戦カードの上に出す、クラスの見かた。「Aクラス＝3勝以上　Bクラス＝2勝以下（初出場も）」 */
+export function classLegend(s: ClassSettings | null | undefined): string {
+  if (!s || !s.enabled) return '';
+  const lowerWins = s.upperMinWins - 1;
+  const lower = lowerWins <= 0 ? '0勝（初出場も）' : lowerWins + '勝以下（初出場も）';
+  return 'クラス：' + s.upper.name + '＝' + s.upperMinWins + '勝以上　' + s.lower.name + '＝' + lower + '。';
 }
 
 /** 信用できない入れ物（ping・URLのハッシュ）から、正しいクラス設定だけを取り出す。投げない。 */

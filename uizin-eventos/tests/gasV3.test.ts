@@ -168,7 +168,8 @@ test('v3: 公開用の設定（デプロイの初期値）は「自分で実行�
   assert.equal(manifest.webapp.executeAs, 'USER_DEPLOYING');
   assert.equal(manifest.webapp.access, 'ANYONE_ANONYMOUS');
   assert.equal(manifest.timeZone, 'Asia/Tokyo');
-  assert.equal(manifest.oauthScopes, undefined, '権限は自動判定に任せ、余計な権限を足さない');
+  // 権限は「最初の1回」でまとめて聞かれるよう、使うサービスから決めて書く（余計な権限は足さない）。実際のGoogleでの確認は人の手で1回行う
+  assert.deepEqual([...manifest.oauthScopes].sort(), ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/script.container.ui', 'https://www.googleapis.com/auth/script.scriptapp', 'https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/userinfo.email']);
 });
 
 test('v3: 入場曲の「あり／なし」は、最初に必ず選ぶ（空のままでは進めない・初期値は入れない）', () => {

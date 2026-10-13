@@ -29,11 +29,13 @@ const toneClass: Record<Tone, string> = {
 };
 
 export function Chip({ tone = 'slate', children, className = '' }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={cls('inline-flex min-h-8 items-center rounded-full border-2 px-3 text-[17px] font-bold leading-tight', toneClass[tone], className)}>{children}</span>;
+  // min-w-0 / max-w-full / overflow-wrap:anywhere：長い文字（手で直したCSVのクラス名など）が、カードの外にはみ出さず、中で折り返す
+  return <span className={cls('inline-flex min-h-8 min-w-0 max-w-full items-center rounded-[16px] border-2 px-3 text-left text-[17px] font-bold leading-tight [overflow-wrap:anywhere]', toneClass[tone], className)}>{children}</span>;
 }
 
 /** できた ✓ / まだ の小さな札（各セクションの見出しの横に出す） */
-export function DoneChip({ done, doneText = 'できた', todoText = 'まだ' }: { done: boolean; doneText?: string; todoText?: string }) {
+export function DoneChip({ done, doneText = 'できた', todoText = 'まだ', warnText }: { done: boolean; doneText?: string; todoText?: string; /** できたけれど、見直す所があるとき（黄色の札。緑の ✓ にはしない） */ warnText?: string }) {
+  if (done && warnText) return <Chip tone="amber">⚠ {warnText}</Chip>;
   return done ? <Chip tone="green">{doneText} ✓</Chip> : <Chip tone="slate">{todoText}</Chip>;
 }
 
@@ -52,7 +54,7 @@ export function Badge({ required, text }: { required?: boolean; text?: string })
  * extra: 結果の2行目（例: 保存した＋まだ直す所）。別の箱で、すぐ下に出す
  */
 export type NoticeExtra = { kind: 'ok' | 'warn' | 'error' | 'info'; text: ReactNode; action?: { label: string; ariaLabel?: string; onClick: () => void } };
-export function Notice({ kind, children, onClose, action, className = '', compact = false, inlineClose = false, live, extra, lead: leadNode }: { kind: 'ok' | 'error' | 'info' | 'warn'; children: ReactNode; onClose?: () => void; action?: { label: string; onClick: () => void; id?: string }; className?: string; compact?: boolean; inlineClose?: boolean; live?: 'off' | 'polite' | 'assertive'; extra?: NoticeExtra[]; lead?: ReactNode }) {
+export function Notice({ kind, children, onClose, action, className = '', compact = false, inlineClose = false, closeClass = '', live, extra, lead: leadNode }: { kind: 'ok' | 'error' | 'info' | 'warn'; children: ReactNode; onClose?: () => void; action?: { label: string; onClick: () => void; id?: string }; className?: string; compact?: boolean; inlineClose?: boolean; /** 「✕ とじる」を、せまい画面でしまうときの class（しまうときは、知らせの文のほうに、必要なボタンを入れる） */ closeClass?: string; live?: 'off' | 'polite' | 'assertive'; extra?: NoticeExtra[]; lead?: ReactNode }) {
   const tone = kind === 'ok' ? 'tos-ok' : kind === 'error' ? 'tos-error' : kind === 'warn' ? 'tos-caution' : 'rounded-xl border-2 border-slate-400 bg-white text-slate-900';
   const lead = kind === 'ok' ? '✓ ' : kind === 'error' ? '✕ ' : kind === 'warn' ? '⚠ 気をつけて：' : 'i ';
   // compact: 下の帯の中で使う。画面の高さを取りすぎないよう、余白と行の高さを小さくする（内側のスクロールは使わない）
@@ -61,7 +63,7 @@ export function Notice({ kind, children, onClose, action, className = '', compac
   const main = <div role="status" aria-live={live ?? (kind === 'error' ? 'assertive' : 'polite')} style={flow} className={cls('min-w-0 text-[17px] font-bold shadow-sm', kind === 'info' ? (compact ? 'p-2' : 'p-3') : '', tone, className)}>
     <div className="min-w-0 break-words">
       {/* inlineClose: 「✕ とじる」を文の右はしに小さく置く（下の帯の高さをおさえるため）。字は2行で、ことばも見える */}
-      {inlineClose && onClose ? <button type="button" aria-label="✕ とじる" onClick={onClose} className={cls(btn.base, btn.outline, 'float-right ml-2 w-[4.5rem] flex-col gap-0 whitespace-nowrap px-1 leading-tight')}><span aria-hidden="true">✕</span><span aria-hidden="true" className="text-[17px]">とじる</span></button> : null}
+      {inlineClose && onClose ? <button type="button" aria-label="✕ とじる" onClick={onClose} className={cls(btn.base, btn.outline, 'float-right ml-2 w-[4.5rem] flex-col gap-0 whitespace-nowrap px-1 leading-tight', closeClass)}><span aria-hidden="true">✕</span><span aria-hidden="true" className="text-[17px]">とじる</span></button> : null}
       <span aria-hidden="true" className={kind === 'warn' ? 'font-extrabold' : ''}>{lead}</span>{leadNode}{children}
     </div>
     {action || (onClose && !inlineClose) ? <div className="mt-2 flex w-full flex-wrap gap-2">
@@ -90,9 +92,9 @@ export function Fold({ title, children, open, onToggle, className = '', summaryC
   </details>;
 }
 
-export function Section({ id, title, done, doneText, todoText, children }: { id: string; title: string; done: boolean; doneText?: string; todoText?: string; children: ReactNode }) {
+export function Section({ id, title, done, doneText, todoText, warnText, children }: { id: string; title: string; done: boolean; doneText?: string; todoText?: string; warnText?: string; children: ReactNode }) {
   return <section id={id} tabIndex={-1} className="scroll-mt-28 focus:outline-none rounded-2xl border-2 border-slate-300 bg-white p-4 shadow-sm sm:p-6">
-    <div className="flex flex-wrap items-center gap-3"><h2 className="min-w-0 text-balance text-2xl font-bold [overflow-wrap:anywhere]">{title}</h2><DoneChip done={done} doneText={doneText} todoText={todoText} /></div>
+    <div className="flex flex-wrap items-center gap-3"><h2 className="min-w-0 text-balance text-2xl font-bold [overflow-wrap:anywhere]">{title}</h2><DoneChip done={done} doneText={doneText} todoText={todoText} warnText={warnText} /></div>
     <div className="mt-4 space-y-5">{children}</div>
   </section>;
 }

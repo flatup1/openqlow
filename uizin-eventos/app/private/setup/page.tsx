@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { diagnose, entryConfigFromPing, exportSetup, importSetup, isTemplateCopyLink, parsePing, parsePingText, pingUrl, templateCopyLink, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
+import { diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, templateCopyLink, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
 import { isAppsScriptUrl, publicEntryHash } from '../../../core/publicEntry.ts';
 import { formatDateInput } from '../../../core/dateInput.ts';
 import { readPrivateEvent } from '../../lib/privateStore.ts';
@@ -20,11 +20,15 @@ const STEP_NAMES = ['準備', 'つなぐ', '渡す'];
 const PAGE_NAME = '選手の受付をつくる';
 /** Googleシートのメニューの名前。.gs の onOpen と同じ言葉にそろえる（.gs が変わったらここだけ直す） */
 const MENU_ZIP = '④ OS用の名簿ZIPを作る';
-const SHEET_WINDOW = 'Googleのシートは新しいタブで開きます。このページのタブは閉じません。もどるときは、一番上の「' + PAGE_NAME + '」と書いたタブを押します。';
-const VIEW_WINDOW = '新しいタブが開きます。見終わったら、一番上の「' + PAGE_NAME + '」と書いたタブを押してもどります。';
+const SHEET_WINDOW = 'Googleのシートは新しいタブで開きます。このページのタブは閉じません。もどるときは、ブラウザの上に並ぶタブの中の「' + PAGE_NAME + '」を押します。';
+const VIEW_WINDOW = '新しいタブが開きます。見終わったら、ブラウザの上に並ぶタブの中の「' + PAGE_NAME + '」を押してもどります。';
+/** 作業1が終わったら、次の画面へ進むボタンの名前（見出しの文と、ボタンの文を同じ言葉にする） */
+const GO2_NAME = '「準備できました」と出た → 次へ';
+/** 「設定」タブで、会長が必ず書く行の印（色の名前は使わない。シートのC列にも同じ印が書いてある） */
+const WRITE_MARK = '「✎ ここに書く」';
 const COPY_STEPS = 'パソコン：上の四角をクリックして、Ctrl を押しながら A（全部えらぶ）、つづけて Ctrl を押しながら C（コピー）。Macは Ctrl のかわりに ⌘（コマンド）キー。スマホ：四角を長く押して「コピー」。';
-const CARD_LABELS = ['作業1：Googleでコピーを作る', '作業2：「設定」タブに書く（B列の7つ）', '作業3：メニュー「① 最初の設定」を押す', '作業4：「準備できました」と出るのを確かめる'];
-const OP_LABELS = ['操作1：Apps Scriptを開く（いまはここ）', '操作2：「新しいデプロイ」を押す（いまはここ）', '操作3：URLの「コピー」を押す（いまはここ）'];
+const CARD_LABELS = ['作業1：Googleでコピーを作る', '作業2：「設定」タブに書く（B列の7つの行）', '作業3：メニュー「① 最初の設定」を押す', '作業4：「準備できました」と出るのを確かめる'];
+const OP_LABELS = ['操作1：Apps Scriptを開く', '操作2：「新しいデプロイ」を押す', '操作3：URLの「コピー」を押す'];
 const GOOD_URL = 'https://script.google.com/macros/s/…/exec';
 /** シートの「設定」タブの、B列のセル番号（.gs の SETTING_ROWS と同じ順番） */
 const CELL: Record<string, string> = { 大会名: 'B2', 開催日: 'B3', 会場: 'B4', 会場の地図URL: 'B5', 主催者名: 'B6', 問い合わせ先: 'B7', 申込締切: 'B8', 入場曲: 'B9', 学年: 'B10', 年齢: 'B11', 意気込み: 'B12' };
@@ -84,7 +88,7 @@ function classifyPingError(error: unknown): PingError {
 }
 
 /* ---------- URLを、貼られたままの形から自動で直す（ネット通信なし） ---------- */
-type UrlKind = 'sheet' | 'template' | 'dev' | 'id' | 'login' | 'workspace' | 'incomplete' | 'text' | 'symbols' | 'long' | 'other';
+type UrlKind = 'sheet' | 'template' | 'dev' | 'editor' | 'id' | 'login' | 'workspace' | 'incomplete' | 'text' | 'symbols' | 'long' | 'other';
 type UrlResult = { ok: true; url: string; changed: boolean } | { ok: false; kind: UrlKind };
 
 /**
@@ -104,6 +108,8 @@ function cleanUrl(raw: string): UrlResult {
   if (/accounts\.google\.com|servicelogin/i.test(s)) return { ok: false, kind: 'login' };
   if (/\/a\/macros\//i.test(s)) return { ok: false, kind: 'workspace' };
   if (/\/macros\/s\/[A-Za-z0-9_-]+\/dev(?![A-Za-z0-9_-])/i.test(s)) return { ok: false, kind: 'dev' };
+  // Apps Scriptの「編集画面」のアドレス（いま立っているタブのアドレスを、そのままコピーした形）
+  if (/script\.google\.com\/(?:u\/\d+\/)?(?:home(?:\/projects)?|projects|d\/[A-Za-z0-9_-]+\/edit)/i.test(s)) return { ok: false, kind: 'editor' };
   if (/^(?:AKfy)?[A-Za-z0-9_-]{40,}$/.test(s)) return { ok: false, kind: 'id' };
   if (trimmed.length > 4000) return { ok: false, kind: 'long' };
   if (/script\.google\.com/i.test(s)) return { ok: false, kind: 'incomplete' };
@@ -120,9 +126,10 @@ function urlProblem(kind: UrlKind): { head: string; body: string } {
     case 'sheet': return { head: 'これは「シートのURL」です', body: RIGHT_ONE };
     case 'template': return { head: 'これは「ひな形のコピーを作るURL」です', body: RIGHT_ONE };
     case 'dev': return { head: 'これは「テスト用のURL」（/dev で終わる）です', body: '「新しいデプロイ」で出た、/exec で終わるURLを使います。「デプロイをテスト」は押しません。' };
+    case 'editor': return { head: 'これは「Apps Scriptの編集画面のURL」です', body: 'デプロイのあとに出る「ウェブアプリ」のURL（…/exec で終わる）の横の「コピー」を押します。上のアドレス欄は、コピーしません。' };
     case 'id': return { head: 'それはIDです', body: 'URLの横の「コピー」を押してください。' };
     case 'login': return { head: 'これは「Googleのログインの画面のURL」です', body: RIGHT_ONE };
-    case 'workspace': return { head: '会社や学校のGoogleのURL（/a/macros/ が入ったURL）は、まだ使えません', body: '個人のGoogleアカウントで、もう一度「新しいデプロイ」をして、/exec で終わるURLをコピーしてください。むずかしいときは、ジムの担当者に連絡してください。' };
+    case 'workspace': return { head: '会社や学校のGoogleアカウントでは、使えません（URLに /a/macros/ が入っています）', body: '個人のGoogleアカウント（@gmail.com など）で、ひな形のコピーからやり直します。むずかしいときは、ジムの担当者に連絡してください。' };
     case 'symbols': return { head: 'URLではありません', body: 'https:// で始まるURLを貼ってください。' + RIGHT_ONE };
     case 'incomplete': return { head: 'URLが最後まで入っていません', body: '…/exec のところまで、全部コピーしてください。' };
     case 'text': return { head: 'URLではなく、ただの文字です', body: 'https:// で始まるURLを貼ってください。' + RIGHT_ONE };
@@ -141,11 +148,13 @@ function cleanPasted(text: string): string {
 /** 「設定」タブの直すところを、行・セル番号つきの短い文に直す。 */
 function settingLines(message: string): { google: string; fixes: string[] }[] {
   const body = message.replace(/^シートの「設定」タブを直してください。/, '');
+  // 申込ページに入れられない理由（クラスの内容・文が長すぎる）は、1つの文のまま出す
+  if (/^クラス|長すぎて、選手に渡すURLに入りません/.test(body)) return [{ google: body, fixes: [body] }];
   return (body || message).split('。').filter(Boolean).map((item) => {
     const nameOf = (n: string) => Object.keys(CELL).find((k) => n.startsWith(k));
     const miss = item.match(/次の欄を入れてください：(.+)$/);
     if (miss) {
-      return { google: item, fixes: miss[1].split('、').map((n) => { const k = nameOf(n); return k ? k + '（' + CELL[k] + '）：書いてありません。' + (HOW[k] || '黄色いセルに書く') : CLASS_CELL[n] ? n + '（' + CLASS_CELL[n] + '）：書いてありません。右どなり（C列）の例を見て書く' : n + '：書いてありません'; }) };
+      return { google: item, fixes: miss[1].split('、').map((n) => { const k = nameOf(n); return k ? k + '（' + CELL[k] + '）：書いてありません。' + (HOW[k] || WRITE_MARK + 'の行に書く') : CLASS_CELL[n] ? n + '（' + CLASS_CELL[n] + '）：書いてありません。右どなり（C列）の例を見て書く' : n + '：書いてありません'; }) };
     }
     // クラス分けの欄（B13〜B20）。Googleの文のうしろに、直すセルの番号を足す
     const classCells = Array.from(item.matchAll(/「(.+?)」/g)).map((m) => CLASS_CELL[m[1]]).filter(Boolean);
@@ -237,19 +246,29 @@ function Fold({ title, sub, children, openSignal = 0, defaultOpen = false, class
 /**
  * 作業カード。見出しの上に「4つの作業の、3つ目」の言葉をつける。
  * 黄色の枠は、カード全体ではなく「できた ✓」のボタンだけに付ける（長い説明の中で、黄色い所が迷子にならない）。
- * いまやる作業のカードは、太いインディゴの枠と「▶ いまやる作業」の言葉で見分ける（黄色は1つだけ）。
+ * いまのカードは、太いインディゴの枠と「▶ いまここ」の言葉で見分ける（黄色は1つだけ）。
  * 前の作業が終わっていないと「できた ✓」は押せない（理由を🔒で書く）。終わったら緑の「✓ できた」になり、黄色が次のカードへ移る。
  */
 function StepCard({ n, title, done, doneAt, here, current, label, locked, lockReason, warn, onDone, onUndo, onBlocked, children }: {
   n: number; title: ReactNode; done: boolean; doneAt?: string; here: boolean; current: boolean; label: string; locked: boolean; lockReason: string; warn?: ReactNode;
   onDone: () => void; onUndo: () => void; onBlocked: () => void; children: ReactNode;
 }) {
+  const [foldOpen, setFoldOpen] = useState(false);
   return <section className={'rounded-2xl p-4 font-medium text-slate-950 sm:p-5 ' + (done ? 'border-2 border-emerald-700 bg-white' : locked ? 'border-2 border-dashed border-slate-500 bg-slate-50' : current ? 'border-4 border-indigo-700 bg-white' : 'border-2 border-slate-300 bg-white')}>
     <div>
-      <p className={'text-[17px] font-bold ' + (done ? 'text-emerald-800' : current ? 'text-indigo-900' : 'text-slate-800')}>{done ? '✓ できた　' : current ? '▶ いまやる作業　' : 'まだ　'}4つの作業の、{n}つ目</p>
+      <p className={'text-[17px] font-bold ' + (done ? 'text-emerald-800' : current ? 'text-indigo-900' : 'text-slate-800')}>{done ? '✓ できた　' : current ? '▶ いまここ　' : 'まだ　'}4つの作業の、{n}つ目</p>
       <h3 className="mt-1 text-balance text-xl font-bold">{title}</h3>
     </div>
-    <div className="mt-3 space-y-3">{children}</div>
+    {done || locked
+      // いまの作業ではないカードは、長い説明をたたむ（見出しと「できた ✓」と理由だけ残す）。画面が長くなって、「👉 次はここ」が遠くなるのを防ぐ
+      ? <details open={foldOpen} onToggle={(e) => setFoldOpen(e.currentTarget.open)} className="mt-3 rounded-xl border-2 border-slate-300 bg-slate-50">
+        <summary className={'flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-1 text-[17px] font-bold text-slate-900 [&::-webkit-details-marker]:hidden ' + FOCUS}>
+          <span className="min-w-0 flex-1">{done ? 'やり方をもう一度読む' : 'やり方を先に読む'}</span>
+          <span aria-hidden="true" className="shrink-0 rounded-lg border-2 border-slate-300 bg-white px-3 py-1">{foldOpen ? '▼ とじる' : '▶ ひらく'}</span>
+        </summary>
+        <div className="space-y-3 border-t-2 border-slate-200 p-3">{children}</div>
+      </details>
+      : <div className="mt-3 space-y-3">{children}</div>}
     {done
       ? <div className="mt-4 space-y-2">
         <OkLine>できた{doneAt ? ' ' + doneAt : ''}</OkLine>
@@ -302,6 +321,8 @@ export default function SetupV3() {
   const [copiedLiveUrl, setCopiedLiveUrl] = useState('');
   const [otherEvent, setOtherEvent] = useState('');
   /** 「コピーしたURLを貼りつける」ボタンがうまくいかなかったときの一言 */
+  /** 古いブラウザ（古いSafariなど）か。そうなら、手順のどの画面にも黄色で「Chromeで開いてください」と出す */
+  const [oldBrowser, setOldBrowser] = useState(false);
   const [pasteNote, setPasteNote] = useState<{ kind: 'bad' | 'warn'; text: string } | null>(null);
   /** 実際にGoogleにつないで「つながった」と確かめたURL（これが今のURLと同じときだけ、試合の準備の画面に緑の「できています」が出る） */
   const [verifiedUrl, setVerifiedUrl] = useState('');
@@ -332,11 +353,14 @@ export default function SetupV3() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const before = root.getAttribute('data-theme');
+    // 読み込みの前に layout の小さな補助が data-theme を付けていたら、元は「なし」だったことにする
+    const booted = root.hasAttribute('data-theme-boot');
+    const before = booted ? null : root.getAttribute('data-theme');
     root.setAttribute('data-theme', 'light');
-    return () => { if (before === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', before); };
+    return () => { root.removeAttribute('data-theme-boot'); if (before === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', before); };
   }, []);
   useEffect(() => () => { window.clearTimeout(copyTimer.current); }, []);
+  useEffect(() => { setOldBrowser(isOldBrowser(navigator.userAgent, (window as unknown as { CSS?: { supports?: (q: string) => boolean } }).CSS)); }, []);
   // 画面の上の名前（タブの名前）を、画面の中の文と同じにする
   useEffect(() => { const before = document.title; document.title = PAGE_NAME; return () => { document.title = before; }; }, []);
 
@@ -437,12 +461,12 @@ export default function SetupV3() {
   }, [ready, endpoint]);
 
   const urlOk = isAppsScriptUrl(endpoint);
-  /** クラス分けが「あり」のとき、クラスの文が申込ページに入らない理由（クラスの問題ではないときは空） */
-  const classProblem = (() => { if (!ping) return ''; try { entryConfigFromPing(ping, endpoint, 'live'); return ''; } catch (e) { const m = e instanceof Error ? e.message : ''; return m.startsWith('クラス') ? m : ''; } })();
+  /** 「設定」タブの内容が、申込ページに入らない理由（クラスの内容が読めない・文が長すぎる）。そうでないときは空 */
+  const configProblem = ping ? entryConfigProblem(ping, endpoint) : '';
   const baseDiagnosis: Diagnosis | null = ping ? diagnose(ping) : null;
   // クラスの文が申込ページに入らないときは、「設定」タブの直しものとして、いつもの赤い案内に合わせる（URLを出さない／黄色は「直したら、これを押す」）
-  const diagnosis: Diagnosis | null = baseDiagnosis && classProblem && (baseDiagnosis.stage === 'need-selftest' || baseDiagnosis.stage === 'need-open' || baseDiagnosis.stage === 'ready')
-    ? { stage: 'bad-settings', ok: false, message: 'シートの「設定」タブを直してください。' + classProblem }
+  const diagnosis: Diagnosis | null = baseDiagnosis && configProblem && (baseDiagnosis.stage === 'need-selftest' || baseDiagnosis.stage === 'need-open' || baseDiagnosis.stage === 'ready')
+    ? { stage: 'bad-settings', ok: false, message: 'シートの「設定」タブを直してください。' + configProblem }
     : baseDiagnosis;
   const classes = ping?.classMode ? ping.classes : undefined;
   const stage = diagnosis?.stage;
@@ -451,10 +475,12 @@ export default function SetupV3() {
     ? [['大会名', ping.title || ''], ['開催日', ping.date ? formatDateInput(ping.date) : ''], ['会場', ping.venue || ''], ['主催者名', ping.organizer || ''], ['問い合わせ先', ping.contact || ''], ['申込締切', ping.deadline ? formatDateInput(ping.deadline) : '']]
     : [];
   const missing = readRows.filter(([, v]) => !v).map(([k]) => k);
+  /** シートの内容が、そのまま読み取れた状態か。直しものがある・①がまだのときは、空の欄を「未入力」と責めない */
+  const readable = !!ping && ping.ready && !ping.settingsProblem;
   /** 日にちが今日より前（去年のシートのコピー・年の書きまちがいに気づくため）。ここでは日本時間の今日と比べる */
   const datePast = !!ping && isPastDate(ping.date || '');
   const deadlinePast = !!ping && isPastDate(ping.deadline || '');
-  const blocked = !urlOk || !diagnosis || datePast || deadlinePast || ['old-build', 'not-setup', 'bad-settings', 'storage-full', 'need-selftest'].includes(diagnosis.stage) || missing.length > 0;
+  const blocked = !urlOk || !diagnosis || datePast || deadlinePast || ['old-build', 'not-setup', 'wrong-owner', 'sharing', 'headers', 'missing-tab', 'bad-settings', 'storage-full', 'need-selftest'].includes(diagnosis.stage) || missing.length > 0;
 
   // 手順3に入ったら、すぐ確かめる。「受付を開始」を押すまでは5秒ごと、受付中は30秒ごとに確かめ直す。
   useEffect(() => {
@@ -469,6 +495,21 @@ export default function SetupV3() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, step, stage, endpoint, pasteSrc]);
   useEffect(() => { if (step === 3 && stage === 'ready') setWasReady(true); if (step !== 3) setWasReady(false); }, [step, stage]);
+
+  // 開いた直後の手順1：「👉 次はここ」の枠が、最初の画面の下にかくれていたら、見える所まで動かす（一度だけ）
+  const firstLook = useRef(false);
+  useEffect(() => {
+    if (!ready || step !== 1 || tpl === 'loading' || firstLook.current) return;
+    firstLook.current = true;
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector('[data-tos-next]');
+      if (!el || el.getBoundingClientRect().top <= window.innerHeight * 0.85) return;
+      // 上に固定している「3つの手順」の帯の下に、枠の上がくるようにする（帯にかくれない）。帯は、動かす前はまだ固定されていないので、位置ではなく高さで測る
+      const navHeight = document.querySelector('nav[aria-label="3つの手順"]')?.getBoundingClientRect().height ?? 0;
+      window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - navHeight - 16 });
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [ready, step, tpl]);
 
   // 手順が変わったら、上までもどす。
   useEffect(() => {
@@ -578,7 +619,7 @@ export default function SetupV3() {
     }
   };
 
-  if (!ready) return <main className="tos-read min-h-screen bg-slate-50 p-8 text-lg font-medium text-slate-950 [color-scheme:light]">じゅんびしています…</main>;
+  if (!ready) return <main data-tos-loading="1" className="tos-read min-h-screen bg-slate-50 p-8 text-lg font-medium text-slate-950 [color-scheme:light]">じゅんびしています…</main>;
 
   const liveUrl = ping && link('live') ? location.origin + link('live') : '';
   const lineText = liveUrl ? (ping?.title || '大会') + 'の参加申し込みはこちら：' + liveUrl : '';
@@ -593,11 +634,13 @@ export default function SetupV3() {
     if (ping.grade) h.set('g', ping.grade);
     if (ping.age) h.set('a', ping.age);
     if (ping.comment) h.set('c', ping.comment);
+    // クラス分けがあるときは、その内容（名前・条件・ルール）も渡す。試合の準備の画面で、2つのクラスを選べるようにするため
+    if (ping.classMode && ping.classes) h.set('cs', JSON.stringify(ping.classes));
     return '#' + h.toString();
   })();
   const toRoster = '/private/?event=' + encodeURIComponent(eventId) + rosterHash;
 
-  /* ---------- 「次はここ」を決める。画面の黄色・上の「▶ 次にやる」は、すべてこの1つから作る ---------- */
+  /* ---------- 「次はここ」を決める。画面の「👉 次はここ」の枠は、すべてこの1つから作る ---------- */
   // 短い入力は、打っている途中かもしれないので赤にしない。ただし、URLに使えない文字（絵文字・日本語）が入っていたら、すぐ赤にする
   const endpointProblem = !endpoint.trim() || urlOk || (endpoint.trim().length < 8 && !/[^\x00-\x7F]/.test(endpoint.normalize('NFKC'))) ? null : cleanUrl(endpoint);
   const urlWrong = !!endpointProblem && !endpointProblem.ok;
@@ -611,7 +654,7 @@ export default function SetupV3() {
       if (tpl !== 'ok') return null;
       if (cardNow === 0 && !copyOpened) return { id: 'card0', label: '作業1：「ひな形のコピーを作る」を押す' };
       if (cardNow >= 0) return { id: ('card' + cardNow) as NextId, label: CARD_LABELS[cardNow] };
-      return { id: 'go2', label: '「準備できました → 次へ」を押す' };
+      return { id: 'go2', label: GO2_NAME + ' のボタンを押す' };
     }
     if (step === 2 && !urlOk) {
       if (urlWrong) return { id: 'paste', label: 'ここにURLを貼り直す' };
@@ -626,9 +669,13 @@ export default function SetupV3() {
     switch (diagnosis.stage) {
       case 'old-build': return { id: 'send-photo', label: 'この画面の写真を、ジムの担当者に送る' };
       case 'not-setup': return { id: 'rerun1', label: 'Googleシートで「Tournament OS」→「① 最初の設定」を押す' };
+      case 'missing-tab': return { id: 'rerun1', label: 'Googleシートで「Tournament OS」→「① 最初の設定」を押す' };
+      case 'wrong-owner': return { id: 'open-ops', label: '①を押したのと同じGoogleアカウントで、デプロイをやり直す' };
+      case 'sharing':
+      case 'headers': return { id: 'recheck-fix', label: '直したら、これを押す' };
       case 'need-selftest': return { id: 'rerun1', label: '「① 最初の設定」をもう一度押す' };
       case 'bad-settings': return { id: 'recheck-fix', label: '直したら、これを押す' };
-      case 'storage-full': return { id: 'tell-staff', label: 'ジムの担当者に「Googleの保存できる場所が いっぱい」と伝える' };
+      case 'storage-full': return { id: 'tell-staff', label: 'ジムの担当者に「Googleの保存場所がいっぱい」と伝える' };
       default: break;
     }
     if (step === 2) return missing.length || datePast || deadlinePast ? { id: 'recheck-fix', label: '直したら、これを押す' } : { id: 'next', label: 'これでよければ「次へ進む」を押す' };
@@ -647,6 +694,10 @@ export default function SetupV3() {
     : !diagnosis ? 'Googleにつながるまで押せません。少し待っても変わらないときは「もう一度確かめる」を押します'
     : stage === 'old-build' ? 'Googleの版が古いので押せません。ジムの担当者に連絡してください'
     : stage === 'not-setup' ? '①が終わってから押せます'
+    : stage === 'missing-tab' ? '①をもう一度押してから押せます'
+    : stage === 'wrong-owner' ? 'デプロイをやり直してから押せます'
+    : stage === 'sharing' ? '共有を「制限付き」に直してから押せます'
+    : stage === 'headers' ? '申込表の1行目を直して、「もう一度確かめる」を押してから押せます'
     : stage === 'bad-settings' ? '「設定」タブを直して、「もう一度確かめる」を押してから押せます'
     : stage === 'storage-full' ? 'Googleの保存場所の問題が直ってから押せます'
     : stage === 'need-selftest' ? '①をもう一度押してから押せます'
@@ -684,11 +735,18 @@ export default function SetupV3() {
   const connectionBox = (d: Diagnosis) => {
     const m = d.message;
     const message = <p>{d.ok ? '✓ ' : ''}{m}</p>;
+    /** つながったけれど、日にちが過ぎている／読み取れない所がある。緑の「次へ進む」の案内は出さない（押せないので、案内が食いちがう） */
+    const fixFirst = <Box tone="warn" role="status"><p className="font-bold">つながりました。でも、先に直すところがあります</p><p>{datePast || deadlinePast ? 'シートの「設定」タブの、開催日（B3）か申込締切（B8）が、過ぎた日になっています。直して、「もう一度確かめる」を押します。' : '下の「シートから読み取れた内容」に、✕の所があります。「設定」タブを直して、「もう一度確かめる」を押します。'}</p></Box>;
+    const fixFirstNeeded = step === 2 && (datePast || deadlinePast || missing.length > 0);
+    /** 押す場所は同じ（Googleでのデプロイのやり直し）。手順2では折りたたみを開き、手順3では手順2へ戻る */
+    const redeployButton = mark('open-ops', <button type="button" onClick={() => { if (step === 2) openOps(); else goStep(2); }} className={here('open-ops') ? btnPrimary : btnSecondary}>{step === 2 ? 'Googleの3つの操作を開く' : '手順2へ戻る'}</button>);
     const chips = (menu: string) => <div className="space-y-1"><p>Googleのシートで、下の絵のとおりに押します。</p><MenuPic menu={menu} /></div>;
     switch (d.stage) {
       case 'ready':
+        if (fixFirstNeeded) return fixFirst;
         return <Box tone="ok" role="status"><p className="text-xl font-bold">✓ 受付中です</p>{message}{step === 2 ? <p className="font-bold">次は「次へ進む」を押します。手順3で、選手に渡すURLをコピーします。</p> : null}</Box>;
       case 'need-open':
+        if (fixFirstNeeded) return fixFirst;
         return step === 2
           ? <Box tone="info" role="status"><p className="font-bold">✓ つながりました。次は「次へ進む」を押します。</p><p className="text-[17px]">（「② 受付を開始」は、手順3で押します）</p></Box>
           : <Box tone="info" role="status"><p className="font-bold">あと1つで完成です</p><p className="text-[17px]">{m}</p></Box>;
@@ -708,6 +766,42 @@ export default function SetupV3() {
           <ErrorLine>まだ最初の設定が終わっていません（①がまだです）</ErrorLine>
           {step === 2 ? mark('rerun1', chips('「① 最初の設定」')) : null}
         </>;
+      case 'missing-tab':
+        return <>
+          <ErrorLine>申込表のタブが見つかりません</ErrorLine>
+          <p>{m}</p>
+          {step === 2 ? mark('rerun1', chips('「① 最初の設定」')) : null}
+        </>;
+      case 'wrong-owner':
+        return <>
+          <ErrorLine>デプロイした人のGoogleアカウントが、①を押した人とちがいます</ErrorLine>
+          <p>{m}</p>
+          <ol className="list-decimal space-y-1 pl-6">
+            <li>Googleの右上の丸いアイコンを押して、いまのアカウントを見ます。</li>
+            <li>①を押したアカウントでなければ、そのアカウントに切りかえます。</li>
+            <li>Apps Scriptの「デプロイ」→「新しいデプロイ」を押します。出た新しいURLを、手順2の「ウェブアプリのURL」の四角に貼り直します。</li>
+          </ol>
+          {redeployButton}
+        </>;
+      case 'sharing':
+        return <Box tone="bad" role="alert">
+          <p>シートか写真フォルダの共有が、「制限付き」になっていません</p>
+          <ol className="list-decimal space-y-1 pl-6 font-semibold">
+            <li>Googleのシートの右上の「共有」を押します。「一般的なアクセス」を「制限付き」にします。ほかの人が入っていたら外します。</li>
+            <li>Googleドライブの「Tournament OS 顔写真」フォルダも、同じようにします。</li>
+            <li>わからないときは、ジムの担当者に連絡します。</li>
+          </ol>
+          <p className="font-semibold">直したら、このページの「もう一度確かめる」を押します。</p>
+        </Box>;
+      case 'headers': {
+        const testTab = !!ping?.errorTab && ping.errorTab.startsWith('テスト');
+        return <Box tone="bad" role="alert">
+          <p>申込表の1行目（見出し）が、変わっています</p>
+          <p className="font-semibold">{m}</p>
+          <p className="text-[17px]">{ping?.errorTab ? (testTab ? '直せないときは、このタブの名前を「' + ping.errorTab + '_古い」に変えて、メニュー「① 最初の設定」を押します。新しいタブができます。' : '直せないときは、このタブを消さずに、ジムの担当者に聞きます。申込が入っているかもしれません。') : 'どのタブか、わからないときは、ジムの担当者に聞きます。'}</p>
+          <p className="font-semibold">直したら、このページの「もう一度確かめる」を押します。</p>
+        </Box>;
+      }
       case 'bad-settings': {
         const lines = settingLines(m);
         return <Box tone="bad" role="alert">
@@ -715,7 +809,7 @@ export default function SetupV3() {
           <ul className="space-y-3">
             {lines.map((l) => <li key={l.google} className="space-y-1">
               {l.fixes.map((f) => <p key={f}>{f}</p>)}
-              <p className="text-[17px] font-medium text-slate-800">Googleの言葉：{l.google}</p>
+              {l.fixes.length === 1 && l.fixes[0] === l.google ? null : <p className="text-[17px] font-medium text-slate-800">Googleの言葉：{l.google}</p>}
             </li>)}
           </ul>
           <p className="font-semibold">直したら、このページの「もう一度確かめる」を押します。</p>
@@ -724,8 +818,8 @@ export default function SetupV3() {
       default:
         return <>
           <ErrorLine>このままでは写真が保存できません</ErrorLine>
-          {mark('tell-staff', <p>やること：ジムの担当者に「Googleの保存できる場所が いっぱい」と伝える</p>)}
-          <p className="text-[17px] text-slate-800">Googleの言葉：{jpMessage(new Error(m), 'Googleの保存場所が、いっぱいかもしれません。').replace('Driveや Gmail', 'Googleの保存場所')}</p>
+          {mark('tell-staff', <p>やること：ジムの担当者に「Googleの保存場所がいっぱい」と伝える</p>)}
+          <p className="text-[17px] text-slate-800">Googleの言葉：{jpMessage(new Error(m), 'Googleの保存場所が、いっぱいかもしれません。').replace(/Driveや ?Gmail ?の/, 'Googleの保存場所の')}</p>
         </>;
     }
   };
@@ -787,11 +881,17 @@ export default function SetupV3() {
   </Fold>;
 
   const sheetRows: ReadonlyArray<readonly [string, string, string, string]> = [
-    ['大会名', 'B2', 'write', '○○ジム交流大会'], ['開催日', 'B3', 'write', '2027年10月3日'], ['会場', 'B4', 'write', '○○体育館'], ['会場の地図URL', 'B5', 'skip', '書かなくてOK（空のままでいい）'],
+    ['大会名', 'B2', 'write', '第3回 青空ジム大会'], ['開催日', 'B3', 'write', '2027年10月3日'], ['会場', 'B4', 'write', '○○体育館'], ['会場の地図URL', 'B5', 'skip', '書かなくてOK（空のままでいい）'],
     ['主催者名', 'B6', 'write', '○○ジム'], ['問い合わせ先', 'B7', 'write', '03-0000-0000'], ['申込締切', 'B8', 'write', '2027年9月20日'], ['入場曲', 'B9', 'write', 'あり か なし を▼から選ぶ'],
     ['学年', 'B10', 'skip', '書かなくてOK（最初から入っています）'], ['年齢', 'B11', 'skip', '書かなくてOK（最初から入っています）'], ['意気込み', 'B12', 'skip', '書かなくてOK（最初から入っています）'],
     ['クラス分け', 'B13', 'skip', '分けるときだけ「あり」（はじめは「なし」）'],
+    ['（この下）', '', 'more', 'クラスの行が7つ続きます（B14〜B20）。はじめから入っています'],
   ];
+  /** クラスが使えないGoogle側のとき（古いコピー・古い版）に出す黄色の注意。クラスを使わない大会には、関係ない */
+  const classCaution = !ping ? null
+    : ping.classRows === false ? <Caution className="mt-3" lead="このシートには、クラス分けの行がありません。"><p>クラスを使うときは、新しいひな形をもう一度コピーします（手順1）。クラスを使わないときは、このままで大丈夫です。</p></Caution>
+    : ping.build !== EXPECTED_RECEPTION_BUILD && stage !== 'old-build' ? <Caution className="mt-3" lead="このGoogleの版は、クラス分けに対応していません。"><p>クラスを使う大会は、ひな形をもう一度コピーするか、Apps Scriptで「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。クラスを使わないときは、このままで大丈夫です。</p></Caution>
+    : null;
   const musicText = ping?.music === true ? 'あり' : ping?.music === false ? 'なし' : '（シートにありません）';
   const modeText = (v?: string) => (v === 'required' ? '必ず書く' : v === 'off' ? '聞かない' : '書いても、書かなくてもOK');
 
@@ -807,7 +907,7 @@ export default function SetupV3() {
       <span className="tos-danger mt-2 block">✕ 「デプロイをテスト」は押さない（URLが /dev になって使えません）</span>
     </>,
     <>
-      <span><b>「ウェブアプリ」のURL</b>（…/exec で終わる長い文字）の横の <b>「コピー」</b> を押す。コピーしたら、この画面にもどって、下の「貼る四角」に貼ります。</span>
+      <span><b>「ウェブアプリ」のURL</b>（…/exec で終わる長い文字）の横の <b>「コピー」</b> を押す。コピーしたら、この画面にもどって、下の「ウェブアプリのURL」の四角に貼ります。</span>
       <span role="img" aria-label="Googleの画面の絵。ウェブアプリの下にURLが出て、その横に「コピー」があります。ここでは押せません。" className="tos-pic mt-2 block p-3 text-[17px]">
         <span aria-hidden="true" className="tos-pic-tag">📷 Googleの画面の絵（ここでは押せません）</span>
         <span aria-hidden="true" className="mt-1 block font-bold">ウェブアプリ</span>
@@ -903,11 +1003,11 @@ export default function SetupV3() {
     <p className="font-bold">申し込みが集まったあとにすること</p>
     <ol className="list-decimal space-y-1 pl-6">
       <li>Googleのシートを開き、上のメニュー「Tournament OS」→「{MENU_ZIP}」を押します。（ZIP ＝ 申し込みをまとめたファイルのことです）</li>
-      <li>シートの画面の上に、URLが20秒だけ出ます。そのURLをクリックします。消えたら、もう一度「{MENU_ZIP}」を押します。</li>
+      <li>小さな箱が出ます。箱の中の「ここを押してダウンロード」を押します。箱が出ないときや、押せないときは、Googleドライブの「Tournament OS 顔写真 - 大会名」フォルダを開き、中の「Tournament_OS_（英数字）.zip」を開きます。</li>
       <li>Googleドライブが開きます。ZIPの「ダウンロード」を押します（「ダウンロード」フォルダに入ります）。</li>
       <li>「試合の準備」の画面で「ファイルを選ぶ」を押して、そのファイル（名前の最後が .zip）を選びます。</li>
     </ol>
-    <Caution lead={<>「{MENU_ZIP}」を押しても、まだパソコンには入りません。上の3番の「ダウンロード」を押します。</>} />
+    <Caution lead={<>「{MENU_ZIP}」を押しても、まだパソコンには入りません。上の3番の「ダウンロード」を押します。ZIPは、同じ名前で1つだけ残ります（前のZIPは、ゴミ箱に入ります）。</>} />
   </div>;
 
   return <main className="tos-read min-h-screen bg-indigo-50 px-4 pb-40 pt-5 text-lg font-medium leading-[1.85] text-slate-950 [color-scheme:light] [overflow-wrap:anywhere] [word-break:auto-phrase] sm:px-6">
@@ -926,8 +1026,9 @@ export default function SetupV3() {
 
       <div className="mt-2 rounded-xl border-2 border-indigo-700 bg-indigo-50 px-4 py-1 text-indigo-950">
         <p className="font-bold">いまここ {step} / 3：{STEP_NAMES[step - 1]}<span className="hidden sm:inline">（{STEPS[step - 1]}）</span></p>
-        {next ? <p className="text-[17px] font-bold">▶ 次にやる：{next.label}</p> : finished ? <p className="text-[17px] font-bold">✓ いまは、やることはありません</p> : null}
+        {!next && finished ? <p className="text-[17px] font-bold">✓ いまは、やることはありません</p> : null}
       </div>
+      {oldBrowser ? <Caution className="mt-3" lead="Chromeで開いてください。"><p>このページは Chrome が一番たしかです。古いSafariでは、一部が見えないことがあります。</p></Caution> : null}
       {idFixed ? <Caution className="mt-3" lead={<>大会番号を「{idFixed}」に直しました。別の大会と同じ番号になっていないか確認してください。</>} /> : null}
       {noEvent ? <Caution className="mt-3" lead="大会の名前がありません。「試合の準備」から開き直します。"><a href="/private/" className={btnText + ' mt-1'}>試合の準備を開く</a></Caution> : null}
       {resumeNote ? <OkLine className="mt-3">続きから始めました。いまは3つのうち{step}つ目です。</OkLine> : null}
@@ -943,20 +1044,7 @@ export default function SetupV3() {
       <div className="mt-4 space-y-5">
       {step === 1 ? <section aria-labelledby="s1-title" className="space-y-4 rounded-3xl border-2 border-indigo-700 bg-white p-4 sm:p-6">
         <h2 id="s1-title" tabIndex={-1} className="text-balance text-2xl font-bold">ひな形をコピーして、設定を書く</h2>
-        <p className="font-bold">4つの作業を、上から順にやります。「👉 次はここ」と書いてある所が、次にやる所です。</p>
-        <p>1つ終わったら「できた ✓」を押します。押すと、「👉 次はここ」が次の作業に移ります。</p>
-        <Fold title="画面（タブ）の行ったり来たり">
-          <Caution lead="「タブ」は2種類あります。まぜないでください。">
-            <ol className="list-decimal space-y-1 pl-6">
-              <li>画面の一番上に並ぶ名前（Chrome・Safariなどの上のタブ）。このページの名前は「{PAGE_NAME}」です。押すと切りかえられます。</li>
-              <li>Googleシートの一番下に並ぶ名前（シートの下の「設定」と書いたタブ）。これは、シートの中の表です。</li>
-            </ol>
-          </Caution>
-          <div aria-hidden="true" className="flex gap-1 overflow-hidden rounded-t-lg border-b-2 border-slate-400 pt-1 text-[17px]">
-            <span className="min-w-0 truncate rounded-t-lg border-2 border-b-0 border-indigo-700 bg-indigo-100 px-3 py-1 font-bold">{PAGE_NAME}</span>
-            <span className="min-w-0 truncate rounded-t-lg border-2 border-b-0 border-slate-400 bg-white px-3 py-1">○○のコピー（Googleのシート）</span>
-          </div>
-        </Fold>
+        <p className="font-bold">4つの作業を、上から順にやります。「👉 次はここ」と書いてある所だけ、やります。1つ終わったら「できた ✓」を押します。</p>
 
         <StepCard n={1} title="コピーを作る" done={ticks[0]} doneAt={tickAt[0]} here={here('card0') && copyOpened} current={cardNow === 0} label="作業1が終わったら「できた ✓」を押す" locked={false} lockReason="" onDone={() => toggleTick(0)} onUndo={() => toggleTick(0)} onBlocked={() => undefined}>
           <p className="text-[17px]">「ひな形」は、見本のGoogleシートのことです。これを自分用にコピーして使います。</p>
@@ -979,7 +1067,7 @@ export default function SetupV3() {
           <Box tone="info">
             <p className="font-bold">開かないときは、これを見ます</p>
             <ol className="list-decimal space-y-1 pl-6">
-              <li>Googleにログインします。ジムで使っているGoogleのアカウントで大丈夫です。右上の丸いアイコンに自分の名前の文字が出ていれば、ログインできています。</li>
+              <li>Googleにログインします。個人のGoogleアカウント（@gmail.com など）で作業します。会社や学校のアカウントは使えません。右上の丸いアイコンに自分の名前の文字が出ていれば、ログインできています。</li>
             </ol>
           </Box>
         </StepCard>
@@ -989,18 +1077,18 @@ export default function SetupV3() {
           <ol className="list-decimal space-y-2 pl-6">
             <li className="font-bold">シートの下に「設定」タブができるまで、10秒待ちます。</li>
             <li>コピーしたシートの左下にある <b>「設定」</b> という文字を押します。表が出ます。</li>
-            <li>下の絵と同じ行の、右の列（B列）に書きます。</li>
+            <li>下の絵と同じ行の、右の列（B列）に書きます。C列に{WRITE_MARK}と書いてある7つの行です。</li>
           </ol>
-          <p className="font-bold">この絵は見本です。Googleのシートの、黄色いセルに書きます。</p>
-          <div role="img" aria-label="「設定」タブの絵。12行あります。必ず書くのは、右の列（B列）の黄色いセルの7つです。いちばん下の「クラス分け」は、分けるときだけ「あり」にします。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
+          <p className="font-bold">この絵は見本です。B列の、{WRITE_MARK}と書いてある7つの行に書きます。</p>
+          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある7つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
             <p aria-hidden="true" className="tos-pic-tag bg-slate-100 px-3 py-1">📷 Googleのシートの絵（ここには書けません）</p>
-            <div aria-hidden="true" className="grid grid-cols-[7.5rem_minmax(0,1fr)] border-t-2 border-slate-400 bg-slate-100 font-bold"><div className="px-3 py-1">項目（A列）</div><div className="border-l-2 border-slate-400 px-3 py-1">値（B列）</div></div>
-            {sheetRows.map(([k, cell, kind, v]) => <div aria-hidden="true" key={k} className="grid grid-cols-[7.5rem_minmax(0,1fr)] border-t-2 border-slate-300">
+            <div aria-hidden="true" className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-400 bg-slate-100 font-bold"><div className="px-3 py-1">項目（A列）</div><div className="border-l-2 border-slate-400 px-3 py-1">値（B列）</div></div>
+            {sheetRows.map(([k, cell, kind, v]) => <div aria-hidden="true" key={k} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-300">
               <div className="bg-slate-100 px-3 py-2 font-bold">{k}</div>
               <div className={'border-l-2 border-slate-400 px-3 py-2 ' + (kind === 'write' ? 'tos-pic-yellow' : 'tos-pic-grey')}>{kind === 'write' ? <><span className="font-bold">✎ 書く（{cell}）</span><br />例）{v}</> : v}</div>
             </div>)}
           </div>
-          <p className="tos-danger">✕ 左の列（A列）には書かない。黄色いセルだけに書く</p>
+          <p className="tos-danger">✕ 左の列（A列）には書かない。B列の、{WRITE_MARK}の行だけに書く</p>
           <p>必ず書くのは7つです。日にちは「2027年10月3日」のように書きます（年は見本です。本当の日にちを書きます）。</p>
           <p className="text-[17px] text-slate-700">（2027-10-03 でも 2027/10/3 でも大丈夫です。数字は全角でもOKです）</p>
           <p>この大会でAクラス・Bクラスに分けるときだけ、表の下のほうの「クラス分け」（B13）を「あり」にします。はじめは「なし」です。クラスの名前・条件・ルールは、はじめから入っています。直したいときだけ書き換えます。</p>
@@ -1024,7 +1112,9 @@ export default function SetupV3() {
             </ol>
           </Caution>
           <p className="tos-danger">✕ 途中で閉じない。「許可」まで押す</p>
-          <p className="font-bold">許可が終わったら、もう一度「① 最初の設定」を押します。</p>
+          <Caution title="1回目は" lead="はじめて「① 最初の設定」を押すと、許可の画面が出ます。そのあと、何も起きなかったり、エラーが出たりすることがあります。壊れていません。">
+            <p className="font-bold">許可が終わったら、もう一度「① 最初の設定」を押します。（2回押すのが、ふつうです）</p>
+          </Caution>
           <div><p className="tos-danger">✕ ちがうGoogleアカウントで開かない</p><p>コピーを作ったときと同じアカウントで開きます（右上の丸いアイコンで切りかえ）。</p></div>
           <Fold title="Googleの許可画面で、もっと詳しく"><p>自分のアカウントを選びます。「詳細」の文字が小さくて見えないときは、画面の下のほうを探して押します。そのあと、上の1〜5の順に押して「許可」まで進みます。</p></Fold>
         </StepCard>
@@ -1035,16 +1125,17 @@ export default function SetupV3() {
           <Fold title="うまくいかないとき" defaultOpen>
             <ul className="space-y-3">
               <li>メニュー「Tournament OS」が見えない → Chrome・Safariなどの丸い矢印（再読み込み）を押して、10秒待ちます。</li>
-              <li>Googleの画面に、エラーの文字（四角の中）が出た → その画面を写真にとって、ジムの担当者に送ります。</li>
+              <li>もう一度「① 最初の設定」を押しても、同じエラーの文字（四角の中）が出た → その画面を写真にとって、ジムの担当者に送ります。（1回目の許可のあとのエラーは、ふつうです）</li>
               <li>「準備できました」を見逃した → 大丈夫です。次の画面で自動で確かめます。</li>
             </ul>
           </Fold>
           <Caution title="もしエラーが出たら">
             <ol className="mt-1 list-decimal space-y-1 pl-6"><li>そのまま閉じない</li><li>画面を写真にとる</li><li>ジムの担当者に送る</li></ol>
             <div className="grid gap-2 font-medium text-slate-950 sm:grid-cols-2">
-              <p className="rounded-lg bg-white px-2 text-[17px] font-bold sm:col-span-2">よくある3つ（左がGoogleの言葉、右が直し方）</p>
+              <p className="rounded-lg bg-white px-2 text-[17px] font-bold sm:col-span-2">よくある4つ（左がGoogleの言葉、右が直し方）</p>
               {([
-                ['「設定」タブの、次の欄を入れてください：…', '「設定」タブの黄色いセルに書いて、もう一度「① 最初の設定」を押す'],
+                ['「設定」タブの、次の欄を入れてください：…', '「設定」タブの、B列の' + WRITE_MARK + 'の行に書いて、もう一度「① 最初の設定」を押す'],
+                ['「…」タブの1行目の…が「…」になっています。「…」に直してください。', '言われたタブの、言われたマスを、言われた文字に直して、もう一度「① 最初の設定」を押す。直せなければ、ジムの担当者に連絡'],
                 ['このシートを作った本人のGoogleで開き直してください。', 'コピーを作ったときと同じGoogleアカウントに切りかえて、もう一度押す'],
                 ['申込表と写真フォルダの共有を「制限付き・主催者本人だけ」にしてください。', 'シート右上の「共有」→「一般的なアクセス」を「制限付き」にする。わからなければ、ジムの担当者に連絡'],
               ] as const).map(([g, f]) => <div key={g} className="contents">
@@ -1055,11 +1146,24 @@ export default function SetupV3() {
           </Caution>
         </StepCard>
 
+        <Fold title="画面（タブ）の行ったり来たり">
+          <Caution lead="「タブ」は2種類あります。まぜないでください。">
+            <ol className="list-decimal space-y-1 pl-6">
+              <li>ブラウザ（Chrome・Safariなど）の一番上に並ぶ名前。このページの名前は「{PAGE_NAME}」です。押すと切りかえられます。</li>
+              <li>Googleシートの一番下に並ぶ名前（シートの下の「設定」と書いたタブ）。これは、シートの中の表です。</li>
+            </ol>
+          </Caution>
+          <div aria-hidden="true" className="flex gap-1 overflow-hidden rounded-t-lg border-b-2 border-slate-400 pt-1 text-[17px]">
+            <span className="min-w-0 truncate rounded-t-lg border-2 border-b-0 border-indigo-700 bg-indigo-100 px-3 py-1 font-bold">{PAGE_NAME}</span>
+            <span className="min-w-0 truncate rounded-t-lg border-2 border-b-0 border-slate-400 bg-white px-3 py-1">○○のコピー（Googleのシート）</span>
+          </div>
+        </Fold>
+
         <div>
           {warnLine('go2')}
           {mark('go2', cardNow < 0
-            ? <button type="button" onClick={() => goStep(2)} className={btnPrimary}>「準備できました」と出た → 次へ（次の画面で自動で確かめます）</button>
-            : <button type="button" aria-disabled="true" aria-describedby="go2-why" onClick={() => setWarn({ key: 'go2', text: 'まだ押せません：作業' + (cardNow + 1) + 'が終わっていません' })} className={btnOff}>「準備できました」と出た → 次へ（次の画面で自動で確かめます）</button>)}
+            ? <button type="button" onClick={() => goStep(2)} className={btnPrimary}>{GO2_NAME}（次の画面で自動で確かめます）</button>
+            : <button type="button" aria-disabled="true" aria-describedby="go2-why" onClick={() => setWarn({ key: 'go2', text: 'まだ押せません：作業' + (cardNow + 1) + 'が終わっていません' })} className={btnOff}>{GO2_NAME}（次の画面で自動で確かめます）</button>)}
           {cardNow < 0
             ? <p id="go2-why" className="mt-2 text-center text-[17px]">わからなくても大丈夫です。次の画面で確かめます。</p>
             : <div className="mt-2 text-center"><Why id="go2-why">{tpl === 'none' ? 'ひな形のリンクができるまで押せません' : '作業' + (cardNow + 1) + 'が終わっていません'}</Why></div>}
@@ -1079,7 +1183,11 @@ export default function SetupV3() {
           {mark('recheck', mark('recheck-fix', recheckBtn(!urlOk ? btnSecondaryOff : recheckPrimary ? btnPrimary : btnSecondary)))}
           <p className="mt-2 text-[17px]">{!urlOk ? (endpoint.trim() && urlWrong ? '🔒 まだ押せません：上の「✕」の文のとおりに、URLを直してください。' : '🔒 まだ押せません：先に、上の欄にURLを貼ってください。') : checking ? '⏳ 確かめています…（そのままお待ちください）' : pingError === 'net' || pingError === 'access' ? '次は、この「もう一度確かめる」を押します。' : 'シートを直したあとや、表示が変わらないときに押します。'}</p>
         </div>
-        {ping ? <section aria-labelledby="readback" className="rounded-2xl border-2 border-slate-300 bg-white p-4">
+        {ping && !readable ? <section aria-labelledby="readback" className="rounded-2xl border-2 border-slate-300 bg-slate-50 p-4">
+          <h3 id="readback" className="text-balance text-xl font-bold">シートから読み取れた内容</h3>
+          <p className="mt-2 text-slate-800">まだ読み取れません。上の直しものを直して、「もう一度確かめる」を押すと、ここに出ます。</p>
+        </section> : null}
+        {ping && readable ? <section aria-labelledby="readback" className="rounded-2xl border-2 border-slate-300 bg-white p-4">
           <h3 id="readback" className="text-balance text-xl font-bold">シートから読み取れた内容（まちがいがないか見てください）</h3>
           <dl className="mt-3 grid gap-2">
             {readRows.map(([k, v]) => {
@@ -1092,8 +1200,9 @@ export default function SetupV3() {
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">学年</dt><dd className="break-words text-lg font-bold">{modeText(ping.grade)}</dd></div>
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">年齢</dt><dd className="break-words text-lg font-bold">{modeText(ping.age)}</dd></div>
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">意気込み</dt><dd className="break-words text-lg font-bold">{modeText(ping.comment)}</dd></div>
-            <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">クラス分け</dt><dd className="break-words text-lg font-bold">{classes && !classProblem ? '✓ あり（' + classes.upper.name + '／' + classes.lower.name + '）。申込ページに出ます' : ping.classMode ? '✕ あり（でも、クラスの内容を申込ページに入れられません。シートの「設定」タブのクラスの欄を直して、「もう一度確かめる」を押します）' : 'なし（クラスは分けません）'}</dd></div>
+            <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">クラス分け</dt><dd className="break-words text-lg font-bold">{classes && !configProblem ? '✓ あり（' + classes.upper.name + '／' + classes.lower.name + '）。申込ページに出ます' : ping.classMode ? '✕ あり（でも、クラスの内容を申込ページに入れられません。シートの「設定」タブのクラスの欄を直して、「もう一度確かめる」を押します）' : ping.classRows === false ? '⚠ このシートには、クラスの行がありません' : 'なし（クラスは分けません）'}</dd></div>
           </dl>
+          {classCaution}
           <p className="mt-3">違っていたら、シートの「設定」タブを直して、「もう一度確かめる」を押します。</p>
         </section> : null}
 
@@ -1124,7 +1233,7 @@ export default function SetupV3() {
               <p className="mt-2 font-bold">{backHere}</p>
               <p className="mt-2 text-[17px]">もどると、自動で確かめます（5秒ごと）。</p>
             </>)
-            : stage === 'not-setup' || stage === 'need-selftest'
+            : stage === 'not-setup' || stage === 'need-selftest' || stage === 'missing-tab'
               ? mark('rerun1', <>
                 <p className="font-bold">Googleのシートでこの2つを押します。</p>
                 <div className="mt-2"><MenuPic menu="「① 最初の設定」" /></div>
@@ -1156,7 +1265,8 @@ export default function SetupV3() {
 
         <section aria-labelledby="made-url" className="space-y-3 rounded-2xl border-2 border-slate-300 bg-white p-4">
           <h3 id="made-url" className="text-xl font-bold">選手に渡すURL</h3>
-          {classes && !classProblem ? <OkLine>クラス分け：あり（{classes.upper.name}／{classes.lower.name}）。申込ページに出ます。</OkLine> : null}
+          {classes && !configProblem ? <OkLine>クラス分け：あり（{classes.upper.name}／{classes.lower.name}）。申込ページに出ます。</OkLine> : null}
+          {classCaution}
           {urlReady ? <>
             {staleCopy ? <ErrorLine>先に送ったURLは古い内容です。新しいURLを送り直します。</ErrorLine> : null}
             {copyFailed === 'live' ? <ErrorLine>コピーできていません。</ErrorLine> : null}
@@ -1244,6 +1354,12 @@ export default function SetupV3() {
             <li>スプレッドシートのURLを下に貼ると、「コピーを作る」リンクができます。</li>
           </ol>
           <p className="tos-danger">✕ このシートでは「① 最初の設定」を押さない（ひな形シートで①を押すと、コピーした全員の設定が壊れます）</p>
+          <p className="font-bold">ひな形を新しい版にしたとき（クラス分けの行を足すなど）</p>
+          <ol className="list-decimal space-y-2 pl-6">
+            <li>Apps Scriptのプログラムとマニフェストを、上と同じ手順で入れ替えて、保存します。マニフェストには、必要な権限（シート・ドライブ・メニュー・メール）が書いてあります。これで、権限の確認は、はじめに1回だけ出ます。</li>
+            <li>ひな形のシートを開き直します。「設定」タブに、足りない行（クラスの8行など）が、いちばん下に自動で足されます。いま書いてあるマスは、書き換わりません。</li>
+            <li>すでにコピーしたシートは、新しい版になりません。クラスを使う大会は、新しいひな形をもう一度コピーします。</li>
+          </ol>
           <button type="button" onClick={() => void fetchTemplate('own-gs', '/templates/Tournament_OS_Google受付_v3.gs')} className={btnSecondary}>{copied === 'own-gs' ? '✓ コピーしました' : 'ひな形のプログラムをコピー'}</button>
           {copyFailed === 'own-gs' ? <ErrorLine>コピーできていません。画面を読み込み直して、もう一度押してください。</ErrorLine> : null}
           <button type="button" onClick={() => void fetchTemplate('own-json', '/templates/appsscript.json')} className={btnSecondary}>{copied === 'own-json' ? '✓ コピーしました' : 'マニフェスト（appsscript.json）をコピー'}</button>

@@ -1,4 +1,5 @@
 import type { LocalBout, LocalFighter, LocalTournament } from './privateTournament.ts';
+import { classNameKey } from './classRules.ts';
 
 /*
  * Pure helpers for building bout cards. No I/O, no Date, no random.
@@ -40,7 +41,16 @@ function sameGym(a: LocalFighter, b: LocalFighter): boolean {
   return g !== '' && g === b.gym.trim();
 }
 
-/** Pair neighbours in an already sorted list. Same gym: use the next different-gym fighter instead. */
+/** How far (kg) a same-class partner may be before the class stops mattering. Same as the weight-gap caution. */
+export const CLASS_PREFER_GAP_KG = 5;
+
+const classOf = (c: Candidate): string => classNameKey(c.fighter.fighterClass ?? '');
+
+/**
+ * Pair neighbours in an already sorted list. Same gym: use the next different-gym fighter instead.
+ * Class (A/B) is a PREFERENCE, never a split: when the nearest partner is of the other class, a same-class partner
+ * within CLASS_PREFER_GAP_KG is taken instead. Fighters without a class never change the pairing.
+ */
 function pairNeighbours(list: Candidate[]): [Candidate, Candidate][] {
   const rest = list.slice();
   const pairs: [Candidate, Candidate][] = [];
@@ -50,6 +60,11 @@ function pairNeighbours(list: Candidate[]): [Candidate, Candidate][] {
     if (sameGym(a.fighter, rest[0].fighter)) {
       const alt = rest.findIndex((c) => !sameGym(a.fighter, c.fighter));
       if (alt > 0) at = alt;
+    }
+    const mine = classOf(a), theirs = classOf(rest[at]);
+    if (mine && theirs && mine !== theirs && a.weight !== null) {
+      const near = rest.findIndex((c) => classOf(c) === mine && !sameGym(a.fighter, c.fighter) && c.weight !== null && c.weight - (a.weight as number) <= CLASS_PREFER_GAP_KG);
+      if (near > 0) at = near;
     }
     const b = rest.splice(at, 1)[0];
     pairs.push([a, b]);
@@ -62,6 +77,7 @@ function pairNeighbours(list: Candidate[]): [Candidate, Candidate][] {
  * - fighters already in any existing bout are ignored; inputs are never mutated
  * - sorted by weight (stable); fighters without a usable weight go last and are paired among themselves
  * - neighbours are paired; same gym is avoided when a different-gym partner exists
+ * - when both classes are present, a same-class partner within 5kg is preferred (no class-based splitting)
  * - an odd fighter stays unpaired (never a bout with an empty side)
  * - red = earlier in roster order, blue = the other one
  * - className / rule are blank (the page copies them from the previous bout)

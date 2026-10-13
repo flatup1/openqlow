@@ -182,12 +182,12 @@ test('クラス: 「なし」のときは、送られたクラスの値を無視
   assert.equal(h.call('saveEntry_', { ...p, fighterClass: 'lower' }), a);
 });
 
-test('クラス: 「あり」を「なし」に戻したあとの再送は、クラスが空になったので「変わっています」で止まる', () => {
+test('クラス: 「あり」を「なし」に戻したあとの再送は、保存ずみの申込として同じ受付番号を返す（「変わっています」と言わない・2行目を作らない）', () => {
   const h = harness(); h.ready(ON);
-  const p = h.params('test', { fighterClass: 'upper' }); h.call('saveEntry_', p);
+  const p = h.params('test', { fighterClass: 'upper' }); const a = h.call('saveEntry_', p);
   h.setSetting('クラス分け', 'なし');
-  assert.throws(() => h.call('saveEntry_', p), /送信後に入力内容が変わっています/);
-  assert.equal(h.rows(TEST).length, 3);
+  assert.equal(h.call('saveEntry_', p), a);
+  assert.equal(h.rows(TEST).length, 3); assert.equal(h.rows(TEST).at(-1)![18], 'Aクラス', '保存したクラスはそのまま');
 });
 
 test('クラス: 設定の間違い（クラス分け＝あり）は、直す場所つきで止まる', () => {
@@ -278,8 +278,12 @@ test('クラス: 古い設定タブ（11行だけ）でも動く。クラスの�
     assert.equal(h.rows(TEST).length, rows + 1);
     assert.equal(h.rows(TEST).at(-1)![18], '', 'クラスは無視して保存する');
     assert.equal(h.rows(TEST_OS).at(-1)![11], '');
+    const before = JSON.stringify(h.rows('設定'));
     h.call('setupTournament');
-    assert.equal(h.rows('設定').length, 12, '古い設定タブは書き換えない');
+    assert.equal(JSON.stringify(h.rows('設定').slice(0, 12)), before, '古い設定タブの12行は1マスも書き換えない');
+    assert.equal(h.rows('設定').length, 20, 'クラスの8行だけが、いちばん下に足される');
+    assert.deepEqual(h.rows('設定').slice(12).map((r) => r[0]), CLASS_LABELS);
+    assert.equal(h.rows('設定').find((r) => r[0] === 'クラス分け')![1], 'なし', '足した行の初期値は「なし」');
   }
 });
 
@@ -355,12 +359,17 @@ test('クラス: 見出しがほかの形で変えられていたら、直さず
     ['OS側の古い形＋ずれ', (h) => { makeOld(h); h.rows(OS)[0][0] = '番号'; }],
     ['列が余分', (h) => { makeOld(h); h.rows(TEST_OS)[0][11] = 'メモ'; }],
   ];
+  // 新しい文は、タブの名前と、最初に違うマス（列の文字＋1）を言う
+  const tamperTab: Record<string, string> = { '古い形＋別の見出し': TEST, '新しい列に別の文字': TEST, '新しい列に文字があるが、前が欠けている': PRIVATE, 'OS側が違う': OS, 'OS側の古い形＋ずれ': OS, '列が余分': TEST_OS };
+  const tamperCell: Record<string, string> = { '古い形＋別の見出し': 'D1', '新しい列に別の文字': 'S1', '新しい列に文字があるが、前が欠けている': 'S1', 'OS側が違う': 'L1', 'OS側の古い形＋ずれ': 'A1', '列が余分': 'L1' };
   for (const [label, fn] of tamper) {
     const h = harness(); h.ready(); fn(h);
     const snapshot = JSON.stringify(h.rows(PRIVATE).concat(h.rows(OS), h.rows(TEST), h.rows(TEST_OS)));
-    assert.throws(() => h.call('statusInfo_'), /見出しが変わっています/, label);
-    assert.throws(() => h.call('saveEntry_', h.params('test')), /見出しが変わっています/, label);
-    assert.throws(() => h.call('setupTournament'), /見出しが変わっています/, label);
+    const where = new RegExp('「' + tamperTab[label] + '」タブの(?:' + tamperCell[label] + 'が|1行目に、列が足されています（' + tamperCell[label] + '）)');
+    assert.throws(() => h.call('statusInfo_'), where, label);
+    assert.throws(() => h.call('saveEntry_', h.params('test')), where, label);
+    assert.throws(() => h.call('setupTournament'), where, label);
+    assert.throws(() => h.call('setupTournament'), /「① 最初の設定」を押/, label + ': 直したあとにすることを言う');
     assert.equal(JSON.stringify(h.rows(PRIVATE).concat(h.rows(OS), h.rows(TEST), h.rows(TEST_OS))), snapshot, label + ': 何も書き換えない');
   }
 });

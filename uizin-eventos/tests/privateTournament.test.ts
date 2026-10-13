@@ -72,7 +72,7 @@ test('再取り込みは管理番号で更新・追加し、写真・元の選�
   const snapshot=JSON.stringify(original),incoming=importFighters('管理番号,選手名,体重\nF1,赤,56\nF3,赤,60').fighters;
   const merged=mergeFighters(original,incoming);assert.equal(merged.length,3);assert.equal(merged[0].weight,'56');assert.equal(merged[0].photoDataUrl,original[0].photoDataUrl);assert.deepEqual(merged[1],original[1]);assert.equal(merged[2].id,'F3');assert.equal(JSON.stringify(original),snapshot);
   assert.throws(()=>mergeFighters(original,[incoming[0],incoming[0]]),/同じ管理番号/);
-  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/mergeKeepExisting\(current, fighters\)/);assert.ok(!/\bmergeFighters\(/.test(source),'名簿の読み込みは、前からいる人を黙って書きかえない');assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
+  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/mergeKeepExisting\(current, fighters(?:, \{[^}]*\})?\)/);assert.ok(!/\bmergeFighters\(/.test(source),'名簿の読み込みは、前からいる人を黙って書きかえない');assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
 });
 
 test('入場曲を使わない大会では曲リンクを出さず、同じ注意文を重ねない',()=>{
@@ -292,12 +292,12 @@ test('クラス: 準備の画面は、クラスを黄・赤の言葉で出す（
   const cards = readFileSync(new URL('../app/private/cards.tsx', import.meta.url), 'utf8');
   const page = readFileSync(new URL('../app/private/page.tsx', import.meta.url), 'utf8');
   assert.match(cards, /boutClassWarning\(red, blue\)/);
-  assert.match(cards, /<ErrorLine role="status" mark="⚠ ">\{classWarn\}<\/ErrorLine>/, '赤い箱に ⚠ と言葉');
+  assert.match(cards, /<ErrorLine role="status" mark="⚠ " className="\[overflow-wrap:anywhere\]">\{classMix\.headline\}<\/ErrorLine>/, '赤い箱に ⚠ と言葉（どのクラスか・どのルールがちがうか・おすすめ）');
   assert.match(cards, /クラス：\{f\.fighterClass\}/, '選手の札にクラスの言葉');
-  assert.match(cards, /\$\{f\.name\}\$\{f\.fighterClass \? '（' \+ f\.fighterClass \+ '）' : ''\}/, '選ぶ欄は「名前（Aクラス）」');
+  assert.match(cards, /\$\{f\.fighterClass \? f\.fighterClass \+ ' ' : ''\}\$\{kgText\(f\.weight\)\} \$\{f\.name\}/, '選ぶ欄は「Aクラス 65kg 名前（ジム）」（せまい画面で閉じていても、クラスが切れない）');
   assert.match(cards, /id=\{classId\}/);
   assert.match(page, /クラス：\{fighter\.fighterClass\}/, '名簿の札にクラスの言葉');
-  assert.match(page, /⚠クラスちがい/, '試合の一覧にも言葉');
+  assert.match(page, /⚠ クラスがちがいます/, '試合の一覧にも言葉（カードと同じ言い方）');
   assert.match(page, /classChoices\(data\.fighters, classOptIn\)/, 'クラスを使わない大会には欄を出さない');
   assert.match(page, /tidyClass\(result\.fighter\)/);
   assert.match(page, /tidyClass\(\{ \.\.\.result\.fighter/);

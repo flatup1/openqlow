@@ -6,7 +6,9 @@
 初心者向けの現在の手順は [EASY_SETUP_GUIDE.md](docs/EASY_SETUP_GUIDE.md) の「現在の版」を使います。
 
 - 会長の準備画面：`/private/?event=大会ID`
-- 会長本人のGoogleを設定：`/private/google-setup/?event=大会ID`
+- 選手の受付をつくる（3つの手順。シートのメニュー ①〜⑤、プログラムを貼る作業なし）：`/private/setup/?event=大会ID`
+- Aクラス・Bクラスに分けるとき：シートの「設定」タブの「クラス分け」を「あり」にします。[docs/クラス区分_設定の入れ方.md](docs/クラス区分_設定の入れ方.md)
+- （旧手順・クラス分けは使えません）会長本人のGoogleを設定：`/private/google-setup/?event=大会ID`
 - 選手へ渡す画面：設定・テスト完了後に生成する `/apply/#...` の専用URL
 - 大会画面：`/private/live/?event=大会ID`
 - Cloudflareへ置くのは空のプログラムだけ。選手情報・写真は主催者本人の非公開Googleへ直接保存し、OSには連絡先なしZIPをローカルで取り込みます。
@@ -19,7 +21,7 @@ npm run typecheck
 npm run build:private
 ```
 
-ブラウザ検証は `scripts/test-private-browser.mjs`。ローカルのCloudflare PagesプレビューとPlaywrightが必要です。
+ブラウザ検証は `scripts/test-*.mjs` の全部です。全部を1つのコマンドで動かすときは `bash scripts/verify-private-all.sh`（tsc・単体テスト・build・全ブラウザ検証）。ローカルのCloudflare PagesプレビューとPlaywrightが必要です。
 Google送信をローカルで置き換えて検証するため、成功しても実Google・実機スマートフォンの成功とは扱いません。
 
 ---
@@ -81,12 +83,14 @@ AI実況・DJ自動化・Apple Music自動再生・OBS連携は、すべて Vers
 
 ```bash
 npm install
-npm run verify      # テスト63件 → 画面のビルド（TypeScript検査込み）まで通す
+npm run verify      # 単体テスト → 画面のビルド（TypeScript検査込み）まで通す（古い版の確認。今の画面は、下の verify:all）
+npm run verify:all  # 全部：型チェック・単体テスト・build:private・画面の確認(scripts/test-*.mjs 全部)・validate-ai-os（約30分。--fast なら約15分短い）
 
 # 個別に走らせるとき
 npm run test        # 中核ロジックのテスト（依存ゼロ・ネットワーク不要）
 npm run build       # 画面を out/ に静的書き出し
 npm run typecheck   # tsc 単体（Next の型が要るので build のあとに実行する）
+# lint は無い（ESLint は入れていません。型は typecheck、公開前の検査は verify:private-build が見ます）
 ```
 
 ## 別大会で使う（Tournament OS）

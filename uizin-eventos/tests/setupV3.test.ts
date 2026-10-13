@@ -162,8 +162,8 @@ test('クラス分け: 申込ページへ渡す設定にクラスが入り、読
   const longest = { ...DEFAULT_CLASS_SETTINGS, upper: { name: '！'.repeat(CLASS_LIMITS.name), condition: '！'.repeat(CLASS_LIMITS.condition), rule: '！'.repeat(CLASS_LIMITS.rule) }, lower: { name: '？'.repeat(CLASS_LIMITS.name), condition: '？'.repeat(CLASS_LIMITS.condition), rule: '？'.repeat(CLASS_LIMITS.rule) } };
   const worst = entryConfigFromPing(ping({ classMode: true, classes: longest }), endpoint, 'live');
   assert.ok(publicEntryHash(worst).length <= 4500, '一番長くても4500文字以内');
-  assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: クラス.*長すぎ/);
-});
+  // 長すぎるURLの文は、いちばん長い欄を名前で言う。ここでは大会名（299字）がいちばん長いので、クラスのせいにしない
+  assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: 文が長すぎて、選手に渡すURLに入りません。「大会名」（セル B2）を短くしてください。$/);});
 
 test('クラス分け: 古い版 3.20261004.4 も新しい版も受け付け、知らない版は古いと言う', () => {
   assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261010.5');

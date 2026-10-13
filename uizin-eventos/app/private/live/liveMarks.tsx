@@ -40,7 +40,7 @@ export function Caution({ children, title = '気をつけて', className = '', i
 
 /** 赤い「✕ まちがい／失敗」。まちがいの『すぐ下』に置く。文は『何がまちがいか』と『どうするか』 */
 export function ErrorLine({ id, children, role, className = '', mark = '✕ ' }: { id?: string; children: ReactNode; role?: 'alert' | 'status'; className?: string; mark?: string }) {
-  return <p id={id} role={role} className={cx('tos-error m-0 text-[17px]', className)}><span aria-hidden="true">{mark}</span>{children}</p>;
+  return <p id={id} role={role} className={cx('tos-error m-0 text-[17px] [overflow-wrap:anywhere]', className)}><span aria-hidden="true">{mark}</span>{children}</p>;
 }
 
 /** 緑の「✓ できた」。画面に role="status" は1つだけにしたいので、role は付けない（読み上げが要るものだけ自分で付ける） */

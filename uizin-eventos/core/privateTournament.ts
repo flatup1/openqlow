@@ -1,6 +1,6 @@
-import { fingerprint, pick, toRows } from './csv.ts';
+import { fingerprint, normalizeKey, pick, toRows } from './csv.ts';
 import type { EntryFormConfig } from './entryPackage.ts';
-import { cleanClassLabel } from './classRules.ts';
+import { cleanClassLabel, parseClassSettings } from './classRules.ts';
 
 export type LocalFighter = {
   id: string;
@@ -53,31 +53,60 @@ export function privateHeaders(csv: string): string[] {
   return PRIVATE_HEADERS.filter((word) => first.includes(word));
 }
 
-export function importFighters(csv: string): { fighters: LocalFighter[]; blockedHeaders: string[] } {
+/** 「クラス」の列の見出し（別の言い方も読む）。見出しがあれば、中が空でも「クラスの列がある」と数える */
+const CLASS_HEADERS = ['クラス', 'class', 'fighter_class', 'クラス区分', '申込クラス', '申し込みクラス', '区分'];
+
+/** 1つの欄に入れられる文字数の上限（保存の検査は5000文字。これを超えると、保存がすべて失敗するので、取り込みのときに切る） */
+export const HARD_TEXT_LIMIT = 5000;
+
+/**
+ * Googleのシートと名簿ZIPは、数式にならないよう、= + - @ で始まる文字の前に ' を1つ足して書く（受付のスクリプトの clean_ と、
+ * entryPackage の safeCell）。取り込むときは、その守りの ' を1つだけ外して、元の文字に戻す。
+ * （' のあとが = + - @ でないときは、本物の ' なので外さない）
+ */
+export function unguardCell(value: string): string {
+  return /^'[=+\-@]/.test(value) ? value.slice(1) : value;
+}
+
+export type ImportResult = {
+  fighters: LocalFighter[];
+  blockedHeaders: string[];
+  /** ファイルに「クラス」の列があったか（空欄だけの列でも true）。無い古いファイルで、今のクラスを消さないために使う */
+  hasClassColumn: boolean;
+  /** 長すぎて切った欄の数（HARD_TEXT_LIMIT 超え） */
+  cut: number;
+};
+
+export function importFighters(csv: string): ImportResult {
   const blockedHeaders = privateHeaders(csv);
-  if (blockedHeaders.length) return { fighters: [], blockedHeaders };
-  const fighters = toRows(csv).map((row, index): LocalFighter => {
-    const name = pick(row, '選手名', '名前', '選手名（リングネーム）', 'fighter_name', 'name');
-    const gym = pick(row, 'ジム名', '所属gym', '所属', 'gym', 'team');
-    const stable = pick(row, '管理番号', 'id') || fingerprint(String(index), name, gym);
-    const cls = cleanClassLabel(pick(row, 'クラス', 'class', 'fighter_class'));
+  if (blockedHeaders.length) return { fighters: [], blockedHeaders, hasClassColumn: false, cut: 0 };
+  const rows = toRows(csv);
+  const classKeys = CLASS_HEADERS.map(normalizeKey);
+  const hasClassColumn = rows.some((row) => classKeys.some((key) => key in row));
+  let cut = 0;
+  const limit = (raw: string): string => { const value = unguardCell(raw); if (value.length <= HARD_TEXT_LIMIT) return value; cut++; return value.slice(0, HARD_TEXT_LIMIT); };
+  const fighters = rows.map((row, index): LocalFighter => {
+    const name = limit(pick(row, '選手名', '名前', '選手名（リングネーム）', 'fighter_name', 'name'));
+    const gym = limit(pick(row, 'ジム名', '所属gym', '所属', 'gym', 'team'));
+    const stable = limit(pick(row, '管理番号', 'id') || fingerprint(String(index), name, gym));
+    const cls = cleanClassLabel(pick(row, ...CLASS_HEADERS));
     return {
       id: stable,
       gym,
       name,
-      grade: pick(row, '学年', 'grade'),
-      age: pick(row, '年齢', 'age'),
-      height: pick(row, '身長', '身長（cm）', 'height'),
-      weight: pick(row, '体重', '試合時の希望体重（kg）', 'weight'),
-      record: pick(row, '戦績', '戦績・競技歴', 'record'),
-      comment: pick(row, '意気込み', '試合への意気込み', 'comment'),
-      musicUrl: pick(row, '入場曲', '入場曲url', '入場曲URL（Apple Music推奨）', 'music_url'),
+      grade: limit(pick(row, '学年', 'grade')),
+      age: limit(pick(row, '年齢', 'age')),
+      height: limit(pick(row, '身長', '身長（cm）', 'height')),
+      weight: limit(pick(row, '体重', '試合時の希望体重（kg）', 'weight')),
+      record: limit(pick(row, '戦績', '戦績・競技歴', 'record')),
+      comment: limit(pick(row, '意気込み', '試合への意気込み', 'comment')),
+      musicUrl: limit(pick(row, '入場曲', '入場曲url', '入場曲URL（Apple Music推奨）', 'music_url')),
       photoDataUrl: '',
       ...(cls ? { fighterClass: cls } : {}),
     };
   }).filter((fighter) => fighter.name.trim() !== '');
   if (new Set(fighters.map((fighter) => fighter.id)).size !== fighters.length) throw new Error('同じ管理番号が2つあります。原本で重複を確認してください。今ある名簿は変えていません。');
-  return { fighters, blockedHeaders: [] };
+  return { fighters, blockedHeaders: [], hasClassColumn, cut };
 }
 
 /** Re-import by receipt, retaining cards and fighters absent from this file. Never guess by name. */
@@ -101,6 +130,9 @@ export function contractWeight(red: LocalFighter | undefined, blue: LocalFighter
   return (Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)) + 'kg契約';
 }
 
+/** 名前とジムが同じかを見るための印（全角・半角と空白の差は無視する）。名前が空のときは空の文字 */
+export const sameFighterKey = (fighter: LocalFighter): string => fighter.name.trim() ? fighter.name.normalize('NFKC').replace(/\s+/g, '') + '|' + fighter.gym.normalize('NFKC').replace(/\s+/g, '') : '';
+
 /** Soft warnings for one card. They never block saving; the organizer decides. */
 export const WEIGHT_GAP_WARN_KG = 5;
 export function boutWarnings(bout: LocalBout, fighters: LocalFighter[], bouts: LocalBout[]): string[] {
@@ -111,10 +143,23 @@ export function boutWarnings(bout: LocalBout, fighters: LocalFighter[], bouts: L
     const a = parse(red.weight), b = parse(blue.weight);
     if (Number.isFinite(a) && Number.isFinite(b) && a >= 10 && b >= 10 && Math.abs(a - b) >= WEIGHT_GAP_WARN_KG) warnings.push('体重差が ' + (Math.round(Math.abs(a - b) * 10) / 10) + 'kg あります（' + red.name + ' ' + a + 'kg / ' + blue.name + ' ' + b + 'kg）。');
     if (red.gym.trim() && red.gym.trim() === blue.gym.trim()) warnings.push('同じジム（' + red.gym.trim() + '）の選手どうしです。');
+    // 管理番号はちがうのに、名前もジムも同じ（同じ人が2回申し込んだ）。赤と青に同じ人を入れていないか
+    if (red.id !== blue.id && sameFighterKey(red) && sameFighterKey(red) === sameFighterKey(blue)) warnings.push('赤と青が、同じ人かもしれません（' + red.name + '・名前もジムも同じです）。');
   }
+  // 同じ人（管理番号が同じ、または名前とジムが同じ）が何試合に入っているか
+  const inBout = (other: LocalBout, f: LocalFighter): boolean => {
+    const key = sameFighterKey(f);
+    return [other.redId, other.blueId].some((id) => {
+      if (!id) return false;
+      if (id === f.id) return true;
+      if (!key) return false;
+      const person = fighters.find((x) => x.id === id);
+      return !!person && sameFighterKey(person) === key;
+    });
+  };
   [red, blue].forEach((f) => {
     if (!f) return;
-    const count = bouts.filter((other) => other.redId === f.id || other.blueId === f.id).length;
+    const count = bouts.filter((other) => inBout(other, f)).length;
     if (count > 1) warnings.push(f.name + ' が ' + count + ' 試合に入っています。');
   });
   return warnings;
@@ -149,6 +194,8 @@ export function isLocalTournament(value: unknown): value is LocalTournament {
   const data = value as LocalTournament;
   const text = (item: unknown) => typeof item === 'string' && item.length <= 5000;
   if (data.entryConfig !== undefined && (!data.entryConfig || typeof data.entryConfig.music !== 'boolean' || !['grade','age','comment'].every(key => ['off','optional','required'].includes(data.entryConfig![key as 'grade'|'age'|'comment'])))) return false;
+  // 受付のクラス設定（あれば）。形がおかしいものは断る。無い古いデータは今までどおり通す
+  if (data.entryConfig?.classes !== undefined && !parseClassSettings(data.entryConfig.classes)) return false;
   if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
   return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }

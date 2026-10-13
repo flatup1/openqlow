@@ -10,7 +10,8 @@ import { readFile } from 'node:fs/promises';
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4421';
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base)) throw new Error('This test must run against a local preview.');
-const browser = await chromium.launch({ headless: true, channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' });
+const EXE = process.env.TOS_CHROME_PATH || '';
+const browser = await chromium.launch({ headless: true, ...(EXE ? { executablePath: EXE } : { channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' }) });
 let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 const PASSWORD = 'fictional-test-password';
@@ -132,10 +133,14 @@ try {
   await status('先に、パスワードを入れてください。').waitFor();
   check(true, 'Restoring with an empty password asks for the password first');
   await page.locator('#backup-password').fill(PASSWORD);
+  // この画面が「空で、一度も保存していない」なら、別の大会のコピーでも、そのまま入れられる（別のパソコンに移ったとき）。ここは、すでに保存した画面で、断られることを確かめる
+  await page.getByLabel('大会名', { exact: true }).fill('別の大会B');
+  await page.getByRole('button', { name: '保存する', exact: true }).first().click();
+  await stateLine().getByText('保存済み').waitFor();
   await page.locator('input[accept=".enc"]').setInputFiles({ name: 'x.enc', mimeType: 'application/octet-stream', buffer: encrypted });
   await status('いまの画面は別の大会なので、何も変えていません').waitFor();
-  check(await page.getByLabel('大会名', { exact: true }).inputValue() === '', 'A copy of another event does not overwrite this event');
-  await page.getByRole('button', { name: 'この大会として開く', exact: true }).click();
+  check(await page.getByLabel('大会名', { exact: true }).inputValue() === '別の大会B', 'A copy of another event does not overwrite this event');
+  await page.getByRole('button', { name: '大会を開く（そのあと、もう一度ファイルを選ぶ）', exact: true }).click();
   await page.waitForURL(/event=safety-a/);
   await stateLine().waitFor();
 

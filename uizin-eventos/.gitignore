@@ -15,11 +15,21 @@ next-env.d.ts
 out-offline/
 out-private-pages/
 
-# next dev が自動生成する（コミットしない）
-AGENTS.md
-CLAUDE.md
+# next dev が自動生成する案内文（コミットしない）。このフォルダの中の AGENTS.md / CLAUDE.md だけ。
+# リポジトリのいちばん上にある AGENTS.md / CLAUDE.md は、別のファイル（追跡している）
+/AGENTS.md
+/CLAUDE.md
 
 # 選手の写真は公開サイトへ配るだけ。リポジトリには入れない
 public/photos/
 public/_tmp_import/
-public/_headers
+# 注意: public/_headers は追跡している（公開の安全設定。CSP など）。ここに書いて無視しないこと
+
+# 手元だけの作業フォルダ（ビルドの古いキャッシュ・点検用のコピー）。誤って git add しない
+next-stale-cache*/
+bd-*/
+audit/
+srv.pid
+
+# verify-private-all.sh が全部合格したときに書く指紋（公開のコマンドが見る。コミットしない）
+.verify-ok

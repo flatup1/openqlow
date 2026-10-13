@@ -12,13 +12,13 @@ export type Opts = { ignoreTextFormat?: boolean };
 export function harness(opts: Opts = {}) {
   const props = new Map<string, string>(), resources = new Map<string, any>(), logs: string[] = [], zips: any[] = [];
   let currentOwner = owner, serial = 0, menu: string[] = [];
-  const alerts: string[] = [], toasts: string[] = []; let storage = { limit: 15 * 1024 ** 3, used: 1024 ** 3 };
+  const alerts: string[] = [], toasts: string[] = [], dialogs: { html: string; title: string; width?: number; height?: number }[] = []; let storage = { limit: 15 * 1024 ** 3, used: 1024 ** 3 };
   const iterator = (array: any[]) => { let i = 0; return { hasNext: () => i < array.length, next: () => array[i++] }; };
   const blob = (bytes: any, type: string, name: string) => ({ bytes: typeof bytes === 'string' ? Buffer.from(bytes) : Buffer.from(bytes), type, name, getBytes() { return [...this.bytes]; }, setName(v: string) { this.name = v; return this; } });
   function resource(kind: string, name: string, data?: any): any {
     const id = 'res' + (++serial);
     const r: any = { kind, name, id, children: [] as any[], data, sharing: 'PRIVATE', editors: [] as any[], viewers: [] as any[], trashed: false,
-      getId: () => id, getOwner: () => ({ getEmail: () => owner }), getSharingAccess: () => r.sharing, getEditors: () => r.editors, getViewers: () => r.viewers, isTrashed: () => r.trashed,
+      getId: () => id, getOwner: () => ({ getEmail: () => owner }), getSharingAccess: () => r.sharing, getEditors: () => r.editors, getViewers: () => r.viewers, isTrashed: () => r.trashed, setTrashed: (v: boolean) => { r.trashed = v; return r; },
       getUrl: () => (kind === 'folder' ? 'https://drive.google.com/drive/folders/' : 'https://drive.google.com/file/d/') + id + '/view',
       getSize: () => r.data?.bytes?.length || 0, getBlob: () => blob(r.data.bytes, r.data.type, r.name),
       parents: [] as any[], getParents: () => iterator(r.parents),
@@ -30,6 +30,7 @@ export function harness(opts: Opts = {}) {
   function sheet(book: any, name: string): any {
     const formats = new Map<string, string>();
     const validations = new Map<string, any>();
+    const backgrounds = new Map<string, string>();
     const stored = (v: any, r: number, c: number, viaSetValue = false) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v) && (formats.get(r + ':' + c) !== '@' || (opts.ignoreTextFormat && !viaSetValue)) ? Number(v) : v;
     const s: any = { name, rows: [] as any[][],
       maxRows: 1000, getMaxRows: () => s.maxRows,
@@ -43,12 +44,13 @@ export function harness(opts: Opts = {}) {
           setValues: (values: any[][]) => { values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
           setValue: (v: any) => { s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
           setNumberFormat: (f: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
-          setFontWeight: () => range,
+          setFontWeight: () => range, setBackground: (color: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) backgrounds.set((r + i) + ':' + (c + j), color); return range; }, setWrap: () => range,
           setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; },
           protect: () => { const prot: any = { warningOnly: false, setDescription() { return prot; }, setWarningOnly(v: boolean) { prot.warningOnly = v; return prot; } }; s.protections.push({ r, c, n, m, prot }); return prot; } };
         return range;
       } };
-    s.validations = validations; s.protections = [] as any[];
+    s.validations = validations; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
+    s.setColumnWidth = (c: number, w: number) => { s.columnWidths.set(c, w); return s; }; s.setFrozenRows = (n: number) => { s.frozenRows = n; return s; };
     book.sheets.set(name, s); return s;
   }
   const bookFile = resource('file', 'copy-of-template');
@@ -60,13 +62,13 @@ export function harness(opts: Opts = {}) {
     PropertiesService: { getScriptProperties: () => propsApi },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
     SpreadsheetApp: { newDataValidation: () => { const b: any = { list: [] as string[], requireValueInList: (l: string[]) => { b.list = l; return b; }, setAllowInvalid: (v: boolean) => { b.allowInvalid = v; return b; }, build: () => ({ list: b.list, allowInvalid: b.allowInvalid }) }; return b; }, getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
-      getUi: () => ({ ButtonSet: { OK: 'OK' }, alert: (_t: string, message: string) => { alerts.push(String(message)); }, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
+      getUi: () => ({ ButtonSet: { OK: 'OK' }, showModalDialog: (output: any, title: string) => { dialogs.push({ html: String(output.html), title, width: output.width, height: output.height }); }, alert: (_t: string, message: string) => { alerts.push(String(message)); }, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
     DriveApp: { getStorageLimit: () => storage.limit, getStorageUsed: () => storage.used, Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
     Utilities: { getUuid: () => randomUUID(), base64Decode: (v: string) => [...Buffer.from(v, 'base64')], newBlob: blob, Charset: { UTF_8: 'utf8' }, DigestAlgorithm: { SHA_256: 'sha256' }, computeDigest: (_: any, v: string | number[]) => [...createHash('sha256').update(typeof v === 'string' ? v : Buffer.from(v)).digest()].map((b) => (b > 127 ? b - 256 : b)),
       zip: (files: any[], name: string) => { zips.push(files); return { bytes: Buffer.from('zip'), type: 'application/zip', name }; } },
     ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST_ONLY/exec' }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (text: string) => ({ text, setMimeType() { return this; } }) },
-    HtmlService: { createHtmlOutput: (html: string) => ({ html, setTitle() { return this; }, addMetaTag() { return this; } }) },
+    HtmlService: { createHtmlOutput: (html: string) => ({ html, setTitle() { return this; }, addMetaTag() { return this; }, setWidth(v: number) { this.width = v; return this; }, setHeight(v: number) { this.height = v; return this; } } as any) },
     Logger: { log: (v: string) => logs.push(v) }, console: { error: () => undefined },
   };
   vm.createContext(api); vm.runInContext(script, api);
@@ -79,6 +81,6 @@ export function harness(opts: Opts = {}) {
   const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '', age: '20', height: '170', weight: '65', record: '初試合', comment: '', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
   // 会長の操作: コピーしたシートを開く（onOpen）→ 「設定」タブに入れる → 「① 最初の設定」
   const ready = (over: Record<string, string> = {}) => { call('onOpen'); fill(over); call('setupTournament'); };
-  return { api, props, resources, book, logs, zips, alerts, toasts, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
+  return { api, props, resources, book, logs, zips, alerts, toasts, dialogs, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
 }
 

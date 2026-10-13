@@ -7,7 +7,7 @@
  *
  * Run (server started and stopped inside ONE shell command):
  *   (python3 -m http.server 4620 -d out-private-pages --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > /tmp/p.pid; sleep 1;
- *    TOS_PLAYWRIGHT_MODULE=/tmp/claude-0/pwshim.mjs TOS_TEST_BASE=http://127.0.0.1:4620 TOS_CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome node --experimental-strip-types scripts/test-class-ab.mjs; rc=$?; kill $(cat /tmp/p.pid); exit $rc)
+ *    TOS_PLAYWRIGHT_MODULE=playwright TOS_TEST_BASE=http://127.0.0.1:4620 TOS_CHROME_PATH=/path/to/chrome node --experimental-strip-types scripts/test-class-ab.mjs; rc=$?; kill $(cat /tmp/p.pid); exit $rc)
  * Env: TOS_TEST_BASE (default http://127.0.0.1:4620), TOS_ONLY=A,B,C,D,E (scenario ids), TOS_CHROME_PATH.
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
@@ -181,7 +181,7 @@ async function openApply(ctx, hash, wait = true) {
   return page;
 }
 async function fillAll(page, record = '初出場', skipClass = true) {
-  for (const [label, value] of [['ジム名 必須', '架空ジム'], ['選手名 必須', '架空選手'], ['身長（cm）必須', '170'], ['体重（kg）必須', '65'], ['戦績 必須', record], ['連絡先のお名前 必須', '架空連絡先'], ['電話番号 必須', '09000000000'], ['メールアドレス 必須', 'test@example.com']]) await page.getByLabel(label, { exact: true }).fill(value);
+  for (const [label, value] of [['ジム名 必須', '架空ジム'], ['選手名 必須', '架空選手'], ['身長（cm）必須', '170'], ['体重（kg）必須', '65'], ['戦績 必須', record], ['連絡先のお名前 必須', '架空連絡先'], ['電話番号 必須', '09012345678'], ['メールアドレス 必須', 'test@example.com']]) await page.getByLabel(label, { exact: true }).fill(value);
   const jpeg = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 120; c.height = 160; const x = c.getContext('2d'); x.fillStyle = '#2563eb'; x.fillRect(0, 0, 120, 160); return c.toDataURL('image/jpeg').split(',')[1]; }), 'base64');
   await page.locator('input[type=file]').setInputFiles({ name: 'test.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   await page.getByAltText('選んだ写真').waitFor();
@@ -436,16 +436,20 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     check(sent === 1, 'A8 sends without a class');
     check(!ctx.__posts[0].get('fighterClass'), 'A8 the posted fighterClass is empty/absent (' + JSON.stringify(ctx.__posts[0].get('fighterClass')) + ')');
     await ctx.close();
-    // cls=off explicit, and cls=garbage
-    for (const frag of ['&cls=off', '&cls=yes', '&cls=on&cuN=' + encodeURIComponent('同じ') + '&clN=' + encodeURIComponent('同じ'), '&cls=on&cuN=&clN=', '&cls=on&cw=0', '&cls=on&cw=abc']) {
+    // cls=off explicit stays a normal form. cls=on with texts that cannot be read, and any cls value that is not on/off (a link cut inside "cls=on"), is a BROKEN link:
+    // red box, form locked (S-3 / r1-1) - a parent must not fill everything in and only then learn that Google refuses the class-less send.
+    // Lenient on purpose: empty names (-> defaults) and a bad win count (-> 3 wins) are still readable, so the form stays usable.
+    for (const [frag, locked] of [['&cls=off', false], ['&cls=yes', true], ['&cls=on&cuN=' + encodeURIComponent('同じ') + '&clN=' + encodeURIComponent('同じ'), true], ['&cls=on&cuN=&clN=', false], ['&cls=on&cw=0', false], ['&cls=on&cw=abc', false]]) {
       const c2 = await newCtx(vp.mobile);
       const p2 = await c2.newPage();
       await p2.goto(base + '/apply/' + hashWith(undefined) + frag);
-      await p2.getByLabel('ジム名 必須', { exact: true }).waitFor({ timeout: 15000 });
+      if (locked) await p2.getByText('このページでは申し込めません').first().waitFor({ timeout: 15000 });
+      else await p2.getByLabel('ジム名 必須', { exact: true }).waitFor({ timeout: 15000 });
       const has = (await CLS(p2).count()) === 1;
-      note('hash ' + frag.slice(0, 50) + ' -> class box ' + (has ? 'shown' : 'hidden'));
+      note('hash ' + frag.slice(0, 50) + ' -> class box ' + (has ? 'shown' : 'hidden') + (locked ? ', locked' : ''));
       check(await noOverflow(p2), 'A8 odd hash ' + frag.slice(0, 40) + ' does not break the page');
-      if (/cls=(off|yes)$/.test(frag)) check(!has, 'A8 ' + frag + ' keeps the class box off');
+      if (locked) check(!has && (await reviewBtn(p2).isDisabled().catch(() => true)) && !(await p2.getByLabel('ジム名 必須', { exact: true }).isVisible()), 'A8 ' + frag.slice(0, 40) + ' is a broken link: red box, no form, no send');
+      if (/cls=off$/.test(frag)) check(!has, 'A8 ' + frag + ' keeps the class box off');
       await c2.close();
     }
   }
@@ -490,13 +494,13 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
       const txt = await w.innerText();
       check(isReddish(s.fg) || isReddish(s.border), 'B1 warning is RED (fg ' + s.fg + ' border ' + s.border + ')');
       check(contrast(s.fg, s.bg) >= 4.5, 'B1 warning text >= 4.5:1 (' + contrast(s.fg, s.bg).toFixed(2) + ')');
-      check(/⚠/.test(txt) && txt.includes('赤：Aクラス') && txt.includes('青：Bクラス') && txt.includes('ルール'), 'B1 warning has ⚠ and names red/blue classes with the reason (' + short(txt, 100) + ')');
+      check(/⚠/.test(txt) && txt.includes('赤はAクラス') && txt.includes('青はBクラス') && txt.includes('ルール'), 'B1 warning has ⚠ and names red/blue classes with the reason (' + short(txt, 100) + ')');
       check(s.size >= 17 && s.weight >= 600, 'B1 warning is bold and >= 17px (' + s.size + 'px, ' + s.weight + ')');
     }
     const head = await page.locator('article[id^="bout-"]').nth(n0).innerText();
     note('bout card text: ' + short(head, 140));
     // the header line of the bout list carries a word as well
-    check((await bodyText(page)).includes('クラスちがい'), 'B1 the bout summary line carries ⚠クラスちがい too');
+    check((await bodyText(page)).includes('⚠ クラスがちがいます'), 'B1 the bout summary line carries ⚠ クラスがちがいます too (same words as the card)');
     // swap blue to F04 (A) -> warning disappears
     await page.locator('#bout-' + n0 + '-blue').selectOption('F04');
     await settle(150);
@@ -538,7 +542,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     await addBout(page, 'F01', 'F02');
     await settle(150);
     check((await page.locator('[role=status]', { hasText: 'クラスがちがいます' }).count()) === 0, 'B2 no class warning without classes');
-    check(!/クラスちがい/.test(await bodyText(page)), 'B2 no class word in the bout line');
+    check(!/⚠ クラスがちがいます/.test(await bodyText(page)), 'B2 no class word in the bout line');
     check(await noOverflow(page), 'B2 no overflow');
     await pressSave(page);
     await page.waitForFunction(() => document.querySelector('#save-state')?.innerText.includes('保存済み'), null, { timeout: 8000 }).catch(() => {});
@@ -821,7 +825,8 @@ scenario('D', 'mistakes: injection, unknown class, 200 chars, full-width spaces'
   note('class lines: ' + lines.map((x) => short(x, 40)).join(' || '));
   check(lines.every((x) => x.replace('クラス：', '').length <= 40), 'D every shown class is <= 40 chars (longest ' + Math.max(...lines.map((x) => x.replace('クラス：', '').length)) + ')');
   check(lines.some((x) => x.replace('クラス：', '') === 'い'.repeat(40)), 'D the 200-char class is cut to 40, not rejected or kept whole');
-  check(lines.some((x) => x.trim() === 'クラス：Ａクラス'), 'D full-width spaces around the class are trimmed (' + short(lines.find((x) => /Ａ/.test(x)) ?? '', 30) + ')');
+  // 取り込みのとき、設定の名前にそろえる（全角の「Ａクラス」＋前後の全角空白 → 「Aクラス」）。F05 と F06 で「クラス：Aクラス」が2つになる
+  check(lines.filter((x) => x.trim() === 'クラス：Aクラス').length >= 2 && !lines.some((x) => /Ａ/.test(x)), 'D full-width Ａクラス (with full-width spaces) is trimmed AND written as the setting\'s name Aクラス (' + short(lines.filter((x) => /Ａ|^クラス：Aクラス$/.test(x.trim())).join('|'), 60) + ')');
   check(lines.some((x) => /^クラス：Cクラス$/.test(x.trim())), 'D a class that is not in the A/B list is kept as typed (the OS has no list to check)');
   check(!lines.some((x) => /‮/.test(x)) || true, '');
   check(!lines.some((x) => /[\n\t]/.test(x)), 'D tabs/newlines in a class are flattened');

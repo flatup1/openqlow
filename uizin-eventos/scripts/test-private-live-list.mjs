@@ -6,7 +6,7 @@
  *
  * Run (server started and stopped inside ONE shell command):
  *   (python3 -m http.server 4470 -d out-private-pages --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > /tmp/p.pid; sleep 1;
- *    TOS_PLAYWRIGHT_MODULE=/tmp/claude-0/pwshim.mjs TOS_TEST_BASE=http://127.0.0.1:4470 TOS_CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome node --experimental-strip-types scripts/test-private-live-list.mjs; rc=$?; kill $(cat /tmp/p.pid); exit $rc)
+ *    TOS_PLAYWRIGHT_MODULE=playwright TOS_TEST_BASE=http://127.0.0.1:4470 TOS_CHROME_PATH=/path/to/chrome node --experimental-strip-types scripts/test-private-live-list.mjs; rc=$?; kill $(cat /tmp/p.pid); exit $rc)
  * Env: TOS_TEST_BASE (default http://127.0.0.1:4470), TOS_ONLY=A,B (scenario ids), TOS_CHROME_PATH.
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
@@ -325,7 +325,14 @@ scenario('B', 'bout counts 0/1/2/10/11/35/100: paging, disabled reasons, no writ
     check((await rowLis(live).count()) <= 10, tag + ': never more than 10 rows in the page');
     // nothing was written by paging / switching
     await live.getByRole('button', { name: '1試合ずつ' }).click();
-    await live.getByRole('button', { name: '一覧' }).click();
+    if (n === 1) {
+      // a ONE-bout event has nothing to choose between: its single view hides the 表示のしかた switcher (polish r1-45), so the way back to the list is the address
+      await live.waitForFunction(() => !document.querySelector('li.live-list-row'), null, { timeout: 4000 });
+      check((await live.getByRole('button', { name: '一覧' }).count()) === 0 && (await live.getByRole('group', { name: '表示のしかた' }).count()) === 0, tag + ': one bout, single view: no 表示のしかた switcher');
+      await live.goto(base + '/private/live/?event=' + id + '&view=list');
+      await live.locator('li.live-list-row').first().waitFor({ timeout: 8000 });
+      check((await live.getByRole('group', { name: '表示のしかた' }).count()) === 1, tag + ': one bout, list view: the switcher is there');
+    } else await live.getByRole('button', { name: '一覧' }).click();
     check((await putsOf(live)).length === 0, tag + ': paging and switching modes wrote nothing (puts: ' + (await putsOf(live)).length + ')');
     const after = await idbGet(live, id);
     check(after.currentBout === 0 && after.updatedAt === before.updatedAt, tag + ': saved currentBout/updatedAt unchanged (' + after.currentBout + ', ' + (after.updatedAt === before.updatedAt) + ')');
@@ -930,7 +937,7 @@ scenario('L', 'MC questions: now-bar, pager at the top, jump to a bout, music su
   check(fb.length >= 2 && fb.every((r) => r.st !== 'auto' && r.w >= 4), t + ': 前の試合 / 次の試合 / 入場曲 link have the thick focus ring (' + JSON.stringify(fb) + ')');
   await one.close();
   // disabled state is readable and explained, at the first and the last bout
-  for (const [cur, btnName, reasonText] of [[0, '← 前の試合', '最初の試合です'], [34, '次の試合 →', '最後の試合です（これで全部終わりです）']]) {
+  for (const [cur, btnName, reasonText] of [[0, '← 前の試合', '最初の試合です'], [34, '次の試合 →', 'これが最後の試合です']]) {
     const idE = 'll-l-edge' + cur + '-' + vp.tag;
     await seed(ctx, big(idE, 35, { current: cur }));
     const p = await openLive(ctx, idE, { list: false });

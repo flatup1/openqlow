@@ -16,7 +16,9 @@ const BIG: { fontSize: string } = { fontSize: '1.0625rem' };
 
 /** 黄色い「👉 次はここ：〇〇」の札。ボタンの『中』には入れず、ボタンの外・直前に置く */
 export function NextBadge({ children, tight = false }: { children?: ReactNode; tight?: boolean }) {
-  return <span className="tos-next-badge" style={tight ? { ...BIG, padding: '0 8px' } : BIG}><span aria-hidden="true">👉</span> 次はここ{children ? '：' : ''}{children}</span>;
+  // 長い文が何行にも折り返しても、細長いだ円にならないよう、角は丸め切らず（14px）、ふつうの文として流す（live の BADGE と同じ）
+  const badge: CSSProperties = { ...BIG, borderRadius: '14px', display: 'inline-block' };
+  return <span className="tos-next-badge" style={tight ? { ...badge, padding: '0 8px' } : badge}><span aria-hidden="true">👉</span> 次はここ{children ? '：' : ''}{children}</span>;
 }
 
 /**

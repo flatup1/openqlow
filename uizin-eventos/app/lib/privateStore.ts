@@ -22,7 +22,7 @@ export async function readPrivateEvent(eventId: string): Promise<LocalTournament
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(eventId);
     request.onsuccess = () => {
-      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、暗号化バックアップを確認してください。'));
+      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、「コピーのファイル」を確認してください。'));
       else resolve((request.result as LocalTournament | undefined) ?? null);
     };
     request.onerror = () => reject(request.error);

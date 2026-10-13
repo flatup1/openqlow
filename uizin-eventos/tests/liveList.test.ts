@@ -290,7 +290,7 @@ test('moveNotice: 動かした直後の言葉と、もどす／すすむボタ�
   assert.deepEqual(moveNotice('next', 6, 7), { text: '第7試合 → 第8試合に進みました', undoLabel: '第7試合にもどす' });
   assert.deepEqual(moveNotice('prev', 6, 5), { text: '第6試合にもどりました', undoLabel: '第7試合にすすむ' });
   assert.equal(moveNotice('list', 3, 5).undoLabel, '第4試合にもどす');
-  assert.match(moveNotice('list', 3, 5).text, /^第6試合に変えました。まちがえたら右のボタン/);
+  assert.match(moveNotice('list', 3, 5).text, /^第6試合に変えました。まちがえたら「第4試合にもどす」を押す/);
   for (const via of ['next', 'list'] as const) assert.match(moveNotice(via, 1, 2).undoLabel, /^第\d+試合にもどす$/);
 });
 

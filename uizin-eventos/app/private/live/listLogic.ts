@@ -1,5 +1,5 @@
 import { boutClassWarning } from '../../../core/classRules.ts';
-import { contractWeight, safeMusicUrl, type LocalBout, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
+import { contractWeight, safeMusicUrl, sameFighterKey, type LocalBout, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
 
 /** 試合当日の画面の見かた。1試合ずつ（ふだん）か、一覧か。 */
 export type LiveView = 'single' | 'list';
@@ -136,6 +136,18 @@ export function musicLabel(state: MusicState): string {
 export const MUSIC_NEW_TAB = '↗ 別のタブ';
 
 export const MISSING_FIGHTER = '選手未選択';
+/** 選手はいるが、名前が空（または空白だけ）のとき。1試合ずつの画面と一覧で同じ言葉 */
+export const NO_NAME = '名前未入力';
+
+/** 選手の名前を画面に出す形。選手がいない=「選手未選択」、名前が空=「名前未入力」（空白だけの名前も空と同じ） */
+export const displayName = (fighter: LocalFighter | undefined): string => (fighter ? fighter.name.trim() || NO_NAME : MISSING_FIGHTER);
+
+/** 赤と青が、管理番号はちがうのに、名前もジムも同じ（同じ人が2回申し込んだ）。準備画面の対戦カードと同じ見分け方 */
+export function isSamePerson(red: LocalFighter | undefined, blue: LocalFighter | undefined): boolean {
+  if (!red || !blue || red.id === blue.id) return false;
+  const key = sameFighterKey(red);
+  return key !== '' && key === sameFighterKey(blue);
+}
 export const NO_CONTRACT = '契約未入力';
 export const NO_MUSIC_EVENT = 'この大会は入場曲なし';
 export const NO_MUSIC_DONE = '入場曲はぜんぶそろっています';
@@ -167,6 +179,8 @@ export type RowModel = {
   openLabel: string;
   /** 赤と青が同じ選手（まちがい）。選手が選ばれていない（空）ときは false */
   sameFighter: boolean;
+  /** 管理番号はちがうが、名前もジムも同じ（同じ人かもしれない） */
+  samePerson: boolean;
   /** 体重もクラス名もなく「契約未入力」になる試合 */
   noContract: boolean;
 };
@@ -177,7 +191,7 @@ function corner(side: 'red' | 'blue', fighter: LocalFighter | undefined, musicEn
     side,
     label: side === 'red' ? '赤コーナー' : '青コーナー',
     present: !!fighter,
-    name: fighter ? fighter.name.trim() || '名前未入力' : MISSING_FIGHTER,
+    name: displayName(fighter),
     gym: fighter?.gym.trim() ?? '',
     fighterClass: fighter?.fighterClass?.trim() ?? '',
     photoDataUrl: fighter?.photoDataUrl ?? '',
@@ -199,6 +213,7 @@ export function buildRow(bout: LocalBout, index: number, byId: Map<string, Local
     contract,
     noContract: contract === NO_CONTRACT,
     sameFighter: !!bout.redId && bout.redId === bout.blueId,
+    samePerson: isSamePerson(red, blue),
     rule: bout.rule.trim(),
     red: r,
     blue: b,
@@ -255,7 +270,7 @@ export function nowModel(data: Pick<LocalTournament, 'bouts' | 'fighters' | 'cur
   const bout = data.bouts[data.currentBout];
   if (!bout) return null;
   const byId = new Map(data.fighters.map((f) => [f.id, f]));
-  const name = (id: string) => { const f = byId.get(id); return f ? f.name.trim() || '名前未入力' : MISSING_FIGHTER; };
+  const name = (id: string) => displayName(byId.get(id));
   const title = '第' + (data.currentBout + 1) + '試合';
   return { index: data.currentBout, title, text: title + '　' + name(bout.redId) + ' 対 ' + name(bout.blueId), page: pageOfBout(data.currentBout, total, size) };
 }
@@ -312,7 +327,7 @@ export function moveNotice(via: MoveVia, before: number, after: number): MoveNot
   const b = '第' + (before + 1) + '試合', a = '第' + (after + 1) + '試合';
   if (via === 'prev') return { text: a + 'にもどりました', undoLabel: b + 'にすすむ' };
   if (via === 'next') return { text: b + ' → ' + a + 'に進みました', undoLabel: b + 'にもどす' };
-  return { text: a + 'に変えました。まちがえたら右のボタン →', undoLabel: b + 'にもどす' };
+  return { text: a + 'に変えました。まちがえたら「' + b + 'にもどす」を押す。', undoLabel: b + 'にもどす' };
 }
 
 /** 元にもどす案内を、大きい箱で見せる秒数。そのあとは小さい灰の1行になる */

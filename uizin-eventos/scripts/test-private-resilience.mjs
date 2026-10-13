@@ -5,7 +5,7 @@
  *
  * Run (server started and stopped inside ONE shell command):
  *   (python3 -m http.server 4450 -d out-private-pages --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > /tmp/p.pid; sleep 1;
- *    TOS_PLAYWRIGHT_MODULE=/tmp/claude-0/pwshim.mjs TOS_CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome node scripts/test-private-resilience.mjs; rc=$?; kill $(cat /tmp/p.pid); exit $rc)
+ *    TOS_PLAYWRIGHT_MODULE=playwright TOS_CHROME_PATH=/path/to/chrome node scripts/test-private-resilience.mjs; rc=$?; kill $(cat /tmp/p.pid); exit $rc)
  * Env: TOS_TEST_BASE (default http://127.0.0.1:4450), TOS_ONLY=A,B (scenario ids), TOS_CHROME_PATH (for the browser-restart scenario).
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
@@ -709,7 +709,7 @@ scenario('G', 'cancelled choosers and confirms change nothing', async (vp) => {
   check(await askBox(page).count() === 1, 'restore asks before overwriting (a box in the page)');
   check(await boxNextTo(page, '#confirm-restore', '#restore-file') && await focusIsSafe(page), 'the restore box sits next to the restore button and focus is on the safe button');
   const msg = await askBox(page).innerText().catch(() => '');
-  check((msg.split('\n')[0] || '').includes('入れかわ') && msg.includes('戻したい大会') && /選手が4人から2人に減ります/.test(msg) && msg.includes('まだ保存していない変更'), 'the question says what is restored, what is lost and that unsaved changes exist: ' + short(msg, 200));
+  check((msg.split('\n')[0] || '').includes('入れかわ') && msg.includes('戻したい大会') && /⚠ 減ります：選手が4人から2人になります/.test(msg) && msg.includes('まだ保存していない変更'), 'the question says what is restored, what is lost and that unsaved changes exist: ' + short(msg, 200));
   check(await val(page, '#field-title') === 'いまのデータ' && (await val(page, '#field-venue')) === '未保存の会場' && JSON.stringify(await idbGet(page, id)) === before, 'opening the box alone: screen and stored data untouched');
   await boxPress(page, SAFE_NO);
   await settle(500);
@@ -898,8 +898,8 @@ scenario('J', 'wrong password, corrupt, non-backup and other-event files', async
     check((await val(page, '#field-title')) === 'いまのデータ' && (await val(page, '#field-venue')) === '未保存の会場' && JSON.stringify(await idbGet(page, id)) === before, label + ': screen, typed text and stored data untouched');
     check((await stateOf(page)) === state0, label + ': state line unchanged');
   }
-  const switcher = page.getByRole('button', { name: 'この大会として開く', exact: true });
-  check(await switcher.count() === 1 && (await page.locator('#backup').innerText()).includes('ブラウザが確認'), 'other-event refusal offers この大会として開く and warns about unsaved work');
+  const switcher = page.getByRole('button', { name: '大会を開く（そのあと、もう一度ファイルを選ぶ）', exact: true });
+  check(await switcher.count() === 1 && (await page.locator('#backup').innerText()).includes('ブラウザが確認'), 'other-event refusal offers 「大会を開く（そのあと、もう一度ファイルを選ぶ）」 and warns about unsaved work');
   // password rules
   await page.locator('#backup-password').fill('short');
   let opened = true; await Promise.all([page.waitForEvent('filechooser', { timeout: 700 }).catch(() => { opened = false; }), page.locator('label', { hasText: 'コピーのファイルから戻す' }).click({ force: true })]);
@@ -931,7 +931,7 @@ scenario('J', 'wrong password, corrupt, non-backup and other-event files', async
   await restoreInput(page).setInputFiles({ name: 'o.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(other) });
   await switcher.waitFor({ timeout: 5000 });
   await Promise.all([page.waitForURL(/event=res-j-.*-other/, { timeout: 8000 }).catch(() => {}), switcher.click()]);
-  check(/event=res-j-.*-other/.test(page.url()), 'この大会として開く goes to the other event');
+  check(/event=res-j-.*-other/.test(page.url()), '大会を開く（そのあと、もう一度ファイルを選ぶ） goes to the other event');
   await ctx.close();
 });
 
@@ -1005,8 +1005,8 @@ scenario('P', 'draft vs saved vs match-day screen vs Google setup', async (vp) =
   // a half-finished bout on the match-day screen does not crash it
   const half = await seedAndOpen(ctx, seed(id + '-half', { bouts: [[0, null]] }));
   const l2 = await ctx.newPage(); await l2.goto(base + '/private/live/?event=' + id + '-half');
-  await l2.getByText('選手未設定').first().waitFor({ timeout: 6000 }).catch(() => {});
-  check(await l2.getByText('選手未設定').count() >= 1, 'a saved half-finished bout shows 選手未設定 on the match-day screen');
+  await l2.getByText('選手未選択').first().waitFor({ timeout: 6000 }).catch(() => {});
+  check(await l2.getByText('選手未選択').count() >= 1, 'a saved half-finished bout shows 選手未選択 on the match-day screen');
   await half.close();
   await ctx.close();
 });
@@ -1146,8 +1146,18 @@ scenario('SH', 'short screens: steps bar scrolls away, bottom bar is one line, a
 }, { viewports: [false] });
 
 /* SU: /private/setup/ */
+/** 「👉 次はここ」の枠は、1つだけ。塗りのボタンは、あるなら、その枠の中に1つだけ（枠の外に塗りのボタンを置かない） */
+async function oneMarkerOnePrimary(page, label, a, { primary }) {
+  const frames = await page.locator('[data-tos-next]').count();
+  check(frames === 1, label + ': exactly one yellow 「次はここ」 frame (saw ' + frames + ')');
+  check(a.primary.length === primary, label + ': exactly ' + primary + ' filled primary button (saw ' + a.primary.length + ': ' + short(a.primary.join(' / '), 160) + ')');
+  const inside = await page.evaluate((labels) => labels.every((l) => [...document.querySelectorAll('[data-tos-next]')].some((f) => f.innerText.replace(/\s+/g, ' ').includes(l))), a.primary);
+  check(inside, label + ': the filled button sits inside the yellow frame');
+}
 scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => {
   const ctx = await newCtx(vp.mobile, { allowed: [ENDPOINT] }), id = 'res-su-' + vp.tag;
+  // 本物のひな形リンクがある状態（リンクがないと、手順1に押せるものがない）
+  await ctx.route('**/template-link.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ copyUrl: 'https://docs.google.com/spreadsheets/d/' + 'R'.repeat(30) + '/copy' }) }));
   const READY = { app: 'tournament-os', protocol: 3, build: EXPECTED_RECEPTION_BUILD, ready: true, accepting: false, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: '架空テスト大会', date: '2099-12-01', venue: '架空体育館', venueUrl: '', organizer: '架空主催', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
   let mode = 'abort', pings = 0;
   ctx.__ext = async (route) => {
@@ -1160,8 +1170,8 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   const page = await ctx.newPage();
   await page.goto(base + '/private/setup/?event=' + id);
   await page.getByText('いまここ 1 / 3').first().waitFor();
-  // Step 1 has no filled main button when template-link.json has no valid copyUrl (no action yet); at most one is allowed.
-  { const a1 = await audit(page, 'setup step 1 ' + vp.name, { primary: null }); check(a1.primary.length <= 1, 'setup step 1 ' + vp.name + ': at most 1 emphasised primary button (saw ' + a1.primary.length + ')'); }
+  // Step 1 (with a real template link): exactly one yellow frame, and exactly one filled button, inside it.
+  { const a1 = await audit(page, 'setup step 1 ' + vp.name, { primary: null }); await oneMarkerOnePrimary(page, 'setup step 1 ' + vp.name, a1, { primary: 1 }); }
   await page.getByRole('button', { name: /✓がなくても進む/ }).click();
   await page.getByText('いまここ 2 / 3').first().waitFor();
   const input = page.locator('#endpoint');
@@ -1195,8 +1205,8 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   const onStep3 = await page.getByText('いまここ 3 / 3').count() === 1;
   check(onStep3, 'double click on 次へ進む lands on step 3 (the second click must not hit something else after the screen changes)');
   if (!onStep3) { await page.getByRole('button', { name: '次へ進む' }).click(); await page.getByText('いまここ 3 / 3').first().waitFor(); }
-  // Step 3: when the next action is a Google-sheet action, 「もう一度確かめる」 is an outline button (0 filled); otherwise exactly 1.
-  { const a3 = await audit(page, 'setup step 3 ' + vp.name, { primary: null }); check(a3.primary.length <= 1, 'setup step 3 ' + vp.name + ': at most 1 emphasised primary button (saw ' + a3.primary.length + ')'); }
+  // Step 3 (受付はまだ始まっていない): 次にやることは Googleのシートの「② 受付を開始」。ページには押すものがないので、塗りのボタンは0、黄色の枠は1つだけ。
+  { const a3 = await audit(page, 'setup step 3 ' + vp.name, { primary: null }); await oneMarkerOnePrimary(page, 'setup step 3 ' + vp.name, a3, { primary: 0 }); }
   {
     const c1 = await newCtx(vp.mobile, { allowed: [ENDPOINT] }); c1.__ext = ctx.__ext;
     const q = await c1.newPage();

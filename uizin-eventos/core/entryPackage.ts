@@ -1,3 +1,5 @@
+import { normalizeClass, parseClassSettings, type ClassSettings } from './classRules.ts';
+
 export type EntryFighter = {
   id: string;
   gym: string;
@@ -9,10 +11,12 @@ export type EntryFighter = {
   record: string;
   comment: string;
   musicUrl: string;
+  /** クラス（例：Aクラス）。クラスを使う大会だけ。個人情報ではない */
+  fighterClass?: string;
 };
 
 export type EntryFieldMode = 'off' | 'optional' | 'required';
-export type EntryFormConfig = { music: boolean; grade: EntryFieldMode; age: EntryFieldMode; comment: EntryFieldMode };
+export type EntryFormConfig = { music: boolean; grade: EntryFieldMode; age: EntryFieldMode; comment: EntryFieldMode; /** クラスを使う大会の設定（シートの「設定」タブと同じ）。無いときは、クラスの欄を出さない */ classes?: ClassSettings };
 export const DEFAULT_ENTRY_CONFIG: EntryFormConfig = { music: false, grade: 'optional', age: 'optional', comment: 'optional' };
 
 export function entryConfigFromSearch(search: string): EntryFormConfig {
@@ -21,17 +25,31 @@ export function entryConfigFromSearch(search: string): EntryFormConfig {
     const value = params.get(key);
     return value === 'off' || value === 'optional' || value === 'required' ? value : fallback;
   };
-  return { music: params.get('music') === 'on', grade: mode('grade', 'optional'), age: mode('age', 'optional'), comment: mode('comment', 'optional') };
+  const config: EntryFormConfig = { music: params.get('music') === 'on', grade: mode('grade', 'optional'), age: mode('age', 'optional'), comment: mode('comment', 'optional') };
+  const classes = classesFromParam(params.get('cs'));
+  if (classes) config.classes = classes;
+  return config;
+}
+
+/** 「cs=」の文字（クラス設定をJSONにしたもの）から、正しい設定だけを取り出す。読めなければ undefined */
+export function classesFromParam(value: string | null | undefined): ClassSettings | undefined {
+  if (!value || value.length > 1200) return undefined;
+  try { return parseClassSettings(JSON.parse(value)); } catch { return undefined; }
 }
 
 export function entryConfigSearch(config: EntryFormConfig): string {
-  return new URLSearchParams({ music: config.music ? 'on' : 'off', grade: config.grade, age: config.age, comment: config.comment }).toString();
+  const params = new URLSearchParams({ music: config.music ? 'on' : 'off', grade: config.grade, age: config.age, comment: config.comment });
+  if (config.classes) params.set('cs', JSON.stringify(config.classes));
+  return params.toString();
 }
 
 export const ENTRY_HEADERS = [
   '管理番号', 'ジム名', '選手名', '学年', '年齢', '身長', '体重',
   '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）',
 ] as const;
+
+/** クラスを使う大会のときは、いちばん右に「クラス」の列を足す（古い形のファイルは今までどおり10列） */
+export const ENTRY_HEADERS_WITH_CLASS = [...ENTRY_HEADERS, 'クラス'] as const;
 
 function safeCell(value: string): string {
   const text = value.replace(/\r\n?/g, '\n').trim();
@@ -42,12 +60,13 @@ function csvCell(value: string): string {
   return `"${safeCell(value).replaceAll('"', '""')}"`;
 }
 
-export function entryCsv(fighters: EntryFighter[]): string {
+export function entryCsv(fighters: EntryFighter[], withClass = false): string {
   const rows = fighters.map((fighter) => [
     fighter.id, fighter.gym, fighter.name, fighter.grade, fighter.age,
     fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl,
+    ...(withClass ? [fighter.fighterClass ?? ''] : []),
   ]);
-  return '\uFEFF' + [ENTRY_HEADERS, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(',')).join('\r\n') + '\r\n';
+  return '\uFEFF' + [withClass ? ENTRY_HEADERS_WITH_CLASS : ENTRY_HEADERS, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(',')).join('\r\n') + '\r\n';
 }
 
 export function entryErrors(fighter: EntryFighter, hasPhoto: boolean, config: EntryFormConfig = DEFAULT_ENTRY_CONFIG): string[] {
@@ -68,4 +87,13 @@ export function entryErrors(fighter: EntryFighter, hasPhoto: boolean, config: En
   for (const [key,max] of [['gym',120],['name',80],['record',300],['comment',500]] as const) if (fighter[key].trim().length>max) errors.push('入力内容が長すぎます。短くしてください。');
   if (!hasPhoto) errors.push('選手の写真を選んでください。');
   return errors;
+}
+
+/** 他のジム用の入力画面で、クラスを選ばせるときの検査。クラスを使わない大会は、何も言わない */
+export function entryClassError(fighter: EntryFighter, config: EntryFormConfig): string {
+  if (!config.classes) return '';
+  const names = config.classes.upper.name + 'か' + config.classes.lower.name;
+  if (!(fighter.fighterClass ?? '').trim()) return 'クラスを選んでください（' + names + '）。';
+  if (!normalizeClass(fighter.fighterClass ?? '', config.classes)) return 'クラスは' + names + 'から選んでください。';
+  return '';
 }

@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { zipSync, strToU8 } from 'fflate';
 import { publicEntryHash } from '../core/publicEntry.ts';
 import { GOOGLE_RECEPTION_BUILD } from '../core/googleConnection.ts';
@@ -10,7 +12,8 @@ const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwrig
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4421';
 if(!/^http:\/\/127\.0\.0\.1:\d+$/.test(base))throw new Error('This test must run against a local preview.');
 const endpoint='https://script.google.com/macros/s/TOS_BROWSER_SIMULATION/exec';
-const browser=await chromium.launch({headless:true,channel:process.env.TOS_BROWSER_CHANNEL||'chrome'});
+const EXE=process.env.TOS_CHROME_PATH||'';
+const browser=await chromium.launch({headless:true,...(EXE?{executablePath:EXE}:{channel:process.env.TOS_BROWSER_CHANNEL||'chrome'})});
 let checks=0;
 const check=(value,message)=>{assert.ok(value,message);checks++;};
 try {
@@ -88,7 +91,7 @@ try {
     await page.goto(link);
     check(await page.getByRole('heading',{name:'架空テスト大会',exact:true}).isVisible(),'Tournament metadata is correct');
     check(await page.getByLabel('入場曲のリンク 必須',{exact:true}).count()===0,'Music is off for this organizer');
-    for(const [label,value]of [['ジム名 必須','架空ジム'],['選手名 必須','架空選手'],['身長（cm）必須','170'],['体重（kg）必須','65'],['戦績 必須','初試合'],['連絡先のお名前 必須','架空連絡先'],['電話番号 必須','09000000000'],['メールアドレス 必須','test@example.com']])await page.getByLabel(label,{exact:true}).fill(value);
+    for(const [label,value]of [['ジム名 必須','架空ジム'],['選手名 必須','架空選手'],['身長（cm）必須','170'],['体重（kg）必須','65'],['戦績 必須','初試合'],['連絡先のお名前 必須','架空連絡先'],['電話番号 必須','09012345678'],['メールアドレス 必須','test@example.com']])await page.getByLabel(label,{exact:true}).fill(value);
     const jpeg=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=120;canvas.height=160;const ctx=canvas.getContext('2d');ctx.fillStyle='#2563eb';ctx.fillRect(0,0,120,160);return canvas.toDataURL('image/jpeg').split(',')[1];}),'base64');
     await page.locator('input[type=file]').setInputFiles({name:'test.jpg',mimeType:'image/jpeg',buffer:jpeg});
     await page.getByAltText('選んだ写真').waitFor();
@@ -120,9 +123,9 @@ try {
       await bout.getByLabel('青コーナーの選手',{exact:true}).selectOption(i?'F01':'F02');
     }
     const first=page.locator('article').filter({hasText:'第1試合'});
-    await first.getByRole('button',{name:'赤青を入替',exact:true}).click();
+    await first.getByRole('button',{name:'赤と青を入れかえる',exact:true}).click();
     check(await first.getByLabel('赤コーナーの選手',{exact:true}).inputValue()==='F02','Corner swap updates red');
-    await first.getByRole('button',{name:'赤青を入替',exact:true}).click();
+    await first.getByRole('button',{name:'赤と青を入れかえる',exact:true}).click();
     await page.locator('article').filter({hasText:'第2試合'}).getByRole('button',{name:'↑ 上へ',exact:true}).click();
     check(await first.getByLabel('赤コーナーの選手',{exact:true}).inputValue()==='F02','Reordering preserves fighter identity');
     await page.locator('article').filter({hasText:'第2試合'}).getByRole('button',{name:'↑ 上へ',exact:true}).click();
@@ -193,7 +196,7 @@ try {
     await live.waitForFunction(()=>document.querySelector('header')?.textContent.includes('第1試合'));
     check(!errors.length,'No browser runtime exceptions: '+errors.join(', '));
     check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Setup/admin has no horizontal overflow');
-    await live.screenshot({path:'/tmp/tournament-os-'+(mobile?'mobile':'desktop')+'.png',fullPage:true});
+    await live.screenshot({path:join(process.env.TOS_OUT||tmpdir(),'tournament-os-'+(mobile?'mobile':'desktop')+'.png'),fullPage:true});
     console.log((mobile?'Mobile-size Chrome':'Desktop Chrome')+': PASS');
     await context.close();
   }
