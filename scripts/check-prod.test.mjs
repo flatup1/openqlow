@@ -191,6 +191,11 @@ assert.doesNotMatch(
 assert.match(script, /LINE_CHANNEL_SECRET/, "チャネルシークレットの有無を確認する");
 assert.match(script, /LINE_CHANNEL_ACCESS_TOKEN/, "アクセストークンの有無を確認する");
 
+// シークレットが空でも、DRY_RUN が false 以外なら署名を確かめずに受け付けてしまう
+// （webhook_auth.ts）。「全部拒否します」と案内すると、なりすましの危険を見落とす。
+assert.match(script, /dryrun:on/, "DRY_RUN の状態を印で返す");
+assert.match(script, /署名のない受信も通してしまいます/, "DRY_RUN 中のシークレット空を、なりすましの危険として伝える");
+
 // 診断が秘密を手元に持ってくると、診断そのものが情報漏れの経路になる。
 // VPS側で判定させ、返すのは set / empty / ok のような印だけにする。
 assert.match(script, /値は表示しません/, "値を表示しないと明示する");

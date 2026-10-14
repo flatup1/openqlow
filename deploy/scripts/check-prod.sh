@@ -272,7 +272,9 @@ else
   # 変数は向こうで展開させたいので、全体をシングルクォートで囲う。
   REMOTE_CHECK='
     [ -r "$ENVFILE" ] || { echo missing; exit 0; }
-    value_of() { sed -n "s/^$1=//p" "$ENVFILE" | tail -1; }
+    # 「export KEY=」や、値を引用符で囲う書き方でも同じ値として読む
+    # （引用符ごと比べると、ニセ番号を「本物」と見誤る）。
+    value_of() { sed -n "s/^\(export \)\{0,1\}$1=//p" "$ENVFILE" | tail -1 | tr -d "\"\047\r"; }
     OWNER="$(value_of JIN_LINE_USER_ID)"
     if [ -z "$OWNER" ]; then
       echo owner:empty
@@ -281,6 +283,8 @@ else
       for id in $TEST_IDS; do [ "$OWNER" = "$id" ] && HIT=yes; done
       [ "$HIT" = yes ] && echo owner:testvalue || echo owner:ok
     fi
+    # DRY_RUN は "false" のときだけ本番（webhook.ts と同じ読み方）。値は印だけ返す。
+    [ "$(value_of OPENQLOW_DRY_RUN)" = false ] && echo dryrun:off || echo dryrun:on
     for key in LINE_CHANNEL_SECRET LINE_CHANNEL_ACCESS_TOKEN; do
       if [ -n "$(value_of "$key")" ]; then echo "$key:set"; else echo "$key:empty"; fi
     done
@@ -308,7 +312,14 @@ else
           ;;
         *owner:ok*) ok "JIN_LINE_USER_ID は本物の番号が入っています" ;;
       esac
+      # シークレットが空のときの受信は DRY_RUN しだい（webhook_auth.ts）。
+      #   DRY_RUN が false … 署名を確かめられず、受信を全部拒否する
+      #   それ以外        … 署名を確かめずに受け付ける（なりすましを通す）
       case "$ENV_REPORT" in
+        *LINE_CHANNEL_SECRET:empty*dryrun:on*|*dryrun:on*LINE_CHANNEL_SECRET:empty*)
+          ng "LINE_CHANNEL_SECRET が空です（DRY_RUN のため、署名のない受信も通してしまいます）"
+          TODO+=("LINE Developers のチャネルシークレットを ${PROD_ENV} に入れる")
+          ;;
         *LINE_CHANNEL_SECRET:empty*)
           ng "LINE_CHANNEL_SECRET が空です（本番モードでは受信を全部拒否します）"
           TODO+=("LINE Developers のチャネルシークレットを ${PROD_ENV} に入れる")
@@ -321,6 +332,11 @@ else
           TODO+=("LINE Developers のチャネルアクセストークンを ${PROD_ENV} に入れる")
           ;;
         *) ok "LINE_CHANNEL_ACCESS_TOKEN は設定されています" ;;
+      esac
+      # DRY_RUN はどちらが正しいかをJINが決めるので、落とさずに状態だけ見せる。
+      case "$ENV_REPORT" in
+        *dryrun:off*) echo "ℹ️ OPENQLOW_DRY_RUN は false です（本番モード：会員への返信や返信下書きが、他のスイッチしだいで動きます）" ;;
+        *) echo "ℹ️ OPENQLOW_DRY_RUN は false 以外です（お試しモード：会員への返信と返信下書きは止まっています）" ;;
       esac
       ;;
   esac
