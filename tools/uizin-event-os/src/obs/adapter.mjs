@@ -24,6 +24,17 @@ const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// OBS の返事は形が崩れていても落ちないように読む（配列でなければ空、文字でなければ捨てる）。
+const listOf = value => (Array.isArray(value) ? value.filter(item => item && typeof item === "object") : []);
+const textOf = value => (typeof value === "string" ? value : null);
+
+// 録画・配信を始めた時刻（経過時間から逆算）。おかしな経過時間なら、今の時刻にする。
+function startedAt(nowMs, active, durationMs) {
+  const duration = Number(durationMs);
+  const ok = active && Number.isFinite(duration) && duration > 0 && duration < nowMs;
+  return new Date(ok ? nowMs - duration : nowMs).toISOString();
+}
+
 export class ObsAdapter extends EventEmitter {
   constructor({ config, password, WebSocketImpl, now = Date.now, statfs = statfsAsync, timings = {} }) {
     super();
@@ -219,6 +230,9 @@ export class ObsAdapter extends EventEmitter {
     this.syncing = true;
     try {
       await this.refreshAll();
+    } catch (error) {
+      // 読み込みの一部が失敗しても、見回りと合わせ込みは必ず始める（止まったままにしない）。
+      this.noteError(error);
     } finally {
       this.syncing = false;
     }
@@ -270,26 +284,29 @@ export class ObsAdapter extends EventEmitter {
     const version = await this.tryReq("GetVersion");
     if (version) {
       this.state.version = { obsVersion: version.obsVersion, obsWebSocketVersion: version.obsWebSocketVersion };
-      this.state.imageFormats = version.supportedImageFormats ?? [];
+      this.state.imageFormats = Array.isArray(version.supportedImageFormats) ? version.supportedImageFormats.filter(item => typeof item === "string") : [];
     }
-    await this.refreshScenes();
-    await this.refreshInputs();
-    await this.refreshCamItems();
-    await this.refreshRecordSettings();
-    await this.refreshDisk();
+    // ひとつが失敗しても、残りは読む。
+    for (const step of ["refreshScenes", "refreshInputs", "refreshCamItems", "refreshRecordSettings", "refreshDisk"]) {
+      try {
+        await this[step]();
+      } catch (error) {
+        this.noteError(error);
+      }
+    }
   }
 
   async refreshScenes() {
     const list = await this.tryReq("GetSceneList");
     if (!list) return;
-    this.state.scenes = (list.scenes ?? []).map(scene => scene.sceneName);
-    if (list.currentProgramSceneName) this.state.program = list.currentProgramSceneName;
+    this.state.scenes = listOf(list.scenes).map(scene => textOf(scene.sceneName)).filter(Boolean);
+    if (textOf(list.currentProgramSceneName)) this.state.program = list.currentProgramSceneName;
   }
 
   async refreshInputs() {
     if (!this.allowed.has("GetInputList")) return;
     const list = await this.tryReq("GetInputList");
-    if (list) this.state.inputs = (list.inputs ?? []).map(input => input.inputName);
+    if (list) this.state.inputs = listOf(list.inputs).map(input => textOf(input.inputName)).filter(Boolean);
   }
 
   async refreshCamItems() {
@@ -302,7 +319,7 @@ export class ObsAdapter extends EventEmitter {
     }
     const list = await this.tryReq("GetSceneItemList", { sceneName: cam });
     if (!list) return;
-    const items = list.sceneItems ?? [];
+    const items = listOf(list.sceneItems);
     const main = items.find(item => item.sourceName === this.names.cams.main);
     const sub = items.find(item => item.sourceName === this.names.cams.sub);
     this.state.camItems = { main: Boolean(main), sub: Boolean(sub) };
@@ -359,7 +376,7 @@ export class ObsAdapter extends EventEmitter {
     this.state.record = { ...this.state.record, active, checkedAt: this.now() };
     if (!active) this.state.record.paused = false;
     if (previous === active || (previous === null && !active)) return;
-    const at = new Date(active && durationMs > 0 ? this.now() - durationMs : this.now()).toISOString();
+    const at = startedAt(this.now(), active, durationMs);
     this.state.record.startedAt = active ? at : null;
     this.safeEmit("observation", { type: "OBS_RECORD", active, path: path ?? null, at });
   }
@@ -369,7 +386,7 @@ export class ObsAdapter extends EventEmitter {
     this.state.stream = { ...this.state.stream, active, checkedAt: this.now() };
     if (!active) this.state.stream.reconnectingSince = null;
     if (previous === active || (previous === null && !active)) return;
-    const at = new Date(active && durationMs > 0 ? this.now() - durationMs : this.now()).toISOString();
+    const at = startedAt(this.now(), active, durationMs);
     this.state.stream.startedAt = active ? at : null;
     this.safeEmit("observation", { type: "OBS_STREAM", active, at });
   }
@@ -715,12 +732,19 @@ export class ObsAdapter extends EventEmitter {
 
   async audioCheck(durationMs = 3000, thresholdDb = -50) {
     if (!this.client.identified) return { ok: false, message: "OBSにつながっていません" };
-    this.meters = new Map();
+    // 2台から同時に押されたら、2回目は待ってもらう。長さは10秒までに収める。
+    if (this.meters) return { ok: false, message: "音のチェック中です。終わるまで待ってください" };
+    const ms = Math.min(10_000, Math.max(10, Number(durationMs) || 3000));
+    const meters = new Map();
+    this.meters = meters;
     this.client.reidentify(BASE_SUBSCRIPTIONS | EVENT_SUB.InputVolumeMeters);
-    await sleep(durationMs);
-    this.client.reidentify(BASE_SUBSCRIPTIONS);
-    const levels = [...this.meters.entries()].map(([name, peak]) => ({ name, db: peak > 0 ? 20 * Math.log10(peak) : -Infinity }));
-    this.meters = null;
+    try {
+      await sleep(ms);
+    } finally {
+      if (this.client.identified) this.client.reidentify(BASE_SUBSCRIPTIONS);
+      if (this.meters === meters) this.meters = null;
+    }
+    const levels = [...meters.entries()].map(([name, peak]) => ({ name, db: peak > 0 ? 20 * Math.log10(peak) : -Infinity }));
     const loudest = levels.sort((a, b) => b.db - a.db)[0];
     const ok = Boolean(loudest) && loudest.db > thresholdDb;
     this.state.audio = {

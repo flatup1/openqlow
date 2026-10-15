@@ -8,7 +8,8 @@ export function parseSecretsEnv(text) {
     const match = raw.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
     if (!match) continue;
     let value = match[2];
-    const quoted = value.match(/^(["'])(.*)\1$/);
+    // 引用符で始まる値は、対になる引用符までが値（その後ろの「 # コメント」は無視）。
+    const quoted = value.match(/^(["'])(.*?)\1\s*(?:#.*)?$/);
     if (quoted) {
       value = quoted[2];
     } else {

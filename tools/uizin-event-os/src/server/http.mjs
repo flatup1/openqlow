@@ -2,12 +2,15 @@
 //  - 同じ Mac のブラウザ（localhost）以外は、大会ごとの合言葉（トークン）が無いと何もできない。
 //  - 運営/管理の操作は PIN が必要。PIN を何度も間違えると、しばらく受け付けない。
 //  - 他のサイトから命令を送らせない（Origin の確認、JSON だけ受け付け）。
+//  - 宛先（Host）がこの Mac（localhost か、この Mac の IP アドレス）でなければ何も返さない
+//    （DNS リバインディング：よそのページが「自分は 127.0.0.1」と名乗って中をのぞくのを防ぐ）。
 // 仕様: docs/uizin-event-os/ARCHITECTURE.md §10・§11
 
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { timingSafeEqual } from "node:crypto";
+import { networkInterfaces } from "node:os";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 const LOCAL = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const STATIC = {
@@ -20,9 +23,30 @@ const MAX_BODY = 2 * 1024 * 1024;
 const PIN_FAIL_LIMIT = 5;
 const PIN_LOCK_MS = 5 * 60 * 1000;
 
+// 長さや文字の種類にかかわらず、同じ時間で比べる（例外も出さない）。
 function sameSecret(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length === 0 || a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  if (typeof a !== "string" || typeof b !== "string" || a.length === 0 || b.length === 0) return false;
+  const digest = value => createHash("sha256").update(value, "utf8").digest();
+  return timingSafeEqual(digest(a), digest(b));
+}
+
+function ownAddresses() {
+  const set = new Set(["127.0.0.1", "::1"]);
+  for (const list of Object.values(networkInterfaces())) for (const item of list ?? []) set.add(item.address);
+  return set;
+}
+
+// 宛先の名前が localhost か、この Mac の IP アドレスなら OK（IP は起動後に変わることもあるので毎回調べる）。
+export function hostAllowed(hostHeader, addresses = ownAddresses()) {
+  if (typeof hostHeader !== "string" || !hostHeader) return false;
+  let hostname;
+  try {
+    hostname = new URL(`http://${hostHeader}`).hostname;
+  } catch {
+    return false;
+  }
+  if (hostname === "localhost") return true;
+  return addresses.has(hostname.replace(/^\[|\]$/g, ""));
 }
 
 function securityHeaders(type) {
@@ -36,7 +60,7 @@ function securityHeaders(type) {
   };
 }
 
-export function createHttpServer({ app, uiDir, token, pins, now = Date.now }) {
+export function createHttpServer({ app, uiDir, token, pins, now = Date.now, onError }) {
   const failures = new Map();
   const sseClients = new Set();
 
@@ -59,11 +83,18 @@ export function createHttpServer({ app, uiDir, token, pins, now = Date.now }) {
     const pin = req.headers["x-eos-pin"];
     if (pin === undefined || pin === "") return "easy";
     if (locked(req)) return null;
-    if (sameSecret(String(pin), pins.admin)) return "admin";
-    if (sameSecret(String(pin), pins.operator)) return "operator";
     const key = req.socket.remoteAddress;
+    const role = sameSecret(String(pin), pins.admin) ? "admin" : sameSecret(String(pin), pins.operator) ? "operator" : null;
+    if (role) {
+      // 正しく入れたら、それまでの間違いは数えない（同じ Mac の別の人の打ち間違いで締め出されないように）。
+      failures.delete(key);
+      return role;
+    }
     const entry = failures.get(key);
     failures.set(key, { count: entry && now() - entry.at < PIN_LOCK_MS ? entry.count + 1 : 1, at: now() });
+    if (failures.size > 1000) {
+      for (const [address, item] of failures) if (now() - item.at >= PIN_LOCK_MS) failures.delete(address);
+    }
     return null;
   }
 
@@ -101,6 +132,21 @@ export function createHttpServer({ app, uiDir, token, pins, now = Date.now }) {
   }, 15_000);
 
   const server = createServer(async (req, res) => {
+    try {
+      await route(req, res);
+    } catch (error) {
+      // 想定外の失敗でも、返事をせずに待たせたままにしない。
+      if (!res.headersSent) json(res, 500, { ok: false, message: "うまくいきませんでした" });
+      else res.end();
+      if (typeof onError === "function") onError(error);
+    }
+  });
+
+  async function route(req, res) {
+    if (!hostAllowed(req.headers.host)) {
+      json(res, 421, { ok: false, message: "この宛先では使えません。Macの画面に出ているURLで開いてください" });
+      return;
+    }
     let url;
     try {
       url = new URL(req.url, "http://local");
@@ -182,7 +228,7 @@ export function createHttpServer({ app, uiDir, token, pins, now = Date.now }) {
     }
 
     json(res, 404, { ok: false, message: "ありません" });
-  });
+  }
 
   server.on("close", () => clearInterval(heartbeat));
   return server;

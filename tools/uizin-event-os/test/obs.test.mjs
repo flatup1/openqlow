@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import { FakeObs } from "../src/obs/fake_obs.mjs";
 import { ObsClient, authString } from "../src/obs/protocol.mjs";
 import { ObsAdapter } from "../src/obs/adapter.mjs";
-import { allowedRequests, NEVER_REQUESTS } from "../src/obs/allowlist.mjs";
+import { allowedRequests, NEVER_REQUESTS, guardRequestData } from "../src/obs/allowlist.mjs";
 import { exampleConfig, until, wait } from "./helpers.mjs";
 
-const FAST = { pollMs: 40, reconnectBaseMs: 20, reconnectMaxMs: 80, requestTimeoutMs: 300, connectTimeoutMs: 500, pendingMs: 1000, diskEveryTicks: 3 };
+const FAST = { pollMs: 40, reconnectBaseMs: 20, reconnectMaxMs: 80, requestTimeoutMs: 300, connectTimeoutMs: 500, pendingMs: 3000, diskEveryTicks: 3 };
 
 const started = [];
 afterEach(() => {
@@ -401,4 +401,39 @@ test("カメラの部品が後から見つかったら、「部品が無い」�
   const track = nextTrack(missing, { ok: true, data: makeBmp(32, 18, (x, y) => [100 + x, 120 + y, 140]) }, 2);
   assert.equal(track.kind, null);
   assert.equal(track.status, "ok");
+});
+
+test("OBS の返事の形が崩れていても、見回りと合わせ込みは止まらない", async () => {
+  class OddObs extends FakeObs {
+    _handle(type, data) {
+      if (type === "GetSceneList") return { scenes: "こわれた", currentProgramSceneName: 42 };
+      if (type === "GetInputList") return { inputs: [null, 7, { inputName: "EOS_INFO" }] };
+      if (type === "GetVersion") return { ...super._handle(type, data), supportedImageFormats: "bmp" };
+      if (type === "GetRecordStatus") return { outputActive: true, outputPaused: false, outputDuration: 1e300 };
+      return super._handle(type, data);
+    }
+  }
+  const fake = new OddObs({ password: "pass-1234" });
+  const adapter = new ObsAdapter({ config: exampleConfig(), password: "pass-1234", WebSocketImpl: fake.webSocketClass(), timings: FAST, statfs: async () => ({ bavail: 100, bsize: 1024 ** 3 }) });
+  started.push(adapter);
+  adapter.start();
+  await until(() => adapter.state.connection.status === "ok" && adapter.ticks > 2);
+  assert.equal(adapter.state.record.active, true);
+  assert.ok(adapter.state.record.startedAt, "おかしな経過時間でも、始まった時刻は今の時刻にする");
+  assert.deepEqual(adapter.state.inputs, ["EOS_INFO"]);
+});
+
+test("音のチェックを2台から同時に押しても、2回目は「チェック中」と返して落ちない", async () => {
+  const { adapter } = setup();
+  adapter.start();
+  await until(() => adapter.state.connection.status === "ok");
+  const [first, second] = await Promise.all([adapter.audioCheck(80), adapter.audioCheck(80)]);
+  assert.equal(typeof first.ok, "boolean");
+  assert.match(second.message, /チェック中/);
+});
+
+test("テロップの書き換えは EOS_ で始まる部品だけ（設定を間違えても、ほかの部品の文字を消さない）", () => {
+  const ctx = { textInputs: new Set(["EOS_INFO", "SPONSOR_TICKER"]), muteInputs: new Set(), camScene: "CAM" };
+  assert.equal(guardRequestData("SetInputSettings", { inputName: "EOS_INFO", inputSettings: { text: "x" } }, ctx), null);
+  assert.match(guardRequestData("SetInputSettings", { inputName: "SPONSOR_TICKER", inputSettings: { text: "" } }, ctx), /テロップ部品以外/);
 });

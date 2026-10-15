@@ -96,16 +96,6 @@ try {
   /* まだ無ければ、作るときに自分だけのフォルダになる */
 }
 
-// iPad 用の合言葉。大会の途中で起動し直しても同じものを使う（iPad が開き直さなくて済む）。
-// ただし作ってから48時間たったら新しくする（前の大会で開いた端末が、次の大会でそのまま使えないように）。
-const TOKEN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
-const tokenFile = join(dataDir, "access_token");
-let token = existsSync(tokenFile) ? readFileSync(tokenFile, "utf8").trim() : "";
-const tokenOld = existsSync(tokenFile) && Date.now() - statSync(tokenFile).mtimeMs > TOKEN_MAX_AGE_MS;
-if (!/^[0-9a-f]{24}$/.test(token) || tokenOld) {
-  token = randomBytes(12).toString("hex");
-  writeFileAtomic(tokenFile, token);
-}
 
 // PIN は secrets.env か環境変数から。書いてあるのに使えない形なら、そのことをはっきり伝える（黙って別の PIN にしない）。
 const pinNotes = [];
@@ -132,21 +122,42 @@ if (demo) {
   WebSocketImpl = fake.webSocketClass();
 }
 
+// iPad 用の合言葉。大会の途中で起動し直しても同じものを使う（iPad が開き直さなくて済む）。
+// 作ってから48時間たったら新しくする（前の大会で開いた端末が、次の大会でそのまま使えないように）。
+// ただし大会が進行中なら変えない。新しくした合言葉は、画面サーバーが起動できてから保存する
+// （間違えて2つ起動したときに、動いている方と食い違わないように）。
+const TOKEN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+const tokenFile = join(dataDir, "access_token");
+const savedToken = existsSync(tokenFile) ? readFileSync(tokenFile, "utf8").trim() : "";
+const tokenOld = existsSync(tokenFile) && Date.now() - statSync(tokenFile).mtimeMs > TOKEN_MAX_AGE_MS;
+const tokenValid = /^[0-9a-f]{24}$/.test(savedToken);
+
 const port = Number(config.server?.port ?? 8787);
 const host = config.server?.host ?? "0.0.0.0";
+let app;
+const extras = { lanUrls: [] };
+const adapter = new ObsAdapter({ config, password, WebSocketImpl });
+try {
+  app = new EventOsApp({ config, dataDir, adapter, fake, extras }).init();
+} catch (error) {
+  fail(`操作の記録を読めませんでした：${error.message}\n   記録のファイルは消さずに、運営の人を呼んでください（OBS の録画は続いています）`);
+}
+const keepToken = tokenValid && (!tokenOld || app.state.phase === "running");
+const token = keepToken ? savedToken : randomBytes(12).toString("hex");
+
 const lanUrls = Object.values(networkInterfaces())
   .flat()
   .filter(item => item && item.family === "IPv4" && !item.internal)
   .map(item => `http://${item.address}:${port}/?t=${token}`);
 
-const adapter = new ObsAdapter({ config, password, WebSocketImpl });
-let app;
-try {
-  app = new EventOsApp({ config, dataDir, adapter, fake, extras: { lanUrls } }).init();
-} catch (error) {
-  fail(`操作の記録を読めませんでした：${error.message}\n   記録のファイルは消さずに、運営の人を呼んでください（OBS の録画は続いています）`);
-}
-const server = createHttpServer({ app, uiDir: join(TOOL_DIR, "src/ui"), token, pins: { operator: operatorPin, admin: adminPin } });
+extras.lanUrls = lanUrls;
+const server = createHttpServer({
+  app,
+  uiDir: join(TOOL_DIR, "src/ui"),
+  token,
+  pins: { operator: operatorPin, admin: adminPin },
+  onError: error => console.error(`⚠️ 画面サーバーで想定外のエラー（動作は続けます）：${error?.message ?? error}`),
+});
 
 if (process.platform === "darwin") {
   const probe = () =>
@@ -160,6 +171,7 @@ if (process.platform === "darwin") {
 }
 
 server.listen(port, host, () => {
+  if (!keepToken) writeFileAtomic(tokenFile, token);
   console.log("");
   console.log(`✅ UIZIN Event OS を起動しました${demo ? "（体験モード：偽物のOBSで動いています）" : ""}`);
   console.log(`   大会名: ${config.eventName ?? "UIZIN"}`);

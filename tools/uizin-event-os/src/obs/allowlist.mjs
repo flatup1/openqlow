@@ -49,7 +49,9 @@ export function allowedRequests(phase = LATEST_PHASE) {
 // ctx: { textInputs: Set, muteInputs: Set, camScene: string }
 export function guardRequestData(type, data, ctx) {
   if (type === "SetInputSettings") {
-    if (!ctx.textInputs.has(data?.inputName)) return `テロップ部品以外は書き換えません（${data?.inputName}）`;
+    // テロップ部品は名前が EOS_ で始まるものだけ（設定を間違えても、ほかの部品の文字を消さない）。
+    const name = data?.inputName;
+    if (typeof name !== "string" || !name.startsWith("EOS_") || !ctx.textInputs.has(name)) return `テロップ部品以外は書き換えません（${name}）`;
     const keys = Object.keys(data?.inputSettings ?? {});
     if (keys.length !== 1 || keys[0] !== "text") return "テロップの文字以外は書き換えません";
   }

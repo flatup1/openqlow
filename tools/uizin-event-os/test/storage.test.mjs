@@ -139,3 +139,24 @@ test("secrets.env の PIN が使えない形なら、起動画面で名前を出
   assert.equal(statSync(join(home, "UIZIN-EventOS", "secrets.env")).mode & 0o077, 0, "secrets.env を自分だけが読めるようにする");
   assert.ok(existsSync(join(home, "UIZIN-EventOS", "demo")));
 });
+
+test("secrets.env：引用符で囲んだ値の後ろにコメントがあっても、値だけを読む", () => {
+  assert.deepEqual(parseSecretsEnv('EVENT_OS_OBS_PASSWORD="ab #c"  # メモ\nEVENT_OS_OPERATOR_PIN="2468"  # 運営\n'), {
+    EVENT_OS_OBS_PASSWORD: "ab #c",
+    EVENT_OS_OPERATOR_PIN: "2468",
+  });
+});
+
+test("大会が進行中なら、48時間たっていても合言葉を変えない（途中の再起動で iPad を締め出さない）", async () => {
+  const home = tempDir();
+  const dir = join(home, "UIZIN-EventOS", "demo");
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, "access_token");
+  writeFileSync(file, "0123456789abcdef01234567");
+  writeFileSync(join(dir, "live.jsonl"), `${JSON.stringify({ seq: 1, type: "START_EVENT", at: "2026-11-03T00:00:00.000Z", role: "operator", rev: 1 })}\n`);
+  const old = (Date.now() - 49 * 60 * 60 * 1000) / 1000;
+  utimesSync(file, old, old);
+  const run = startDemo(home);
+  await until(() => run.output.includes("保存先"), { timeoutMs: 8000 });
+  assert.equal(readFileSync(file, "utf8").trim(), "0123456789abcdef01234567");
+});

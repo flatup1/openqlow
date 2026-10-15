@@ -126,6 +126,9 @@ function apply(state, event) {
     if (boutNo === undefined) return;
     s.boutTimes = { ...s.boutTimes, [boutNo]: { ...(s.boutTimes[boutNo] ?? {}), [key]: event.at } };
   };
+  const markHidden = no => {
+    s.boutTimes = { ...s.boutTimes, [no]: { ...(s.boutTimes[no] ?? {}), hiddenOnAir: true } };
+  };
   const pushUndo = () => {
     s.undoStack = [...s.undoStack, event.seq];
     s.lastEvent = event;
@@ -134,16 +137,20 @@ function apply(state, event) {
   switch (event.type) {
     case "LOAD_CARD": {
       // 読み直したら当日の手直しは消す（別の選手の名前が残らないように）。
-      // 今の試合は「位置」ではなく「試合番号と対戦の組み合わせ」で探し直す。番号が同じでも選手が違えば別の試合なので、
-      // 見つからなければ、その試合の最初（待機）に戻す。
+      // 今の試合は「位置」ではなく「試合番号と選手」で探し直す。同じ番号で、赤か青の少なくとも片方が同じ選手なら同じ試合
+      // （名前の打ち間違いを直しただけなら、進み具合はそのまま）。両方とも違えば別の試合なので、その試合の最初（待機）に戻す。
       const current = s.card?.bouts?.[s.boutIndex];
+      const oldEdits = s.edits;
       s.card = { bouts: event.bouts, hash: event.hash, source: event.source, loadedAt: event.at };
       s.edits = {};
       if (s.phase === "running") s.reloadedMidEvent = true;
-      const samePair = item => item.no === current.no && item.red.name === current.red.name && item.blue.name === current.blue.name;
-      const found = current === undefined ? -1 : event.bouts.findIndex(samePair);
+      const sameName = (item, key) => item[key].name === current[key].name || item[key].name === oldEdits[`${current.no}:${key}`];
+      const sameBout = item => item.no === current.no && (sameName(item, "red") || sameName(item, "blue"));
+      const found = current === undefined ? -1 : event.bouts.findIndex(sameBout);
       if (found >= 0) {
         s.boutIndex = found;
+        // 試合中に止めたなら、この試合の映像は配信に残っていない（書き出しのチャプター・切り抜きに入れない）。
+        if (s.phase === "running" && s.step === "fighting") markHidden(event.bouts[found].no);
       } else {
         s.boutIndex = Math.min(s.boutIndex, Math.max(0, event.bouts.length - 1));
         if (s.phase === "running" && s.step !== "break") s.step = "standby";
@@ -165,6 +172,8 @@ function apply(state, event) {
     case "FIGHT_START":
       s.step = "fighting";
       markTime("fightStartAt");
+      // 配信に映さずに始めた試合は、後でチャプターや切り抜きに入れない（映像が配信に無いため）。
+      if (boutHidden(s, currentBout(s)) && boutNo !== undefined) markHidden(boutNo);
       pushUndo();
       return s;
     case "FIGHT_END":

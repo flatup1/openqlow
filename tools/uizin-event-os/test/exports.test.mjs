@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MiniEvent, csv } from "./helpers.mjs";
+import { parseCard } from "../src/core/card.mjs";
 
 const FOUR_BOUTS = csv([
   "1,ヒカル,架空ジムA,OK,ソラ,架空ジムB,OK,キッズ,曲A,曲B",
@@ -135,4 +136,38 @@ test("結果CSV：= + - @ で始まる表示名は、Sheets で式として動�
   const text = resultsCsv(event.state);
   assert.match(text, /^1,"'=IMAGE\(""https:\/\/x\.example\/\?""&C2:C99\)",'@ソラ,/m);
   assert.match(text, /^2,'-ミナト,'\+ハル,/m);
+});
+
+test("読み直し後の確認待ちの間に戦った試合は、チャプター・切り抜き・正解データに入れない（配信に映っていないため）", () => {
+  const event = new MiniEvent({ csvText: FOUR_BOUTS }).setup();
+  event.observe({ type: "OBS_RECORD", active: true, path: null });
+  // 入場曲だけ直したデータでも、読み直したら確認（👤）までは映さない。その間に第1試合を戦う。
+  const changed = parseCard(FOUR_BOUTS.replace("曲A", "曲A2"));
+  event.run("load_card", { bouts: changed.bouts, hash: changed.hash }, { confirm: true });
+  event.clock.advance(60_000);
+  event.playBout("red", 45_000);
+  assert.equal(event.state.boutTimes[1].hiddenOnAir, true);
+  event.run("consent_ack", { hash: changed.hash });
+  for (let index = 1; index < 4; index += 1) {
+    assert.equal(event.run("next_bout", {}, { role: "easy" }).ok, true);
+    event.clock.advance(60_000);
+    event.playBout("blue", 45_000);
+  }
+  event.clock.advance(60_000);
+  event.observe({ type: "OBS_RECORD", active: false, path: "/Videos/uizin.mp4" });
+  const bouts = clipperManifests(event.state, { eventName: "テスト", preRollSec: 6, postRollSec: 20, generatedAt: "x" })
+    .flatMap(item => item.manifest.segments.map(segment => segment.event_os_bout));
+  assert.deepEqual(bouts, [4], "映した第4試合だけ。確認待ちの間の第1試合は入れない");
+  const truth = truthYaml(event.state) ?? "";
+  assert.match(truth, /第4試合/);
+  assert.doesNotMatch(truth, /第1試合/);
+});
+
+test("表示名の打ち間違いを直した CSV を試合中に読み直しても、進み具合はそのまま", () => {
+  const event = new MiniEvent({ csvText: FOUR_BOUTS }).setup();
+  for (const [type, args] of [["entrance", { corner: "red" }], ["entrance", { corner: "blue" }], ["fight_start"]]) event.run(type, args, { role: "easy" });
+  const fixed = parseCard(FOUR_BOUTS.replace("1,ヒカル,", "1,ヒカル２,"));
+  event.run("load_card", { bouts: fixed.bouts, hash: fixed.hash }, { confirm: true });
+  assert.equal(event.state.step, "fighting");
+  assert.equal(event.state.boutTimes[1].hiddenOnAir, true, "止めた後の試合の残りは配信に無い");
 });

@@ -8,12 +8,13 @@ import { join } from "node:path";
 import { FakeObs } from "../src/obs/fake_obs.mjs";
 import { ObsAdapter } from "../src/obs/adapter.mjs";
 import { EventOsApp } from "../src/server/app.mjs";
-import { createHttpServer } from "../src/server/http.mjs";
+import { createHttpServer, hostAllowed } from "../src/server/http.mjs";
+import { request as httpRequest } from "node:http";
 import { EventLog, resolveDataDir, REPO_ROOT, logFileFor } from "../src/server/store.mjs";
 import { HUMAN_ITEMS } from "../src/core/preflight.mjs";
 import { exampleConfig, tempDir, until, wait, SAMPLE_CSV, TOOL_DIR } from "./helpers.mjs";
 
-const FAST = { pollMs: 30, reconnectBaseMs: 20, reconnectMaxMs: 80, requestTimeoutMs: 300, connectTimeoutMs: 500, pendingMs: 1000, diskEveryTicks: 3 };
+const FAST = { pollMs: 30, reconnectBaseMs: 20, reconnectMaxMs: 80, requestTimeoutMs: 300, connectTimeoutMs: 500, pendingMs: 3000, diskEveryTicks: 3 };
 const cleanups = [];
 afterEach(async () => {
   while (cleanups.length) await cleanups.pop()();
@@ -364,4 +365,49 @@ test("大会中の CSV 読み直し：先に中身を確かめ、正しいとき
   const done = await press(app, "load_card", { csv: SAMPLE_CSV }, OP, { confirm: true });
   assert.equal(done.ok, true);
   assert.equal(done.message, "試合データを読み込みました（3試合）");
+});
+
+// 宛先（Host）を自由に決めて送る（fetch では Host を変えられないため）。
+function rawRequest(base, path, headers, timeoutMs = 3000) {
+  const url = new URL(path, base);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: url.hostname, port: url.port, path: url.pathname + url.search, method: "GET", headers }, res => {
+      let text = "";
+      res.on("data", chunk => {
+        text += chunk;
+      });
+      res.on("end", () => resolve({ status: res.statusCode, text }));
+    });
+    req.setTimeout(timeoutMs, () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+test("DNS リバインディング：宛先がこの Mac でなければ、同じ Mac からでも何も返さない", async () => {
+  const { base } = await serve();
+  const port = new URL(base).port;
+  const evil = await rawRequest(base, "/api/view", { host: `evil.example:${port}` });
+  assert.equal(evil.status, 421);
+  assert.doesNotMatch(evil.text, /ヒカル|ソラ/);
+  assert.equal((await rawRequest(base, "/", { host: `evil.example:${port}` })).status, 421);
+  assert.equal((await rawRequest(base, "/api/view", { host: `127.0.0.1:${port}` })).status, 200);
+  assert.equal((await rawRequest(base, "/api/view", { host: `localhost:${port}` })).status, 200);
+  assert.equal(hostAllowed("192.0.2.10:8787", new Set(["192.0.2.10"])), true);
+  assert.equal(hostAllowed("192.0.2.99:8787", new Set(["192.0.2.10"])), false);
+  assert.equal(hostAllowed("[::1]:8787", new Set(["::1"])), true);
+  assert.equal(hostAllowed(undefined), false);
+});
+
+test("PIN：日本語などの文字でも止まらずに答える（長さも漏らさない）。正しく入れたら間違いの数を戻す", async () => {
+  const { base } = await serve();
+  const odd = await rawRequest(base, "/api/view", { host: new URL(base).host, "x-eos-pin": "\u00e9\u00e9\u00e9\u00e9" });
+  assert.equal(odd.status, 403);
+  const view = pin => fetch(`${base}/api/view`, { headers: { "x-eos-pin": pin } });
+  assert.equal((await view("2468")).status, 200);
+  for (let index = 0; index < 4; index += 1) assert.equal((await view("0000")).status, 403);
+  assert.equal((await view("2468")).status, 200);
+  // 正しく入れた後なら、別の人が1回打ち間違えても締め出されない。
+  assert.equal((await view("1111")).status, 403);
+  assert.equal((await view("2468")).status, 200);
 });

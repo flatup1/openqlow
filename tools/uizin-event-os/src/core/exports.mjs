@@ -39,6 +39,8 @@ export function boutTimeline(state) {
       no: bout.no,
       bout,
       broadcast: bout.broadcast,
+      // 配信してよい試合で、しかも実際に配信に映した試合だけ（読み直し後の確認待ちの間に戦った試合は除く）。
+      onAir: bout.broadcast === "OK" && !times.hiddenOnAir,
       entranceAt: times.entrance1At ?? times.fightStartAt,
       fightStartAt: times.fightStartAt,
       fightEndAt: times.fightEndAt ?? null,
@@ -56,7 +58,7 @@ export function youtubeChapters(state, { includeEntrance = true } = {}) {
   const start = ms(stream.startedAt);
   const lines = [{ t: 0, label: "オープニング" }];
   for (const entry of boutTimeline(state)) {
-    if (entry.broadcast !== "OK") continue;
+    if (!entry.onAir) continue;
     const at = includeEntrance ? ms(entry.entranceAt) : ms(entry.fightStartAt);
     lines.push({ t: Math.max(0, (at - start) / 1000), label: `第${entry.no}試合` });
   }
@@ -80,7 +82,7 @@ function recordingFor(state, atIso) {
 export function clipperManifests(state, { eventName, preRollSec = 6, postRollSec = 20, generatedAt }) {
   const groups = new Map();
   for (const entry of boutTimeline(state)) {
-    if (entry.broadcast !== "OK" || !entry.fightEndAt) continue;
+    if (!entry.onAir || !entry.fightEndAt) continue;
     const rec = recordingFor(state, entry.fightStartAt);
     if (!rec) continue;
     if (!groups.has(rec)) groups.set(rec, []);
@@ -140,7 +142,7 @@ export function truthYaml(state) {
   const base = ms(rec.startedAt);
   const lines = ["matches:"];
   for (const entry of boutTimeline(state)) {
-    if (entry.broadcast !== "OK" || !entry.fightEndAt) continue;
+    if (!entry.onAir || !entry.fightEndAt) continue;
     if (recordingFor(state, entry.fightStartAt) !== rec) continue;
     const start = ((ms(entry.fightStartAt) - base) / 1000).toFixed(1);
     const end = ((ms(entry.fightEndAt) - base) / 1000).toFixed(1);

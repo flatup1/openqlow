@@ -7,7 +7,7 @@
 import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { decide, reduce, roleAtLeast, isEngineCommand, currentBout } from "../core/engine.mjs";
+import { decide, reduce, roleAtLeast, isEngineCommand, currentBout, boutHidden } from "../core/engine.mjs";
 import { desiredOutputs } from "../core/desired.mjs";
 import { evaluatePreflight } from "../core/preflight.mjs";
 import { buildView } from "../core/view.mjs";
@@ -303,7 +303,7 @@ export class EventOsApp extends EventEmitter {
       }
       if (event.type === "FIGHT_START") {
         const bout = currentBout(this.state);
-        if (bout && bout.broadcast === "OK") this.adapter.chapter(`第${bout.no}試合`);
+        if (bout && !boutHidden(this.state, bout)) this.adapter.chapter(`第${bout.no}試合`);
       }
       if (event.type === "SAFE" && event.on) {
         // 🛟 は「考えずに押すボタン」。手動モードも解いて SAFE に切り替え、録画が止まっていれば始める
