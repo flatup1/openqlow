@@ -49,7 +49,9 @@
       "Bash(netlify *)",
       "Bash(firebase *)",
       "Bash(terraform apply *)",
-      "Bash(npm publish *)"
+      "Bash(npm publish *)",
+      "mcp__blender__execute_blender_code",
+      "mcp__blender__execute_blender_code_for_cli"
     ]
   },
   "hooks": {
