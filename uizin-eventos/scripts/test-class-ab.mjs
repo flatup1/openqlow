@@ -93,8 +93,8 @@ function attach(page) {
   page.on('pageerror', (e) => { pageErrors.push({ scenario: cur, message: e.message }); });
 }
 /** Every request is recorded. Same-origin goes through; the one simulated Google POST is answered locally; everything else is aborted and counted. */
-async function newCtx(mobile) {
-  const ctx = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1, acceptDownloads: true });
+async function newCtx(mobile, userAgent) {
+  const ctx = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1, acceptDownloads: true, ...(userAgent ? { userAgent } : {}) });
   ctx.__posts = [];
   ctx.on('request', (r) => { if (/^https?:/.test(r.url())) net.push({ scenario: cur, url: r.url(), method: r.method() }); });
   ctx.on('page', attach);
@@ -116,6 +116,7 @@ let curW = 1280;
 const noOverflow = (p) => p.evaluate((W) => document.documentElement.scrollWidth <= W + 1 && document.body.scrollWidth <= W + 1, curW);
 const widest = (p) => p.evaluate((W) => [document.documentElement.scrollWidth, W], curW);
 const wideOnes = (p) => p.evaluate((W) => [...document.querySelectorAll('body *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > W + 1; }).slice(0, 4).map((e) => e.tagName.toLowerCase() + ' "' + (e.textContent || '').trim().slice(0, 24) + '" right=' + Math.round(e.getBoundingClientRect().right)), curW);
+const openBackup = async (p) => { if (!(await p.locator('#backup').evaluate((d) => d.open))) await p.locator('#backup > summary').click(); };
 const RESTORE_YES = '今の内容を消して、コピーに戻す';
 const DB_NAME = 'tournament-os-private-v1';
 const idbGet = (p, id) => p.evaluate(([db, id]) => new Promise((res, rej) => {
@@ -261,7 +262,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
       const s = await styleOf(err.locator('span').last());
       check(contrast(s.fg, s.bg) >= 4.5 && isReddish(s.fg), 'A2 error text is red and >= 4.5:1 (' + contrast(s.fg, s.bg).toFixed(2) + ')');
       check(s.weight >= 600, 'A2 error text is bold');
-      check(s.size >= 17 || true, '');
+      check(s.size >= 17, 'A2 error text is >= 17px (' + s.size + 'px)');
       const eb = await err.boundingBox(), cb = await CLS(page).boundingBox();
       check(eb && cb && eb.y >= cb.y && eb.y + eb.height <= cb.y + cb.height + 2, 'A2 the error is physically inside the class box (next to the choice)');
     }
@@ -291,6 +292,9 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
       ['3W2L', 'A'], ['2w1l', 'B'], ['0-3', 'B'], ['3-2-1', 'A'], ['5戦3勝2敗', 'A'], ['プロ3勝', 'A'], ['アマチュア2勝', 'B'], ['2勝（1KO）', 'B'], ['3勝(2KO)', 'A'], ['１０戦４勝６敗', 'A'], ['九勝', 'A'], ['二十勝', 'A'], ['3勝-1敗', 'A'], ['2023年出場、2勝', 'B'], ['2戦0勝2敗', 'B'], ['3win', 'A'],
       ['2024-03-01', null], ['100勝', null], ['2勝3勝', null], ['勝率100%', null], ['3 weeks', null], ['2勝か3勝', null],
       ['', null], ['   ', null], ['アマチュア3戦', null], ['2勝か3勝', null], ['3勝と2勝', null], ['たくさん', null], ['?', null],
+      // added by the adversarial pass: phrases a parent really writes
+      ['2勝以下', 'B'], ['3勝以上', 'A'], ['通算3勝', 'A'], ['プロ戦績3勝0敗', 'A'], ['2戦2勝', 'B'], ['1勝1敗1分け', 'B'], ['0勝3敗', 'B'], ['勝利なし', 'B'], ['2024/3/1 初出場', 'B'], ['10月に初出場', 'B'], ['3勝ち', 'A'], ['２０２５年１０月 ３勝', 'A'],
+      ['3連勝', null], ['全勝', null], ['3戦全勝', null], ['3.5勝', null], ['1000勝', null], ['5敗', null], ['2勝1敗とか3勝1敗', null], ['2024/3/1', null], ['3/1', null], ['Aクラス', null],
     ];
     for (const [text, want] of CASES) {
       await rec.fill(text);
@@ -464,7 +468,76 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
     for (const [r, w] of [['4勝', '初級'], ['5勝', '上級'], ['3勝', '初級']]) { await rec.fill(r); await settle(60); check((await classNotes(page)).some((n) => n.includes('戦績からは、' + w + 'です')), 'A9 with 5-win line, ' + r + ' -> ' + w); }
     await ctx.close();
   }
+  /* A10 inside LINE on an old iPhone (Safari 15 engine + LINE in the user agent): keyboard choice, required, one POST even on a double tap */
+  {
+    const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Line/13.2.0';
+    const ctx = await newCtx(vp.mobile, UA);
+    const page = await openApply(ctx, hashOn());
+    check(await CLS(page).isVisible(), 'A10 [LINE UA] the class box shows');
+    await fillAll(page, '2勝1敗');
+    // keyboard only: focus the first radio, arrow to the second, the choice is taken without a mouse
+    await CLS(page).locator('input[type=radio]').first().focus();
+    await page.keyboard.press('ArrowDown');
+    await settle(100);
+    const kb = await CLS(page).locator('input[type=radio]:checked').evaluateAll((els) => els.map((e) => e.value));
+    check(kb.length === 1, 'A10 an arrow key chooses exactly one class (' + kb.join() + ')');
+    const ring = await CLS(page).locator('input[type=radio]:focus-visible').count();
+    check(ring === 1, 'A10 the focused radio is the one that shows a focus ring (' + ring + ')');
+    await classPick(page, 'lower');
+    await reviewBtn(page).click();
+    await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
+    await sendBtn(page).dblclick().catch(() => {});
+    await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+    await settle(400);
+    check(ctx.__posts.length === 1, 'A10 a double tap on 送信 posts exactly once (' + ctx.__posts.length + ')');
+    check(ctx.__posts[0]?.get('fighterClass') === 'lower', 'A10 the post carries fighterClass=lower');
+    await ctx.close();
+  }
+  /* A11 Enter key inside a text field must not skip the required class (nothing may be posted) */
+  {
+    const ctx = await newCtx(vp.mobile);
+    const page = await openApply(ctx, hashOn());
+    await fillAll(page, '初出場');
+    await page.getByLabel('メールアドレス 必須', { exact: true }).press('Enter');
+    await settle(500);
+    check(ctx.__posts.length === 0, 'A11 pressing Enter with no class chosen posts nothing');
+    check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'A11 and does not reach the review screen');
+    await ctx.close();
+  }
 });
+/** leaf elements (no element children) whose own text matches `re` and whose font is under 17px, or whose text/background contrast is under 4.5 */
+const weakText = (p, re, root = 'main') => p.evaluate(([src, root]) => {
+  const rx = new RegExp(src);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 1; const cx = cv.getContext('2d', { willReadFrequently: true });
+  const conv = (str) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = str; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
+  const lin = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const L = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const out = [];
+  for (const el of document.querySelectorAll(root + ' *')) {
+    if (el.children.length) continue;
+    const t = (el.textContent || '').trim();
+    if (!t || !rx.test(t)) continue;
+    const r = el.getBoundingClientRect(); if (r.width === 0 || r.height === 0) continue;
+    const cs = getComputedStyle(el), px = parseFloat(cs.fontSize);
+    const layers = []; for (let n = el; n; n = n.parentElement) { const c = conv(getComputedStyle(n).backgroundColor); if (c[3] > 0) { layers.push(c); if (c[3] >= 1) break; } }
+    let bg = [255, 255, 255]; for (const l of layers.reverse()) bg = [0, 1, 2].map((i) => Math.round(l[i] * l[3] + bg[i] * (1 - l[3])));
+    const fg = conv(cs.color), ratio = (Math.max(L(fg), L(bg)) + 0.05) / (Math.min(L(fg), L(bg)) + 0.05);
+    if (px < 17 || ratio < 4.5) out.push(t.slice(0, 22) + ' [' + px + 'px, ' + ratio.toFixed(2) + ':1]');
+  }
+  return out;
+}, [re.source, root]);
+/** remove every @supports (color:color-mix(...)){ ... } block (balanced braces): those are Tailwind's guarded upgrades; what is left must be Safari-15 safe */
+const stripSupports = (css) => {
+  const key = '@supports (color:color-mix(';
+  let out = css;
+  for (let i = out.indexOf(key); i >= 0; i = out.indexOf(key)) {
+    const open = out.indexOf('{', out.indexOf('))', i));
+    let depth = 0, j = open;
+    for (; j < out.length; j++) { if (out[j] === '{') depth++; else if (out[j] === '}' && --depth === 0) break; }
+    out = out.slice(0, i) + out.slice(j + 1);
+  }
+  return out;
+};
 const classes_name = (k) => DEFAULT_CLASS_SETTINGS[k].name;
 const box_checked = (p) => CLS(p).locator('input[type=radio]:checked').count();
 
@@ -482,7 +555,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check((t.match(/クラス：Aクラス/g) || []).length === 2 && (t.match(/クラス：Bクラス/g) || []).length === 1, 'B1 cards show the class WORD: 2x Aクラス, 1x Bクラス (' + (t.match(/クラス：\S+/g) || []).join(',') + ')');
     check((t.match(/クラス：/g) || []).length === 3, 'B1 the fighter without a class shows no class line');
     check(await noOverflow(page), 'B1 no overflow (' + (await widest(page)).join('/') + ')');
-    check(!/ジムの.*連絡|電話|メール/.test(await page.locator('main').innerText()) || true, '');
+    check(!/09012345678|test@example|架空連絡先/.test(await page.locator('main').innerText()), 'B1 no applicant contact data (the apply form\'s phone / mail / contact name) appears on the roster screen');
     // bouts: A vs B warns, A vs A and A vs none do not
     const n0 = await addBout(page, 'F01', 'F02');
     await settle(150);
@@ -501,6 +574,8 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     note('bout card text: ' + short(head, 140));
     // the header line of the bout list carries a word as well
     check((await bodyText(page)).includes('⚠ クラスがちがいます'), 'B1 the bout summary line carries ⚠ クラスがちがいます too (same words as the card)');
+    const weak1 = await weakText(page, 'クラス');
+    check(weak1.length === 0, 'B1 every piece of text that mentions クラス on the roster/bout screen is >= 17px and >= 4.5:1 (' + short(weak1.join(' | '), 240) + ')');
     // swap blue to F04 (A) -> warning disappears
     await page.locator('#bout-' + n0 + '-blue').selectOption('F04');
     await settle(150);
@@ -575,7 +650,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check(!JSON.stringify(oldShape).includes('fighterClass'), 'B4 the old-shape fixture really has no fighterClass');
     const file = nodeBackup(oldShape, pw);
     const page = await openPrivate(ctx, id);
-    await page.locator('#backup > summary').click().catch(() => {});
+    await openBackup(page);
     await page.locator('#backup-password').fill(pw);
     await page.locator('input[accept=".enc"]').setInputFiles({ name: 'old.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(file) });
     const ask = page.getByRole('alertdialog');
@@ -589,7 +664,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check(!/クラス：/.test(t) && (await page.locator('[role=status]', { hasText: 'クラスがちがいます' }).count()) === 0, 'B4 no class marks and no warning for an old backup');
     check(await noOverflow(page), 'B4 no overflow');
     // a backup written by the NEW app: download it and open it with the password
-    const dl = page.waitForEvent('download', { timeout: 15000 });
+    const dl = page.waitForEvent('download', { timeout: 15000 }).catch(() => null);
     await page.locator('#backup-password2').fill(pw);
     await page.locator('#paper-done').check();
     await page.getByRole('button', { name: 'パスワードをつけて、コピーを保存する', exact: true }).click();
@@ -605,7 +680,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     const id2 = 'cls-b4n-' + tag;
     const withCls = { ...oldShape, eventId: id2, fighters: [F('F01', { name: '架空新赤', fighterClass: 'Aクラス' }), F('F02', { name: '架空新青', fighterClass: 'Bクラス' })] };
     const p2 = await openPrivate(ctx2, id2);
-    await p2.locator('#backup > summary').click().catch(() => {});
+    await openBackup(p2);
     await p2.locator('#backup-password').fill(pw);
     await p2.locator('input[accept=".enc"]').setInputFiles({ name: 'new.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(nodeBackup(withCls, pw)) });
     const ask2 = p2.getByRole('alertdialog');
@@ -626,7 +701,7 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     const id = 'cls-b5-' + tag;
     const page = await openPrivate(ctx, id);
     await page.locator('#field-title').fill('変えたくない大会');
-    await page.locator('#backup > summary').click().catch(() => {});
+    await openBackup(page);
     await page.locator('#backup-password').fill(pw);
     const bad = { schema: 1, eventId: id, title: '長すぎ', venue: '', date: '', updatedAt: Date.now() - 1000, currentBout: 0, fighters: [F('F01', { fighterClass: 'あ'.repeat(200) })], bouts: [] };
     await page.locator('input[accept=".enc"]').setInputFiles({ name: 'bad.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(nodeBackup(bad, pw)) });
@@ -707,6 +782,104 @@ scenario('B', 'chairman page: import, cards, backup, bout warning', async (vp) =
     check((await e2.inputValue()) === 'Zクラス' && o2.includes('Zクラス'), 'B6 an unknown class is kept visible in the edit box (' + o2.join('|') + ')');
     await p2.getByRole('button', { name: 'やめる', exact: true }).click().catch(() => {});
     await ctx2.close();
+  }
+  /* B7 real round trip through the app: classes -> make the encrypted copy -> a brand-new browser profile -> restore -> same classes and same warning */
+  {
+    const pw = 'class-test-pass-1';
+    const id = 'cls-b7-' + tag;
+    const ctx = await newCtx(vp.mobile);
+    const page = await openPrivate(ctx, id);
+    await importCsv(page, csvCls);
+    await waitNotice(page, '4人分を読み込みました');
+    await addBout(page, 'F01', 'F02');
+    await pressSave(page);
+    await waitState2(page);
+    await openBackup(page);
+    await page.locator('#backup-password').fill(pw);
+    await page.locator('#backup-password2').fill(pw);
+    await page.locator('#paper-done').check();
+    const dl = page.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+    await page.getByRole('button', { name: 'パスワードをつけて、コピーを保存する', exact: true }).click();
+    const d = await dl;
+    check(!!d, 'B7 the encrypted copy file is made');
+    let fileText = '';
+    if (d) fileText = await readFile(await d.path(), 'utf8');
+    await ctx.close();
+    if (fileText) {
+      const plain = nodeOpen(fileText, pw);
+      check(plain.fighters.map((f) => f.fighterClass ?? '').join('|') === 'Aクラス|Bクラス||Aクラス', 'B7 the backup holds the exact classes (' + plain.fighters.map((f) => f.fighterClass ?? '-').join('|') + ')');
+      check(plain.schema === 1, 'B7 the backup keeps schema 1 (old apps can still read the shape)');
+      check(/^tournament-os-private-1$/.test(JSON.parse(fileText).format), 'B7 the file format name is unchanged');
+      const ctx2 = await newCtx(vp.mobile);
+      const p2 = await openPrivate(ctx2, id);
+      check(!/クラス：/.test(await bodyText(p2)), 'B7 the new browser profile starts empty');
+      await openBackup(p2);
+      await p2.locator('#backup-password').fill(pw);
+      await p2.locator('input[accept=".enc"]').setInputFiles({ name: 'rt.tournament.enc', mimeType: 'application/octet-stream', buffer: Buffer.from(fileText) });
+      const ask = p2.getByRole('alertdialog');
+      await ask.waitFor({ timeout: 8000 }).catch(() => {});
+      if (await ask.count()) await ask.getByRole('button', { name: RESTORE_YES, exact: true }).click();
+      await waitNotice(p2, '戻しました', 12000).catch(() => {});
+      await p2.waitForFunction(() => /クラス：Aクラス/.test(document.body.innerText), null, { timeout: 8000 }).catch(() => {});
+      const t = await bodyText(p2);
+      check((t.match(/クラス：Aクラス/g) || []).length >= 2 && /クラス：Bクラス/.test(t), 'B7 after the restore the cards show the class words');
+      check((await p2.locator('[role=status]', { hasText: 'クラスがちがいます' }).count()) >= 1, 'B7 after the restore the red cross-class warning is back');
+      const back = await idbGet(p2, id);
+      check(back && back.fighters.map((f) => f.fighterClass ?? '').join('|') === 'Aクラス|Bクラス||Aクラス', 'B7 the restored data has the same classes');
+      check(await noOverflow(p2), 'B7 no overflow after the round trip');
+      await ctx2.close();
+    }
+  }
+  /* B8 importing again: a file WITHOUT the class column never wipes classes; a file WITH it fills only empty ones */
+  {
+    const id = 'cls-b8-' + tag;
+    const ctx = await newCtx(vp.mobile);
+    const page = await openPrivate(ctx, id);
+    const mk = (withCls) => [withCls ? HEAD_CLS : CSV_HEAD, rowOf('F01', '赤', '5勝', withCls ? 'Aクラス' : undefined), rowOf('F02', '青', '初試合', withCls ? 'Bクラス' : undefined)].join('\n');
+    await importCsv(page, mk(false));
+    await waitNotice(page, '2人分を読み込みました');
+    check(!/クラス：/.test(await bodyText(page)), 'B8 start: no classes');
+    await importCsv(page, mk(true));
+    await waitNotice(page, 'クラスが空だった2人に、クラスを足しました');
+    check(/クラス：Aクラス/.test(await bodyText(page)) && /クラス：Bクラス/.test(await bodyText(page)), 'B8 a later file with classes fills the empty ones');
+    await importCsv(page, mk(false));
+    await waitNotice(page, 'クラスの列が無いので、今のクラスはそのままです');
+    const t = await bodyText(page);
+    check(/クラス：Aクラス/.test(t) && /クラス：Bクラス/.test(t), 'B8 a later file WITHOUT the column keeps the classes');
+    // a later file with a DIFFERENT class for someone already there must not silently overwrite the chosen one
+    await importCsv(page, [HEAD_CLS, rowOf('F01', '赤', '5勝', 'Bクラス'), rowOf('F02', '青', '初試合', 'Aクラス')].join('\n'));
+    await settle(800);
+    const saved = await bodyText(page);
+    const cards = (await page.locator('article[id^="fighter-"]').allInnerTexts()).join('\n');
+    note('B8 after a conflicting class file: ' + (cards.match(/クラス：\S+/g) || []).join(','));
+    check(/クラス：Aクラス/.test(cards) && /クラス：Bクラス/.test(cards) && (cards.match(/クラス：/g) || []).length === 2, 'B8 a conflicting class never makes two people lose their class (' + (cards.match(/クラス：\S+/g) || []).join(',') + ')');
+    check(await noOverflow(page), 'B8 no overflow');
+    await ctx.close();
+  }
+  /* B9 custom class names from the sheet: loose CSV words are read against THEM, the bout warning prints THEIR rules */
+  {
+    const custom = { enabled: true, upper: { name: '上級', condition: '5勝以上', rule: '肘あり（ひじで打ってよい）' }, lower: { name: '初級', condition: '4勝以下', rule: '肘なし' }, upperMinWins: 5 };
+    const id = 'cls-b9-' + tag;
+    const ctx = await newCtx(vp.mobile);
+    await seed(ctx, tournament(id, { entryConfig: { music: false, grade: 'optional', age: 'optional', comment: 'optional', classes: custom }, fighters: [F('F01', { name: '架空上一', fighterClass: '上級' }), F('F02', { name: '架空初二', fighterClass: '初級' })], bouts: [bout(0, 'F01', 'F02')] }));
+    const page = await openPrivate(ctx, id);
+    await page.waitForFunction(() => /架空上一/.test(document.body.innerText), null, { timeout: 8000 });
+    const w = page.locator('[role=status]', { hasText: 'クラスがちがいます' }).first();
+    check((await w.count()) === 1, 'B9 custom names: the cross-class warning shows');
+    const wt = (await w.count()) ? await w.innerText() : '';
+    check(wt.includes('上級') && wt.includes('初級'), 'B9 the warning uses the sheet\'s class names (' + short(wt, 80) + ')');
+    const body = await bodyText(page);
+    check(body.includes('上級のルール：肘あり') && body.includes('初級のルール：肘なし'), 'B9 the warning prints each class\'s own short rule (' + short((body.match(/上級のルール[^\n]*/) || [''])[0], 60) + ')');
+    check(!body.includes('Aクラス') && !body.includes('Bクラス'), 'B9 default names do not leak when the sheet has its own');
+    check(await noOverflow(page), 'B9 no overflow');
+    await importCsv(page, [HEAD_CLS, rowOf('F11', '甲', '5勝', '上'), rowOf('F12', '乙', '初試合', '下'), rowOf('F13', '丙', '初試合', ' 初級　'), rowOf('F14', '丁', '2勝', 'Aクラス')].join('\n'));
+    await waitNotice(page, '4人分を読み込みました');
+    const cards = (await page.locator('article[id^="fighter-"]').allInnerTexts()).join('\n');
+    const lines = cards.match(/クラス：\S+/g) || [];
+    note('B9 imported class words: ' + lines.join(','));
+    check(lines.filter((x) => x === 'クラス：上級').length >= 2 && lines.filter((x) => x === 'クラス：初級').length >= 3, 'B9 上 / 下 / spaces are read as the sheet\'s 上級 / 初級');
+    check(lines.includes('クラス：Aクラス'), 'B9 a word that is not in the sheet (Aクラス) is kept as typed, never guessed');
+    await ctx.close();
   }
 });
 const waitState2 = (p) => p.waitForFunction(() => document.querySelector('#save-state')?.innerText.includes('保存済み'), null, { timeout: 8000 }).catch(() => {});
@@ -828,7 +1001,7 @@ scenario('D', 'mistakes: injection, unknown class, 200 chars, full-width spaces'
   // 取り込みのとき、設定の名前にそろえる（全角の「Ａクラス」＋前後の全角空白 → 「Aクラス」）。F05 と F06 で「クラス：Aクラス」が2つになる
   check(lines.filter((x) => x.trim() === 'クラス：Aクラス').length >= 2 && !lines.some((x) => /Ａ/.test(x)), 'D full-width Ａクラス (with full-width spaces) is trimmed AND written as the setting\'s name Aクラス (' + short(lines.filter((x) => /Ａ|^クラス：Aクラス$/.test(x.trim())).join('|'), 60) + ')');
   check(lines.some((x) => /^クラス：Cクラス$/.test(x.trim())), 'D a class that is not in the A/B list is kept as typed (the OS has no list to check)');
-  check(!lines.some((x) => /‮/.test(x)) || true, '');
+  check(!lines.some((x) => /[\u202a-\u202e\u2066-\u2069\u200b-\u200f]/.test(x)), 'D bidi / zero-width control characters in a class are removed (cannot flip or hide the text on the cards)');
   check(!lines.some((x) => /[\n\t]/.test(x)), 'D tabs/newlines in a class are flattened');
   check(await noOverflow(page), 'D no overflow with hostile classes (' + (await widest(page)).join('/') + '; wide: ' + (await wideOnes(page)).join(' | ') + ')');
   // bouts
@@ -900,6 +1073,136 @@ scenario('D', 'mistakes: injection, unknown class, 200 chars, full-width spaces'
   }
 });
 
+/** F. the gym-side entry sheet /private/entry/ (builds the ZIP the chairman imports) */
+scenario('F', 'entry sheet /private/entry/: class choice, hints, ZIP', async (vp) => {
+  const d = DEFAULT_CLASS_SETTINGS;
+  const url = (cs) => base + '/private/entry/?' + new URLSearchParams({ music: 'off', grade: 'optional', age: 'optional', comment: 'optional', ...(cs ? { cs: JSON.stringify(cs) } : {}) }).toString();
+  const open = async (ctx, cs) => { const p = await ctx.newPage(); await p.goto(url(cs)); await p.getByLabel('ジム名 必須', { exact: true }).waitFor({ timeout: 15000 }); return p; };
+  const box = (p) => p.locator('fieldset', { hasText: 'クラス 必須' });
+  const fillBasic = async (p, rec) => {
+    for (const [l, v] of [['ジム名 必須', '架空ジム'], ['選手名 必須', '架空エントリー選手'], ['身長（cm）必須', '170'], ['体重（kg）必須', '65'], ['戦績・競技歴 必須', rec]]) await p.getByLabel(l, { exact: true }).fill(v);
+    const jpeg = Buffer.from(await p.evaluate(() => { const c = document.createElement('canvas'); c.width = 120; c.height = 160; const x = c.getContext('2d'); x.fillStyle = '#2563eb'; x.fillRect(0, 0, 120, 160); return c.toDataURL('image/jpeg').split(',')[1]; }), 'base64');
+    await p.locator('input[type=file]').setInputFiles({ name: 'f.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+    await p.waitForFunction(() => document.body.innerText.includes('写真') , null, { timeout: 5000 }).catch(() => {});
+    await settle(300);
+  };
+  /* F1 without classes: nothing about classes */
+  {
+    const ctx = await newCtx(vp.mobile);
+    const p = await open(ctx, null);
+    check((await box(p).count()) === 0 && !(await bodyText(p)).includes('クラス'), 'F1 no class box and no word クラス when the link carries no classes');
+    await ctx.close();
+  }
+  /* F2 with classes: both choices with condition + rule, big, readable */
+  {
+    const ctx = await newCtx(vp.mobile);
+    const p = await open(ctx, d);
+    const b = box(p);
+    check((await b.count()) === 1, 'F2 the class box is on the entry sheet');
+    const t = await b.innerText();
+    check(t.includes(d.upper.name) && t.includes(d.upper.condition) && t.includes(d.upper.rule) && t.includes(d.lower.name) && t.includes(d.lower.condition) && t.includes(d.lower.rule), 'F2 both classes show name + condition + rule');
+    check((await b.locator('input[type=radio]:checked').count()) === 0, 'F2 nothing is pre-chosen');
+    const weak = await weakText(p, /./, 'fieldset');
+    check(weak.length === 0, 'F2 every text in the class box is >= 17px and >= 4.5:1 (' + short(weak.join(' | '), 260) + ')');
+    for (const side of [d.upper, d.lower]) {
+      const lab = b.locator('label', { hasText: side.name }).first();
+      const bb = await lab.boundingBox();
+      check(bb && bb.height >= 56, 'F2 ' + side.name + ' is a large tap target (' + (bb ? Math.round(bb.height) : '-') + 'px high)');
+    }
+    check(await noOverflow(p), 'F2 no overflow (' + (await widest(p)).join('/') + ')');
+    await ctx.close();
+  }
+  /* F3 required: add without a class -> plain message, nothing added; suggestion + gentle red line, never blocks */
+  {
+    const ctx = await newCtx(vp.mobile);
+    const p = await open(ctx, d);
+    await fillBasic(p, '2勝1敗');
+    const yel = box(p).locator('p', { hasText: '戦績からは、' });
+    check((await yel.count()) === 1 && (await yel.innerText()).includes(d.lower.name), 'F3 the suggestion names ' + d.lower.name + ' for 2勝1敗');
+    if (await yel.count()) {
+      const ys = await styleOf(yel);
+      check(isYellowish(ys.bg) || isYellowish(ys.border), 'F3 the suggestion is YELLOW (bg ' + ys.bg + ' border ' + ys.border + ')');
+      check(contrast(ys.fg, ys.bg) >= 4.5, 'F3 suggestion contrast >= 4.5:1 (' + contrast(ys.fg, ys.bg).toFixed(2) + ')');
+      check(ys.size >= 17, 'F3 suggestion text >= 17px (' + ys.size + 'px)');
+    }
+    await p.getByRole('button', { name: 'この選手を追加', exact: true }).click();
+    await settle(200);
+    const msg = await p.locator('[role=status]').first().innerText().catch(() => '');
+    check(/クラスを選んでください/.test(msg), 'F3 adding without a class says クラスを選んでください (' + short(msg, 80) + ')');
+    check(!(await bodyText(p)).includes('現在 1人'), 'F3 nobody was added without a class');
+    await box(p).locator('input[value=' + JSON.stringify(d.upper.name) + ']').check();
+    await settle(150);
+    const red = box(p).locator('[role=status]', { hasText: '戦績と合っていますか？' });
+    check((await red.count()) === 1, 'F3 choosing the other class shows the gentle red line');
+    if (await red.count()) {
+      const rs = await styleOf(red);
+      check(isReddish(rs.fg) || isReddish(rs.border), 'F3 red line is RED (fg ' + rs.fg + ' border ' + rs.border + ')');
+      check(contrast(rs.fg, rs.bg) >= 4.5, 'F3 red line contrast >= 4.5:1 (' + contrast(rs.fg, rs.bg).toFixed(2) + ')');
+      check(/⚠/.test(await red.innerText()), 'F3 red line carries a ⚠ mark and words, not colour alone');
+      check(rs.size >= 17, 'F3 red line text >= 17px (' + rs.size + 'px)');
+    }
+    await p.getByRole('button', { name: 'この選手を追加', exact: true }).click();
+    await settle(300);
+    check((await bodyText(p)).includes('現在 1人'), 'F3 the mismatch does NOT block adding');
+    // download the ZIP, read the CSV, and feed it to the roster screen
+    const dl = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+    await p.getByRole('button', { name: '📥 提出ファイルを保存する', exact: true }).click();
+    const dd = await dl.catch(() => null);
+    check(!!dd, 'F3 the ZIP is saved');
+    if (dd) {
+      const { unzipSync, strFromU8 } = await import('fflate');
+      const files = unzipSync(new Uint8Array(await readFile(await dd.path())));
+      const names = Object.keys(files);
+      check(names.includes('players.csv') && names.some((n) => n.startsWith('photos/')), 'F3 ZIP still has players.csv + photos/ (' + names.join(',') + ')');
+      const csv = strFromU8(files['players.csv']);
+      const head = csv.replace(/^﻿/, '').split(/\r?\n/)[0];
+      check(head.endsWith(',"クラス"') && head.split(',').length === 11, 'F3 CSV gets one extra last column クラス (' + head.slice(-30) + ')');
+      check(csv.includes('"' + d.upper.name + '"'), 'F3 the chosen class is in the CSV');
+      const ctx2 = await newCtx(vp.mobile);
+      const p2 = await openPrivate(ctx2, 'cls-f3-' + (vp.mobile ? 'm' : 'd'));
+      await importCsv(p2, csv);
+      await waitNotice(p2, '1人分を読み込みました');
+      check(/クラス：Aクラス/.test(await bodyText(p2)), 'F3 the ZIP\'s CSV imports with the class');
+      await ctx2.close();
+    }
+    await ctx.close();
+  }
+  /* F4 old link (no cs): ZIP header is the old 10 columns */
+  {
+    const ctx = await newCtx(vp.mobile);
+    const p = await open(ctx, null);
+    await fillBasic(p, '初試合');
+    await p.getByRole('button', { name: 'この選手を追加', exact: true }).click();
+    await settle(300);
+    const dl = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+    await p.getByRole('button', { name: '📥 提出ファイルを保存する', exact: true }).click();
+    const dd = await dl.catch(() => null);
+    if (dd) {
+      const { unzipSync, strFromU8 } = await import('fflate');
+      const files = unzipSync(new Uint8Array(await readFile(await dd.path())));
+      const head = strFromU8(files['players.csv']).replace(/^﻿/, '').split(/\r?\n/)[0];
+      check(head.split(',').length === 10 && !head.includes('クラス'), 'F4 without classes the CSV keeps its old 10 columns');
+    } else check(false, 'F4 ZIP saved');
+    await ctx.close();
+  }
+  /* F5 hostile cs values are refused, never run */
+  {
+    const ctx = await newCtx(vp.mobile);
+    await ctx.addInitScript(() => { window.__xss = 0; });
+    const hostile = { enabled: true, upper: { name: '<img src=x onerror="window.__xss=9">', condition: 'あ', rule: 'い' }, lower: { name: 'B', condition: 'う', rule: 'え' }, upperMinWins: 3 };
+    const p = await open(ctx, hostile);
+    check((await p.evaluate(() => window.__xss)) === 0 && (await box(p).locator('img').count()) === 0, 'F5 markup in a class name is shown as text only');
+    check(await noOverflow(p), 'F5 no overflow');
+    await ctx.close();
+    const ctx2 = await newCtx(vp.mobile);
+    const p2 = await ctx2.newPage();
+    await p2.goto(base + '/private/entry/?cs=' + encodeURIComponent('{"enabled":true,"upper":{"name":"同","condition":"a","rule":"b"},"lower":{"name":"同","condition":"a","rule":"b"},"upperMinWins":3}'));
+    await p2.getByLabel('ジム名 必須', { exact: true }).waitFor({ timeout: 15000 });
+    check((await box(p2).count()) === 0, 'F5 a broken cs (same names) shows no class box rather than a half-working one');
+    await ctx2.close();
+  }
+});
+
 /** E. privacy, network, headers, contrast of the shared rules (run once) */
 scenario('E', 'network and policy', async (vp) => {
   if (vp.mobile) return;
@@ -909,8 +1212,23 @@ scenario('E', 'network and policy', async (vp) => {
   check(/connect-src 'none'/.test(applyBlock), 'E /apply/ CSP keeps connect-src none');
   check(/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/.test(applyBlock), 'E /apply/ CSP keeps form-action only script.google.com(+usercontent)');
   check(!/https:\/\/(?!script\.google)/.test(applyBlock.replace(/https:\/\/script\.googleusercontent\.com/g, '')), 'E /apply/ CSP lists no other host');
-  const built = await readFile(new URL('../out-private-pages/_headers', import.meta.url), 'utf8').catch(() => '');
-  check(built.includes("connect-src 'none'"), 'E the built _headers still has connect-src none for /apply/');
+  const builtRes = await fetch(base + '/_headers').catch(() => null);
+  const built = builtRes && builtRes.ok ? await builtRes.text() : '';
+  check(built.length > 0, 'E the BUILD UNDER TEST serves _headers (not a stale copy)');
+  const builtApply = built.split(/\n(?=\/)/).find((b) => b.startsWith('/apply/')) || '';
+  check(builtApply === applyBlock, 'E the built /apply/ header block equals the source block (nothing weakened in the build)');
+  check(/connect-src 'none'/.test(builtApply) && /form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/.test(builtApply), 'E the built /apply/ CSP has connect-src none and the two form-action hosts');
+  // the built apply page and its scripts name no outside host except Google's form endpoint
+  const applyHtml = await (await fetch(base + '/apply/')).text();
+  const outside = [...applyHtml.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
+  check(outside.length === 0, 'E the built /apply/ HTML loads nothing from outside (' + outside.slice(0, 3).join(',') + ')');
+  const cssRes = [...applyHtml.matchAll(/href="([^"]+\.css)"/g)].map((m) => m[1]);
+  for (const href of cssRes) { const css = await (await fetch(new URL(href, base + '/apply/'))).text(); check(!/url\(\s*["']?https?:/.test(css) && !/@import/.test(css), 'E CSS ' + href.slice(-18) + ' has no outside url() or @import'); check(!/color-mix\(/.test(stripSupports(css)), 'E CSS ' + href.slice(-18) + ' uses color-mix() only inside an @supports guard (Safari 15 keeps its hex fallback)'); }
+  const kinds = net.filter((n) => n.url.startsWith(base + '/')).map((n) => { const last = new URL(n.url).pathname.split('/').pop(); return last.includes('.') ? last.split('.').pop().toLowerCase() : 'page'; });
+  const okKinds = new Set(['js', 'css', 'ico', 'svg', 'png', 'txt', 'page', 'html', 'json']);
+  const oddKinds = [...new Set(kinds.filter((k) => !okKinds.has(k)))];
+  check(oddKinds.length === 0, 'E same-origin requests are only page / js / css / icon assets (odd: ' + oddKinds.join(',') + ')');
+  check(net.every((n) => n.method === 'GET' || n.url === ENDPOINT), 'E every request except the one Google POST is a GET');
   const bad = externals.filter((e) => true);
   check(bad.length === 0, 'E nothing tried to reach outside 127.0.0.1 except the simulated Google POST (' + short(bad.slice(0, 3).map((e) => e.method + ' ' + e.url).join(' | '), 160) + ')');
   const offbase = net.filter((n) => !n.url.startsWith(base + '/') && !(n.url === ENDPOINT && n.method === 'POST'));

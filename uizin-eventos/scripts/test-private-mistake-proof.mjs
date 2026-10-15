@@ -1748,9 +1748,11 @@ scenario('LIVE-C', 'LIVE', 'missing, broken or unsaveable data', async (vp) => {
       check(!/NaN|undefined|\[object|Cannot read/.test(t) && t.trim().length > 20, cid + ': the screen is not blank or broken (' + short(t, 80) + ')');
       if (re) check(re.test(t), cid + ': it says what is wrong (' + short(t, 140) + ')');
       if (cid === 'L13' || cid === 'L14') { check(reds.length >= 1, cid + ': a red message is shown (' + short(reds.join(' | '), 100) + ')'); check(await p.getByRole('link', { name: /準備画面へ戻る/ }).count() >= 1, cid + ': a link back to the prep screen is offered'); }
-      check(m.length === 1, cid + ': exactly one yellow marker (' + m.length + ')', true);
+      // L15 (a ONE-match event) has nothing left to press: no 前/次 buttons and no list to open, so there is no 👉 at all (polish-live P2 / r1-45). Every other state has exactly one.
+      const wantMarkers = cid === 'L15' ? 0 : 1;
+      check(m.length === wantMarkers, cid + ': exactly ' + wantMarkers + ' yellow marker (' + m.length + ')', true);
       check(await storedBout(p, value.eventId) === value.currentBout || cid === 'L12', cid + ': nothing was rewritten just by looking');
-      await colourAudit(p, cid + ' ' + V, { markers: 1 });
+      await colourAudit(p, cid + ' ' + V, { markers: wantMarkers });
       const note = short(t.split('\n').slice(0, 8).join(' / '), 150);
       await snap(p);
       await p.close();

@@ -311,12 +311,14 @@ scenario('FAIL', 'the save-failure bar stays small and says what is lost', async
     await importCsv(page, csvOf([row('A1', '赤'), row('A2', '青'), row('A3', '緑'), row('A4', '黄')]));
     await page.evaluate(() => { window.__failPut = true; });
     await page.locator('#field-venue').fill('架空体育館');
-    const barBtn = page.locator('div.fixed.bottom-0').getByRole('button', { name: /^(保存する|もう一度 保存する)$/ }).first();
+    // 帯は、幅が せまく低い画面では「くっつけず」（chromeFlow: relative）、ふつうは fixed。どちらでも同じ帯を見つける
+    const barSel = 'div.z-40.w-full.border-t-2.border-slate-400';
+    const barBtn = page.locator(barSel).getByRole('button', { name: /^(保存する|もう一度 保存する)$/ }).first();
     await barBtn.click();
     await waitState(page, '保存失敗', 8000).catch(() => {});
     await settle(500);
     const m = await page.evaluate(() => {
-      const bar = document.querySelector('div.fixed.bottom-0'), nav = document.querySelector('nav[aria-label="4つの手順"]');
+      const bar = document.querySelector('div.z-40.w-full.border-t-2.border-slate-400'), nav = document.querySelector('nav[aria-label="4つの手順"]');
       const vis = (e) => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
       const buttons = [...bar.querySelectorAll('button')].filter(vis).map((b) => b.innerText.replace(/\s+/g, ' ').trim());
       const barR = bar.getBoundingClientRect(), navR = nav.getBoundingClientRect();
@@ -341,7 +343,7 @@ scenario('FAIL', 'the save-failure bar stays small and says what is lost', async
     }
     // the retry works once the disk is back
     await page.evaluate(() => { window.__failPut = false; });
-    const retry = page.locator('div.fixed.bottom-0').getByRole('button', { name: /^もう一度 保存する$/ });
+    const retry = page.locator(barSel).getByRole('button', { name: /^もう一度 保存する$/ });
     if (await retry.first().isVisible().catch(() => false)) { await retry.first().click(); await waitState(page, '保存済み', 8000).catch(() => {}); }
     check(/保存済み/.test(await page.locator('#save-state').innerText().catch(() => '')), tag + ': retry saves (' + short(await page.locator('#save-state').innerText().catch(() => ''), 30) + ')');
     await ctx.close();
