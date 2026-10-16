@@ -42,6 +42,7 @@
     "test:aika-receptionist": "tsx src/aika/receptionist.test.ts",
     "test:date": "tsx src/utils/date.test.ts",
     "test:uizin-clipper": "bash scripts/test-uizin-clipper.sh",
+    "test:uizin-event-os": "bash scripts/test-uizin-event-os.sh",
     "test:draft-date": "tsx src/utils/draft_date.test.ts",
     "test:safety": "tsx src/safety/check.test.ts",
     "test:response-quality": "tsx src/safety/response_quality.test.ts",
