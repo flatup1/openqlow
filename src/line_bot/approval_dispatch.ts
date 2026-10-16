@@ -8,6 +8,7 @@ import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
 import { finalizePublish, photoPromptMessage, photoQuickReplies, approveQuickReplies } from "../publish/finalize.js";
 import { candidatePreviewUrls } from "../publish/media_library.js";
+import { rewriteBodyForImage } from "../publish/image_body.js";
 import { loadRecord, saveRecord } from "../state/file_store.js";
 import { checkDraftSafety } from "../safety/check.js";
 import { approveRecord, rejectRecord } from "../scheduler/daily.js";
@@ -166,9 +167,30 @@ export async function executeApprovalText(text: string, userId?: string): Promis
       const awaiting = await loadAwaitingPublish(config.root);
       const targetId = (lineCommand.meta as { id?: string } | undefined)?.id ?? awaiting?.id;
       if (awaiting && targetId === awaiting.id) {
-        await clearAwaitingPublish(config.root);
-        const result = await finalizePublish(config.root, awaiting.id);
-        return { ...lineCommand, action: "approved", id: awaiting.id, published: result.published, message: result.message, quickReplies: result.quickReplies };
+        // 写真を選んだら、その写真に合わせて文章を作り直し、見せて確認してもらう（まだ公開しない）。
+        // 公開は「これで投稿（ok）」を押した時だけ。確認した文章をそのまま出す。
+        const rewrite = await rewriteBodyForImage(config.root, awaiting.id).catch((error) => ({
+          kind: "kept" as const,
+          reason: error instanceof Error ? error.message : String(error),
+        }));
+        const record = await loadRecord(config.root, awaiting.id);
+        const threads = record?.drafts.find((draft) => draft.platform === "threads");
+        const body = threads?.body ?? "";
+        const note = rewrite.kind === "updated" ? "写真を見て文章を作り直しました。" : `（${rewrite.reason}）`;
+        return {
+          ok: true,
+          action: "awaiting_text_confirm",
+          id: awaiting.id,
+          message: [
+            "📝 この文章で投稿しますか？",
+            note,
+            "",
+            body,
+            "",
+            "「これで投稿」→ 公開　／　「修正」→ 直す　／　「やめる」→ 止める",
+          ].join("\n"),
+          quickReplies: approveQuickReplies(),
+        };
       }
     }
     return { ...lineCommand };

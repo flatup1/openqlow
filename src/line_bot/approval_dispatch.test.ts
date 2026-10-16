@@ -79,7 +79,7 @@ await withTempEnv(async (root) => {
   assert.equal(saved.status, "saved");
 });
 
-// ok の後に「画像なし」を送ると、添付判断に続けてそのまま投稿が確定する。
+// ok の後に「画像なし」を送ると、本文の確認を出して止まる。確認後の「ok」で投稿が確定する。
 await withTempEnv(async (root) => {
   const id = "FG-20260608-403";
   const userId = "test-approval-dispatch-user";
@@ -91,8 +91,15 @@ await withTempEnv(async (root) => {
 
   const decided = await executeApprovalText("画像なし", userId);
   assert.equal(decided.ok, true);
-  assert.equal(decided.action, "approved");
-  assert.equal(decided.id, id);
+  assert.equal(decided.action, "awaiting_text_confirm");
+  assert.match(String(decided.message), /この文章で投稿しますか/);
+
+  const beforeConfirm = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+  assert.notEqual(beforeConfirm.status, "saved", "確認前は公開しない");
+
+  const confirmed = await executeApprovalText("ok", userId);
+  assert.equal(confirmed.action, "approved");
+  assert.equal(confirmed.id, id);
 
   const saved = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
   assert.equal(saved.status, "saved");
