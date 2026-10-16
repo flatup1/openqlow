@@ -69,6 +69,7 @@ LINE からの実操作は `/追記 {{本文}}` と明示的な `/push` のみ�
 | 顧客対応・投稿・KPI・監査の実務を行う | `docs/ai-os/skills-source/` の該当Skill |
 | 直近の引き継ぎ経緯を知る | `docs/HANDOFF_*.md`（新しい日付から） |
 | Brand Growth を実装する | `docs/flatup-ai-os/CLAUDE_CODE_IMPLEMENTATION_SPEC.md` と `docs/flatup-ai-os/CONFLICT_MATRIX.md` |
+| JINの評価基準・承認語の意味を確認する | `docs/JIN_INSTRUCTIONS_FOR_AI.md` |
 | X / Twitter のURLを読む | `docs/EXTERNAL_LINK_FETCH.md` |
 
 存在しないファイルは存在しないものとして扱い、推測で補わない。
@@ -97,7 +98,11 @@ LINE からの実操作は `/追記 {{本文}}` と明示的な `/push` のみ�
 - Skillの正本は `docs/ai-os/skills-source/`。Codex / Claude Code への配置は `./scripts/sync-agent-skills.sh` が管理する。
 - `docs/ai-os/`・`.claude/`・`.codex/`・canon・Skill を変えたときは `./scripts/validate-ai-os.sh` と関連テストを実行する。それ以外の小さな変更では走らせなくてよい。
 - 料金・日時・予約・退会・休会・安全に関する回答は、正本を確認したうえで、送信前に人間確認を入れる。
-- 完了報告は「作成・変更・保持・検証・未実装・人間確認・Git状態」の順にする。
+- 完了報告は次の順にする。採点を先に出し、最後に残りを示す。
+  1. 採点（100点満点。自分のミスは減点する）
+  2. 作成・変更・保持・検証・未実装・人間確認・Git状態
+  3. 残りの作業量と、次の一手
+  JINの評価基準の原文は `docs/JIN_INSTRUCTIONS_FOR_AI.md`。
 
 ## 9. Brand Growth（`src/brand_growth/`）
 
