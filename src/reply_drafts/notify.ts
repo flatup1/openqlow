@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readJsonOrQuarantine } from "../state/atomic_json.js";
 import { pushLineMessage } from "../line_bot/notifier.js";
 import { replyDraftStateDir, type ReplyDraftConfig } from "./config.js";
 import { withStateLock } from "./lock.js";
@@ -146,14 +147,9 @@ export function pendingPath(root: string): string {
 }
 
 async function readPending(root: string): Promise<PendingRef[]> {
-  const text = await fs.readFile(pendingPath(root), "utf8").catch(() => "");
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text) as Partial<PendingFile>;
-    return Array.isArray(parsed.items) ? parsed.items : [];
-  } catch {
-    return [];
-  }
+  // 壊れていても止めないが、元の中身は退避して残す。読めないときは例外（空で上書きしない）。
+  const parsed = await readJsonOrQuarantine<Partial<PendingFile>>(pendingPath(root));
+  return Array.isArray(parsed?.items) ? parsed.items : [];
 }
 
 async function writePending(root: string, items: PendingRef[]): Promise<void> {

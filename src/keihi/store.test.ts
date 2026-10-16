@@ -56,6 +56,15 @@ try {
   const entries = await readdir(dir);
   assert(entries.length === 1 && entries[0] === "expenses.json", "一時ファイルが残らない");
 
+  // 同時に10件作っても、1件も消えず、idも重複しない
+  const before = (await store.getAll()).length;
+  const created = await Promise.all(
+    Array.from({ length: 10 }, (_, i) => store.create({ date: "2026-08-10", vendor: `同時${i}`, amount: 100 + i })),
+  );
+  assert(new Set(created.map(e => e.id)).size === 10, "同時に作ってもidが重複しない");
+  assert((await store.getAll()).length === before + 10, "同時に作っても1件も消えない");
+  assert((await readdir(dir)).length === 1, "同時に書いても一時ファイルが残らない");
+
   console.log("keihi store tests passed");
 } finally {
   await rm(dir, { recursive: true, force: true });

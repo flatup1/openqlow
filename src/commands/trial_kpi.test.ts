@@ -85,4 +85,18 @@ const NOW = new Date("2026-08-13T00:00:00.000Z");
   await rm(vault, { recursive: true, force: true });
 }
 
+// 同時に届いた予約が、互いを消さない。
+{
+  const vault = await mkdtemp(path.join(tmpdir(), "openqlow-trial-kpi-concurrent-"));
+  const names = ["山田", "佐藤", "鈴木", "高橋", "伊藤", "渡辺"];
+  const results = await Promise.all(
+    names.map(name => executeTrialKpiCommand(`予約 ${name} 8/20`, { vaultRoot: vault, now: NOW })),
+  );
+  assert(results.every(result => result?.ok === true));
+  const records = await readTrialRecords(vault);
+  assert.equal(records.length, names.length, "同時の予約が1件も消えない");
+  assert.equal(new Set(records.map(record => record.id)).size, names.length, "IDが重複しない");
+  await rm(vault, { recursive: true, force: true });
+}
+
 console.log("trial KPI tests passed");
