@@ -2,6 +2,7 @@ import { createBrowserPanel } from "./browser_panel.js";
 import { runFinalPublish } from "./final_publish.js";
 import { publishExtraPlatforms } from "./extra_publish.js";
 import { approveRecord } from "../scheduler/daily.js";
+import { rewriteBodyForImage } from "./image_body.js";
 import { loadRecord } from "../state/file_store.js";
 
 import type { QuickReplyItem } from "../line_bot/reply.js";
@@ -23,6 +24,12 @@ export interface FinalizeResult {
  * 鍵・トークンはログ・返信に出さない。
  */
 export async function finalizePublish(root: string, id: string): Promise<FinalizeResult> {
+  // 選んだ写真を見て本文を作り直す（失敗時は今の本文のまま）。
+  const imageBody = await rewriteBodyForImage(root, id).catch((error) => ({
+    kind: "kept" as const,
+    reason: error instanceof Error ? error.message : String(error),
+  }));
+
   // approveRecord は `OK <id>` 形式の承認文を要求するため、内部的に合成して呼ぶ。
   const savedFiles = await approveRecord(id, `OK ${id} all`);
 
@@ -58,7 +65,11 @@ export async function finalizePublish(root: string, id: string): Promise<Finaliz
   }
 
   // 返信は短く。詳細（ID・コマンド）は出さず、操作は下のボタンに寄せる。
+  const bodyNote = imageBody.kind === "updated"
+    ? `文章: 写真に合わせて作り直しました（${imageBody.body.slice(0, 40)}…）`
+    : `文章: ${imageBody.reason}`;
   const message = [
+    bodyNote,
     published.length
       ? "✅ 自動投稿しました（" + published.map(p => p.split(":")[0]).join(" / ") + "）"
       : "📝 投稿準備しました（外部への自動投稿はまだです）",

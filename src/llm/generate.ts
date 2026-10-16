@@ -1,3 +1,6 @@
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
+
 /**
  * 「投稿」時にその日のSNS本文を新規生成し、AI編集長が採点→改善を繰り返して質を上げる。
  *
@@ -15,6 +18,24 @@ export interface GenerateOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   seed?: number;
+  /** 投稿に使う写真（あれば写真の内容に合わせて本文を書く。OpenRouter のときのみ写真を送る）。 */
+  imagePath?: string;
+}
+
+// 写真をAIに送る条件（大きすぎる・対応外の形式は送らず、文字だけで書く）。
+const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+const IMAGE_MIME: Record<string, string> = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
+
+/** 写真を data URL にする。条件に合わなければ undefined（文字だけで生成する）。 */
+export async function imageDataUrlFor(imagePath: string | undefined): Promise<string | undefined> {
+  if (!imagePath) return undefined;
+  const mime = IMAGE_MIME[path.extname(imagePath).toLowerCase()];
+  if (!mime) return undefined;
+  const info = await stat(imagePath).catch(() => undefined);
+  if (!info?.isFile() || info.size > IMAGE_MAX_BYTES) return undefined;
+  const bytes = await readFile(imagePath).catch(() => undefined);
+  if (!bytes) return undefined;
+  return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 
 export type GenerateResult =
@@ -76,20 +97,32 @@ const QUALITY_RULES = [
   "・ハッシュタグ・絵文字の羅列・前置き・引用符は付けない。",
 ];
 
-function buildGenerateSystem(): string {
+const VOICE_RULES = [
+  "・「体験ワンコイン500円」「初心者・女性・子ども歓迎」など、来たいと思える一歩目の安心感を入れる。",
+  "・「強くなる」より「昨日の自分を少し超える」「続けられる」を大切にする。",
+  "・キャッチコピーのような決め台詞で終わらず、読んだ人が体験に行きたくなる一文で締める。",
+  "・一般論（「仲間と一緒に頑張ろう」など）だけで終わらせず、ジムならではの具体的な場面（ミット、スパーの前の準備、初めてのラウンドなど）を1つ入れる。",
+];
+
+function buildGenerateSystem(withPhoto = false): string {
   return [
     "あなたは成田の格闘技ジム「FLATUP GYM」の、やさしく正直なSNS担当です。",
     "渡されたテーマで、Threads向けの短い投稿本文を日本語で作ってください。",
     "ルール:",
     ...QUALITY_RULES,
+    ...VOICE_RULES,
+    withPhoto
+      ? "・添付の写真に写っている動き・道具・雰囲気を、本文の中で1つだけ具体的に触れる（写っている人の顔・年齢・名前・個人情報は書かない）。"
+      : "",
     "・出力は本文だけ。",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
-function buildGenerateUser(theme: string, weekday: string): string {
+function buildGenerateUser(theme: string, weekday: string, withPhoto = false): string {
   return [
     `今日のテーマ: ${theme}`,
     weekday ? `曜日: ${weekday}曜日（雰囲気づくりの参考程度に）` : "",
+    withPhoto ? "添付の写真の内容に合わせて書いてください。" : "",
     "",
     "このテーマで、FLATUP GYMらしいやさしい投稿本文だけを返してください。",
   ].filter(Boolean).join("\n");
@@ -144,6 +177,7 @@ async function chat(
   fetchImpl: typeof fetch,
   timeoutMs: number,
   temperature: number,
+  imageDataUrl?: string,
 ): Promise<ChatOk | ChatErr> {
   const apiKey = (env.OPENROUTER_API_KEY || "").trim();
   const controller = new AbortController();
@@ -167,7 +201,15 @@ async function chat(
           max_tokens: 500,
           messages: [
             { role: "system", content: system },
-            { role: "user", content: user },
+            {
+              role: "user",
+              content: imageDataUrl
+                ? [
+                  { type: "text", text: user },
+                  { type: "image_url", image_url: { url: imageDataUrl } },
+                ]
+                : user,
+            },
           ],
         }),
       });
@@ -216,7 +258,16 @@ export async function generatePostBody(opts: GenerateOptions): Promise<GenerateR
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const theme = pickTheme(opts.dateJst, opts.seed);
-  const result = await chat(buildGenerateSystem(), buildGenerateUser(theme, weekdayJa(opts.dateJst)), env, fetchImpl, timeoutMs, 0.85);
+  const imageDataUrl = await imageDataUrlFor(opts.imagePath);
+  const result = await chat(
+    buildGenerateSystem(Boolean(imageDataUrl)),
+    buildGenerateUser(theme, weekdayJa(opts.dateJst), Boolean(imageDataUrl)),
+    env,
+    fetchImpl,
+    timeoutMs,
+    0.85,
+    imageDataUrl,
+  );
   if (!result.ok) return result;
   const body = cleanOutput(result.content);
   if (!isValidBody(body)) return { ok: false, reason: "AIが空または長すぎる本文を返しました" };

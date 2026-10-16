@@ -32,6 +32,7 @@
     "test:threads-api": "tsx src/publish/threads_api.test.ts",
     "test:media-command": "tsx src/publish/media_command.test.ts",
     "test:media-library": "tsx src/publish/media_library.test.ts",
+    "test:image-body": "tsx src/publish/image_body.test.ts",
     "test:line-media": "tsx src/publish/line_media.test.ts",
     "test:public-media": "tsx src/publish/public_media.test.ts",
     "test:media-rules": "tsx src/publish/media_rules.test.ts",
