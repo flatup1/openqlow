@@ -5,7 +5,7 @@
 // 仕様: docs/uizin-event-os/ARCHITECTURE.md、EVENT_OS_SPEC.md
 
 import { EventEmitter } from "node:events";
-import { chmodSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, mkdirSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decide, reduce, roleAtLeast, isEngineCommand, currentBout, boutHidden } from "../core/engine.mjs";
 import { desiredOutputs } from "../core/desired.mjs";
@@ -30,13 +30,15 @@ const ADAPTER_COMMANDS = {
   audio_check: { role: "operator", confirm: false },
   export: { role: "operator", confirm: false },
   obs_reconnect: { role: "admin", confirm: false },
+  new_event: { role: "admin", confirm: true },
   set_mode: { role: "admin", confirm: true },
   chaos: { role: "admin", confirm: false, rehearsal: true },
 };
 
 export class EventOsApp extends EventEmitter {
-  constructor({ config, dataDir, adapter, fake = null, now = Date.now, extras = {} }) {
+  constructor({ config, dataDir, adapter, fake = null, now = Date.now, extras = {}, tokenFile = null }) {
     super();
+    this.tokenFile = tokenFile;
     this.config = config;
     this.dataDir = dataDir;
     this.adapter = adapter;
@@ -246,6 +248,11 @@ export class EventOsApp extends EventEmitter {
         return this.setMode(cmd.args?.mode === "rehearsal" ? "rehearsal" : "live");
       case "chaos":
         return this.chaos(cmd.args ?? {});
+      case "new_event": {
+        const result = this.newEvent();
+        if (result.ok) audit({});
+        return result;
+      }
       case "export":
         return this.exportFiles();
       default:
@@ -257,6 +264,11 @@ export class EventOsApp extends EventEmitter {
   // 切り替えたら、今の録画・配信の状態を新しい記録にも書いておく（書き出しで録画が消えないように）。
   setMode(mode) {
     const obs = this.adapter.snapshot();
+    if (mode === this.mode) return { ok: true, message: mode === "rehearsal" ? "すでに練習モードです" : "すでに本番モードです" };
+    // 本番の大会が進行中に練習モードにすると、練習のデータで配信の場面と名前が決まってしまう。
+    if (mode === "rehearsal" && this.state.phase === "running") {
+      return { ok: false, message: "本番の大会が進行中です。「大会を終える」の後に練習モードにしてください" };
+    }
     if (mode === "rehearsal" && obs.stream.active !== false) {
       return {
         ok: false,
@@ -264,12 +276,38 @@ export class EventOsApp extends EventEmitter {
       };
     }
     writeFileAtomic(join(this.dataDir, "mode.json"), JSON.stringify({ mode }));
+    // 練習の擬似故障（カメラが故障中など）を本番に持ち込まない。
+    if (mode === "live") this.adapter.clearSimulation?.();
     this.openLog(mode);
     const carry = [];
     if (obs.record.active === true) carry.push({ type: "OBS_RECORD", active: true, path: null, at: obs.record.startedAt ?? this.iso(), role: "system", by: "obs" });
     if (obs.stream.active === true) carry.push({ type: "OBS_STREAM", active: true, at: obs.stream.startedAt ?? this.iso(), role: "system", by: "obs" });
     if (carry.length > 0) this.recordQuietly(carry);
     return { ok: true, message: mode === "rehearsal" ? "練習モードにしました（配信の操作はできません）" : "本番モードにしました" };
+  }
+
+  // 次の大会の準備：今の記録を archive フォルダに移して（消さない）、まっさらな記録で始める。
+  // iPad の合言葉は、次に起動したときに新しくなる。配信中・録画中は前の大会の区切りが分からなくなるので断る。
+  newEvent() {
+    const obs = this.adapter.snapshot();
+    if (obs.stream.active === true) return { ok: false, message: "配信中です。先に「配信を終える」を押してください" };
+    if (obs.record.active === true) return { ok: false, message: "録画中です。先に前の大会の録画を止めてください" };
+    const stamp = this.iso().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "-");
+    const archive = join(this.dataDir, "archive");
+    mkdirSync(archive, { recursive: true, mode: 0o700 });
+    const file = this.log.file;
+    if (existsSync(file)) renameSync(file, join(archive, `${this.mode}-${stamp}.jsonl`));
+    this.lastSafeOnAt = null;
+    this.storageError = null;
+    this.openLog(this.mode);
+    if (this.tokenFile && existsSync(this.tokenFile)) {
+      try {
+        utimesSync(this.tokenFile, 0, 0);
+      } catch {
+        /* 次の起動で48時間たてば新しくなる */
+      }
+    }
+    return { ok: true, message: "新しい大会の準備にしました（前の大会の記録は archive に移しました）。iPad の合言葉は、Event OS を起動し直すと新しくなります" };
   }
 
   handleEngine(cmd, role, device) {
@@ -325,7 +363,7 @@ export class EventOsApp extends EventEmitter {
   async chaos(args) {
     const kind = args.kind;
     if (kind === "obs_down") {
-      this.adapter.simulateObsDown(Number(args.seconds) > 0 ? Number(args.seconds) : 15);
+      this.adapter.simulateObsDown(Math.min(60, Number(args.seconds) > 0 ? Number(args.seconds) : 15));
       return { ok: true, message: "練習：OBSとの接続を切りました" };
     }
     if (kind === "main_dead" || kind === "sub_dead") {

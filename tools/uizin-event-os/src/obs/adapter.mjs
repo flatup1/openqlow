@@ -123,6 +123,24 @@ export class ObsAdapter extends EventEmitter {
     this.connectNow();
   }
 
+  // Event OS を止めるとき：配信に名前とカメラが残らないように、待ち画面にして名前のテロップを消す
+  // （止めた後に人が手で OBS を動かすときに、配信しない子の名前やカメラが出たままにしないため）。できる範囲で、最大2秒。
+  async failSafe(timeoutMs = 2000) {
+    if (!this.client.identified) return false;
+    const steps = (async () => {
+      const wait = this.names.scenes.WAIT;
+      if (Array.isArray(this.state.scenes) && this.state.scenes.includes(wait)) await this.tryReq("SetCurrentProgramScene", { sceneName: wait });
+      for (const key of ["redName", "blueName", "winnerName"]) {
+        const name = this.names.texts[key];
+        if (this.allowed.has("SetInputSettings") && Array.isArray(this.state.inputs) && this.state.inputs.includes(name)) {
+          await this.tryReq("SetInputSettings", { inputName: name, inputSettings: { text: "" } });
+        }
+      }
+    })();
+    await Promise.race([steps, sleep(timeoutMs)]);
+    return true;
+  }
+
   stop() {
     this.stopped = true;
     clearTimeout(this.reconnectTimer);
@@ -758,6 +776,15 @@ export class ObsAdapter extends EventEmitter {
 
   // ---- 練習用の擬似故障（管理モードかつ練習モードだけ） ----
 
+  // 練習の擬似故障をすべて元に戻す（本番モードに持ち込まない）。
+  clearSimulation() {
+    const wasDown = this.blockedUntil > this.now();
+    this.simulate = {};
+    this.blockedUntil = 0;
+    if (wasDown && !this.stopped) this.reconnect();
+    this.emitChange();
+  }
+
   simulateObsDown(seconds) {
     this.blockedUntil = this.now() + seconds * 1000;
     this.stopPolling();
@@ -780,6 +807,7 @@ export class ObsAdapter extends EventEmitter {
     return {
       connection: { ...s.connection },
       version: s.version,
+      authRequired: this.client.hello ? this.client.hello.authRequired === true : null,
       scenes: s.scenes,
       inputs: s.inputs,
       camItems: s.camItems,

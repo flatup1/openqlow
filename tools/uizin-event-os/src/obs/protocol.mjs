@@ -85,7 +85,8 @@ export class ObsClient extends EventEmitter {
             }
             identify.authentication = authString(password, d.authentication.salt, d.authentication.challenge);
           }
-          this.hello = { obsWebSocketVersion: d.obsWebSocketVersion, rpcVersion: d.rpcVersion };
+          // OBS がパスワードを求めたか（求めないなら、会場の誰でも OBS を直接操作できてしまう）。
+          this.hello = { obsWebSocketVersion: d.obsWebSocketVersion, rpcVersion: d.rpcVersion, authRequired: Boolean(d.authentication) };
           ws.send(JSON.stringify({ op: OP.Identify, d: identify }));
         } else if (packet.op === OP.Identified) {
           this.identified = true;

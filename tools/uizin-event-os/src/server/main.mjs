@@ -138,7 +138,7 @@ let app;
 const extras = { lanUrls: [] };
 const adapter = new ObsAdapter({ config, password, WebSocketImpl });
 try {
-  app = new EventOsApp({ config, dataDir, adapter, fake, extras }).init();
+  app = new EventOsApp({ config, dataDir, adapter, fake, extras, tokenFile }).init();
 } catch (error) {
   fail(`操作の記録を読めませんでした：${error.message}\n   記録のファイルは消さずに、運営の人を呼んでください（OBS の録画は続いています）`);
 }
@@ -194,10 +194,19 @@ server.on("error", error => fail(`画面を開けませんでした（ポート 
 process.on("unhandledRejection", error => console.error(`⚠️ 想定外のエラー（動作は続けます）：${error?.message ?? error}`));
 process.on("uncaughtException", error => console.error(`⚠️ 想定外のエラー（動作は続けます）：${error?.message ?? error}`));
 
-const shutdown = () => {
+// 止めるとき（Ctrl + C・ターミナルの窓を閉じる・終了の合図）は、OBS を待ち画面にして名前のテロップを消してから終わる。
+let stopping = false;
+const shutdown = async () => {
+  if (stopping) return;
+  stopping = true;
+  console.log("\n止めています（OBS を待ち画面にして、名前のテロップを消します）…");
+  try {
+    await adapter.failSafe();
+  } catch {
+    /* できなくても止める */
+  }
   adapter.stop();
   server.close();
   setTimeout(() => process.exit(0), 300).unref();
 };
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, shutdown);

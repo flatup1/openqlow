@@ -49,7 +49,7 @@ EVENT_OS_ADMIN_PIN=（管理PIN：4〜8桁の数字、運営PINと別）
 
 ### 2.2 OBS 側（ARCHITECTURE.md §5〜§8）
 
-1. OBS 28 以上。**ツール → WebSocketサーバー設定 → 「WebSocketサーバーを有効にする」にチェック**（最初は OFF です）。認証は ON のまま。
+1. OBS 28 以上。**ツール → WebSocketサーバー設定 → 「WebSocketサーバーを有効にする」にチェック**（最初は OFF です）。**認証は ON のまま**（OFF だと、会場のネットにつないだ誰でも OBS を直接動かせるので、開始前チェックが ❌ になります）。
 2. シーンを作る：`WAIT` `FIGHTER` `FIGHT` `WINNER` `SAFE` と、補助の `CAM`。
 3. `CAM` の中に、カメラの部品 `MAIN`（下）と `SUB`（上・ふだんは非表示）。`WAIT` `FIGHTER` `FIGHT` `WINNER` には `CAM` をシーンとして入れる。`SAFE` には `MAIN` を直接入れる。
 4. テロップの文字部品（テキスト）を作る：`EOS_BOUT_NO` `EOS_RED_NAME` `EOS_BLUE_NAME` `EOS_WINNER_NAME` `EOS_INFO`。見た目は OBS で自由に。中身は Event OS が書き換えます。
@@ -92,6 +92,8 @@ Google Sheets で作り、**ファイル → ダウンロード → CSV** で保
 | 「❌ 録画が止まっています」 | 「● 録画を始める」を押す |
 | iPad がつながらない | Mac 本体の画面（`http://localhost:8787/`）で続ける |
 | Event OS が止まった | OBS の映像と録画はそのまま続いています。起動し直せば、記録から同じ状態に戻ります |
+| Event OS を止めたい | ターミナルで Ctrl + C（または窓を閉じる）。OBS を待ち画面にして名前のテロップを消してから止まります |
+| 次の大会を始めたい | 管理モードの「🆕 新しい大会の準備」（前の記録は `data/archive/` に移ります） |
 
 ---
 

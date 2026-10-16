@@ -21,6 +21,8 @@ const STATIC = {
 };
 const MAX_BODY = 2 * 1024 * 1024;
 const PIN_FAIL_LIMIT = 5;
+// 画面への知らせ（SSE）の同時接続の上限。超えたら一番古いものを閉じる（眠った iPad の残りで、Mac のファイル数を使い切らない）。
+const MAX_SSE_CLIENTS = 64;
 const PIN_LOCK_MS = 5 * 60 * 1000;
 
 // 長さや文字の種類にかかわらず、同じ時間で比べる（例外も出さない）。
@@ -178,6 +180,11 @@ export function createHttpServer({ app, uiDir, token, pins, now = Date.now, onEr
     if (req.method === "GET" && url.pathname === "/api/events") {
       res.writeHead(200, { ...securityHeaders("text/event-stream; charset=utf-8"), Connection: "keep-alive" });
       res.write(`event: change\ndata: {}\n\n`);
+      while (sseClients.size >= MAX_SSE_CLIENTS) {
+        const oldest = sseClients.values().next().value;
+        sseClients.delete(oldest);
+        oldest.end();
+      }
       sseClients.add(res);
       req.on("close", () => sseClients.delete(res));
       return;

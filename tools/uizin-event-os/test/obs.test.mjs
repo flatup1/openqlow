@@ -431,3 +431,24 @@ test("音のチェックを2台から同時に押しても、2回目は「チェ
   assert.equal(typeof first.ok, "boolean");
   assert.match(second.message, /チェック中/);
 });
+
+test("OBS がパスワードを求めたかどうかを覚える（求めなければ開始前チェックで止める）", async () => {
+  const withAuth = setup();
+  withAuth.adapter.start();
+  await until(() => withAuth.adapter.state.connection.status === "ok");
+  assert.equal(withAuth.adapter.snapshot().authRequired, true);
+  const open = setup({ password: "" });
+  open.adapter.start();
+  await until(() => open.adapter.state.connection.status === "ok");
+  assert.equal(open.adapter.snapshot().authRequired, false);
+});
+
+test("Event OS を止めるときは、OBS を待ち画面にして名前のテロップを消す", async () => {
+  const { fake, adapter } = setup();
+  await connectRunning(adapter, desired("FIGHT", { texts: { EOS_RED_NAME: "ヒカル", EOS_BLUE_NAME: "ソラ" } }));
+  await until(() => fake.program === "FIGHT" && fake.inputs.get("EOS_RED_NAME")?.settings?.text === "ヒカル");
+  await adapter.failSafe();
+  assert.equal(fake.program, "WAIT");
+  assert.equal(fake.inputs.get("EOS_RED_NAME").settings.text, "");
+  assert.equal(fake.inputs.get("EOS_BLUE_NAME").settings.text, "");
+});

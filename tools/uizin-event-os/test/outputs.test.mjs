@@ -19,6 +19,7 @@ function healthyObs(overrides = {}) {
   return {
     connection: { ...fresh, reason: null },
     version: { obsVersion: "32.0.0" },
+    authRequired: true,
     scenes: ["WAIT", "FIGHTER", "FIGHT", "WINNER", "SAFE", "CAM"],
     inputs: ["EOS_BOUT_NO", "EOS_RED_NAME", "EOS_BLUE_NAME", "EOS_WINNER_NAME", "EOS_INFO", "MAIN", "SUB"],
     camItems: { main: true, sub: true },
@@ -450,4 +451,13 @@ test("今映っているカメラ：休憩中に 🛟 を押すと、次が配�
   event.run("safe_on", {}, { role: "easy" });
   assert.equal(desiredOutputs(event.state, event.config).sceneKey, "SAFE");
   assert.equal(buildView(ctx(event)).fixed.camera.current, "main");
+});
+
+test("開始前チェック：OBS のリモート操作にパスワードが無ければ ❌（会場の誰でも OBS を直接動かせるため）", () => {
+  const event = new MiniEvent().setup();
+  const noAuth = evaluatePreflight({ state: event.state, config: event.config, obs: healthyObs({ authRequired: false }), nowMs: NOW, rehearsal: false });
+  const auth = noAuth.items.find(item => item.id === "obs_auth");
+  assert.equal(auth.status, "error");
+  assert.match(auth.detail, /認証を有効にする/);
+  assert.ok(noAuth.blocking.some(item => (item.id ?? item) === "obs_auth" || JSON.stringify(item).includes("obs_auth")));
 });

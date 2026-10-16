@@ -428,3 +428,65 @@ test("🛟 を押してから3秒は、どの画面からでも「通常に戻�
   assert.equal((await press(app, "safe_off")).ok, true);
   assert.equal(app.state.safe, false);
 });
+
+test("本番の大会が進行中は練習モードにしない。練習の擬似故障は本番に持ち込まない", async () => {
+  const ADMIN = { role: "admin", device: "test" };
+  const mode = (app, value) => app.handle({ type: "set_mode", args: { mode: value }, confirm: true }, ADMIN);
+  const first = await makeApp();
+  await ready(first.app);
+  await press(first.app, "start_event", {}, OP);
+  const refused = await mode(first.app, "rehearsal");
+  assert.equal(refused.ok, false);
+  assert.match(refused.message, /進行中/);
+  // 準備中なら練習モードにでき、練習で故障をまねたまま本番に戻しても、故障の印は消える。
+  const { app, adapter } = await makeApp();
+  assert.equal((await mode(app, "rehearsal")).ok, true);
+  assert.equal((await app.handle({ type: "chaos", args: { kind: "main_dead", on: true } }, ADMIN)).ok, true);
+  assert.equal(adapter.simulate.mainDead, true);
+  assert.equal((await mode(app, "live")).ok, true);
+  assert.equal(adapter.simulate.mainDead, undefined);
+});
+
+test("次の大会の準備：前の記録を archive に移して（消さない）、まっさらから始められる。録画中は断る", async () => {
+  const { app, fake, dataDir } = await makeApp();
+  await ready(app);
+  await press(app, "start_event", {}, OP);
+  await until(() => fake.record.active === true);
+  const ADMIN = { role: "admin", device: "test" };
+  const busy = await app.handle({ type: "new_event", confirm: true }, ADMIN);
+  assert.match(busy.message, /録画中/);
+  await app.handle({ type: "record_stop", confirm: true }, OP);
+  await until(() => app.adapter.snapshot().record.active === false);
+  const done = await app.handle({ type: "new_event", confirm: true }, ADMIN);
+  assert.equal(done.ok, true, done.message);
+  assert.equal(app.state.phase, "setup");
+  assert.equal(app.state.card, null);
+  const archived = readdirSync(join(dataDir, "archive"));
+  assert.equal(archived.length, 1);
+  assert.match(readFileSync(join(dataDir, "archive", archived[0]), "utf8"), /START_EVENT/);
+  assert.equal((await app.handle({ type: "new_event", confirm: false }, ADMIN)).code, "confirm");
+  assert.equal((await app.handle({ type: "new_event", confirm: true }, OP)).ok, false, "管理モードだけ");
+});
+
+test("画面への知らせ（SSE）は同時に64本まで。超えたら一番古いものを閉じる", async () => {
+  const { base } = await serve();
+  const url = new URL("/api/events", base);
+  const sockets = [];
+  let closed = 0;
+  for (let index = 0; index < 66; index += 1) {
+    await new Promise(resolve => {
+      const req = httpRequest({ host: url.hostname, port: url.port, path: url.pathname, headers: { host: url.host } }, res => {
+        res.on("end", () => {
+          closed += 1;
+        });
+        res.resume();
+        resolve();
+      });
+      req.on("error", () => resolve());
+      sockets.push(req);
+      req.end();
+    });
+  }
+  await until(() => closed >= 2, { timeoutMs: 3000 });
+  for (const req of sockets) req.destroy();
+});

@@ -71,6 +71,14 @@ export function evaluatePreflight({ state, config, obs, nowMs, rehearsal }) {
 
   items.push(lampItem("obs_connected", "OBSにつながる", obs?.connection, nowMs, true, obs?.version ? `OBS ${obs.version.obsVersion}` : ""));
 
+  // OBS のリモート操作にパスワードが無いと、会場の誰でも OBS を直接動かせる（配信キーも読める）。必ず ON にする。
+  items.push(item({
+    id: "obs_auth",
+    label: "OBSのリモート操作にパスワードがかかっている",
+    status: !connected || typeof obs?.authRequired !== "boolean" ? "unknown" : obs.authRequired ? "ok" : "error",
+    detail: obs?.authRequired === false ? "OBSの「WebSocketサーバー設定」で「認証を有効にする」をONにしてください" : "",
+  }));
+
   const expected = config?.obs?.expectedVersion;
   if (expected) {
     const actual = obs?.version?.obsVersion;
