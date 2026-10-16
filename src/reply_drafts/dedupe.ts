@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readJsonOrQuarantine } from "../state/atomic_json.js";
+import { readJsonIfExists, readJsonOrQuarantine } from "../state/atomic_json.js";
 import { replyDraftStateDir } from "./config.js";
 import { withStateLock } from "./lock.js";
 
@@ -68,6 +68,17 @@ export function seenStorePath(root: string, source: InquirySource): string {
   return path.join(replyDraftStateDir(root), `${source}_seen.json`);
 }
 
+/** 読むだけの確認用。壊れていても退避（ファイルの移動）はしない。書き込み側（markSeen）だけが退避する。 */
+async function peekSeen(file: string): Promise<SeenFile> {
+  try {
+    const parsed = await readJsonIfExists<Partial<SeenFile>>(file);
+    return { version: 1, entries: parsed?.entries ?? {} };
+  } catch (error) {
+    if (error instanceof SyntaxError) return { version: 1, entries: {} };
+    throw error;
+  }
+}
+
 async function readSeen(file: string): Promise<SeenFile> {
   // 壊れた台帳で処理を止めない（重複通知は起きうるが、取りこぼしよりまし）。
   // ただし元の中身は退避して残す。読めない（権限・I/O）ときは例外にして、空で上書きしない。
@@ -88,7 +99,7 @@ function prune(entries: Record<string, string>, now: Date, retentionDays: number
 
 /** その鍵が処理済みか。台帳が無ければ未処理。 */
 export async function hasSeen(root: string, source: InquirySource, key: string): Promise<boolean> {
-  const seen = await readSeen(seenStorePath(root, source));
+  const seen = await peekSeen(seenStorePath(root, source));
   return Object.prototype.hasOwnProperty.call(seen.entries, key);
 }
 

@@ -1,5 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 import { readJsonIfExists, writeJsonAtomic } from "../state/atomic_json.js";
 import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
@@ -60,10 +61,19 @@ async function saveResult(root: string, result: FinalPublishResult): Promise<voi
   await writeJsonAtomic(resultFile(root, result.recordId), result);
 }
 
-export async function runFinalPublish(
+export function runFinalPublish(
   root: string,
   id: string,
   opts: FinalPublishOptions = {},
+): Promise<FinalPublishResult> {
+  // 同じ下書きの最終投稿は同時に走らせない。二つが同時に「まだ投稿していない」と読むと、二重に投稿する。
+  return withStateLock(`final_publish:${root}:${id}`, () => runFinalPublishUnlocked(root, id, opts));
+}
+
+async function runFinalPublishUnlocked(
+  root: string,
+  id: string,
+  opts: FinalPublishOptions,
 ): Promise<FinalPublishResult> {
   const env = opts.env ?? process.env;
   const queue = await loadQueue(root, id);
@@ -77,9 +87,10 @@ export async function runFinalPublish(
   const result: FinalPublishResult = {
     recordId: id,
     published: previous?.published ? [...previous.published] : [],
-    browserQueued: [],
+    // 途中で保存しても前回の記録を消さないよう、前回の値から始める（browserQueued は最後に上書きされる）。
+    browserQueued: previous?.browserQueued ? [...previous.browserQueued] : [],
     skipped: [],
-    createdAt: new Date().toISOString(),
+    createdAt: previous?.createdAt ?? new Date().toISOString(),
   };
 
   const browserDestinations: PublishDestination[] = [];

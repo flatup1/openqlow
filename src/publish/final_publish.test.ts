@@ -192,4 +192,31 @@ await assert.rejects(runFinalPublish(root, "FG-20260603-003", {
 }));
 assert.equal(rerunCalls, 0, "壊れた結果ファイルのとき投稿してはいけない");
 
+// 同時に2回走らせても、Threads へは1回しか投稿しない。前回の createdAt / browserQueued も消さない。
+{
+  const concurrentRecord: DraftRecord = {
+    ...record,
+    id: "FG-20260603-007",
+    drafts: [{ ...record.drafts[0]!, id: "FG-20260603-007_threads", ideaId: "FG-20260603-007", approvalId: "FG-20260603-007" }],
+  };
+  await saveRecord(root, concurrentRecord);
+  await createPublishQueueEntry(root, concurrentRecord, ["threads", "line_voom"]);
+  let postCalls = 0;
+  const fetchOnce = (async (_url: string | URL, _init?: RequestInit) => {
+    postCalls += 1;
+    await new Promise(resolve => setTimeout(resolve, 10));
+    return new Response(JSON.stringify({ id: `id-${postCalls}` }), { status: 200 });
+  }) as typeof fetch;
+  const env = { THREADS_USER_ID: "27079444471741122", THREADS_ACCESS_TOKEN: "token" };
+  const [a, b] = await Promise.all([
+    runFinalPublish(root, "FG-20260603-007", { env, fetchImpl: fetchOnce }),
+    runFinalPublish(root, "FG-20260603-007", { env, fetchImpl: fetchOnce }),
+  ]);
+  assert.equal(postCalls, 2, "投稿は1回分（作成+公開の2リクエスト）だけ");
+  assert.equal(a.published.length, 1);
+  assert.equal(b.published.length, 1);
+  assert.equal(b.createdAt, a.createdAt, "再実行で最初の createdAt を消さない");
+  assert.deepEqual(b.browserQueued.map(item => item.destination), ["line_voom"]);
+}
+
 console.log("final publish tests passed");

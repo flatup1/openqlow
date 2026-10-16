@@ -22,6 +22,14 @@ import { pushApprovalNotification } from "../line_bot/notifier.js";
 import { createPublishQueueEntry } from "../publish/queue.js";
 import type { PublishDestination } from "../publish/publisher_types.js";
 
+/** すでに確定した（保存済み・却下済み）記録への、遅れた・二重の操作。呼び出し側が優しく断れるよう型を分ける。 */
+export class RecordAlreadyFinalError extends Error {
+  constructor(readonly id: string, readonly status: "saved" | "rejected") {
+    super(`Record ${id} is already ${status}`);
+    this.name = "RecordAlreadyFinalError";
+  }
+}
+
 function approvalIdFor(date: string, index: number): string {
   return `FG-${date.replaceAll("-", "")}-${String(index + 1).padStart(3, "0")}`;
 }
@@ -40,9 +48,14 @@ export async function runDaily(): Promise<DraftRecord[]> {
   for (const [index, idea] of ideas.entries()) {
     const approvalId = approvalIdFor(idea.date, index);
     // 同じ日に2回動いても、承認済み・却下済みの記録を「承認待ち」で上書きしない。
-    // IDは日付と番号で決まるので、上書きするとJINの判断が消え、通知も再送される。
+    // IDは日付と番号で決まるので、上書きするとJINの判断が消える。
     // 読めない記録も「無い」とは限らないので、同じく触らない。
+    // 承認待ちのまま残っているもの（通知の前に落ちた場合など）は、上書きせず通知だけやり直す。
     const existing = await readRecord(config.root, approvalId);
+    if (existing.status === "ok" && existing.record.status === "pending_approval") {
+      records.push(existing.record);
+      continue;
+    }
     if (existing.status !== "missing") {
       console.error(`daily: ${approvalId} は既にあるためスキップ (${existing.status})`);
       continue;
@@ -60,7 +73,13 @@ export async function runDaily(): Promise<DraftRecord[]> {
       createdAt: now,
       updatedAt: now,
     };
-    await saveRecord(config.root, record);
+    // 確認と保存の間に承認などが入っても消さないよう、記録の鍵の中で「まだ無い」を再確認して保存する。
+    const created = await withRecordLock(config.root, approvalId, async () => {
+      if ((await readRecord(config.root, approvalId)).status !== "missing") return false;
+      await saveRecord(config.root, record);
+      return true;
+    });
+    if (!created) continue;
     records.push(record);
     safetyByRecord.set(record.id, safety);
   }
@@ -106,7 +125,7 @@ async function approveRecordUnlocked(id: string, approvalReply: string): Promise
   // 保存済み・却下済みは承認し直さない。遅れて届いた「OK」や二重の「OK」で、
   // 保存や承認記録をやり直したり、却下済みを復活させたりしない。
   if (record.status === "saved" || record.status === "rejected") {
-    throw new Error(`Record ${id} is already ${record.status}`);
+    throw new RecordAlreadyFinalError(id, record.status);
   }
 
   const approval = parseApprovalCommand(approvalReply);
@@ -177,6 +196,8 @@ async function rejectRecordUnlocked(id: string, reason?: string): Promise<DraftR
   const config = loadConfig();
   const record = await loadRecord(config.root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
+  // 保存済み（保存・キュー登録まで終わった）ものを、遅れた「NO」で却下に書き換えない。
+  if (record.status === "saved") throw new RecordAlreadyFinalError(id, "saved");
 
   const updatedRecord: DraftRecord = {
     ...record,

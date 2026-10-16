@@ -59,8 +59,10 @@ export async function applyLineRevisionCommand(root: string, text: string, now =
     return { ok: false, message: "修正は `修正 新しい本文` または `修正 FG-YYYYMMDD-NNN: 新しい本文` で送ってください。" };
   }
   // 同じ下書きへの承認・却下・修正が同時に来ても、先の変更を古い内容で上書きしない。
-  const lockId = command.id ?? (await resolveCurrentDraftId(root)) ?? "current";
-  return withRecordLock(root, lockId, () => applyRevision(root, command, now));
+  // 対象のIDを先に決め、そのIDで鍵を取り、中でも同じIDを使う（鍵と書き換え先がずれない）。
+  const id = command.id ?? (await resolveCurrentDraftId(root));
+  if (!id) return applyRevision(root, command, now);
+  return withRecordLock(root, id, () => applyRevision(root, { ...command, id }, now));
 }
 
 async function applyRevision(

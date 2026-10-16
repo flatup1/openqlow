@@ -27,12 +27,14 @@ export function withStateLock<T>(key: string, task: () => Promise<T>): Promise<T
   const previous = chains.get(key) ?? Promise.resolve();
   const next = previous.then(task, task);
   // 失敗を飲み込んだものを列に積む。そうしないと次の待ち手まで巻き添えで失敗する。
-  chains.set(
-    key,
-    next.then(
-      () => undefined,
-      () => undefined,
-    ),
+  const settled = next.then(
+    () => undefined,
+    () => undefined,
   );
+  chains.set(key, settled);
+  // 自分が最後の待ち手なら鍵を消す（消さないと、使った鍵の数だけ増え続ける）。
+  void settled.then(() => {
+    if (chains.get(key) === settled) chains.delete(key);
+  });
   return next;
 }

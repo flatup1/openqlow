@@ -1,5 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 import { readJsonIfExists, writeJsonAtomic } from "../state/atomic_json.js";
 import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
@@ -41,11 +42,26 @@ async function loadQueue(root: string, id: string): Promise<PublishQueueEntry> {
   return JSON.parse(text) as PublishQueueEntry;
 }
 
-export async function enqueueBrowserPostJobs(
+export function browserPostJobsLockKey(root: string, id: string): string {
+  return `browser_post_jobs:${root}:${id}`;
+}
+
+/** 新しくキューに積んだ仕事だけを返す（すでに投稿済みの宛先は含まない）。 */
+export function enqueueBrowserPostJobs(
   root: string,
   id: string,
   destinations: PublishDestination[],
   now = new Date(),
+): Promise<BrowserPostJob[]> {
+  // ランナーが「投稿済み」と書く処理と、ここの「読んで足して書く」が重ならないようにする。
+  return withStateLock(browserPostJobsLockKey(root, id), () => enqueueUnlocked(root, id, destinations, now));
+}
+
+async function enqueueUnlocked(
+  root: string,
+  id: string,
+  destinations: PublishDestination[],
+  now: Date,
 ): Promise<BrowserPostJob[]> {
   const queue = await loadQueue(root, id);
   const record = await loadRecord(root, id);

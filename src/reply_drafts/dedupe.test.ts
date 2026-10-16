@@ -74,6 +74,16 @@ assert(await markSeen(root, "line", "line:evt-4", later, 30), "壊れた台帳�
   const original = await fs.readFile(path.join(path.dirname(seenStorePath(root, "line")), kept[0]!), "utf8");
   assert(original === "{壊れている", "退避した中身は元のまま");
 }
+// 読むだけの確認（hasSeen）は、壊れた台帳を動かさない。同時に確認しても落ちない。
+{
+  const peekRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-peek-"));
+  await fs.mkdir(path.dirname(seenStorePath(peekRoot, "line")), { recursive: true });
+  await fs.writeFile(seenStorePath(peekRoot, "line"), "{壊れている", "utf8");
+  const results = await Promise.all(Array.from({ length: 5 }, () => hasSeen(peekRoot, "line", "line:evt-p")));
+  assert(results.every(seen => seen === false), "壊れた台帳は空として確認できる");
+  assert((await fs.readFile(seenStorePath(peekRoot, "line"), "utf8")) === "{壊れている", "読むだけでは台帳を動かさない");
+  await fs.rm(peekRoot, { recursive: true, force: true });
+}
 // 読めない台帳（ここではディレクトリ）は「無い」扱いにせず、例外で止める。
 {
   const unreadableRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-unreadable-"));

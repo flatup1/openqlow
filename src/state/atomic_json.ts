@@ -58,7 +58,13 @@ export async function readJsonOrQuarantine<T>(file: string, now: Date = new Date
     return JSON.parse(text) as T;
   } catch {
     const stamp = now.toISOString().replace(/[:.]/g, "-");
-    await rename(file, `${file}.corrupt-${stamp}`);
+    try {
+      // 名前に乱数を足す。同じミリ秒に二度退避しても、証拠を上書きしない。
+      await rename(file, `${file}.corrupt-${stamp}-${randomUUID().slice(0, 8)}`);
+    } catch (renameError) {
+      // 同時に別の読み手が先に退避していた。壊れていた事実は変わらないので、空として続ける。
+      if ((renameError as NodeJS.ErrnoException).code !== "ENOENT") throw renameError;
+    }
     return undefined;
   }
 }
