@@ -7,7 +7,7 @@ import { nextAction } from "./next_action.mjs";
 import { currentBout, roleAtLeast, boutAt, boutHidden } from "./engine.mjs";
 import { BROADCAST_LABELS } from "./card.mjs";
 import { WINNER_LABELS, UNDO_LABELS } from "./flow.mjs";
-import { upcomingBouts } from "./desired.mjs";
+import { upcomingBouts, desiredOutputs } from "./desired.mjs";
 
 export const MAX_LARGE_BUTTONS = 3;
 
@@ -41,8 +41,9 @@ export function buildView(ctx) {
     RESULT: "記録した勝者を取り消します。よいですか？",
   }[undoType] ?? null;
   const hidden = boutHidden(state, bout);
-  // 今、本当に映っているカメラ。安全運転中はメインだけ。配信しない試合ではどちらも映していない。
-  const cameraOnAir = state.phase !== "running" ? state.camera : hidden ? null : state.safe ? "main" : state.camera;
+  // 今、本当に映っているカメラ。OBS に出す場面と同じ決め方にする（待ち画面ならどちらも映していない、安全運転はメインだけ）。
+  const sceneKey = desiredOutputs(state, ctx.config).sceneKey;
+  const cameraOnAir = sceneKey === "SAFE" ? "main" : ["FIGHTER", "FIGHT", "WINNER"].includes(sceneKey) ? state.camera : null;
 
   const view = {
     rev: state.rev,

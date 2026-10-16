@@ -182,14 +182,20 @@ function confirmDialog(text) {
   return new Promise(resolve => {
     const dialog = $("confirm");
     $("confirm-text").textContent = text;
+    let settled = false;
     const done = answer => {
+      if (settled) return;
+      settled = true;
       $("confirm-yes").onclick = null;
       $("confirm-no").onclick = null;
-      dialog.close();
+      dialog.oncancel = null;
+      if (dialog.open) dialog.close();
       resolve(answer);
     };
     $("confirm-yes").onclick = () => done(true);
     $("confirm-no").onclick = () => done(false);
+    // Esc で閉じたときは「やめる」と同じにする（待ったままにしない）。
+    dialog.oncancel = () => done(false);
     dialog.showModal();
   });
 }
@@ -521,10 +527,10 @@ function wire() {
       toast("🛟 安全運転中です。落ち着いたら「✅ 通常に戻す」を押してください", false);
       return;
     }
-    const rev = view.rev;
-    if (await confirmDialog("安全運転をやめて、通常に戻します（カメラと場面が自動の切り替えに戻ります）。よいですか？")) {
-      send("safe_off", {}, { expectedRev: rev }, { force: true });
-    }
+    if (!(await confirmDialog("安全運転をやめて、通常に戻します（カメラと場面が自動の切り替えに戻ります）。よいですか？"))) return;
+    // 確認している間に、別の画面で 🛟 が押されていたら戻さない（サーバー側でも3秒は断る）。
+    if (!(view && view.fixed.safe.on) || Date.now() - safeOnSince < SAFE_OFF_GUARD_MS) return;
+    send("safe_off", {}, null, { force: true });
   });
   wirePanelButtons();
 
@@ -543,10 +549,21 @@ function wire() {
   $("pin-input").addEventListener("keydown", event => {
     if (event.key === "Enter") {
       event.preventDefault();
-      $("pin-ok").click();
+      if (!event.repeat) $("pin-ok").click();
     }
   });
+  // 1回の入力で何度も送らない（同じ Mac の間違いの数を無駄に増やさない）。
+  let loggingIn = false;
   $("pin-ok").addEventListener("click", async () => {
+    if (loggingIn) return;
+    loggingIn = true;
+    try {
+      await login();
+    } finally {
+      loggingIn = false;
+    }
+  });
+  async function login() {
     const candidate = $("pin-input").value.trim();
     setText("pin-error", "");
     let res;
@@ -570,7 +587,7 @@ function wire() {
     store.set("eos-pin", pin, true);
     $("pin-dialog").close();
     fetchView();
-  });
+  }
 
   $("card-load").addEventListener("click", async () => {
     const file = $("card-file").files[0];

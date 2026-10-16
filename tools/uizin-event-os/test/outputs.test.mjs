@@ -350,15 +350,18 @@ test("「↩ 戻す」は何が戻るかをボタンに出す。試合中に「�
   assert.equal(view.fixed.undo.confirm, null);
 });
 
-test("今映っているカメラ：安全運転中はメイン、配信しない試合ではどちらも映していない", () => {
+test("今映っているカメラ：OBS の場面と同じ。待機中は待ち画面、安全運転中はメイン、配信しない試合ではどちらも映していない", () => {
   const event = new MiniEvent().setup();
   event.run("camera", { to: "sub" }, { role: "easy" });
+  assert.equal(buildView(ctx(event)).fixed.camera.current, null, "待機中は待ち画面（カメラは映っていない）");
+  event.run("entrance", { corner: "red" }, { role: "easy" });
   assert.equal(buildView(ctx(event)).fixed.camera.current, "sub");
   event.run("safe_on", {}, { role: "easy" });
   assert.equal(buildView(ctx(event)).fixed.camera.current, "main");
   event.run("safe_off", {}, { role: "easy" });
-  event.playBout("red");
-  event.run("next_bout", {}, { role: "easy" });
+  for (const [type, args] of [["entrance", { corner: "blue" }], ["fight_start"], ["fight_end"], ["result", { winner: "red" }], ["next_bout"]]) {
+    assert.equal(event.run(type, args, { role: "easy" }).ok, true, type);
+  }
   const view = buildView(ctx(event));
   assert.equal(view.bout.hidden, true);
   assert.equal(view.fixed.camera.current, null);
@@ -437,4 +440,14 @@ test("映像ソフトに WAIT の場面が無いまま配信しない試合に�
   assert.match(easy, /配信しない試合なのに、カメラが映っています。映像ソフトに待ち画面がありません/);
   assert.doesNotMatch(easy, /OBS/);
   assert.match(nextAction(ctx(event, { obs, role: "operator" })).alerts.map(alert => alert.text).join("\n"), /OBSに「WAIT」の場面がありません/);
+});
+
+test("今映っているカメラ：休憩中に 🛟 を押すと、次が配信しない試合でもメインが映っていると正しく出す", () => {
+  const event = new MiniEvent().setup();
+  event.playBout("red");
+  event.run("next_bout", {}, { role: "easy" });
+  event.run("break_start", {}, { role: "easy" });
+  event.run("safe_on", {}, { role: "easy" });
+  assert.equal(desiredOutputs(event.state, event.config).sceneKey, "SAFE");
+  assert.equal(buildView(ctx(event)).fixed.camera.current, "main");
 });

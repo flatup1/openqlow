@@ -17,6 +17,8 @@ import { youtubeChapters, clipperManifests, truthYaml, resultsCsv } from "../cor
 import { EventLog, logFileFor, writeFileAtomic } from "./store.mjs";
 
 // エンジン以外の操作と、必要なモード・確認の有無。
+const SAFE_OFF_GUARD_MS = 3000;
+
 const ADAPTER_COMMANDS = {
   record_start: { role: "easy", confirm: false },
   record_resume: { role: "easy", confirm: false },
@@ -183,6 +185,12 @@ export class EventOsApp extends EventEmitter {
     const role = auth?.role ?? "easy";
     const device = auth?.device ?? "unknown";
     if (!cmd || typeof cmd.type !== "string") return { ok: false, message: "操作が分かりません" };
+
+    // 🛟 を押してから3秒は、どの画面からでも「通常に戻す」を受け付けない（慌てた連打や、別の画面との行き違いで戻さない）。
+    if (cmd.type === "safe_on") this.lastSafeOnAt = this.now();
+    if (cmd.type === "safe_off" && this.lastSafeOnAt != null && this.now() - this.lastSafeOnAt < SAFE_OFF_GUARD_MS) {
+      return { ok: false, code: "safe_guard", message: "🛟 安全運転にしたばかりです。落ち着いてから「通常に戻す」を押してください" };
+    }
 
     if (isEngineCommand(cmd.type)) return this.handleEngine(cmd, role, device);
 

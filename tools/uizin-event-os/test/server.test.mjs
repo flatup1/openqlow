@@ -411,3 +411,20 @@ test("PIN：日本語などの文字でも止まらずに答える（長さも�
   assert.equal((await view("1111")).status, 403);
   assert.equal((await view("2468")).status, 200);
 });
+
+test("🛟 を押してから3秒は、どの画面からでも「通常に戻す」を受け付けない", async () => {
+  const { app } = await makeApp();
+  let clock = Date.parse("2026-11-03T04:00:00.000Z");
+  app.now = () => clock;
+  assert.equal((await press(app, "safe_on")).ok, true);
+  const early = await press(app, "safe_off");
+  assert.equal(early.code, "safe_guard");
+  assert.equal(app.state.safe, true);
+  clock += 1000;
+  await press(app, "safe_on");
+  clock += 2500;
+  assert.equal((await press(app, "safe_off")).code, "safe_guard", "何も変わらない 🛟 でも、押されたら数え直す");
+  clock += 1000;
+  assert.equal((await press(app, "safe_off")).ok, true);
+  assert.equal(app.state.safe, false);
+});

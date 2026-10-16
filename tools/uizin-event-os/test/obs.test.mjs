@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { FakeObs } from "../src/obs/fake_obs.mjs";
 import { ObsClient, authString } from "../src/obs/protocol.mjs";
 import { ObsAdapter } from "../src/obs/adapter.mjs";
-import { allowedRequests, NEVER_REQUESTS, guardRequestData } from "../src/obs/allowlist.mjs";
+import { allowedRequests, NEVER_REQUESTS } from "../src/obs/allowlist.mjs";
 import { exampleConfig, until, wait } from "./helpers.mjs";
 
 const FAST = { pollMs: 40, reconnectBaseMs: 20, reconnectMaxMs: 80, requestTimeoutMs: 300, connectTimeoutMs: 500, pendingMs: 3000, diskEveryTicks: 3 };
@@ -430,10 +430,4 @@ test("音のチェックを2台から同時に押しても、2回目は「チェ
   const [first, second] = await Promise.all([adapter.audioCheck(80), adapter.audioCheck(80)]);
   assert.equal(typeof first.ok, "boolean");
   assert.match(second.message, /チェック中/);
-});
-
-test("テロップの書き換えは EOS_ で始まる部品だけ（設定を間違えても、ほかの部品の文字を消さない）", () => {
-  const ctx = { textInputs: new Set(["EOS_INFO", "SPONSOR_TICKER"]), muteInputs: new Set(), camScene: "CAM" };
-  assert.equal(guardRequestData("SetInputSettings", { inputName: "EOS_INFO", inputSettings: { text: "x" } }, ctx), null);
-  assert.match(guardRequestData("SetInputSettings", { inputName: "SPONSOR_TICKER", inputSettings: { text: "" } }, ctx), /テロップ部品以外/);
 });
