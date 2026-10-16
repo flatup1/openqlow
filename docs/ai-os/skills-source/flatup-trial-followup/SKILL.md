@@ -1,6 +1,6 @@
 ---
 name: flatup-trial-followup
-description: Use to draft pre-trial reminders, same-day guidance, thank-you notes, next-day follow-up, enrollment guidance, or review requests. Do not use when attendance, consent, or timing is unverified, and never send automatically.
+description: Use to draft pre-trial reminders, same-day guidance, thank-you notes, next-day follow-up, enrollment guidance, or review requests.
 ---
 
 # FLATUP Trial Follow-up
@@ -15,3 +15,7 @@ description: Use to draft pre-trial reminders, same-day guidance, thank-you note
 6. Stop at a draft and request approval before sending.
 
 If the person declined, complained, was injured, or has a payment issue, switch to human escalation.
+
+## Not for
+
+Do not use when attendance, consent, or timing is unverified, and never send automatically.

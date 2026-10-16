@@ -1,6 +1,6 @@
 ---
 name: flatup-faq-update
-description: Use to propose an FAQ update from a new question plus a verified official answer. Do not use when the answer is unapproved or when changing fees, leave, cancellation, safety, health, or policy without owner approval.
+description: Use to propose an FAQ update from a new question plus a verified official answer.
 ---
 
 # FLATUP FAQ Update
@@ -15,3 +15,7 @@ description: Use to propose an FAQ update from a new question plus a verified of
 6. Remove personal information from examples.
 
 The default result is a proposed patch. Apply changes to a canonical file only after human approval.
+
+## Not for
+
+Do not use when the answer is unapproved or when changing fees, leave, cancellation, safety, health, or policy without owner approval.

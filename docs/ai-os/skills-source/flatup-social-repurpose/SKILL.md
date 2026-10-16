@@ -1,6 +1,6 @@
 ---
 name: flatup-social-repurpose
-description: Use to repurpose one approved source into platform-specific FLATUP drafts. Do not use when source rights, personal consent, core facts, or the target audience are unclear, and do not publish.
+description: Use to repurpose one approved source into platform-specific FLATUP drafts.
 ---
 
 # FLATUP Social Repurpose
@@ -19,3 +19,7 @@ An approved source, target audience, desired action, permitted media, and target
 6. Route all drafts through `flatup-content-qc` before approval.
 
 Return drafts and a short list of assets or facts still needing confirmation.
+
+## Not for
+
+Do not use when source rights, personal consent, core facts, or the target audience are unclear, and do not publish.
