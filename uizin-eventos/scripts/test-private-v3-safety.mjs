@@ -131,7 +131,7 @@ try {
   await openBackup();
   await page.locator('input[accept=".enc"]').setInputFiles({ name: 'x.enc', mimeType: 'application/octet-stream', buffer: encrypted });
   await status('先に、パスワードを入れてください。').waitFor();
-  check(true, 'Restoring with an empty password asks for the password first');
+  check((await status('先に、パスワードを入れてください。').count()) >= 1, 'Restoring with an empty password asks for the password first');
   await page.locator('#backup-password').fill(PASSWORD);
   // この画面が「空で、一度も保存していない」なら、別の大会のコピーでも、そのまま入れられる（別のパソコンに移ったとき）。ここは、すでに保存した画面で、断られることを確かめる
   await page.getByLabel('大会名', { exact: true }).fill('別の大会B');
@@ -204,7 +204,7 @@ try {
   /* ───── 続きから: 保存してある大会が出る ───── */
   await page.goto(base + '/private/');
   await page.getByRole('link', { name: /続きから：/ }).first().waitFor();
-  check(true, 'Arriving without an event number lists the saved events');
+  check((await page.getByRole('link', { name: /続きから：/ }).count()) >= 1, 'Arriving without an event number lists the saved events');
   check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No horizontal overflow at 1280px');
 
   check(!errors.length, 'No browser runtime exceptions: ' + errors.join(', '));
@@ -218,7 +218,7 @@ try {
   await small.goto(base + '/private/?event=safety-phone');
   await small.locator('#save-state').waitFor();
   check(await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No horizontal overflow at 390px');
-  check((await small.getByText('👉 次はここ：').first().innerText()).includes('👉 次はここ：'), 'The next step is spelled out at 390px');
+  check(/👉 次はここ：\s*\S{4,}/.test(await small.getByText('👉 次はここ：').first().innerText()), 'The next step is spelled out at 390px (the label is followed by words that name the step)');
   await phone.close();
   console.log('Private v3 safety checks passed: ' + checks + '. Local only, fake data.');
 } finally { await browser.close(); }

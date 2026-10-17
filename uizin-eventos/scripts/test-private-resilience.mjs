@@ -954,6 +954,10 @@ scenario('N', 'new event from the chooser and resume without the URL', async (vp
   check(JSON.stringify(await idbGet(page, id)) === before, 'making a new event never touches the old one');
   await page.locator('#field-title').fill('新しい大会'); await save(page);
   check((await idbGet(page, nid))?.entryConfig?.music === true, 'new event keeps the entry settings');
+  const savedNew = await idbGet(page, nid);
+  check(!!savedNew && savedNew.fighters.length === 0 && savedNew.bouts.length === 0 && !JSON.stringify(savedNew).includes('data:image'), 'new event: no fighter, no bout and no photo from the old event are in the saved copy');
+  check(!!savedNew && savedNew.venue === '架空体育館' && savedNew.title === '新しい大会' && savedNew.date !== '2027年10月3日', 'new event: the venue is carried over, the old date is not');
+  check(savedNew?.entryConfig?.music === true && savedNew?.entryConfig?.grade === 'required' && savedNew?.entryConfig?.age === 'optional' && savedNew?.entryConfig?.comment === 'off', 'new event keeps every entry setting (music, grade, age, comment), not only music');
   // resume with no ?event= at all
   const p2 = await ctx.newPage();
   await p2.goto(base + '/private/'); await p2.locator('#field-title').waitFor();
