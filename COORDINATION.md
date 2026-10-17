@@ -53,6 +53,7 @@
 | `openqlow/.claude/hooks/` | Codex | open | 2026-07-18 |
 | `openqlow/.codex/` | Codex | open | 2026-07-18 |
 | `openqlow/scripts/*ai-os*` | Codex | open | 2026-07-18 |
+| `openqlow/src/ad_video/` | Claude Code（実装） | open / 第1バッチ5案まで。生成は未実行（オーナー承認待ち） | 2026-09-07 |
 | `openqlow/tools/uizin-clipper/` | Claude | open | 2026-08-07 |
 | `openqlow/docs/` | 共有 | open | - |
 | `openqlow/docs/superpowers/specs/` | 共有 | open | 2026-06-12 |
