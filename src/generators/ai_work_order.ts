@@ -95,6 +95,9 @@ function countLabel(signal: WorkSignal): string {
   return `${signal.count}件`;
 }
 
+/** LINEから案内するノートの場所。 */
+const VAULT_NOTE_HINT = "Vaultの 6_システム/AI作戦基地/今日のAI依頼.md";
+
 /** 測った時間を書き込む先。増やさないため、記録先は1つだけ。 */
 const TIME_SHEET = "6_システム/AI作戦基地/06_AI依頼の時間記録.md";
 
@@ -386,4 +389,38 @@ export function renderWorkOrder(order: WorkOrder): string {
     "=====================================================================",
   );
   return lines.join("\n");
+}
+
+/** LINEの1通に収まる短い形。全文はVaultのノートで読む前提。 */
+export function renderLineMessage(order: WorkOrder): string {
+  const lines: string[] = [`☀ 今日のAI依頼（${order.dateJst}）`];
+
+  if (order.task) {
+    const task = order.task;
+    lines.push(
+      "",
+      "▼今日やること",
+      task.title,
+      "",
+      "▼今やる理由",
+      task.reason,
+      "",
+      `▼担当: ${task.assignee}（目安 ${task.estimateMinutes}分）`,
+      "",
+      "▼人間確認が必要な地点",
+      ...task.humanCheckpoints.map(value => `・${value}`),
+      "",
+      `そのまま使える依頼文は ${VAULT_NOTE_HINT} にあります。`,
+    );
+  } else {
+    lines.push("", "今日は追加のAI作業なし。今動いている仕事と現場を優先してください。");
+  }
+
+  if (order.askHuman.length > 0) {
+    lines.push("", "▼AIでは分からなかったこと", ...order.askHuman.map(value => `・${value}`));
+  }
+
+  // LINEは1通が長すぎると読まれない。長い日は切って、続きはノートへ回す。
+  const text = lines.join("\n");
+  return text.length <= 1200 ? text : `${text.slice(0, 1180).trimEnd()}\n（以下はノートで）`;
 }

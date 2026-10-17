@@ -1,8 +1,8 @@
-import { buildAiWorkOrder, daysBefore, renderWorkOrder, type WorkSignal } from "./ai_work_order.js";
+import { buildAiWorkOrder, daysBefore, renderLineMessage, renderWorkOrder, type WorkSignal } from "./ai_work_order.js";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { parseArgs, renderNote, resolveOutPath, VAULT_OUT_RELATIVE, writeNote } from "./ai_work_order_cli.js";
+import { parseArgs, renderNote, resolveOutPath, sendLineNotice, VAULT_OUT_RELATIVE, writeNote } from "./ai_work_order_cli.js";
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -182,5 +182,56 @@ await writeNote(outFile, note);
 assert(await readFile(outFile, "utf8") === note, "無い階層も作って書き出す");
 await writeNote(outFile, "2回目");
 assert(await readFile(outFile, "utf8") === "2回目", "毎朝上書きできる");
+
+// --- LINEへ送る短い形 ---------------------------------------------------------
+const lineOrder = buildAiWorkOrder({ dateJst: TODAY, signals: [signal({ kind: "reply_waiting", count: 2 })] });
+const lineText = renderLineMessage(lineOrder);
+assert(lineText.startsWith(`☀ 今日のAI依頼（${TODAY}）`), "LINEは日付から始まる");
+assert(lineText.includes("▼今日やること"), "やることが入る");
+assert(lineText.includes("▼人間確認が必要な地点"), "人間確認の地点が入る");
+assert(lineText.includes("今日のAI依頼.md"), "全文の置き場所を案内する");
+assert(lineText.length <= 1200, `LINE1通に収まる長さ（${lineText.length}）`);
+assert(!lineText.includes("====="), "ターミナル用の罫線は入れない");
+
+const longOrder = buildAiWorkOrder({
+  dateJst: TODAY,
+  signals: [signal({ kind: "reply_waiting" })],
+  notes: Array.from({ length: 60 }, (_, i) => `長いメモ${i}`.repeat(10)),
+  askHuman: ["と".repeat(1500), "ても長い質問"],
+});
+const longText = renderLineMessage(longOrder);
+assert(longText.length <= 1200, `長い日も切り詰める（${longText.length}）`);
+assert(longText.endsWith("（以下はノートで）"), "切ったことが分かる");
+
+const quietLine = renderLineMessage(buildAiWorkOrder({ dateJst: TODAY, signals: [] }));
+assert(quietLine.includes("今日は追加のAI作業なし"), "作業なしの日もそのまま伝える");
+
+// --- LINEは1日1通、設定が無ければ送らない -----------------------------------
+assert(parseArgs([]).line === false, "--line 無しでは送らない");
+assert(parseArgs(["--line"]).line === true, "--line を解釈する");
+
+const lockDir = await mkdtemp(path.join(tmpdir(), "openqlow-work-order-line-"));
+const calls: string[] = [];
+const fakePush = async (text: string) => { calls.push(text); return { ok: true, mode: "sent" as const }; };
+const first = await sendLineNotice(lineOrder, TODAY, new Date("2026-09-13T21:30:00Z"), { pushFn: fakePush, stateDir: lockDir });
+assert(first.mode === "sent", `1通目は送る, got ${first.mode}`);
+assert(calls.length === 1, "送ったのは1回");
+const second = await sendLineNotice(lineOrder, TODAY, new Date("2026-09-13T22:00:00Z"), { pushFn: fakePush, stateDir: lockDir });
+assert(second.mode === "duplicate_today", `同じ日の2回目は送らない, got ${second.mode}`);
+assert(calls.length === 1, "2回目は送っていない");
+
+// 送れなかった日は印を外し、次の実行でやり直せる
+const retryDir = await mkdtemp(path.join(tmpdir(), "openqlow-work-order-line-retry-"));
+const failPush = async () => ({ ok: false, mode: "sent" as const, error: "network" });
+const failed = await sendLineNotice(lineOrder, TODAY, new Date(), { pushFn: failPush, stateDir: retryDir });
+assert(failed.reason === "network", "失敗の理由を返す");
+const retried = await sendLineNotice(lineOrder, TODAY, new Date(), { pushFn: fakePush, stateDir: retryDir });
+assert(retried.mode === "sent", `失敗した日はやり直せる, got ${retried.mode}`);
+
+// 設定が無いときは notifier 側で skipped（事故にならない）
+const skipDir = await mkdtemp(path.join(tmpdir(), "openqlow-work-order-line-skip-"));
+const skipPush = async () => ({ ok: true, mode: "skipped" as const });
+const skipped = await sendLineNotice(lineOrder, TODAY, new Date(), { pushFn: skipPush, stateDir: skipDir });
+assert(skipped.mode === "skipped", "送り先未設定なら skipped");
 
 console.log("ai_work_order.test.ts: all assertions passed");

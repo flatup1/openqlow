@@ -6,18 +6,26 @@
 //   npm run work-order -- --json                機械可読で出す
 //   npm run work-order -- --out                 Vaultの決まった場所へ書き出す（毎朝の自動実行用）
 //   npm run work-order -- --out ./today.md      場所を指定して書き出す
+//   npm run work-order -- --out --line          ノートに書き、短い形をJINのLINEへ送る
 //
 // 読むのは既にある記録だけ（返信下書き・体験台帳・日次ログ）。
-// 送信・投稿はしない。書き込みは --out を付けたときの1ファイルだけ。実行判断はJIN。
+// 書き込みは --out を付けたときの1ファイルだけ。顧客への送信・投稿はしない。
+// --line はJIN本人へのLINE通知だけで、1日1通（同じ日に2回動かしても1通）。実行判断はJIN。
 
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 import { loadConfig } from "../config.js";
+import { pushLineMessage } from "../line_bot/notifier.js";
+import { acquireRunLock } from "../scheduler/run_lock.js";
 import { collectWorkSignals } from "../sources/work_signals.js";
 import { formatDateInTimeZone } from "../utils/date.js";
-import { buildAiWorkOrder, renderWorkOrder, type WorkOrder } from "./ai_work_order.js";
+import { openqlowPath } from "../utils/paths.js";
+import { buildAiWorkOrder, renderLineMessage, renderWorkOrder, type WorkOrder } from "./ai_work_order.js";
 import { parseFlags } from "./shared.js";
+
+/** 同じ日に2通送らないための印。 */
+const LINE_RUN_LOCK_KEY = "work_order_line_sent";
 
 /** --out を値なしで指定したときの書き出し先（Vault からの相対）。 */
 export const VAULT_OUT_RELATIVE = path.join("6_システム", "AI作戦基地", "今日のAI依頼.md");
@@ -29,6 +37,8 @@ export interface WorkOrderArgs {
   json: boolean;
   /** 書き出し先。空文字は「Vaultの決まった場所」。未指定なら書き出さない。 */
   out?: string;
+  /** JIN本人のLINEへ短い形を送る。未指定なら送らない。 */
+  line: boolean;
   vaultRoot?: string;
   openqlowRoot?: string;
   aiOsRoot?: string;
@@ -42,7 +52,7 @@ function positiveInt(value: string | undefined): number | undefined {
 
 export function parseArgs(argv: string[]): WorkOrderArgs {
   const { flags } = parseFlags(argv);
-  const args: WorkOrderArgs = { json: "json" in flags };
+  const args: WorkOrderArgs = { json: "json" in flags, line: "line" in flags };
   const minutes = positiveInt(flags.minutes);
   if (minutes !== undefined) args.minutesAvailable = minutes;
   const stale = positiveInt(flags.stale);
@@ -104,10 +114,32 @@ export async function writeNote(file: string, body: string): Promise<void> {
   await rename(temporary, file);
 }
 
+/**
+ * JIN本人のLINEへ短い形を送る。
+ * 送り先・トークン未設定なら notifier 側で skipped になる（事故にならない）。
+ * 同じ日に2回動かしても1通だけ。送れなかった日は印を外して、次の実行でやり直せるようにする。
+ */
+export async function sendLineNotice(
+  order: WorkOrder,
+  dateJst: string,
+  now: Date,
+  deps: { pushFn?: typeof pushLineMessage; stateDir?: string } = {},
+): Promise<{ mode: string; reason?: string }> {
+  const stateDir = deps.stateDir ?? openqlowPath("state");
+  const lock = await acquireRunLock(stateDir, LINE_RUN_LOCK_KEY, dateJst, now.toISOString());
+  if (!lock.acquired) return { mode: "duplicate_today", reason: `already sent on ${dateJst}` };
+
+  const pushFn = deps.pushFn ?? pushLineMessage;
+  const result = await pushFn(renderLineMessage(order));
+  if (!result.ok || result.mode !== "sent") await lock.release();
+  return { mode: result.mode, ...(result.error ? { reason: result.error } : {}) };
+}
+
 const invokedDirectly = process.argv[1]?.endsWith("ai_work_order_cli.ts");
 if (invokedDirectly) {
   const args = parseArgs(process.argv.slice(2));
   const now = new Date();
+  const dateJst = args.dateJst ?? formatDateInTimeZone(now, "Asia/Tokyo");
   const order = await runWorkOrder(args, now);
   const text = args.json ? JSON.stringify(order, null, 2) : renderWorkOrder(order);
   console.log(text);
@@ -115,6 +147,10 @@ if (invokedDirectly) {
     const file = resolveOutPath(args.out, args.vaultRoot ?? loadConfig().obsidianVaultRoot);
     await writeNote(file, args.json ? `${text}\n` : renderNote(order, formatDateInTimeZone(now, "Asia/Tokyo")));
     console.log(`\n[work-order] 書き出しました: ${file}`);
+  }
+  if (args.line) {
+    const sent = await sendLineNotice(order, dateJst, now);
+    console.log(`[work-order] LINE: ${sent.mode}${sent.reason ? ` (${sent.reason})` : ""}`);
   }
   process.exit(0);
 }
