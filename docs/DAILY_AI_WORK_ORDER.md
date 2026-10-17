@@ -45,6 +45,31 @@ npm run work-order -- --out --line  # 自動実行と同じ（ノート＋LINE1�
 - `LINE_CHANNEL_ACCESS_TOKEN` / `JIN_LINE_USER_ID` が無い環境では、
   ノートだけ書いてLINEは `skipped` になります（事故になりません）。
 
+### LINEが `skipped` のままのとき
+
+このリポジトリは依存ゼロで、**`.env` を自動では読みません**（`src/config.ts` は `process.env` だけを見る）。
+launchd は `/bin/zsh -lc` で動くので、ログインシェルの設定（`~/.zshrc` など）に
+`export` されている値は見えますが、`openqlow/.env` の中にしか無い値は見えません。
+
+確認:
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/com.flatup.openqlow.work-order"
+tail -5 ~/Library/Logs/openqlow-work-order.log
+```
+
+最後の行が `[work-order] LINE: sent` ならLINEは届いています。`skipped` なら、次のどちらかで値を見せます。
+
+```bash
+# 方法1: ログインシェルに置く（他のMacの定時処理と同じやり方）
+echo 'export LINE_CHANNEL_ACCESS_TOKEN="…"' >> ~/.zshrc
+echo 'export JIN_LINE_USER_ID="…"' >> ~/.zshrc
+
+# 方法2: plist に EnvironmentVariables として足す（~/Library/LaunchAgents/ の方を編集し、入れ直す）
+```
+
+値そのものはこのリポジトリに書かないでください。ノートの書き出しは、LINEが `skipped` でも動きます。
+
 入れる:
 
 ```bash
