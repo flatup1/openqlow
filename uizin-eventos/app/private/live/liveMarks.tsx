@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
 /*
   試合当日の画面（/private/live/）の「色と言葉の約束」の部品。通信はしません。
@@ -61,4 +61,9 @@ export function Hint({ children, className = '' }: { children: ReactNode; classN
 /** 入力欄の横の『例：』の行 */
 export function Example({ children, id, className = '' }: { children: ReactNode; id?: string; className?: string }) {
   return <p id={id} className={cx('tos-example m-0', className)} style={BIG}>例：{children}</p>;
+}
+
+/** 「首相撲あり／膝蹴りあり／…」のように「／」で区切った言葉は、「／」のうしろで折り返せるようにする（言葉の途中で切れない）。1試合ずつの画面と一覧で同じ */
+export function WithBreaks({ text }: { text: string }) {
+  return <>{text.split('／').map((part, i) => <Fragment key={i}>{i > 0 ? <>／<wbr /></> : null}{part}</Fragment>)}</>;
 }

@@ -43,7 +43,6 @@ const SCREENS = [
   ['/private/setup/?event=misc-a', '受付をつくる'],
   ['/private/live/?event=misc-a', '当日'],
   ['/private/entry/?event=misc-a', '入力'],
-  ['/private/google-setup/?event=misc-a', '旧設定'],
   ['/apply/', '申込'],
 ];
 const LIGHT_BG = 'rgb(238, 242, 248)';
@@ -88,7 +87,7 @@ scenario('M1', 'the built CSS has no @layer (Safari 15.0-15.3 drops @layer block
 /* ───────────────────────── M2 (r1-128): the cascade is the same as before ───────────────────────── */
 scenario('M2', 'the look is unchanged without @layer: hand-written rules still beat Tailwind variants; utilities still apply', async () => {
   const ctx = await newCtx();
-  for (const [path, label] of [SCREENS[0], SCREENS[5]]) {
+  for (const [path, label] of [SCREENS[0], SCREENS.find(([p]) => p === '/apply/')]) {
     const page = await ctx.newPage();
     await page.goto(base + path);
     await settle(800);
@@ -142,7 +141,7 @@ scenario('M4', 'the app scripts cannot start: the page is already light (no blac
   const ctx = await newCtx();
   await ctx.route(/\/_next\/static\/chunks\/.*\.js$/, (route) => route.abort());
   const pages = [];
-  for (const [path, label] of [SCREENS[0], SCREENS[1], SCREENS[5]]) {
+  for (const [path, label] of [SCREENS[0], SCREENS[1], SCREENS.find(([p]) => p === '/apply/')]) {
     const page = await ctx.newPage();
     await page.goto(base + path);
     await settle(300);
@@ -184,7 +183,7 @@ scenario('M5', 'noindex meta, an empty icon, no 404 in the console, no stray req
 });
 
 /* ───────────────────────── M6 (r1-133 / r1-172): the safety headers file ───────────────────────── */
-scenario('M6', 'the served _headers file keeps every privacy rule (CSP, referrer, noindex), for all six path blocks', async () => {
+scenario('M6', 'the served _headers file keeps every privacy rule (CSP, referrer, noindex), for all five path blocks', async () => {
   const text = await (await fetch(base + '/_headers')).text();
   const blocks = new Map();
   let curBlock = null;
@@ -192,7 +191,8 @@ scenario('M6', 'the served _headers file keeps every privacy rule (CSP, referrer
     if (!raw.trim()) continue;
     if (/^\S/.test(raw)) { curBlock = { path: raw.trim(), lines: [] }; blocks.set(curBlock.path, curBlock); } else if (curBlock) curBlock.lines.push(raw.trim());
   }
-  const need = ['/private/', '/private/entry/*', '/private/live/*', '/private/setup/*', '/private/google-setup/*', '/apply/*'];
+  const need = ['/private/', '/private/entry/*', '/private/live/*', '/private/setup/*', '/apply/*'];
+  check(!blocks.has('/private/google-setup/*'), '/private/google-setup/*: the legacy page is not published, so it has no block (D-1)');
   for (const p of need) {
     const b = blocks.get(p);
     check(!!b, p + ': block exists');
@@ -208,7 +208,7 @@ scenario('M6', 'the served _headers file keeps every privacy rule (CSP, referrer
   check(/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/.test(apply), '/apply/*: form-action is only the two Google addresses');
   for (const p of need.filter((x) => x !== '/apply/*')) {
     const b = blocks.get(p); if (!b) continue;
-    check(!/form-action https/.test(b.lines.join('\n')) || p === '/private/google-setup/*', p + ': only the old google-setup page may post to Google');
+    check(!/form-action https/.test(b.lines.join('\n')), p + ': only /apply/ may post to Google');
   }
 });
 

@@ -82,9 +82,9 @@ export function Notice({ kind, children, onClose, action, className = '', compac
 }
 
 /** 折りたたみ。見出し行は48px以上、開閉の文字つき。中身は消さずにしまう */
-export function Fold({ title, children, open, onToggle, className = '', summaryClass = '', id }: { title: ReactNode; children: ReactNode; open?: boolean; onToggle?: (open: boolean) => void; className?: string; summaryClass?: string; id?: string }) {
+export function Fold({ title, children, open, onToggle, className = '', summaryClass = '', id, summaryDescribedBy }: { title: ReactNode; children: ReactNode; open?: boolean; onToggle?: (open: boolean) => void; className?: string; summaryClass?: string; id?: string; summaryDescribedBy?: string }) {
   return <details id={id} open={open} onToggle={onToggle ? (e) => onToggle((e.currentTarget as HTMLDetailsElement).open) : undefined} className={cls('group rounded-xl border-2 border-slate-300 bg-white', className)}>
-    <summary className={cls('flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-4 text-lg font-bold [&::-webkit-details-marker]:hidden', summaryClass)}>
+    <summary aria-describedby={summaryDescribedBy} className={cls('flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-4 text-lg font-bold [&::-webkit-details-marker]:hidden', summaryClass)}>
       <span className="min-w-0 flex-1 text-balance [overflow-wrap:anywhere]">{title}</span>
       <span aria-hidden="true" className="shrink-0 text-[17px] font-bold text-indigo-800"><span className="group-open:hidden">▶ ひらく</span><span className="hidden group-open:inline">▼ とじる</span></span>
     </summary>

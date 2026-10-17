@@ -54,7 +54,7 @@ test('募集項目は名簿と一緒に保存・復元でき、旧バックア�
   assert.equal(isLocalTournament({...data,entryConfig}),true);
   for(const entryConfig of [null,{music:'yes',grade:'required',age:'optional',comment:'off'},{music:true,grade:'wrong',age:'optional',comment:'off'}])assert.equal(isLocalTournament({...data,entryConfig}),false);
   const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
-  assert.match(admin,/data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG/);assert.match(admin,/if\(await save\(\)\)location\.href=googleSetup/);
+  assert.match(admin,/data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG/);assert.doesNotMatch(admin,/google-setup/,'古い受付画面（公開しない）への道は、準備の画面に無い');
 });
 test('写真の選び直しは古い写真・遅れて終わる加工を送らず、加工中に送信できない',()=>{
   const source=readFileSync(new URL('../app/apply/page.tsx',import.meta.url),'utf8');
@@ -77,7 +77,9 @@ test('再取り込みは管理番号で更新・追加し、写真・元の選�
 
 test('入場曲を使わない大会では曲リンクを出さず、同じ注意文を重ねない',()=>{
   const source=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
-  assert.match(source,/musicEnabled=data\.entryConfig\?\.music \?\? true/);
+  // r2-123: 入場曲を使うかは、準備画面と同じ決め方（受付の設定がない大会は「使わない」）。listLogic.ts の liveMusicOn が1か所で決める
+  assert.match(source,/musicEnabled=liveMusicOn\(data\)/);
+  assert.match(readFileSync(new URL('../app/private/live/listLogic.ts',import.meta.url),'utf8'),/\(data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG\)\.music/);
   assert.match(source,/musicEnabled \? safeMusicUrl/);
   assert.match(source,/この大会は入場曲なし/);assert.ok(!source.includes('曲なし・URL要確認'));
   assert.equal((source.match(/musicEnabled=\{musicEnabled\}/g)||[]).length,2);
@@ -198,7 +200,9 @@ test('Cloudflareの重複ヘッダーでGoogle接続確認を止めず、選手�
   const headers=readFileSync(new URL('../public/_headers',import.meta.url),'utf8');
   const blocks=headers.trim().split(/\n\s*\n/).map(block=>{const lines=block.split('\n');return{path:lines[0],policy:lines.find(line=>line.trim().startsWith('Content-Security-Policy:'))||''};});
   const policies=(path:string)=>blocks.filter(block=>block.path.endsWith('*')?path.startsWith(block.path.slice(0,-1)):block.path===path).map(block=>block.policy);
-  const setup=policies('/private/google-setup/');assert.equal(setup.length,1);assert.match(setup[0],/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/);assert.doesNotMatch(setup[0],/form-action 'none'/);
+  // 古い「別の方法で受付をつくる」画面は公開しない（D-1）。だから、その画面に Google へ送る許可を出した設定も、もう無い。
+  assert.equal(policies('/private/google-setup/').length,0,'公開しない画面に、Googleへ送る許可を残さない');
+  const apply=policies('/apply/');assert.equal(apply.length,1);assert.match(apply[0],/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/);assert.match(apply[0],/connect-src 'none'/);
   for(const path of ['/private/','/private/entry/','/private/live/']){const matched=policies(path);assert.equal(matched.length,1);assert.match(matched[0],/form-action 'none'/);assert.match(matched[0],/connect-src 'self';/);}
 });
 

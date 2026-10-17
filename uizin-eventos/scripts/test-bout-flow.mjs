@@ -13,6 +13,13 @@
  *     and fighters are still waiting (the robot then presses 「＋ 試合を追加」 itself so the rest of the walk can still be checked)
  *   - plain-words checks: the first use of a hard word has no short explanation nearby (see WORDS)
  *   - the match-day screen does not show the 3 bouts, red/blue corner words, class words, or has more/less than one yellow slot
+ *   - (round 2) a grey lock reason points at a box that is not on screen; the yellow badge breaks 「第1試合」 over two lines;
+ *     typing ONE letter of the title moves the title box (Safari has no scroll anchoring) or the yellow off it;
+ *     one press of 「1つ目の案を見る」 already turns the yellow into 保存 while 2 suggestions are unseen;
+ *     a saved half bout still shows 「保存 ○ まだ」; the bar says nothing after the hand-over; 試合当日の画面 is never explained
+ *   (round 2) the yellow is on screen right after the import and after the 2nd corner (also at 910x512 = a 1366x768 laptop at 150% zoom);
+ *             「おすすめ」 does not copy bout 1's rule / weight class onto the suggested bouts
+ *   Env TOS_ONLY accepts: 1280, 390, suggest, typing, review, half, onscreen, rulecopy (comma separated)
  *
  * Run (server started and stopped inside ONE shell command):
  *   (python3 -m http.server 4630 -d out-private-pages --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > /tmp/p.pid; sleep 1;
@@ -85,6 +92,26 @@ const stateSig = (p) => p.evaluate(() => {
   const save = document.getElementById('save-state')?.innerText.slice(0, 12) ?? '';
   return [t ? 'T' : 't', fighters, arts.length, filled, save].join('|');
 });
+/** returns e.g. 「第1試合」 when the visible yellow slot breaks that word across two lines, else '' */
+const badgeSplit = (p) => p.evaluate(() => {
+  const slot = [...document.querySelectorAll('[data-tos-next="1"]')].find((e) => e.getBoundingClientRect().width > 0);
+  if (!slot) return '';
+  const walker = document.createTreeWalker(slot, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n.textContent || ''; const re = /第\d+試合/g; let m;
+    while ((m = re.exec(t))) {
+      const r = document.createRange(); let prev = null;
+      for (let i = m.index; i < m.index + m[0].length; i++) {
+        r.setStart(n, i); r.setEnd(n, i + 1);
+        const rects = r.getClientRects(); if (!rects.length) continue;
+        const top = Math.round(rects[0].top);
+        if (prev !== null && Math.abs(top - prev) > 4) return m[0];
+        prev = top;
+      }
+    }
+  }
+  return '';
+});
 const sec3Text = (p) => p.locator('#sec-3').innerText();
 const pageText = (p) => p.evaluate(() => document.body.innerText);
 
@@ -93,6 +120,7 @@ const WORDS = [
   ['対戦カード', /対戦カード[（(＝=は]?[^。\n]{0,12}(とは|＝|=|は)[^。\n]{0,30}(組み合わせ|2人|二人|だれ|誰)/, 'say what 対戦カード is (e.g. 「対戦カード＝だれとだれが戦うか、1試合ずつ書いた紙です」)'],
   ['赤コーナー・青コーナー', /(赤|青)コーナー[^。\n]{0,20}(＝|=|とは|は)[^。\n]{0,40}(側|がわ|入場|リング|どちら|選手)/, 'say what 赤コーナー/青コーナー mean (e.g. 「赤コーナー・青コーナー＝リングの赤い側・青い側。2人のうち、どちらがどちらでもかまいません」)'],
   ['体重差', /体重差[^。\n]{0,20}(＝|=|とは|は)[^。\n]{0,30}(おもさ|重さ|ちがい|差)/, 'say what 体重差 is (e.g. 「体重差＝2人の体重のちがい」)'],
+  ['試合当日の画面', /試合当日の画面(＝|=|とは|は)[^。\n]{0,60}(大きく|映|表示|出ます)/, 'say what 試合当日の画面 is and that opening it does not start anything (e.g. 「試合当日の画面＝選手の名前・写真・体重を、大きく映す画面です。開いても、試合は始まりません」)'],
 ];
 
 /** what the yellow slot asks, in the chairman's words -> { kind } */
@@ -131,6 +159,18 @@ async function runWalk(mobile) {
     const blank = await page.evaluate(() => [...document.querySelectorAll('article[id^="bout-"]')].some((a) => !a.querySelector('select[aria-label="赤コーナーの選手"]')?.value && !a.querySelector('select[aria-label="青コーナーの選手"]')?.value));
     const finished = /ぜんぶ終わりました/.test(text) || opened;
     trail.push(sig0 + ' :: ' + slots.map((s) => short(s.text, 50)).join(' / '));
+    // a grey lock reason must never send the chairman to a box that is not on screen (the 「✕ 直すところ」 box only exists once a bout has a problem; the 「次にすること」 box is hidden on the empty start)
+    if (/上の「✕ 直すところ」/.test(text) && !/(^|\n)✕\s*直すところ/.test(text) && !stalls.has('lock-fix')) {
+      stalls.add('lock-fix');
+      check(false, 'step ' + steps + ' (' + sig0 + '): the grey lock says 「上の「✕ 直すところ」を直します」 but no 「✕ 直すところ」 box is on screen (say the real reason: 先に大会の名前 / 選手 / 試合1つ / 保存)');
+    }
+    if (/上の「次にすること」/.test(text) && !/次にすること：/.test(text) && !stalls.has('lock-next')) {
+      stalls.add('lock-next');
+      check(false, 'step ' + steps + ' (' + sig0 + '): the text says 「上の「次にすること」を見てください」 but no 「次にすること」 box is on screen');
+    }
+    // the yellow badge must not break the word 「第1試合」 across two lines (「第」 / 「1試合」) in the narrow corner column
+    const split = await badgeSplit(page);
+    if (split && !stalls.has('split:' + label)) { stalls.add('split:' + label); check(false, 'step ' + steps + ' (' + sig0 + ') at ' + label + ': the yellow badge breaks ' + split + ' (use a word joiner / keep-all / a shorter label such as 「第1試合の赤コーナーを選ぶ」)'); }
     if (opened) break;
     check(slots.length === 1 || (slots.length === 0 && finished), 'step ' + steps + ': exactly ONE yellow slot (saw ' + slots.length + (slots.length ? ': ' + slots.map((s) => short(s.text, 40)).join(' | ') : '') + ')');
     const slot = slots[0];
@@ -227,6 +267,9 @@ async function runWalk(mobile) {
   cur = label;
   const after = await pageText(page);
   check(/開きました/.test(after), 'prep: a green 「開きました」 line confirms the hand-over');
+  // the chairman looks at the bottom bar, not at section 4: the bar must also say the screen is open (and that pressing again opens ANOTHER one)
+  const barAfter = await page.evaluate(() => (document.querySelector('div.fixed')?.innerText ?? '').replace(/\s+/g, ' '));
+  check(/(開きました|もう1つ|もう一度)/.test(barAfter), 'prep: after the hand-over the bottom bar still shows only 「保存しました」 and the same filled 「試合当日の画面を開く」 (' + short(barAfter, 100) + '); pressing it again after 2 seconds opens a SECOND match-day tab. Say 「✓ 開きました（別のタブ）。もう一度押すと、もう1つ開きます」');
   await ctx.close();
 }
 
@@ -271,7 +314,148 @@ async function suggestionScenario() {
   await ctx2.close();
 }
 
+/** The first typed letter of the title must not move the page under the chairman's hands, and the yellow must stay on the box he is typing in */
+async function typingScenario(mobile) {
+  const label = mobile ? '390' : '1280';
+  cur = 'typing ' + label;
+  console.log('--- typing the title at ' + label + ' ---');
+  const ctx = await newCtx(mobile);
+  const page = await ctx.newPage();
+  await page.goto(base + '/private/?event=bout-flow-typing-' + label + '-' + Date.now());
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  // Safari has no scroll anchoring: switch it off so Chrome shows what Safari shows
+  await page.addStyleTag({ content: '*{overflow-anchor:none !important}' });
+  // 場所は「ページの中」ではかる（画面の上からの距離 + スクロール量）。入力欄が下の帯の下に隠れているとき、クリックが画面を動かすのは、ページが欄を動かしたのではない
+  const top = () => page.evaluate(() => Math.round(document.getElementById('field-title').getBoundingClientRect().top + window.scrollY));
+  const before = await top();
+  await page.locator('#field-title').click();
+  await page.keyboard.type('第', { delay: 60 });
+  await settle(300);
+  const after = await top();
+  check(Math.abs(after - before) <= 40, 'typing ONE letter moved the title box from y=' + before + ' to y=' + after + ' (the 「次にすること」, 「コピーのファイル」 and 「申し込みページ」 boxes jump from below section 4 to above section 1 as soon as the title is non-empty; keep them in one place)');
+  const slots = await slotInfo(page);
+  check(slots.length === 1 && /大会の名前|大会名/.test(slots[0].text), 'typing ONE letter moved the yellow off the title box while the chairman is still typing (now: ' + short(slots.map((s) => s.text).join(' | '), 70) + ')');
+  await ctx.close();
+}
+
+/** 「おすすめ」 gives 3 suggested bouts: the yellow must not say 保存 / 開く after the chairman has looked at only the first one */
+async function reviewScenario() {
+  cur = 'review';
+  console.log('--- suggested bouts: one yellow press must not end the review of three ---');
+  const H = HEAD;
+  const rows = [['S1', '架空一ジム', '架空一', '中1', '13', '155', '55', '2勝', 'x', '', 'Bクラス'], ['S2', '架空二ジム', '架空二', '中1', '13', '155', '56', '1勝', 'x', '', 'Bクラス'], ['S3', '架空三ジム', '架空三', '中2', '14', '160', '58', '初試合', 'x', '', 'Bクラス'], ['S4', '架空四ジム', '架空四', '中2', '14', '160', '60', '0勝', 'x', '', 'Bクラス'], ['S5', '架空五ジム', '架空五', '高1', '16', '170', '70', '1勝', 'x', '', 'Bクラス'], ['S6', '架空六ジム', '架空六', '高1', '16', '170', '71', '2勝', 'x', '', 'Bクラス']];
+  const csv = [H, ...rows.map((r) => r.join(','))].join('\n');
+  const ctx = await newCtx(false);
+  const page = await ctx.newPage();
+  await page.goto(base + '/private/?event=bout-flow-review-' + Date.now());
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await page.locator('#pick-file').setInputFiles({ name: 'players.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
+  await settle(700);
+  await page.getByRole('button', { name: 'おすすめの組み合わせを自動で作る' }).click();
+  await settle(400);
+  const drafts = await page.evaluate(() => [...document.querySelectorAll('article[id^="bout-"]')].filter((a) => [...a.querySelectorAll('span,div')].some((e) => e.children.length === 0 && e.textContent.trim() === '案')).length);
+  check(drafts === 3, 'review: 3 suggested bouts exist (saw ' + drafts + ')');
+  const first = await slotInfo(page);
+  check(first.length === 1 && /案/.test(first[0].text), 'review: after 「おすすめ」 the yellow asks to check the suggestions (' + short(first.map((s) => s.text).join(' | '), 60) + ')');
+  await page.getByRole('button', { name: '1つ目の案を見る' }).click();
+  await settle(500);
+  const next = await slotInfo(page);
+  const t = next[0]?.text ?? '';
+  check(next.length === 1 && !/保存|当日の画面を開く/.test(t), 'review: after looking at ONE of 3 suggestions the yellow already says 「' + short(t, 40) + '」, so two suggestions can be saved unseen (the caution says 「使う前に、必ず1つずつ見る」). Keep the yellow on 「第2試合の案を見る」, then 「第3試合の案を見る」, then 保存');
+  check(/2つ目の案を見る/.test(t), 'r2-135: after the first look the ONE yellow is 「2つ目の案を見る」 (' + short(t, 40) + ')');
+  await page.getByRole('button', { name: '2つ目の案を見る', exact: true }).click();
+  await settle(500);
+  const third = (await slotInfo(page))[0]?.text ?? '';
+  check(/3つ目の案を見る/.test(third) && !/保存|当日の画面を開く/.test(third), 'r2-135: after the second look the ONE yellow is 「3つ目の案を見る」 (' + short(third, 40) + ')');
+  await page.getByRole('button', { name: '3つ目の案を見る', exact: true }).click();
+  await settle(500);
+  const last = await slotInfo(page);
+  check(last.length === 1 && /保存/.test(last[0].text), 'r2-135: only after the third look does the yellow move on to 保存 (' + short(last.map((s) => s.text).join(' | '), 50) + ')');
+  await ctx.close();
+}
+
+/** After saving a half-filled bout the bar says ✓ 保存済み: the 「保存」 row of section 4 must not still say 「○ まだ」 */
+async function halfSaveScenario() {
+  cur = 'half-save';
+  console.log('--- saved a half bout: the 保存 row must agree with the bar ---');
+  const ctx = await newCtx(false);
+  const page = await ctx.newPage();
+  await page.goto(base + '/private/?event=bout-flow-half-' + Date.now());
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await page.locator('#pick-file').setInputFiles({ name: '選手名簿.zip', mimeType: 'application/zip', buffer: ZIP });
+  await settle(700);
+  await page.getByRole('button', { name: '＋ 試合を追加', exact: true }).click();
+  await page.locator('#bout-0-red').selectOption('F01');
+  await settle(300);
+  await page.locator('div.fixed').getByRole('button', { name: /^保存する$/ }).first().click();
+  await page.waitForFunction(() => /保存済み/.test(document.getElementById('save-state')?.innerText ?? ''), null, { timeout: 8000 }).catch(() => {});
+  const row = await page.evaluate(() => [...document.querySelectorAll('#sec-4 li')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()).find((x) => /^保存( |$)/.test(x)) ?? '');
+  check(row !== '' && !/まだ/.test(row), 'half-save: the bar says 「保存済み」 but the section-4 row says 「' + row + '」 (a saved half bout is saved: show ✓ and keep the red 「直すところ」 for the empty blue corner)');
+  await ctx.close();
+}
+
+/** (round 2) the yellow slot must be ON SCREEN right after a step is done: after the roster import, and after the second corner is chosen at a 150%-zoom laptop (910x512) */
+async function onScreenScenario(label, w, h, mobile, steps) {
+  cur = 'onscreen ' + label;
+  console.log('--- the yellow stays on screen: ' + label + ' ---');
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1 });
+  await ctx.route('**/*', (route) => route.request().url().startsWith(base + '/') ? route.continue() : (externals.push({ scenario: cur, url: route.request().url() }), route.abort()));
+  const page = await ctx.newPage();
+  page.on('dialog', (d) => d.dismiss().catch(() => {}));
+  await page.goto(base + '/private/?event=bout-flow-onscreen-' + label + '-' + Date.now());
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await page.locator('#pick-file').setInputFiles({ name: '選手名簿.zip', mimeType: 'application/zip', buffer: ZIP });
+  await settle(900);
+  const seen = () => page.evaluate(() => {
+    const s = [...document.querySelectorAll('[data-tos-next="1"]')].find((e) => e.getBoundingClientRect().width > 0);
+    if (!s) return { found: false };
+    const r = s.getBoundingClientRect(); const bar = s.closest('div.fixed');
+    return { found: true, onScreen: bar ? true : (r.bottom > 0 && r.top < innerHeight), top: Math.round(r.top), text: s.innerText.replace(/\s+/g, ' ').slice(0, 40) };
+  });
+  if (steps.includes('import')) { const v = await seen(); check(v.found && v.onScreen, 'after the roster import the yellow 「' + (v.text ?? '') + '」 is at y=' + v.top + ' (screen height ' + h + '): scroll to it after the import, as is done after 「＋ 試合を追加」'); }
+  if (steps.includes('bout')) {
+    await page.getByRole('button', { name: '＋ 試合を追加', exact: true }).click(); await settle(300);
+    await page.locator('#bout-0-red').selectOption('F01'); await page.locator('#bout-0-blue').selectOption('F04'); await settle(500);
+    const v = await seen(); check(v.found && v.onScreen, 'after the 2nd corner the yellow 「' + (v.text ?? '') + '」 is at y=' + v.top + ' on a ' + w + 'x' + h + ' screen (the bottom bar fell into the page flow; it must stay fixed, only the step nav may flow)');
+  }
+  await ctx.close();
+}
+
+/** (round 2) 「おすすめ」 must not copy the rule / weight class of bout 1 onto the suggested bouts (a B-class pair would show the A rule on the match-day screen) */
+async function ruleCopyScenario() {
+  cur = 'rule-copy';
+  console.log('--- おすすめ must not copy bout 1\'s rule to the suggested bouts ---');
+  const ctx = await newCtx(false);
+  const page = await ctx.newPage();
+  await page.goto(base + '/private/?event=bout-flow-rule-' + Date.now());
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await page.locator('#pick-file').setInputFiles({ name: '選手名簿.zip', mimeType: 'application/zip', buffer: ZIP });
+  await settle(700);
+  await page.getByRole('button', { name: '＋ 試合を追加', exact: true }).click();
+  await page.locator('#bout-0-red').selectOption('F01'); await page.locator('#bout-0-blue').selectOption('F04');
+  await page.locator('#bout-0').getByText('ルール・体重の区分（なくてもOK）').click();
+  await page.locator('#bout-0-rule').fill('首相撲あり・膝蹴りあり'); await page.locator('#bout-0-class').fill('55kg');
+  await page.getByRole('button', { name: 'おすすめの組み合わせを自動で作る' }).click(); await settle(500);
+  const copied = await page.evaluate(() => [...document.querySelectorAll('article[id^="bout-"]')].slice(1).map((a, i) => ({ n: i + 2, rule: a.querySelector('input[id$="-rule"]')?.value ?? '', cls: a.querySelector('input[id$="-class"]')?.value ?? '', warned: /まえの試合と同じ値/.test(a.innerText) })));
+  const bad = copied.filter((c) => (c.rule || c.cls) && !c.warned);
+  check(copied.length === 2 && bad.length === 0, 'おすすめ copied bout 1\'s rule/weight class into suggested bout(s) ' + bad.map((b) => b.n + ' (「' + b.rule + '」/「' + b.cls + '」)').join(', ') + ' with NO 「まえの試合と同じ値です」 note: a Bクラス pair then shows the Aクラス rule on the match-day screen. Leave rule and weight class empty for suggested bouts');
+  await ctx.close();
+}
+
 try {
+  if (!ONLY.length || ONLY.includes('onscreen')) {
+    await onScreenScenario('pc-1280', 1280, 900, false, ['import', 'bout']);
+    await onScreenScenario('zoom150-910x512', 910, 512, false, ['bout']);
+    await onScreenScenario('phone-360x640', 360, 640, true, ['bout']);
+  }
+  if (!ONLY.length || ONLY.includes('rulecopy')) await ruleCopyScenario();
+  if (!ONLY.length || ONLY.includes('typing')) { await typingScenario(false); await typingScenario(true); }
+  if (!ONLY.length || ONLY.includes('review')) await reviewScenario();
+  if (!ONLY.length || ONLY.includes('half')) await halfSaveScenario();
   if (!ONLY.length || ONLY.includes('1280')) await runWalk(false);
   if (!ONLY.length || ONLY.includes('390')) await runWalk(true);
   if (!ONLY.length || ONLY.includes('suggest')) await suggestionScenario();

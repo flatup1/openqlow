@@ -1,17 +1,17 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { boutClassWarning } from '../../../core/classRules.ts';
 import { contractWeight, safeMusicUrl, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
 import { PrivateSaveConflict, readPrivateEvent, watchPrivateEvent, writePrivateEvent } from '../../lib/privateStore.ts';
 import ListView, { EmptyBouts } from './ListView.tsx';
-import { Caution, ErrorLine, Hint, NextSlot, cx } from './liveMarks.tsx';
-import { MUSIC_NEW_TAB, displayName, isRepeatPress, isSamePerson, moveNotice, musicLabel, musicState, nextHint, parseViewParam, saveFailNotice, undoSecondsLeft, withViewParam, type LiveView, type MoveVia } from './listLogic.ts';
+import { Caution, ErrorLine, Hint, NextSlot, WithBreaks, cx } from './liveMarks.tsx';
+import { MUSIC_NEW_TAB, NO_TITLE, OFFLINE_NOTE, PREP_LINK_NOTE, REOPEN_NOTE, displayName, isHeldKeyRepeat, isRepeatPress, isSamePerson, liveMusicOn, moveNotice, musicLabel, musicState, nextHint, parseViewParam, saveFailNotice, undoSecondsLeft, withViewParam, type LiveView, type MoveVia } from './listLogic.ts';
 
 /*
   試合当日の画面。色と言葉の約束（黄=次はここ / 薄い黄=気をつけて / 赤=まちがい・失敗 / 緑=できた / 灰の点線=今は押せない）は app/globals.css の .tos-*。
   黄色の「次はここ」は、1つの状態に1つだけ:
-    1試合ずつ = 「次の試合 →」（最後の試合では「一覧」、保存に失敗したら失敗したボタン） / 一覧 = ListView の中で決める / 空・読めない = 準備画面へ戻る
+    1試合ずつ = 「次の試合 →」（最後の試合では、押すものがないので黄色なし。保存に失敗したら失敗したボタン） / 一覧 = ListView の中で決める（最後の試合では黄色なし） / 空・読めない = 準備画面へ戻る
 */
 
 /* 赤と青は、色だけでなく「言葉」と「形」でも分ける: 赤コーナー=▲ / 青コーナー=■ 。帯は 24px の太字 */
@@ -22,11 +22,6 @@ const SIDE = {
 
 type FighterProblem = 'missing' | 'same' | null;
 
-/** 「首相撲あり／膝蹴りあり／…」のように「／」で区切った言葉は、「／」のうしろで折り返せるようにする（言葉の途中で切れない） */
-function WithBreaks({ text }: { text: string }) {
-  return <>{text.split('／').map((part, i) => <Fragment key={i}>{i > 0 ? <>／<wbr /></> : null}{part}</Fragment>)}</>;
-}
-
 function FighterCard({ side, fighter, musicEnabled, problem }: { side: 'red'|'blue'; fighter: LocalFighter | undefined; musicEnabled: boolean; problem: FighterProblem }) {
   const [playing, setPlaying] = useState(false);
   const musicUrl = musicEnabled ? safeMusicUrl(fighter?.musicUrl ?? '') : '';
@@ -36,29 +31,29 @@ function FighterCard({ side, fighter, musicEnabled, problem }: { side: 'red'|'bl
   const hasPhoto = !!fighter?.photoDataUrl;
   const className = fighter?.fighterClass?.trim() ?? '';
   const noName = !!fighter && !fighter.name.trim();
-  return <article className={'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-3xl border-4 bg-white text-[17px] ' + look.border}>
+  return <article className={'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-3xl border-4 bg-white text-[17px] min-[1600px]:text-[22px] ' + look.border}>
     {/* クラスは、色のついた帯の中に書く。上にあるので、前・次の帯や写真の下に隠れない */}
-    <p className={'live-band flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-1 text-center text-2xl font-black text-white ' + look.band}><span><span aria-hidden="true">{look.mark} </span>{look.label}</span>{className ? <span className="inline-block min-w-0 max-w-full rounded-full border-[3px] border-slate-800 bg-white px-4 text-2xl font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{className}</span> : null}</p>
-    {/* 写真の高さは、画面の高さに合わせて決める（高い画面では大きく、低い画面では名前の場所をあける） */}
-    <div className={'live-photo relative shrink-0 bg-slate-100 ' + (hasPhoto ? 'h-[clamp(64px,calc(100vh-760px),420px)]' : 'h-[72px]')}>
+    <p className={'live-band live-corner-band flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-1 text-center text-2xl font-black text-white min-[1600px]:text-[32px] ' + look.band}><span><span aria-hidden="true">{look.mark} </span>{look.label}</span>{className ? <span className="inline-block min-w-0 max-w-full rounded-full border-[3px] border-slate-800 bg-white px-4 text-2xl font-black leading-tight text-slate-950 min-[1600px]:text-[32px] [overflow-wrap:anywhere]">{className}</span> : null}</p>
+    {/* 写真の高さは、画面の高さに合わせて決める（高い画面では大きく、低い画面では名前の場所をあける）。写真がある人もない人も同じ高さ（2人の名前が、同じ高さにならぶ） */}
+    <div className="live-photo relative h-[clamp(72px,calc(100vh-760px),420px)] shrink-0 bg-slate-100">
       {hasPhoto ? <img src={fighter?.photoDataUrl} alt="" className="absolute inset-0 h-full w-full object-contain" /> : <div className="grid h-full place-items-center text-slate-600">👤 写真なし</div>}
     </div>
     <div className="p-3">
-      <h2 className="text-center text-[clamp(2.25rem,4.4vw,3.5rem)] font-black leading-tight [overflow-wrap:anywhere]">{displayName(fighter)}</h2>
-      <p className="mt-1 text-center text-xl font-bold text-slate-700 [overflow-wrap:anywhere]">{fighter?.gym}</p>
-      {noName ? <ErrorLine className="mt-2">名前が入っていません。準備画面で入れる</ErrorLine> : null}
-      {problem === 'missing' ? <ErrorLine className="mt-2">選手が選ばれていません。準備画面で選ぶ</ErrorLine> : null}
-      {problem === 'same' ? <ErrorLine className="mt-2">まちがい：赤と青が同じ選手です。準備画面で直す</ErrorLine> : null}
+      <h2 className="text-center text-[clamp(2.25rem,4.4vw,3.5rem)] font-black leading-tight [overflow-wrap:anywhere] min-[1600px]:text-[clamp(3.5rem,3.6vw,5rem)]">{displayName(fighter)}</h2>
+      <p className="mt-1 text-center text-xl font-bold text-slate-700 [overflow-wrap:anywhere] min-[1600px]:text-[28px]">{fighter?.gym}</p>
+      {noName ? <ErrorLine className="mt-2">名前が入っていません。準備画面で入れてください</ErrorLine> : null}
+      {problem === 'missing' ? <ErrorLine className="mt-2">選手が選ばれていません。準備画面で選んでください</ErrorLine> : null}
+      {problem === 'same' ? <ErrorLine className="mt-2">まちがい：赤と青が同じ選手です。準備画面で直してください</ErrorLine> : null}
       <div className="mt-2 rounded-xl border border-slate-300 bg-slate-50 p-3"><b>意気込み</b><p className="mt-1 [overflow-wrap:anywhere]">{fighter?.comment || '未入力'}</p></div>
       {musicUrl ? <div className="mt-2">
-        <a href={musicUrl} target="_blank" rel="noreferrer" onClick={()=>setPlaying(true)} className="live-list-focus flex min-h-[56px] flex-wrap items-center justify-center gap-x-2 rounded-xl border-4 border-slate-700 bg-white p-3 text-center text-xl font-black text-slate-950">{playing ? '▶ 曲の画面を開きました' : '▶ 入場曲を開く'}<span className="text-[17px] font-bold text-slate-700">{playing ? MUSIC_NEW_TAB : MUSIC_NEW_TAB + 'で曲の画面が開きます'}</span></a>
+        <a href={musicUrl} target="_blank" rel="noreferrer" onClick={()=>setPlaying(true)} className="live-list-focus flex min-h-[56px] flex-wrap items-center justify-center gap-x-2 rounded-xl border-4 border-slate-700 bg-white p-3 text-center text-xl font-black text-slate-950 min-[1600px]:text-[26px]">{playing ? '▶ 曲の画面を開きました' : '▶ 入場曲を開く'}<span className="text-[17px] font-bold text-slate-700 min-[1600px]:text-[22px]">{playing ? MUSIC_NEW_TAB : MUSIC_NEW_TAB + 'で曲の画面が開きます'}</span></a>
         {playing ? <Caution className="mt-2">別のタブで開きました。曲は自分で再生ボタンを押します。試合の画面にもどるには、タブを切りかえます。</Caution> : null}
       </div> :
         !musicEnabled ? <p className="mt-2 rounded-xl bg-slate-100 p-3 text-center font-bold text-slate-700">この大会は入場曲なし</p> :
         music === 'empty' ? null :
         <>
-          <p className={'mt-2 rounded-xl border-4 p-3 text-center text-[18px] font-black leading-snug ' + (music === 'none' ? 'border-[#a16207] bg-[#fefce8] text-[#1c1917]' : 'border-[#b91c1c] bg-[#fef2f2] text-[#991b1b]')}>{musicLabel(music)}</p>
-          {music === 'broken' ? <ErrorLine className="mt-2">曲のリンクが使えません。Apple Music か YouTube の https:// だけ使えます。準備画面で直す</ErrorLine> : null}
+          <p className={'mt-2 rounded-xl border-4 p-3 text-center text-[18px] font-black leading-snug min-[1600px]:text-[24px] ' + (music === 'none' ? 'border-[#a16207] bg-[#fefce8] text-[#1c1917]' : 'border-[#b91c1c] bg-[#fef2f2] text-[#991b1b]')}>{musicLabel(music)}</p>
+          {music === 'broken' ? <ErrorLine className="mt-2">曲のリンクが使えません。Apple Music か YouTube の https:// だけ使えます。準備画面で直してください</ErrorLine> : null}
         </>}
     </div>
   </article>;
@@ -68,6 +63,11 @@ function FighterCard({ side, fighter, musicEnabled, problem }: { side: 'red'|'bl
 type Notice = { kind: 'save'; via: MoveVia | 'undo'; text: string; more: string; tip: string; index?: number } | { kind: 'conflict' };
 /** 試合を動かした直後の案内（元にもどす／すすむ）。to = もどる先の試合、at = 動かしたあとの試合（0 始まり） */
 type Undo = { to: number; at: number; via: MoveVia; since: number };
+
+/** 前・次のボタンの帯が、画面の何割をこえたら「くっつけない」か。準備画面の上下の帯（app/private/page.tsx の measureChrome）も同じ割合 */
+const FOOT_FLOW_SHARE = 0.4;
+/** 「もどす」の大きい箱が小さい1行に変わっても、その場所の高さを残す上限（px）。名前の場所が動かないように。もっと高いときは、動くより場所を取りすぎるほうが悪いので、ここまで */
+const UNDO_MIN_CAP = 72;
 
 export default function PrivateLive() {
   const [data,setData]=useState<LocalTournament|null>(null);
@@ -101,6 +101,24 @@ export default function PrivateLive() {
   // 試合を動かしたあと、「もどす」（前の試合にもどる）ボタンを出す。10秒は大きい箱＋残り秒数、そのあとは小さい1行で、次に押すまで残す
   const [undo,setUndo]=useState<Undo|null>(null);
   const [clock,setClock]=useState(0);
+  // 画面が動き出したか（JavaScript が動かないブラウザでは false のまま。「3秒ほどかかります」は、動き出してから出す）
+  const [mounted,setMounted]=useState(false);
+  // ネットがつながっているか。閉じたあとに開き直すにはネットが要るので、切れているときだけ黄色で知らせる
+  const [online,setOnline]=useState(true);
+  // 一覧で失敗したときの赤い知らせ（画面の下に固定）。この箱の高さぶん、下に余白を足し、失敗した行を箱の上まで動かす
+  const toastRef=useRef<HTMLDivElement>(null);
+  const [toastH,setToastH]=useState(0);
+  // 「もどす」の箱の高さ（大きい箱の高さを覚えて、10秒あとの小さい1行も同じ高さにする。名前の場所が動かない）
+  const undoBigRef=useRef<HTMLDivElement>(null);
+  const undoBigH=useRef(0);
+  useEffect(()=>{const el=undoBigRef.current;if(el)undoBigH.current=Math.ceil(el.getBoundingClientRect().height);});
+  useEffect(()=>{
+    setMounted(true);
+    const sync=()=>setOnline(typeof navigator==='undefined'||navigator.onLine!==false);
+    sync();
+    window.addEventListener('online',sync);window.addEventListener('offline',sync);
+    return()=>{window.removeEventListener('online',sync);window.removeEventListener('offline',sync);};
+  },[]);
   useEffect(()=>()=>{if(settleTimer.current)clearTimeout(settleTimer.current);},[]);
   useEffect(()=>{if(!undo)return;setClock(Date.now());const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[undo]);
   useEffect(()=>{if(loaded)return;const timer=setTimeout(()=>setSlowLoad(true),3000);return()=>clearTimeout(timer);},[loaded]);
@@ -118,15 +136,40 @@ export default function PrivateLive() {
   useEffect(()=>{
     const el=footerRef.current;
     if(!footerOn||!el){setFootFlow(false);return;}
-    const measure=()=>setFootFlow(el.getBoundingClientRect().height>window.innerHeight*0.4);
+    const root=document.documentElement;
+    const measure=()=>{
+      const height=Math.ceil(el.getBoundingClientRect().height);
+      const flow=height>window.innerHeight*FOOT_FLOW_SHARE;
+      setFootFlow(flow);
+      // くっつく帯の高さぶん、キーボードで来た所（入場曲のリンクなど）を上へ動かす。css の html:has(.live-single-footer) と同じ値を、ここからも直接入れる（:has が使えない Safari 15.0〜15.3 でも、帯の下に隠れない）
+      root.style.setProperty('--live-foot-h',(flow?0:height)+'px');
+      root.style.scrollPaddingBottom=(flow?16:height+12)+'px';
+    };
     measure();
     window.addEventListener('resize',measure);
     const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(measure);
     observer?.observe(el);
-    return()=>{window.removeEventListener('resize',measure);observer?.disconnect();};
+    return()=>{window.removeEventListener('resize',measure);observer?.disconnect();root.style.removeProperty('--live-foot-h');root.style.removeProperty('scroll-padding-bottom');};
   },[footerOn]);
   // 失敗の知らせが出たら、帯がくっついていなくても見える所まで動かす（赤い言葉と、黄色の「もう一度押す」を見のがさない）
   useEffect(()=>{if(notice&&footerOn)footerRef.current?.scrollIntoView({block:'nearest'});},[notice,footerOn,footFlow]);
+  // 一覧で保存に失敗したとき: 赤い知らせの箱は画面の下に固定される。その下に「もう一度押す」が隠れないよう、
+  // 箱の高さぶん下に余白を足し（scroll-padding と ページの下の余白）、失敗した行を、箱の上に見える所まで動かす
+  const listToast=view==='list'&&!!notice;
+  const failedRow=notice?.kind==='save'&&notice.via==='list'&&notice.index!==undefined?notice.index:null;
+  useEffect(()=>{
+    const root=document.documentElement;
+    const box=toastRef.current;
+    if(!listToast||!box){setToastH(0);return;}
+    const apply=()=>{const h=Math.ceil(box.getBoundingClientRect().height)+24;setToastH(h);root.style.scrollPaddingBottom=h+'px';};
+    apply();
+    const row=failedRow===null?null:document.getElementById('live-list-row-'+failedRow);
+    const target=row?(row.querySelector<HTMLElement>('[data-tos-next]')??row):null;
+    target?.scrollIntoView({block:'nearest'});
+    const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(apply);
+    observer?.observe(box);
+    return()=>{observer?.disconnect();root.style.removeProperty('scroll-padding-bottom');setToastH(0);};
+  },[listToast,failedRow,notice]);
   const eventId = typeof window === 'undefined' ? '' : new URLSearchParams(location.search).get('event') || 'my-tournament';
   // fromWatch = 別の画面からの知らせ。いまの試合が、自分が知らない間に変わっていたら、注意を出す
   const load=(fromWatch=false)=>void readPrivateEvent(eventId).then((value)=>{
@@ -147,38 +190,38 @@ export default function PrivateLive() {
   const back='/private/?event='+encodeURIComponent(eventId);
   const pageClass='live-page bg-slate-100 p-6 text-lg text-slate-950';
   const linkClass='live-list-focus inline-flex min-h-[48px] items-center rounded-xl bg-indigo-700 px-5 text-lg font-black text-white';
-  if(!loaded) return <main className={pageClass}><div className="mx-auto max-w-xl rounded-2xl bg-white p-6">
+  // data-tos-loading = 画面を動かす部品（JavaScript）が動かないとき、layout.tsx の見張りが10秒後に「ブラウザが古いかもしれません」と赤でなく黄色で知らせる目印
+  if(!loaded) return <main data-tos-loading="1" className={pageClass}><div className="mx-auto max-w-xl rounded-2xl bg-white p-6">
     <h1 className="text-xl font-bold">このパソコンのデータを読んでいます…</h1>
     {slowLoad
       ? <>
           <ErrorLine role="alert" className="mt-3">読めません。3秒たっても、画面が出ません</ErrorLine>
           <NextSlot active label="もう一度ひらく" className="mt-3"><button type="button" onClick={()=>location.reload()} className={linkClass}>もう一度ひらく</button></NextSlot>
         </>
-      : <Caution title="そのまま待つ" className="mt-3">⏳ 画面が出るまで、3秒ほどかかります。</Caution>}
+      : mounted ? <Caution title="そのまま待つ" className="mt-3">⏳ 画面が出るまで、3秒ほどかかります。</Caution> : null}
   </div></main>;
   if(!data)return <main className={pageClass}><div className="mx-auto max-w-xl rounded-2xl bg-white p-6">
     <h1 className="mb-3 text-xl font-black">試合当日の画面</h1>
     {readFailed
       ? <>
           <ErrorLine role="alert">保存データを読めません（データは消えていません）</ErrorLine>
-          <p className="mt-3 font-bold">① プライベートウィンドウでは使えません。ふつうのウィンドウで開く</p>
-          <p className="mt-1 font-bold">② それでもだめなら、準備画面で「コピーのファイルから戻す」</p>
+          <p className="mt-3 font-bold">① プライベートウィンドウでは使えません。ふつうのウィンドウで開き直してください</p>
+          <p className="mt-1 font-bold">② それでもだめなときは、下の「準備画面へ戻る」を押します。準備画面で「コピーのファイルから戻す」を使います</p>
         </>
       : <>
           <ErrorLine role="alert">この大会は、このブラウザにありません</ErrorLine>
           <p className="mt-3">この大会は、別のパソコンかブラウザで作りましたか？ 作ったパソコンの、同じブラウザで開いてください。</p>
         </>}
+    {/* 黄色は「準備画面へ戻る」。「もう一度ひらく」を黄色にすると、①（ふつうのウィンドウで開く）と食いちがう（読み直しても、プライベートウィンドウのままでは同じ） */}
+    <NextSlot active label={readFailed?'①をしてもだめなとき：準備画面へ':'準備画面へ戻る'} className="mt-4"><a href={back} className={linkClass}>準備画面へ戻る</a></NextSlot>
     {readFailed
-      ? <NextSlot active label="もう一度ひらく" className="mt-4"><button type="button" onClick={()=>location.reload()} className={linkClass}>もう一度ひらく</button></NextSlot>
+      ? <div className="mt-4"><button type="button" onClick={()=>location.reload()} className="live-list-focus inline-flex min-h-[48px] items-center rounded-xl border-2 border-slate-500 bg-white px-4 text-[17px] font-bold text-slate-800">もう一度ひらく</button><Hint className="mt-1">ふつうのウィンドウで開いても読めないとき、もう一度ためします</Hint></div>
       : null}
-    {readFailed
-      ? <p className="mt-4"><a href={back} className="live-list-focus inline-flex min-h-[48px] items-center rounded-xl border-2 border-slate-500 bg-white px-4 text-[17px] font-bold text-slate-800">準備画面へ戻る</a></p>
-      : <NextSlot active label="準備画面へ戻る" className="mt-4"><a href={back} className={linkClass}>準備画面へ戻る</a></NextSlot>}
     <Hint className="mt-3">別のパソコンで使うときは、準備画面の「コピーのファイル」から戻します</Hint>
   </div></main>;
   const list=view==='list';
   const red=bout?byId.get(bout.redId):undefined, blue=bout?byId.get(bout.blueId):undefined;
-  const musicEnabled=data.entryConfig?.music ?? true;
+  const musicEnabled=liveMusicOn(data);
   // 赤と青のクラスがちがう（どちらも入っていて、ちがう）とき。知らせるだけで、試合を進めるのは止めない
   const classMix=!!bout&&boutClassWarning(red,blue)!=='';
   const last=data.bouts.length-1;
@@ -224,26 +267,26 @@ export default function PrivateLive() {
     })();
   };
   // いま表示中のほうは、塗りつぶさない（薄い灰＋太い枠＋「✓ 表示中」）。塗りのボタンがあると、そちらが『押すところ』に見えてしまうため
-  const pick=(mode:LiveView)=>'live-list-focus live-list-noprint touch-manipulation min-h-[56px] w-full rounded-xl px-3 text-xl font-black sm:px-8 '+(view===mode?'border-4 border-slate-900 bg-slate-200 text-slate-950':'border-2 border-slate-700 bg-white text-slate-900');
-  // 黄色は1つ: 最後の試合では「次の試合 →」が押せないので、黄色は「一覧」ボタンへ移る（試合が2つ以上あるとき）。1試合だけの大会は、押すものがないので黄色なし。一覧で「いまの試合」が見えているときは、「1試合ずつ」ボタンへ。保存に失敗したときは、失敗したボタンに「もう一度押す」
+  const pick=(mode:LiveView)=>'live-list-focus live-list-noprint touch-manipulation min-h-[56px] w-full whitespace-nowrap rounded-xl px-3 text-xl font-black sm:px-8 '+(view===mode?'border-4 border-slate-900 bg-slate-200 text-slate-950':'border-2 border-slate-700 bg-white text-slate-900');
+  // 黄色は、多くて1つ: ふだんは「次の試合 →」。一覧で「いまの試合」が見えているときは、「1試合ずつ」ボタンへ。保存に失敗したときは、失敗したボタンに「もう一度押す」。
+  // 最後の試合と、1試合だけの大会は、押すものがないので黄色なし（前は最後の試合で「一覧」に黄色を付けたが、一覧が「1試合ずつ」を指し返して、行ったり来たりになり、黄色が入る分、名前の場所も動いた）
   const retryDir=notice?.kind==='save'&&(notice.via==='next'||notice.via==='prev')?notice.via:null;
   const oneBout=data.bouts.length===1;
-  const yellowList=!list&&!!bout&&!retryDir&&isLast&&!oneBout;
   const yellowSingle=list&&listWantsSingle;
   const yellowSlot:'prev'|'next'|null=!bout?null:retryDir??(isLast?null:'next');
-  // 準備画面は、この画面を開いたあとも、もとのタブに残っている。ここから戻ると、もう1つ開く（先の準備画面と、データがぶつからないように、先のほうは閉じる）
-  const prepLink=(extra:string)=><div className={cx('live-list-noprint flex flex-wrap items-center gap-x-3 gap-y-1',extra)}><Hint>直しても、いまの試合は変わりません</Hint><a href={back} className="live-list-focus inline-flex min-h-[48px] items-center rounded-xl border-2 border-slate-500 bg-white px-4 text-[17px] font-bold text-slate-800">準備画面へ戻る（選手や試合をなおす）</a><Hint>準備画面が、もう1つ開きます。前から開いている準備画面は、閉じてください。</Hint></div>;
+  // このリンクは、同じタブで開く（新しいタブは開かない）。この画面が準備画面に変わる。もとの準備画面が開いたままなら、データがぶつからないよう、先のほうを閉じてもらう
+  const prepLink=(extra:string)=><div className={cx('live-list-noprint flex flex-wrap items-center gap-x-3 gap-y-1',extra)}><Hint>直しても、いまの試合は変わりません</Hint><a href={back} className="live-list-focus inline-flex min-h-[48px] items-center rounded-xl border-2 border-slate-500 bg-white px-4 text-[17px] font-bold text-slate-800">準備画面へ戻る（選手や試合をなおす）</a><Hint>{PREP_LINK_NOTE}</Hint><Hint className="basis-full">{REOPEN_NOTE}</Hint></div>;
   // 「準備画面へ戻る」は、前・次のボタンから遠い所（いちばん下）に置く。上の「表示のしかた」の行は、1行にしておく
-  const viewBtn=(mode:LiveView,text:string,yellow:boolean,label:string)=><NextSlot active={yellow} label={label} row className={cx('live-list-noprint min-w-0',yellow?'basis-full sm:basis-auto lg:w-[34rem]':'flex-1 sm:flex-none')}><button type="button" aria-pressed={view===mode} onClick={()=>changeView(mode)} className={pick(mode)}><span className="block leading-tight">{text}</span>{view===mode?<span aria-hidden="true" className="block text-[17px] font-bold leading-tight">✓ 表示中</span>:null}</button></NextSlot>;
-  const switcher=<div className="live-list-noprint mt-2 flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-2 shadow-sm"><div role="group" aria-label="表示のしかた" className="live-list-noprint flex flex-wrap items-center gap-3"><span className="live-switch-label w-full text-lg font-black sm:w-auto">表示のしかた</span><div className="flex w-full flex-wrap gap-3 sm:w-auto sm:flex-nowrap">{viewBtn('single','1試合ずつ',yellowSingle,'試合を進めるときは「1試合ずつ」を押す')}{viewBtn('list','一覧',yellowList,'「一覧」を押す')}</div></div></div>;
+  const viewBtn=(mode:LiveView,text:string,yellow:boolean,label:string)=><NextSlot active={yellow} label={label} row className={cx('live-list-noprint min-w-0',yellow?'basis-full sm:basis-auto lg:w-[34rem] lg:max-w-full':'flex-1 max-[359px]:basis-full sm:flex-none')}><button type="button" aria-pressed={view===mode} onClick={()=>changeView(mode)} className={pick(mode)}><span className="block leading-tight">{text}</span>{view===mode?<span aria-hidden="true" className="block text-[17px] font-bold leading-tight">✓ 表示中</span>:null}</button></NextSlot>;
+  const switcher=<div className="live-list-noprint mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-2 shadow-sm"><div role="group" aria-label="表示のしかた" className="live-list-noprint flex min-w-0 max-w-full flex-wrap items-center gap-3"><span className="live-switch-label w-full text-lg font-black sm:w-auto">表示のしかた</span><div className="flex w-full min-w-0 max-w-full flex-wrap gap-3 sm:w-auto">{viewBtn('single','1試合ずつ',yellowSingle,'試合を進めるときは「1試合ずつ」を押す')}{viewBtn('list','一覧',false,'')}</div></div></div>;
   // 前・次のボタン。保存しているあいだも disabled にしない（disabled にするとキーボードの位置が消える）。aria-disabled にして、押しても何も起きないようにする
   const footBtn='live-list-focus touch-manipulation select-none min-h-[64px] w-full rounded-2xl text-xl font-black sm:min-h-[76px] ';
   const saveFailed=notice?.kind==='save';
   // 失敗の知らせ。赤い1行（何が起きたか）が先。くわしい説明と「わかった（閉じる）」は、「くわしく見る」の中。小さい画面では、2行目も消す（黄色の「もう一度押す」が、すぐ下にある）
-  const noticeBox=notice?<div role="alert" className={cx('live-list-noprint tos-error text-[17px]',list&&'fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl shadow-xl',!list&&'mb-2')}>
+  const noticeBox=notice?<div ref={list?toastRef:undefined} role="alert" className={cx('live-list-noprint tos-error text-[17px]',list&&'fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl shadow-xl',!list&&'mb-2')}>
     <div className="min-w-0 leading-snug [overflow-wrap:anywhere]">
       <p className="m-0"><span aria-hidden="true">✕ </span>{notice.kind==='save'?notice.text:'実行していません：別の画面で変わっていたので、最新の内容に読み直しました。'}</p>
-      <p className={cx('m-0 mt-1',!list&&notice.kind==='save'&&'live-fail-more')}>{notice.kind==='save'?notice.more:'いまの試合は 第'+(data.currentBout+1)+'試合 です。やりたいなら、もう一度押す。'}</p>
+      <p className={cx('m-0 mt-1',!list&&notice.kind==='save'&&'live-fail-more')}>{notice.kind==='save'?notice.more:'いまの試合は 第'+(data.currentBout+1)+'試合です。やりたいときは、もう一度押してください。'}</p>
       {notice.kind==='save'
         ? <details className="mt-1"><summary className="live-list-focus flex min-h-[44px] cursor-pointer items-center font-black">くわしく見る</summary>
             <p className="m-0 mt-1 font-bold">{notice.tip}</p>
@@ -264,11 +307,12 @@ export default function PrivateLive() {
     void (async()=>{if(await jump(undo.to,'undo'))nextBtnRef.current?.focus({preventScroll:true});})();
   };
   const undoBox=undoShown&&undo&&moved?(left>0
-    ? <div role="status" className="live-undo tos-caution live-list-noprint mt-2 flex-wrap items-center gap-x-4 gap-y-2 text-[17px]" style={{display:'flex',paddingTop:6,paddingBottom:6}}>
-        <p className="m-0 min-w-0 flex-1 font-bold [overflow-wrap:anywhere]"><span className="tos-caution-title"><span aria-hidden="true">⚠ </span>気をつけて：</span>{moved.text}{undo.via==='list'?<span className="font-black">（あと{left}秒）</span>:null}</p>
+    ? <div ref={undoBigRef} className="live-undo tos-caution live-list-noprint mt-2 flex-wrap items-center gap-x-4 gap-y-2 text-[17px]" style={{display:'flex',paddingTop:6,paddingBottom:6}}>
+        {/* 読み上げの箱（role="status"）には、変わらない文だけを入れる。残りの秒数は、箱の『外』に置いて、目で見るだけにする（箱の中で毎秒かわると、同じ文が何度も読み上げられてしまう） */}
+        <div className="m-0 min-w-0 flex-1 font-bold [overflow-wrap:anywhere]"><p role="status" className="m-0 inline"><span className="tos-caution-title"><span aria-hidden="true">⚠ </span>気をつけて：</span>{moved.text}</p>{undo.via==='list'?<span aria-hidden="true" className="font-black">（あと{left}秒）</span>:null}</div>
         <button type="button" aria-disabled={saving||undefined} onClick={undoPress} style={{minHeight:48,padding:'6px 16px'}} className={cx('tos-safe-btn live-list-focus touch-manipulation w-full sm:w-auto',saving&&'tos-locked')}>{moved.undoLabel}</button>
       </div>
-    : <div className="live-list-noprint mt-2 flex flex-wrap items-center gap-2"><span className="text-[17px] font-bold text-slate-700">まちがえたとき：</span>
+    : <div className="live-list-noprint mt-2 flex flex-wrap items-center gap-2" style={{minHeight:Math.min(undoBigH.current,UNDO_MIN_CAP)||undefined}}><span className="text-[17px] font-bold text-slate-700">まちがえたとき：</span>
         <button type="button" aria-disabled={saving||undefined} onClick={undoPress} className="live-list-focus touch-manipulation min-h-[48px] rounded-xl border-2 border-slate-500 bg-white px-4 text-[17px] font-bold text-slate-800 underline">{moved.undoLabel}</button></div>):null;
   const savingLine=savePhase===1?<p className="live-list-noprint m-0 mb-2 text-[17px] font-bold text-slate-800">⏳ 保存しています…</p>
     :savePhase===2?<ErrorLine className="live-list-noprint mb-2">保存できていません。試合は進んでいません</ErrorLine>:null;
@@ -276,7 +320,7 @@ export default function PrivateLive() {
     {saveFailed
       ? <span className="rounded-full border-2 border-[#b91c1c] bg-[#fef2f2] px-3 py-1 text-[17px] font-black text-[#991b1b]"><span aria-hidden="true">✕ </span>保存できていません</span>
       : <span className="rounded-full border-2 border-[#166534] bg-[#f0fdf4] px-3 py-1 text-[17px] font-black text-[#166534]"><span aria-hidden="true">✓ </span>保存済み<span className="live-saved-paren">（このパソコンの中）</span></span>}
-    {saveFailed?null:<span className="live-saved-hint text-[17px] font-bold text-slate-700">押すたびに保存されます。閉じても大丈夫</span>}
+    {saveFailed?null:<span className="live-saved-hint text-[17px] font-bold text-slate-700">押すたびに保存されます。ネットが弱いときは、閉じないでください</span>}
   </span>;
   const contract=bout?contractWeight(red,blue):'';
   const contractText=bout?(contract||bout.className||'契約未入力'):'';
@@ -286,10 +330,13 @@ export default function PrivateLive() {
   const problemOf=(fighter:LocalFighter|undefined):FighterProblem=>!fighter?'missing':sameFighter?'same':null;
   const prevLocked=saving||isFirst, nextLocked=saving||isLast;
   const hideSwitcher=!list&&oneBout;
-  return <main className={'live-page flex flex-col bg-slate-100 p-3 text-slate-950'+(settling?' pointer-events-none':'')}><div className="live-top"><header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl bg-white px-5 py-1.5 shadow-sm"><h1 className="live-title text-xl font-black [overflow-wrap:anywhere]">{data.title}</h1><b ref={boutLabel} tabIndex={-1} className="live-list-focus flex flex-wrap items-baseline gap-x-3 rounded-lg px-1">{bout?<><span className="text-[40px] font-black leading-tight">{'第'+(data.currentBout+1)+'試合'}</span><span className="text-xl font-bold text-slate-700">{'全'+data.bouts.length+'試合'}</span></>:<span className="text-xl">全0試合</span>}</b>{savedBadge}</header>{hideSwitcher?null:switcher}</div>
+  // キーを押しっぱなしにすると、0.5秒あとから同じキーが何度も届く。ボタンの上では、その連打を捨てる（押しっぱなしで、何試合も進まないように）
+  const dropHeldKey=(event:KeyboardEvent<HTMLElement>)=>{if(isHeldKeyRepeat(event)&&(event.target as HTMLElement).closest('button'))event.preventDefault();};
+  return <main onKeyDown={dropHeldKey} style={listToast&&toastH?{paddingBottom:toastH}:undefined} className={'live-page flex flex-col bg-slate-100 p-3 text-slate-950'+(settling?' pointer-events-none':'')}><div className="live-top"><header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl bg-white px-5 py-1.5 shadow-sm"><h1 className="live-title text-xl font-black [overflow-wrap:anywhere]">{data.title.trim()||NO_TITLE}</h1><b ref={boutLabel} tabIndex={-1} className="live-list-focus flex flex-wrap items-baseline gap-x-3 rounded-lg px-1">{bout?<><span className="text-[40px] font-black leading-tight">{'第'+(data.currentBout+1)+'試合'}</span><span className="text-xl font-bold text-slate-700">{'全'+data.bouts.length+'試合'}</span></>:<span className="text-xl">全0試合</span>}</b>{savedBadge}</header>{hideSwitcher?null:switcher}</div>
+    {online?null:<Caution title="ネットがつながっていません" className="live-list-noprint mt-2">{OFFLINE_NOTE}</Caution>}
     {list?<>{noticeBox}{remoteBox}</>:<>{undoBox}{remoteBox}</>}
-    {!list&&classMix?<ErrorLine role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">{'クラスがちがう試合です（赤：'+(red?.fighterClass??'').trim()+'／青：'+(blue?.fighterClass??'').trim()+'）。ルールがちがうので、準備画面で組み合わせを確かめる。試合は このまま進められます。'}</ErrorLine>:null}
-    {!list&&samePerson?<ErrorLine role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">同じ人かもしれません：赤と青が、同じ名前・同じジムです。準備画面で確かめる。試合は このまま進められます。</ErrorLine>:null}
+    {!list&&classMix?<ErrorLine role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">{'クラスがちがう試合です（赤：'+(red?.fighterClass??'').trim()+'／青：'+(blue?.fighterClass??'').trim()+'）。ルールがちがうので、準備画面で組み合わせを確かめてください。試合は、このまま進められます。'}</ErrorLine>:null}
+    {!list&&samePerson?<ErrorLine role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">同じ人かもしれません：赤と青が、同じ名前・同じジムです。準備画面で確かめてください。試合は、このまま進められます。</ErrorLine>:null}
     {list
       ? <ListView data={data} eventId={eventId} saving={saving} onOpen={openFromList} onWantSingle={setListWantsSingle} pressedIndex={savingRow} retryIndex={notice?.kind==='save'&&notice.via==='list'&&notice.index!==undefined?notice.index:null}/>
       : bout
@@ -298,7 +345,7 @@ export default function PrivateLive() {
             {ruleText?<p className="live-rule mt-2 rounded-2xl border-4 border-slate-700 bg-white px-4 py-1 text-center text-xl font-black leading-snug text-slate-950 [overflow-wrap:anywhere] md:text-[1.75rem]"><span className="mr-2 text-[17px] font-bold text-slate-700">ルール</span><WithBreaks text={ruleText}/></p>:null}
             <section className="live-sec mt-2 grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_minmax(0,1fr)]">
               <FighterCard side="red" fighter={red} musicEnabled={musicEnabled} problem={problemOf(red)}/>
-              <div className="grid min-w-0 place-items-center rounded-2xl bg-white p-3 text-center"><div className="min-w-0 max-w-full"><p className="text-2xl font-black leading-none text-slate-600">VS</p><p className="mt-3 text-[clamp(1.75rem,3.5vw,2.75rem)] font-black leading-tight [overflow-wrap:anywhere]">{contract?<><span className="whitespace-nowrap">{contract.replace(/契約$/,'')}</span><wbr/><span className="whitespace-nowrap">契約</span></>:contractText}</p>{contract?<p className="mt-1 text-[17px] font-bold text-slate-700">（決めた体重）</p>:!bout.className?<ErrorLine className="mt-2 text-left">体重が入っていません（準備画面で入れる）</ErrorLine>:null}</div></div>
+              <div className="grid min-w-0 place-items-center rounded-2xl bg-white p-3 text-center"><div className="min-w-0 max-w-full"><p className="text-2xl font-black leading-none text-slate-600">VS</p><p className="mt-3 text-[clamp(1.75rem,3.5vw,2.75rem)] font-black leading-tight [overflow-wrap:anywhere]">{contract?<><span className="whitespace-nowrap">{contract.replace(/契約$/,'')}</span><wbr/><span className="whitespace-nowrap">契約</span></>:contractText}</p>{contract?<p className="mt-1 text-[17px] font-bold text-slate-700">（決めた体重）</p>:!bout.className?<ErrorLine className="mt-2 text-left">体重が入っていません（準備画面で入れてください）</ErrorLine>:null}</div></div>
               <FighterCard side="blue" fighter={blue} musicEnabled={musicEnabled} problem={problemOf(blue)}/>
             </section>
             {oneBout

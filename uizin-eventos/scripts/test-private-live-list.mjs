@@ -54,7 +54,8 @@ function big(id, n, o = {}) {
     fighters.push(F('B' + pad, { name: '架空青' + pad, gym: '架空青ジム' + pad, weight: String(41 + (i % 30)), photoDataUrl: i % 3 === 1 ? PHOTO_WIDE : '', musicUrl: i % 4 === 1 ? 'https://youtu.be/fake' + pad : '' }));
     bouts.push({ id: 'bout-' + i, redId: 'R' + pad, blueId: 'B' + pad, className: i % 5 === 0 ? 'クラス' + pad : '', rule: i % 7 === 0 ? 'ルール' + pad : '' });
   }
-  return tournament(id, { ...o, fighters, bouts, current: o.current ?? 0 });
+  // music ON by default here: these checks are about the music chips (an event without entryConfig has music OFF since r2-123)
+  return tournament(id, { entryConfig: MUSIC_ON, ...o, fighters, bouts, current: o.current ?? 0 });
 }
 
 /* ───────────────────────── browser helpers ───────────────────────── */
@@ -249,7 +250,8 @@ scenario('A', 'real screens: import CSV, build bouts, save -> list view', async 
   check(rows[0].contract === '61.5kg契約' && rows[1].contract === '56kg契約', 'contract shown like the single view: ' + rows.map((r) => r.contract).join(' / '));
   check(rows[0].red?.text.includes('架空赤選手') && rows[0].blue?.text.includes('架空青選手') && rows[0].red.text.includes('架空赤ジム'), 'red/blue names and gym of bout 1 are shown with their corner words');
   check(rows.every((r) => r.red && r.blue && !r.red.hasImg && !r.blue.hasImg && !r.red.text.includes('写真なし') && !r.blue.text.includes('写真なし')), 'imported fighters have no photo -> a quiet placeholder only, the word 写真なし is NOT repeated on every card');
-  const music = stored.entryConfig?.music ?? true;
+  // r2-123: an event without entryConfig has music OFF on the match-day screen too (same default as the prep screen: DEFAULT_ENTRY_CONFIG)
+  const music = stored.entryConfig?.music ?? false;
   const noteCount = await live.getByText('この大会は入場曲なし').count();
   check(music ? noteCount === 0 : noteCount === 1, 'page-level 「この大会は入場曲なし」 is shown exactly when the saved event has music off (music=' + music + ', notes=' + noteCount + ')');
   await audit(live, 'A list ' + vp.name, { header: true });
@@ -267,7 +269,7 @@ scenario('B', 'bout counts 0/1/2/10/11/35/100: paging, disabled reasons, no writ
     const live = await openLive(ctx, id);
     const tag = 'n=' + n + ' ' + vp.name;
     if (n === 0) {
-      check((await live.getByText('まだ対戦カードがありません。準備の画面で作ってください。').count()) === 1, tag + ': friendly empty message');
+      check((await live.getByText('まだ対戦カードがありません。準備画面で作ってください。').count()) === 1, tag + ': friendly empty message');
       const link = live.locator('a[href^="/private/?event=' + id + '"]');
       check((await link.count()) >= 1 && (await link.first().isVisible()), tag + ': link back to /private/?event=<id>');
       check((await rowLis(live).count()) === 0, tag + ': no rows');
@@ -427,7 +429,7 @@ scenario('D', 'row content and contract/music identical to the single view', asy
       const safe = safeMusicUrl(f.musicUrl);
       if (safe) { check(side.text.includes('♪ 曲を開く') && side.text.includes('↗ 別のタブ') && side.anchors.length === 1 && side.anchors[0].href === safe, t + ': ' + word + ' music link === safeMusicUrl (' + short(side.anchors[0]?.href, 60) + ')'); check(side.anchors[0]?.target === '_blank' && /noreferrer|noopener/.test(side.anchors[0]?.rel || ''), t + ': ' + word + ' music link opens a new tab safely'); }
       else if (f.musicUrl.trim()) { check(side.anchors.length === 0 && !side.text.includes('♪ 曲を開く') && side.text.includes('⚠ 曲のリンクを確認'), t + ': ' + word + ' unsafe music URL is NOT a link, not 曲を開く, and says 曲のリンクを確認'); }
-      else check(side.text.includes('⚠ 入場曲なし（曲を用意）') && side.anchors.length === 0, t + ': ' + word + ' no music -> ⚠ 入場曲なし（曲を用意）');
+      else check(side.text.includes('⚠ この選手は入場曲なし（曲を用意）') && side.anchors.length === 0, t + ': ' + word + ' no music -> ⚠ この選手は入場曲なし（曲を用意）');
     }
   }
   check(rows[9].red?.text.includes('選手未選択') && rows[9].blue?.text.includes('選手未選択') && rows[9].contract === '契約未入力', 'both fighters missing: two 選手未選択 and 契約未入力');
@@ -792,9 +794,10 @@ scenario('J', 'layout audits at 1280px and 390px, print, single-mode fit', async
   await l2.close();
   // single mode: the footer buttons must fit the screen without scrolling at the declared size
   const l3 = await openLive(ctx, id2, { list: false });
-  const fit = await l3.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.innerText.includes('次の試合')); const r = b.getBoundingClientRect(); return { bottom: Math.round(r.bottom), inner: window.innerHeight, docH: document.documentElement.scrollHeight }; });
+  const fit = await l3.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.innerText.includes('次の試合')); const r = b.getBoundingClientRect(); const f = document.querySelector('footer').getBoundingClientRect(); const sec = document.querySelector('section').getBoundingClientRect(); return { bottom: Math.round(r.bottom), inner: window.innerHeight, docH: document.documentElement.scrollHeight, footBottom: Math.round(f.bottom), secBottom: Math.round(sec.bottom) }; });
   console.log('  info ' + t + ': one-bout mode 次の試合 bottom=' + fit.bottom + ' of ' + fit.inner + ' (document height ' + fit.docH + ')');
-  if (!vp.mobile) check(fit.bottom <= fit.inner && fit.docH <= fit.inner + 1, t + ': one-bout mode fits one 1280x900 screen with the new switch (bottom ' + fit.bottom + ', doc ' + fit.docH + ')');
+  // What must fit is the part the announcer works with: the two cards and the footer buttons. Below the footer there is only the (far-away, on purpose) 「準備画面へ戻る」 block with its grey notes (r2-56, r2-112), which may need a small scroll.
+  if (!vp.mobile) check(fit.bottom <= fit.inner && fit.footBottom <= fit.inner && fit.secBottom <= fit.inner && fit.docH - fit.footBottom <= 160, t + ': one-bout mode: cards and footer buttons fit one 1280x900 screen; only the prep-link notes are below (button bottom ' + fit.bottom + ', cards ' + fit.secBottom + ', footer ' + fit.footBottom + ', doc ' + fit.docH + ')');
   await audit(l3, 'J one-bout mode ' + t);
   await ctx.close();
 });
@@ -854,7 +857,8 @@ scenario('L', 'MC questions: now-bar, pager at the top, jump to a bout, music su
   await live.waitForTimeout(100);
   const afterNow = await live.evaluate(NOT_HIDDEN, '#live-list-row-7');
   check(afterNow.visible && afterNow.free, t + ': 「いまの試合を見る」 brings the current row into view: ' + JSON.stringify(afterNow));
-  check(await live.evaluate(() => document.activeElement?.getAttribute('aria-label')?.startsWith('この試合を開く 第8試合')), t + ': keyboard focus lands on that row\'s open button');
+  // r2-97: a view-only move puts the keyboard on the row's HEADING, not on the button that changes the live bout (a second Enter must not change it)
+  check(await live.evaluate(() => document.activeElement?.tagName === 'H3' && (document.activeElement.innerText || '').startsWith('第8試合')), t + ': keyboard focus lands on that row\'s heading 「第8試合」 (not on the state-changing button)');
   check((await live.evaluate(() => document.querySelectorAll('nav[aria-label="ページの切りかえ"]').length)) === 1, t + ': exactly one pager');
   // 2. pager is fixed on screen: after scrolling a long way it is still at the top
   await live.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight / 2));
@@ -900,14 +904,15 @@ scenario('L', 'MC questions: now-bar, pager at the top, jump to a bout, music su
   await live.getByRole('button', { name: 'ぜんぶの試合を見る' }).click();
   check((await rowLis(live).count()) === 10, t + ': 「ぜんぶの試合を見る」 brings the normal list back');
   // 7. look of the chips
-  const chips = await live.evaluate(() => { const g = (t) => [...document.querySelectorAll('li.live-list-row p')].find((p) => p.innerText.includes(t)); const none = g('入場曲なし（曲を用意）'), a = [...document.querySelectorAll('li.live-list-row a[href]')][0]; const cs = (e) => e && { fs: parseFloat(getComputedStyle(e).fontSize), fw: getComputedStyle(e).fontWeight, bw: parseFloat(getComputedStyle(e).borderTopWidth), bc: getComputedStyle(e).borderTopColor, bg: getComputedStyle(e).backgroundColor, txt: e.innerText.replace(/\s+/g, ' ') }; return { none: cs(none), link: cs(a) }; });
-  check(chips.none && chips.none.fs >= 18 && Number(chips.none.fw) >= 700 && chips.none.bw >= 4 && chips.none.txt.startsWith('⚠'), t + ': 「⚠ 入場曲なし（曲を用意）」 is the loud chip: 18px bold, 4px border (' + JSON.stringify(chips.none) + ')');
+  const chips = await live.evaluate(() => { const g = (t) => [...document.querySelectorAll('li.live-list-row p')].find((p) => p.innerText.includes(t)); const none = g('この選手は入場曲なし（曲を用意）'), a = [...document.querySelectorAll('li.live-list-row a[href]')][0]; const cs = (e) => e && { fs: parseFloat(getComputedStyle(e).fontSize), fw: getComputedStyle(e).fontWeight, bw: parseFloat(getComputedStyle(e).borderTopWidth), bc: getComputedStyle(e).borderTopColor, bg: getComputedStyle(e).backgroundColor, txt: e.innerText.replace(/\s+/g, ' ') }; return { none: cs(none), link: cs(a) }; });
+  check(chips.none && chips.none.fs >= 18 && Number(chips.none.fw) >= 700 && chips.none.bw >= 4 && chips.none.txt.startsWith('⚠'), t + ': 「⚠ この選手は入場曲なし（曲を用意）」 is the loud chip: 18px bold, 4px border (' + JSON.stringify(chips.none) + ')');
   check(chips.link && chips.link.bw <= 2 && chips.link.txt.includes('♪ 曲を開く') && chips.link.txt.includes('↗ 別のタブ'), t + ': having music is a quiet outlined 「♪ 曲を開く ↗ 別のタブ」 (' + JSON.stringify(chips.link) + ')');
   // 8. sizes in the list
-  const sizes = await live.evaluate(() => { const li = document.querySelector('li.live-list-row'); const name = li.querySelector('[role=group] .min-w-0 p'); const band = li.querySelector('[role=group] > p'); const cw = li.querySelector('p .sr-only').parentElement; const h = li.getBoundingClientRect().height; return { name: parseFloat(getComputedStyle(name).fontSize), band: parseFloat(getComputedStyle(band).fontSize), bandW: Math.round(band.getBoundingClientRect().width), groupW: Math.round(band.parentElement.getBoundingClientRect().width), weight: parseFloat(getComputedStyle(cw).fontSize), bw: getComputedStyle(band.parentElement).borderTopWidth, rowH: Math.round(h) }; });
+  const sizes = await live.evaluate(() => { const li = document.querySelector('li.live-list-row'); const name = li.querySelector('[role=group] .min-w-0 p'); const band = li.querySelector('[role=group] > p'); const cw = li.querySelector('p .sr-only').parentElement; const h = li.getBoundingClientRect().height; return { name: parseFloat(getComputedStyle(name).fontSize), band: parseFloat(getComputedStyle(band).fontSize), bandW: Math.round(band.getBoundingClientRect().width), groupW: Math.round(band.parentElement.getBoundingClientRect().width), weight: parseFloat(getComputedStyle(cw).fontSize), bw: getComputedStyle(band.parentElement).borderTopWidth, rowH: Math.round(h), ruleH: Math.round([...li.querySelectorAll(':scope > p')].filter((p) => p.innerText.startsWith('ルール：')).reduce((n, p) => n + p.getBoundingClientRect().height + 6, 0)) }; });
   check(sizes.name >= 28 && sizes.weight >= 28 && sizes.band >= 24, t + ': list names and contract weight >= 28px, corner band >= 24px (' + JSON.stringify(sizes) + ')');
   check(sizes.bandW >= sizes.groupW - 8 && parseFloat(sizes.bw) >= 3, t + ': the corner band spans the whole card and the card border is 3px+');
-  check(vp.mobile ? sizes.rowH <= 540 : sizes.rowH <= 230, t + ': a list row is compact (' + sizes.rowH + 'px; was 288 / 571)');
+  // the full-width rule line (r2-54: its own row under the two cards, so it does not break inside words) is counted separately: the row WITHOUT it stays as compact as before
+  check(vp.mobile ? sizes.rowH - sizes.ruleH <= 540 : sizes.rowH - sizes.ruleH <= 230, t + ': a list row is compact (' + sizes.rowH + 'px, of which the rule line ' + sizes.ruleH + 'px; was 288 / 571)');
   // 9. keyboard focus is never hidden under the bars
   await live.evaluate(() => window.scrollTo(0, 0));
   const hid = [];

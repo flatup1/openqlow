@@ -37,7 +37,7 @@ try {
     await page.getByText('いまここ 1 / 3').waitFor();
     check(await page.getByText('いまここ 1 / 3').isVisible(), 'shows where the user is');
     check((await page.getByRole('link', { name: /ひな形のコピーを作る/ }).getAttribute('href')) === copyUrl, 'copy link comes from template-link.json');
-    check((await page.getByPlaceholder('例: 20271003').count()) === 0 && (await page.getByLabel('会場', { exact: true }).count()) === 0, 'no tournament fields are typed on this screen');
+    check((await page.getByPlaceholder('例：2027年10月3日').count()) === 0 && (await page.getByLabel('会場', { exact: true }).count()) === 0, 'no tournament fields are typed on this screen');
     check(await page.getByText('「設定」タブ').first().isVisible(), 'tells where to type');
     // 作業4は、いまの作業ではないので、説明をたたんである（長くなって「👉 次はここ」が遠くなるのを防ぐ）。「やり方を先に読む」でひらくと見える
     await page.getByText('やり方を先に読む').last().click();
@@ -91,15 +91,15 @@ try {
     check(await copyLive.isDisabled(), 'no public URL before opening');
     pingState = { ...READY, accepting: true };
     await page.getByRole('button', { name: 'もう一度確かめる', exact: true }).click();
-    await page.getByText('✓ 受付できます。選手に渡すURLをコピーできます。', { exact: true }).first().waitFor();
+    await page.getByText('受付できます。選手に渡すURLをコピーできます。', { exact: true }).first().waitFor();
     await copyLive.click();
     const live = await page.evaluate(() => navigator.clipboard.readText());
     const liveConfig = publicEntryConfig(new URL(live).hash);
     check(live.startsWith(base + '/apply/#') && liveConfig.mode === 'live' && liveConfig.protocol === '3' && liveConfig.endpoint === endpoint && publicEntryReady(liveConfig), 'public URL is a ready live link');
     check(liveConfig.title === '架空テスト大会' && liveConfig.venue === '架空体育館' && liveConfig.organizer === '架空主催' && liveConfig.contact === '0200000000' && liveConfig.deadline === '2099-11-30' && liveConfig.eventId === 'tos-0123456789', 'public URL carries only what the sheet said');
     check(!/entryKey|setupKey|TOS2|@/.test(live), 'public URL carries no key or email');
-    await page.locator('summary', { hasText: '任意：本物の申込画面でも' }).click();
-    const testLink = await page.getByRole('link', { name: /テスト申込を開く/ }).getAttribute('href');
+    await page.locator('summary', { hasText: '任意：本物の申し込みページでも' }).click();
+    const testLink = await page.getByRole('link', { name: /テスト用の申し込みページを開く/ }).getAttribute('href');
     check(testLink.startsWith('/apply/#') && testLink.includes('protocol=3') && testLink.includes('mode=test') && !/entryKey/.test(testLink) && publicEntryReady(publicEntryConfig(testLink.slice('/apply/'.length))), 'optional test link is protocol 3 without a key');
 
     // 設定ファイル・復元

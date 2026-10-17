@@ -11,6 +11,7 @@
  */
 import assert from 'node:assert/strict';
 import { EXPECTED_RECEPTION_BUILD } from '../core/setupV3.ts';
+import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4993';
@@ -43,6 +44,12 @@ async function newCtx(vp, o = {}) {
     const url = route.request().url();
     if (url === base + '/template-link.json') return ctx.__tpl ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ctx.__tpl) }) : route.fulfill({ status: 404, body: 'no' });
     if (url.startsWith(base + '/')) return route.continue();
+    // 本物のGoogleは無い。受付のURLなら どれでも（古いURLも新しいURLも）、まねの返事を返す。ctx.__pingFail のときは、つながらない
+    if (/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec\?action=ping$/.test(url) && route.request().method() === 'GET') {
+      pings.push({ scenario: cur, body: url });
+      if (ctx.__pingFail) return route.abort();
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(ctx.__ping) });
+    }
     if (url === ENDPOINT + '?action=ping' && route.request().method() === 'GET') { pings.push({ scenario: cur, body: route.request().postData() }); return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(ctx.__ping) }); }
     externals.push({ scenario: cur, url, method: route.request().method() });
     return route.abort();
@@ -304,7 +311,7 @@ scenario('S9', 'old sheet / old script: yellow caution about classes, never a pl
   }
   const on = await newCtx(PC, { ping: { ...READY, classMode: true, classes: { enabled: true, upper: { name: 'Aクラス', condition: '3勝以上', rule: '首相撲あり' }, lower: { name: 'Bクラス', condition: '2勝以下', rule: 'パンチとキックのみ' }, upperMinWins: 3 } } });
   const page = await openSetup(on, 'pol-s9-on', { step: 2, ticks: [true, true, true, true], url: ENDPOINT });
-  await page.getByText('✓ あり（Aクラス／Bクラス）。申込ページに出ます').waitFor({ timeout: 8000 });
+  await page.getByText('✓ あり（Aクラス／Bクラス）。申し込みページに出ます').waitFor({ timeout: 8000 });
   check(true, 'classes on: the green row names both classes');
   await on.close();
 });
@@ -365,6 +372,315 @@ scenario('S12', 'one name for the undo button of a removed bout', async () => {
   const js = await page.evaluate(async () => { const out = []; for (const s of document.scripts) { if (!s.src) continue; try { out.push(await (await fetch(s.src)).text()); } catch { /* 同じ場所だけ */ } } return out.join('\n'); });
   check(js.includes('消した試合を元にもどす') && !js.includes('>消した試合を戻す<') && !/label:\s*['"]元にもどす['"]/.test(js), 'the removed-bout undo has one name 「消した試合を元にもどす」 in the toast and in the button');
   await ctx.close();
+});
+
+/* ═════════════════════════ 第2回（round 2） ═════════════════════════ */
+
+/* S13: D-1 古い「別の方法で受付をつくる」画面は、公開した画面にない。リンクも文も無い。古い画面が残した覚え書きは、消える */
+scenario('S13', 'D-1: the legacy google-setup page is not in the release; no link or sentence leads to it; its leftovers are cleared', async () => {
+  const ctx = await newCtx(PC);
+  const gone = await ctx.newPage();
+  const resp = await gone.goto(base + '/private/google-setup/?event=pol-s13');
+  check(resp && resp.status() === 404, 'the legacy page is not served (status ' + (resp && resp.status()) + ')');
+  check(!(await gone.getByText('Google受付をつなぐ').count()) && !(await gone.getByText('主催者本人のGoogleメールアドレス').count()), 'no legacy form is shown');
+  for (const path of ['/private/?event=pol-s13', '/private/setup/?event=pol-s13']) {
+    const page = await ctx.newPage();
+    await page.addInitScript(() => { try { localStorage.setItem('tournament-google-setup:pol-s13', JSON.stringify({ setupKey: 'k'.repeat(20), email: 'organizer@example.com' })); sessionStorage.setItem('tournament-google-setup:pol-s13', '{}'); } catch { /* 試験の準備だけ */ } });
+    await page.goto(base + path);
+    await page.locator('main').first().waitFor({ timeout: 15000 });
+    await settle(900);
+    const hrefs = await page.evaluate(() => [...document.querySelectorAll('a[href]')].map((a) => a.getAttribute('href')));
+    check(!hrefs.some((h) => /google-setup/.test(h || '')), path + ': no link to the legacy page');
+    check(!(await page.evaluate(() => document.body.textContent || '')).includes('別の方法で受付をつくる'), path + ': no 「別の方法で受付をつくる」');
+    if (path.includes('/setup/')) check(await page.evaluate(() => localStorage.getItem('tournament-google-setup:pol-s13') === null && sessionStorage.getItem('tournament-google-setup:pol-s13') === null), 'setup page: the organiser e-mail / key the legacy page left in this browser are cleared');
+    await page.close();
+  }
+  await ctx.close();
+});
+
+/* S14: r2-58 / r2-73 / B12 締切を過ぎた・止めた受付は、「受付中」「あと1つで完成」と言わない。黄色は1つ。✓は1つ */
+scenario('S14', 'r2-58: a closed reception is said to be closed (not accepting) and the one yellow is the roster link; r2-73 one tick', async () => {
+  const closedCases = [
+    ['old Google, deadline passed', { ...READY, accepting: true, date: '2020-01-02', deadline: '2020-01-01' }, /申込は終わっています。このURLは、選手に送りません/, /締切を過ぎたので、受付は終わっています/],
+    ['new Google, closedBy deadline', { ...READY, accepting: false, closedBy: 'deadline' }, /申込は終わっています。このURLは、選手に送りません/, /締切を過ぎたので、受付は終わっています/],
+    ['new Google, closedBy stopped', { ...READY, accepting: false, closedBy: 'stopped' }, /申込は終わっています。このURLは、選手に送りません/, /受付を止めています。選手は、いま申し込めません/],
+  ];
+  for (const [name, ping, headline, reason] of closedCases) {
+    const ctx = await newCtx(PC, { ping });
+    const page = await openSetup(ctx, 'pol-s14', { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+    await page.getByText('申込は終わっています').first().waitFor({ timeout: 9000 });
+    const text = await bodyText(page);
+    check(headline.test(text) && reason.test(text), name + ': says the reception is closed and why');
+    check(!/✓ 受付中です/.test(text) && !/あと1つで完成です/.test(text) && !/受付のじゅんびができました/.test(text), name + ': no green 「受付中」, no 「あと1つで完成」, no 「できあがり」');
+    const copy = page.getByRole('button', { name: '完成：選手へ渡すURLをコピー' });
+    check(await copy.getAttribute('aria-disabled') === 'true', name + ': the copy-URL button is locked');
+    check(/受付が終わっています/.test(await page.locator('#live-reason').innerText()), name + ': the lock reason is printed under it');
+    check(await page.locator('input[aria-label="選手に渡すURL"]').count() === 0, name + ': no URL box to hand out');
+    const marks = await oneMarker(page, name, { primary: 1 });
+    check(/試合の準備の画面へ/.test(marks.texts[0] || ''), name + ': the one yellow frame is 「試合の準備の画面へ」 (' + short(marks.texts[0] || '', 80) + ')');
+    check(await page.getByRole('link', { name: '申し込みが集まったら：試合の準備の画面へ' }).count() === 1, name + ': exactly one 「試合の準備の画面へ」 link');
+    check(/ZIP/.test(text), name + ': the roster ZIP steps are still shown');
+    await ctx.close();
+  }
+  // 受付中（日にちが先）：緑の ✓ は見出しの1つだけ。塗りのボタンは1つ（コピー）
+  const ctx = await newCtx(PC, { ping: { ...READY, accepting: true } });
+  const page = await openSetup(ctx, 'pol-s14-ok', { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+  await page.getByText('✓ 受付中です').first().waitFor({ timeout: 9000 });
+  const box = await page.locator('.tos-ok', { hasText: '受付中です' }).first().innerText();
+  check(!/✓ 受付できます/.test(box) && (box.match(/✓/g) || []).length === 1, 'ready box: exactly one ✓ (' + short(box, 80) + ')');
+  await oneMarker(page, 'step 3 ready', { primary: 1 });
+  check(/選手に渡すURLをコピーする/.test((await frameTexts(page))[0] || ''), 'step 3 ready: the one yellow frame is the copy button');
+  await ctx.close();
+  // 開始前（②を押す）：黄色は1つ、塗りのボタンは無い（Googleでの操作の絵）
+  const ctx2 = await newCtx(PC, { ping: { ...READY, accepting: false } });
+  const p2 = await openSetup(ctx2, 'pol-s14-open', { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+  await p2.getByText('あと1つで完成です').first().waitFor({ timeout: 9000 });
+  await oneMarker(p2, 'step 3 need-open', { primary: 0 });
+  await ctx2.close();
+});
+
+/* S15: r2-59 貼って確かめる道では、「自動で確かめます」と言わない。黄色は貼り直す場所 */
+scenario('S15', 'r2-59: in the paste route step 3 does not promise automatic checking; the yellow is the paste fold, opened', async () => {
+  const ctx = await newCtx(PC, { ping: READY });
+  ctx.__pingFail = true;
+  const page = await openSetup(ctx, 'pol-s15', { step: 2, ticks: [true, true, true, true], url: ENDPOINT });
+  await page.getByText('Googleにつながりませんでした').first().waitFor({ timeout: 9000 });
+  await page.locator('#pasted').fill(JSON.stringify({ ...READY, accepting: false }));
+  await page.getByText('読めました（Googleにはつないでいません）').waitFor({ timeout: 6000 });
+  await page.getByRole('button', { name: '次へ進む' }).click();
+  await page.getByText('いまここ 3 / 3').waitFor();
+  await settle(900);
+  const text = await bodyText(page);
+  check(/この画面は、貼った文字を読んでいます。自動では変わりません/.test(text), 'step 3 (pasted): says it does not change by itself');
+  check(!/もどると、自動で確かめます/.test(text), 'step 3 (pasted): the false promise 「自動で確かめます」 is gone');
+  const marks = await oneMarker(page, 'step 3 pasted');
+  check(/貼り直す/.test(marks.texts[0] || ''), 'step 3 (pasted): the one yellow frame is the paste-again place (' + short(marks.texts[0] || '', 90) + ')');
+  check(await page.locator('details:has(summary:has-text("自動で確かめられないとき")) ').first().evaluate((d) => d.open), 'step 3 (pasted): the paste fold is opened for him');
+  await ctx.close();
+});
+
+/* S16: r2-63 古いURLのうしろに新しいURLを貼ったら、新しいほうを使い、黄色の注意で言う */
+scenario('S16', 'r2-63: pasting a new URL after the old one keeps the NEW one and says so (no green auto-fix)', async () => {
+  const OLD = 'https://script.google.com/macros/s/OLDOLDOLDOLDOLD/exec', NEW = 'https://script.google.com/macros/s/NEWNEWNEWNEWNEW/exec';
+  const ctx = await newCtx(PC, { ping: READY });
+  const page = await openSetup(ctx, 'pol-s16', { step: 2, ticks: [true, true, true, true], url: OLD });
+  await page.getByText('✓ つながりました。次は「次へ進む」を押します。').waitFor({ timeout: 9000 });
+  await page.evaluate((t) => navigator.clipboard.writeText(t), NEW);
+  await page.locator('#endpoint').click(); await page.keyboard.press('End'); await page.keyboard.press('Control+V');
+  await settle(900);
+  check(await page.locator('#endpoint').inputValue() === NEW, 'the box now holds the NEW url (' + short(await page.locator('#endpoint').inputValue(), 90) + ')');
+  const text = await bodyText(page);
+  check(/2つのURLが入っていました。新しく貼ったほうのURLを使います/.test(text), 'a yellow caution says two URLs were there');
+  check(!/自動で直しました/.test(text), 'no green 「自動で直しました」 when information was dropped');
+  check((await page.evaluate(() => JSON.parse(localStorage.getItem('tournament-setup-v3:pol-s16')).endpoint)) === NEW, 'the new url is the one remembered');
+  // 先頭に貼っても、いまの欄とちがうほうを使う
+  await page.locator('#endpoint').click(); await page.keyboard.press('Home'); await page.evaluate((t) => navigator.clipboard.writeText(t), OLD); await page.keyboard.press('Control+V');
+  await settle(600);
+  check(await page.locator('#endpoint').inputValue() === OLD, 'pasting at the front: the one that differs from the box is kept (' + short(await page.locator('#endpoint').inputValue(), 90) + ')');
+  await ctx.close();
+});
+
+/* S17: r2-61 / r2-65 / r2-62 / r2-60 / r2-75 / r2-68 見出し・フォルダ・直し先の言い方 */
+scenario('S17', 'r2-61/65/62/60/68: headers inserted/row gone, trashed folder, cell hints, and where the red box is', async () => {
+  const cases = [
+    ['inserted column', { ...BASE_PING, ready: false, error: 'headers', errorTab: '申込原本（個人情報あり）', errorCell: 'C1', errorExpected: '大会ID', errorInserted: true }, /C列を消してください（C列の上で右クリック →「列を削除」）/, /「大会ID」に直してください/],
+    ['row deleted', { ...BASE_PING, ready: false, error: 'headers', errorTab: '申込原本（個人情報あり）', errorCell: 'A1', errorExpected: '受付番号', errorRowGone: true }, /上に1行挿入/, /「受付番号」に直してください/],
+    ['trashed folder', { ...BASE_PING, ready: false, error: 'folder' }, /ゴミ箱を開き|「ゴミ箱」を開き/, /まだ最初の設定が終わっていません/],
+  ];
+  for (const [name, ping, want, notWant] of cases) {
+    const ctx = await newCtx(PC, { ping });
+    const page = await openSetup(ctx, 'pol-s17', { step: 2, ticks: [true, true, true, true], url: ENDPOINT });
+    await page.locator('[role=alert]', { hasText: /1行目|写真フォルダ/ }).first().waitFor({ timeout: 9000 });
+    const text = await bodyText(page);
+    check(want.test(text), name + ': says the right fix');
+    check(!notWant.test(text), name + ': does not say the harmful or wrong thing');
+    await oneMarker(page, name);
+    await ctx.close();
+  }
+  // 設定の直し先
+  const ctx = await newCtx(PC, { ping: { ...BASE_PING, ready: true, accepting: false, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください。「会場」は300文字までにしてください。「大会名」は300文字までにしてください' } });
+  const page = await openSetup(ctx, 'pol-s17-cells', { step: 2, ticks: [true, true, true, true], url: ENDPOINT });
+  await page.getByText('シートの「設定」タブに、直すところがあります').waitFor({ timeout: 9000 });
+  const text = await bodyText(page);
+  check(text.includes('会場の地図URL（B5）：Googleマップの「共有」で出るURLにするか、空にする'), 'map URL → B5 with the right words');
+  check(text.includes('会場（B4）：300文字までに、短くする') && text.includes('大会名（B2）：300文字までに、短くする'), 'long text cells → shorten, with the right cell');
+  check(!/会場（B4）：▼から選び直す|大会名（B2）：▼から選び直す/.test(text), 'free-text cells are never told to "choose from the ▼"');
+  await ctx.close();
+  // 手順3：「上の✕」ではなく、赤い箱は下。文もそう言う
+  const c3 = await newCtx(PC, { ping: { ...BASE_PING, ready: true, accepting: false, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '「申込締切」は、2027年9月20日 のように入れてください' } });
+  const p3 = await openSetup(c3, 'pol-s17-s3', { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+  await p3.getByText('先に、下の「✕」の文のとおりに直します').waitFor({ timeout: 9000 });
+  const pos = await p3.evaluate(() => {
+    const sentence = [...document.querySelectorAll('p')].find((p) => /先に、下の「✕」の文のとおりに直します/.test(p.textContent || ''));
+    const box = document.querySelector('[role=alert]');
+    return { sentence: sentence.getBoundingClientRect().top, box: box ? box.getBoundingClientRect().top : -1 };
+  });
+  check(pos.box > pos.sentence, 'step 3: the red box is BELOW the sentence that points to it (sentence ' + Math.round(pos.sentence) + ', box ' + Math.round(pos.box) + ')');
+  check(!/先に、上の「✕」/.test(await bodyText(p3)), 'step 3: never says 「上の✕」');
+  await c3.close();
+});
+
+/* S18: r2-69 URLが無いのに書き出せない。書き出しは緑にならない */
+scenario('S18', 'r2-69: export is locked without a URL (reason printed, no download, no green)', async () => {
+  const ctx = await newCtx(PC);
+  const page = await openSetup(ctx, 'pol-s18', { step: 1 });
+  await page.locator('summary', { hasText: '別のパソコンで続ける' }).click();
+  const btn = page.getByRole('button', { name: '設定を書き出す', exact: true });
+  check(await btn.getAttribute('aria-disabled') === 'true', 'no URL: 「設定を書き出す」 is locked');
+  check(/URLがまだ入っていません。手順2でURLを貼ると押せます/.test(await bodyText(page)), 'no URL: the 🔒 reason is printed');
+  let downloads = 0; page.on('download', () => { downloads++; });
+  await btn.click({ force: true }); await settle(700);   // 押せない見た目のボタン（aria-disabled）を、あえて押す
+  check(downloads === 0, 'no URL: pressing it downloads nothing');
+  const text = await bodyText(page);
+  check(!/書き出しました/.test(text) && /URLがまだ入っていません。先に、手順2でURLを貼ります/.test(text), 'no URL: no green 「書き出しました」, a yellow caution instead');
+  await ctx.close();
+  // URL があれば、今までどおり書き出せる
+  const c2 = await newCtx(PC);
+  const p2 = await openSetup(c2, 'pol-s18b', { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+  await p2.locator('summary', { hasText: '別のパソコンで続ける' }).click();
+  const [dl] = await Promise.all([p2.waitForEvent('download'), p2.getByRole('button', { name: '設定を書き出す', exact: true }).click()]);
+  check(/tournament-os-setup-pol-s18b\.json$/.test(dl.suggestedFilename()), 'with a URL it still downloads the setup file');
+  await c2.close();
+});
+
+/* S19: r2-72 つながったが使えない状態を、緑の「確かめてあります」にしない（試合の準備の画面で見る） */
+scenario('S19', 'r2-72: a URL that answered but cannot accept entries is not "確かめてあります"; a usable one is, with the time', async () => {
+  const badPing = { ...BASE_PING, ready: false, error: 'headers', errorTab: 'テスト申込', errorCell: 'D1', errorExpected: '所属ジム' };
+  for (const [name, ping, good] of [['broken headers', badPing, false], ['ready', READY, true]]) {
+    const ctx = await newCtx(PC, { ping });
+    const page = await openSetup(ctx, 'pol-s19-' + (good ? 'ok' : 'bad'), { step: 2, ticks: [true, true, true, true], url: ENDPOINT });
+    await page.getByText(good ? '✓ つながりました。次は「次へ進む」を押します。' : '申込表の1行目（見出し）が、変わっています').first().waitFor({ timeout: 9000 });
+    await settle(500);
+    const saved = await page.evaluate((id) => JSON.parse(localStorage.getItem('tournament-setup-v3:' + id)), 'pol-s19-' + (good ? 'ok' : 'bad'));
+    check(saved.verified === good && saved.connected === true, name + ': saved verified=' + good + ', connected=true');
+    check(good ? /^\d\d:\d\d$/.test(saved.at) : saved.at === '', name + ': the time is saved only when verified (' + saved.at + ')');
+    const prep = await ctx.newPage();
+    await prep.goto(base + '/private/?event=pol-s19-' + (good ? 'ok' : 'bad'));
+    await prep.locator('section[aria-label="この大会の申し込みページ"]').waitFor({ timeout: 15000 });
+    const box = await prep.locator('section[aria-label="この大会の申し込みページ"]').innerText();
+    if (good) check(/✓ 申し込みページ：つながりを確かめてあります（できた）\s*\d\d:\d\d に確かめました/.test(box), name + ': prep shows the green line with the time (' + short(box, 80) + ')');
+    else check(!/✓ 申し込みページ：つながりを確かめてあります/.test(box) && /つながりました。でも、受付はまだ使えません/.test(box), name + ': prep shows the yellow 「つながりました。でも、受付はまだ使えません」 (' + short(box, 90) + ')');
+    await ctx.close();
+  }
+});
+
+/* S20: キーボード・低い画面・読み上げ（r2-99 / r2-101 / r2-107 / r2-108） */
+scenario('S20', 'r2-99/101/107/108: nav is not sticky on short screens; Enter moves focus to the next 「できた ✓」; names carry the task', async () => {
+  for (const vp of [{ w: 360, h: 380, name: '360x380', mobile: true }, { w: 640, h: 360, name: '640x360' }]) {
+    const ctx = await newCtx(vp);
+    const page = await openSetup(ctx, 'pol-s20-' + vp.w);
+    check(await page.locator('nav[aria-label="3つの手順"]').evaluate((n) => getComputedStyle(n).position) === 'static', vp.name + ': the step bar is not sticky on a short screen (it would hide the focused control)');
+    // Tab で10回進んでも、目印のある所が画面の中にある（帯の下に隠れない）
+    let hidden = 0;
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press('Tab');
+      const r = await page.evaluate(() => { const e = document.activeElement; if (!e || e === document.body) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, h: window.innerHeight }; });
+      if (r && (r.bottom <= 0 || r.top >= r.h)) hidden++;
+    }
+    check(hidden === 0, vp.name + ': 12 Tab stops, none of them outside the window (' + hidden + ')');
+    await ctx.close();
+  }
+  const ctxPc = await newCtx(PC);
+  check(await (await openSetup(ctxPc, 'pol-s20-pc')).locator('nav[aria-label="3つの手順"]').evaluate((n) => getComputedStyle(n).position) === 'sticky', '1280x800: the step bar still sticks');
+  await ctxPc.close();
+  const ctx = await newCtx(PC);
+  const page = await openSetup(ctx, 'pol-s20-kb');
+  await page.locator('#card-done-1').focus();
+  const active = () => page.evaluate(() => document.activeElement && document.activeElement.id);
+  for (const [i, next] of [[1, 'card-done-2'], [2, 'card-done-3'], [3, 'card-done-4'], [4, 'go2-btn']]) {
+    await page.keyboard.press('Enter'); await settle(300);
+    check(await active() === next, 'Enter on task ' + i + ': focus moves to ' + next + ' (now ' + await active() + ')');
+  }
+  // 「やり直す」で、✓を消したボタンに戻る
+  await settle(600);   // 押した直後（0.45秒）の「やり直す」は、二度押しとして無視される
+  await page.getByRole('button', { name: /まちがえた → やり直す/ }).nth(1).click(); await settle(300);
+  check(await active() === 'card-done-2', 'undo of task 2: focus returns to its 「できた ✓」 (now ' + await active() + ')');
+  // 4つの「できた ✓」は、読み上げの説明がぜんぶちがう（どの作業か分かる）
+  const fresh = await newCtx(PC);
+  const p2 = await openSetup(fresh, 'pol-s20-names');
+  const descs = await p2.evaluate(() => [1, 2, 3, 4].map((n) => { const b = document.getElementById('card-done-' + n); return (b.getAttribute('aria-describedby') || '').split(' ').map((id) => (document.getElementById(id) || {}).textContent || '').join(' / '); }));
+  check(new Set(descs).size === 4 && descs.every((d, i) => d.includes(['コピーを作る', '「設定」タブに書く', 'メニューを押す', '「準備できました」の確認'][i])), 'the four 「できた ✓」 have four different spoken descriptions (' + short(descs.join(' | '), 160) + ')');
+  const sr = await p2.locator('nav[aria-label="3つの手順"] li').nth(2).locator('.sr-only').innerText();
+  check(/まだ押せません。先に、前の手順を終えます/.test(sr), 'the locked step-3 button says why in its spoken name (' + sr + ')');
+  await fresh.close(); await ctx.close();
+});
+
+/* S21: 準備の画面：終わった大会を消す・シートの設定を入れる・他のジム用の入力画面 */
+scenario('S21', 'r2-121/126/111/84: delete a finished tournament (after a copy file), apply the sheet settings to a saved tournament, entry page, one name for the setup screen', async () => {
+  const ctx = await newCtx(PC);
+  const page = await ctx.newPage();
+  const id = 'pol-s21';
+  await page.goto(base + '/private/?event=' + id);
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  await page.locator('#field-title').fill('削除テスト大会');
+  await page.getByRole('button', { name: '保存する', exact: true }).first().click();
+  await page.getByRole('status').filter({ hasText: '保存しました' }).first().waitFor({ timeout: 9000 });
+  // 大会をえらぶ・安心のしくみ（ほか）を開く
+  await page.locator('summary', { hasText: '大会をえらぶ・安心のしくみ' }).click();
+  const del = page.locator('#delete-event-btn');
+  check(await del.getAttribute('aria-disabled') === 'true', 'before a copy file exists, the delete button is locked');
+  check(/先に、「コピーのファイルを作る・戻す」でコピーを作ります/.test(await bodyText(page)), 'the 🔒 reason says to make the copy file first');
+  await del.click({ force: true }); await settle(300);   // 押せない見た目のボタンを、あえて押す
+  check(await page.locator('#confirm-delete-event').count() === 0, 'a locked delete button opens nothing');
+  // コピーのファイルを作る
+  if (!(await page.getByPlaceholder('10文字以上のパスワード').isVisible())) await page.locator('summary', { hasText: 'コピーのファイルを作る・戻す' }).click();
+  await page.getByPlaceholder('10文字以上のパスワード').fill('fictional-test-password');
+  await page.locator('#paper-done').check();
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'パスワードをつけて、コピーを保存する', exact: true }).click();
+  await dl; await settle(600);
+  check(await del.getAttribute('aria-disabled') !== 'true', 'after a copy file, the delete button is live');
+  await del.click();
+  const box = page.locator('#confirm-delete-event');
+  await box.waitFor({ timeout: 6000 });
+  const boxText = await box.innerText();
+  check(/✕ 取り消せない：この大会（削除テスト大会）が、このパソコンから消えます/.test(boxText) && /選手 0人・写真 0枚・試合 0つが、消えます/.test(boxText), 'the box names what is lost');
+  check(/コピーのファイルは消えません/.test(boxText), 'the box says the copy file stays');
+  await box.getByRole('button', { name: 'やめる（何も消さない）' }).click(); await settle(300);
+  check(await page.locator('#confirm-delete-event').count() === 0 && (await page.evaluate((e) => indexedDB.databases().then((l) => l.length > 0))), 'cancelling keeps the tournament');
+  await del.click(); await page.locator('#confirm-delete-event').waitFor();
+  await page.locator('#confirm-delete-event').getByRole('button', { name: 'この大会を、このパソコンから消す' }).click();
+  await page.waitForURL(base + '/private/', { timeout: 9000 });
+  const left = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('tournament-os-private-v1'); r.onsuccess = () => { const q = r.result.transaction('events', 'readonly').objectStore('events').get('pol-s21'); q.onsuccess = () => resolve(q.result ?? null); }; }));
+  check(left === null, 'the tournament is gone from this browser');
+  check(await page.evaluate(() => localStorage.getItem('tournament-setup-v3:pol-s21') === null && localStorage.getItem('tournament-backup-at:pol-s21') === null), 'its remembered setup / copy time are gone too');
+  await ctx.close();
+
+  // r2-126：保存ずみの大会に、シートの設定が入っていない
+  const c2 = await newCtx(PC);
+  const p2 = await c2.newPage();
+  await p2.goto(base + '/private/?event=pol-s21b');
+  await p2.locator('#field-title').waitFor({ timeout: 15000 });
+  await p2.locator('#field-title').fill('設定テスト大会');
+  await p2.getByRole('button', { name: '保存する', exact: true }).first().click();
+  await p2.getByRole('status').filter({ hasText: '保存しました' }).first().waitFor({ timeout: 9000 });
+  const cs = JSON.stringify(DEFAULT_CLASS_SETTINGS);
+  await p2.close();
+  // 「選手の受付をつくる」の画面から、シートの設定つきのアドレスで開き直す（同じ大会は、もう保存ずみ）
+  const p2b = await c2.newPage();
+  await p2b.goto(base + '/private/?event=pol-s21b#' + new URLSearchParams({ t: '設定テスト大会', m: 'on', g: 'required', cs }).toString());
+  await p2b.locator('#apply-sheet-config').waitFor({ timeout: 15000 });
+  check(/シートで決めた「選手に書いてもらうこと」や、クラス分けが、この大会に まだ入っていません/.test(await bodyText(p2b)), 'saved tournament: a yellow caution says the sheet settings are not in yet (nothing is dropped silently)');
+  await p2b.locator('#apply-sheet-config').click();
+  await p2b.getByText('シートで決めた「選手に書いてもらうこと」とクラス分けを入れました').waitFor({ timeout: 6000 });
+  check(await p2b.locator('#apply-sheet-config').count() === 0, 'after pressing it, the caution is gone');
+  await c2.close();
+
+  // r2-111 / r2-84：他のジム用の入力画面・名前
+  const c3 = await newCtx(PHONE);
+  const p3 = await c3.newPage();
+  await p3.goto(base + '/private/entry/?title=%E6%9E%B6%E7%A9%BA&event=pol-s21c');
+  await p3.locator('main').first().waitFor({ timeout: 15000 });
+  const fileH = await p3.locator('input[type=file]').evaluate((e) => e.getBoundingClientRect().height);
+  check(fileH >= 44, 'entry page: the photo chooser is at least 44px high (' + Math.round(fileH) + ')');
+  check(!(await p3.evaluate(() => document.body.innerText)).includes('Cloudflare'), 'entry page: no jargon (Cloudflare)');
+  const p4 = await c3.newPage();
+  await p4.goto(base + '/private/?event=pol-s21d');
+  await p4.locator('#field-title').waitFor({ timeout: 15000 });
+  const links = await p4.getByRole('link', { name: '選手の受付をつくる画面へ →' }).count();
+  check(links >= 1, 'prep page: the link to the setup screen is named 「選手の受付をつくる画面へ →」');
+  check(!(await p4.evaluate(() => document.body.textContent || '')).includes('申し込みページをつくる画面'), 'prep page: the old second name is gone');
+  await c3.close();
 });
 
 /* ───────────────────────── runner ───────────────────────── */

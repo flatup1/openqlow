@@ -164,3 +164,22 @@ export async function listPrivateEvents(): Promise<PrivateEventSummary[]> {
     transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('保存してある大会を読めませんでした。')); };
   });
 }
+
+/**
+ * この大会を、このパソコンの保存場所から消す（ほかの大会は消さない）。取り消せない。
+ * 画面は、消す前に「コピーのファイル」があるか確かめてから、これを呼ぶ。
+ */
+export async function deletePrivateEvent(eventId: string): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, 'readwrite');
+    transaction.objectStore(STORE).delete(eventId);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('消せませんでした。')); };
+  });
+  if ('BroadcastChannel' in window) {
+    const channel = new BroadcastChannel(channelName(eventId));
+    channel.postMessage({ type: 'changed' });
+    channel.close();
+  }
+}

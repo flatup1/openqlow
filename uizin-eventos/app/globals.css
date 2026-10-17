@@ -158,7 +158,7 @@ html:has(.live-sticky) {
   }
 }
 /* 試合当日の画面「1試合ずつ」: 下の 前の試合 / 次の試合 の帯は、いつも見える所にくっつく。
-   ただし帯の背が画面の35%をこえるとき（小さい画面・大きい文字・拡大・失敗の知らせ）は、画面を埋めてしまうので、くっつけない。
+   ただし帯の背が画面の40%をこえるとき（小さい画面・大きい文字・拡大・失敗の知らせ）は、画面を埋めてしまうので、くっつけない。
    それを決めるのは live/page.tsx（帯の背を測って .live-footer-flow を付ける）。「くっつくか」を決めるのは、ここだけ */
 .live-single-footer {
   position: sticky;
@@ -167,6 +167,16 @@ html:has(.live-sticky) {
 }
 .live-single-footer.live-footer-flow {
   position: static;
+}
+/* くっつく下の帯の高さ（画面側が測って --live-foot-h に入れる）。キーボードで来た所（入場曲のリンクなど）が、帯の下に隠れない。
+   :has が使えない古い Safari（15.0〜15.3）には、page.tsx が同じ値を scroll-padding-bottom として直接入れる */
+html:has(.live-single-footer) {
+  scroll-padding-bottom: calc(var(--live-foot-h, 9rem) + 0.75rem);
+}
+/* 紙に出す（Ctrl＋P）とき、赤と青の帯の色を消さない。消えると、白い字が白い紙に載って、「赤コーナー」「青コーナー」が読めなくなる */
+.live-corner-band {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 /* 試合当日の画面（live/page.tsx）の、広さ・高さに合わせた調整。
    ここに書く（page.tsx の <style> には書かない）: ビルドのとき、ここの規則だけが「.tos-… より強い」順番に直されるため。
@@ -258,13 +268,33 @@ html:has(.live-sticky) {
     min-width: 0;
   }
   .live-top > div {
-    flex: none;
+    /* 縮められる・折り返せる（flex:none にすると、黄色の「次はここ」が長いとき、ページが横にはみ出す） */
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
     margin-top: 0;
   }
 }
 @media (max-height: 420px) {
   .live-photo {
     display: none;
+  }
+}
+/* スマホを横にした（高さ500px以下で、幅が768px未満）: 赤と青を、左右にならべる。縦にならべると、青の名前が画面の下に隠れる。
+   まん中の「VS・契約」は、2人の下に細い1行で出す（幅768px以上は、Tailwind の md: が3列にする） */
+@media (max-height: 500px) and (min-width: 560px) and (max-width: 767px) {
+  .live-sec {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .live-sec > :nth-child(1) {
+    order: 1;
+  }
+  .live-sec > :nth-child(3) {
+    order: 2;
+  }
+  .live-sec > :nth-child(2) {
+    order: 3;
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 400px), (max-height: 500px) {
@@ -301,6 +331,15 @@ html:has(.live-sticky) {
   .tos-read [role="alertdialog"] > div {
     margin-top: 0.5rem;
     gap: 0.5rem;
+  }
+  /* 箱の中の黄色の枠（「やめる」の上の札）も、低い画面では すき間をつめる（r2-133: 帯が画面の下に固定のままでも、箱の全部が帯の上に見えるように） */
+  .tos-read [role="alertdialog"] .tos-next {
+    padding: 0.25rem 0.5rem;
+    border-width: 2px;
+    box-shadow: none;
+  }
+  .tos-read [role="alertdialog"] .tos-next > p {
+    margin-bottom: 0.125rem;
   }
   html:has(.tos-read) {
     scroll-padding-top: 1rem;
@@ -384,6 +423,11 @@ html:has(.live-sticky) {
 .tos-main:focus-visible,.tos-safe-btn:focus-visible,.tos-danger-btn:focus-visible,.tos-locked:focus-visible{outline:4px solid #4338ca;outline-offset:2px}
 /* 申し込みページ（/apply/）: 押す所・入れる所は、どれも同じ濃い輪郭（チェック・ラジオ・「ひらく」・小さなボタンも） */
 .tos-apply a:focus-visible,.tos-apply button:focus-visible,.tos-apply summary:focus-visible,.tos-apply input[type="checkbox"]:focus-visible,.tos-apply input[type="radio"]:focus-visible,.tos-apply [tabindex]:not([tabindex="-1"]):focus-visible{outline:4px solid #4338ca;outline-offset:2px}
+/* 申し込みページ：画面の高さ。main には min-h-screen（100vh）も付いている。dvh が分かるブラウザでは、この（@layer の外の）規則が勝つ。古いSafari（15.0〜15.3）は dvh を読めずに捨てるので、100vh が残る。長い英数字（メール・リンク）でページが横に広がらないよう、折り返しは古い書き方→新しい書き方の順 */
+.tos-apply{min-height:100vh;min-height:100dvh}
+.tos-apply-wrap{overflow-wrap:break-word;overflow-wrap:anywhere;word-break:break-word;word-break:auto-phrase}
+/* Windows の「ハイコントラスト」（forced-colors）では、影（ring）が消える。文字を入れる欄にも、はっきりした輪郭を出す */
+@media (forced-colors:active){.tos-apply input:focus-visible,.tos-apply textarea:focus-visible,.tos-apply fieldset:focus-visible{outline:4px solid Highlight;outline-offset:2px}}
 .tos-apply .tos-next a:focus-visible,.tos-apply .tos-next button:focus-visible,.tos-apply .tos-next input:focus-visible,.tos-apply .tos-next summary:focus-visible{outline:4px solid #1e1b4b;outline-offset:3px}
 @supports not selector(:focus-visible){.tos-apply a:focus,.tos-apply button:focus,.tos-apply summary:focus,.tos-apply input[type="checkbox"]:focus,.tos-apply input[type="radio"]:focus{outline:4px solid #4338ca;outline-offset:2px}}
 @supports not selector(:focus-visible){.tos-read a:focus,.tos-read button:focus,.tos-read summary:focus,.tos-read input:focus,.tos-read select:focus,.tos-read textarea:focus{outline:4px solid #4338ca;outline-offset:2px}}

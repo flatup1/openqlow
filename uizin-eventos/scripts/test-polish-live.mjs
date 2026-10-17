@@ -1,7 +1,7 @@
 /**
  * Regression checks for the POLISH round, area "live" (the match-day screen /private/live/ and its list view),
  * plus the few places other screens show the same words (prep bout card, prep legend, titles).
- * Each scenario names the finding ids (r1-NN) it guards. Local-only: every request that leaves 127.0.0.1 is aborted
+ * Each scenario names the finding ids (r1-NN; round 2: scenarios R45...R123 for r2-NN, after P15) it guards. Local-only: every request that leaves 127.0.0.1 is aborted
  * and counted as a violation. All data is fake. Drives the REAL built pages (npm run build:private -> out-private-pages).
  *
  * Run (server started and stopped inside ONE shell command):
@@ -346,7 +346,7 @@ scenario('P8', 'opening a bout from the list says 「まちがえたら「第N�
   await l.waitForFunction(() => document.querySelector('header b span')?.innerText.includes('第5試合'), null, { timeout: 5000 });
   await settle(400);
   const note = await l.locator('[role=status]', { hasText: '変えました' }).innerText();
-  check(/まちがえたら「第1試合にもどす」を押す/.test(note) && !/右|下のボタン/.test(note), `the undo sentence names the button (${short(note, 120)})`);
+  check(/まちがえたら「第1試合にもどす」を押してください/.test(note) && !/右|下のボタン/.test(note), `the undo sentence names the button (${short(note, 120)})`);
   const bt = l.getByRole('button', { name: '第1試合にもどす', exact: true });
   check((await bt.count()) === 1, 'the button 「第1試合にもどす」 exists once');
   await ctx.close();
@@ -395,7 +395,7 @@ scenario('P11', 'JavaScript off: a plain reason; the tabs have Japanese names; e
   check((await p.evaluate(() => getComputedStyle(document.body).backgroundColor)) !== 'rgb(7, 9, 13)', 'no JavaScript: the page is not a black screen');
   await ctx.close();
   const ctx2 = await newCtx({ width: 1280, height: 720 });
-  for (const [path, want] of [['/private/live/?event=pl-p11', '試合当日の画面'], ['/private/entry/?event=pl-p11', '選手エントリーシート'], ['/private/google-setup/?event=pl-p11', 'Google受付をつなぐ'], ['/private/setup/?event=pl-p11', '選手の受付をつくる']]) {
+  for (const [path, want] of [['/private/live/?event=pl-p11', '試合当日の画面'], ['/private/entry/?event=pl-p11', '選手エントリーシート'], ['/private/setup/?event=pl-p11', '選手の受付をつくる']]) {
     const q = await ctx2.newPage();
     await q.goto(base + path);
     await settle(1200);
@@ -484,10 +484,11 @@ scenario('P14', 'prep screen: A-vs-B bout card says which rules differ and what 
   await p.goto(base + '/private/?event=' + id);
   await p.locator('#bout-0').waitFor({ timeout: 15000 });
   const card = await p.locator('#bout-0').innerText();
-  check(/クラスがちがいます：赤はAクラス、青はBクラスです。ルールがちがう2人です/.test(card), `the card names both classes (${short(card, 160)})`);
+  check(/クラスがちがいます：赤はAクラス、青はBクラスです。ルールがちがうので、ふつうは同じクラスの人と戦います/.test(card), `the card names both classes (${short(card, 160)})`);
   check(/Aクラスのルール：首相撲あり／膝蹴りあり／蹴り足キャッチ/.test(card) && /Bクラスのルール：パンチとキックのみ/.test(card), 'it shows which rules differ (one line per class)');
-  check(/おすすめは、同じクラスの2人に選び直すことです/.test(card), 'it says what is recommended');
-  check(/下の「ルール・体重の区分」の「ルール」に書きます。試合当日の画面に出ます/.test(card), 'it says where to write the agreed rule so it shows on the match-day screen');
+  check(/ふつうは同じクラスの人と戦います/.test(card), 'it says what is usual: fight inside the same class');
+  check(/このまま戦ってもかまいません。そのときは、主催者のあなたが、どちらのルールにするか決めて、「ルール」の欄に書きます/.test(card), 'it says the organiser may still pair them and must write the agreed rule in the 「ルール」 field');
+  check((await p.locator('#bout-0').getByRole('button', { name: 'ルールを書く欄をひらく' }).count()) === 1, 'a button 「ルールを書く欄をひらく」 opens that (closed) field');
   const btn = p.locator('#bout-0').getByRole('button', { name: '青を選び直す', exact: true });
   check((await btn.count()) === 1, 'a button 「青を選び直す」 is there');
   await btn.click(); await settle(400);
@@ -496,20 +497,23 @@ scenario('P14', 'prep screen: A-vs-B bout card says which rules differ and what 
   check(legend.includes('クラス：Aクラス＝3勝以上　Bクラス＝2勝以下（初出場も）。'), 'a one-line legend explains the two classes above the bout list');
   check(/新しい画面（ブラウザでは「タブ」と言います）が開きます/.test(legend) && /閉じなくて大丈夫/.test(legend), 'the new-tab note says "tab", that the old screen can stay, and how to return');
   const live = await openLive(ctx, id);
-  check((await live.evaluate(() => document.body.innerText)).includes('準備画面が、もう1つ開きます'), 'the live screen says the way back opens a second prep screen');
+  const liveText = await live.evaluate(() => document.body.innerText);
+  check(liveText.includes('この画面は、準備画面に変わります') && !liveText.includes('準備画面が、もう1つ開きます'), 'the live screen says the link turns THIS screen into the prep screen (r2-56; the old 「もう1つ開きます」 was false)');
   await ctx.close();
 });
 
-/* P15 r1-111: the prep screen's sticky nav + bottom bar give the screen back when they would cover half of it */
-scenario('P15', 'prep screen: the step nav and the bottom bar are sticky on a normal phone, but normal flow on 320x256 and with 200% text', async () => {
+/* P15 r1-111 / r2-110 / r2-151: the prep screen's step nav gives the screen back when nav + bottom bar would cover more than 40% of it
+   (the same share as the match-day footer). The bottom bar is always fixed (it holds the yellow 「次はここ」 and the save button); when it alone is
+   over 40% of the screen it drops its notes (data-bar-tight). */
+scenario('P15', 'prep screen: the step nav is sticky on a normal phone, but normal flow when nav + bar are over 40% of the screen; the bar stays fixed and goes tight', async () => {
   const id = 'pl-p15';
   const data = twoBouts(id, { n: 3, photo: false });
   const probe = (p) => p.evaluate(() => {
     const bar = [...document.querySelectorAll('div')].find((d) => /fixed|relative/.test(d.className) && d.className.includes('border-t-2') && d.className.includes('z-40'));
     const nav = document.querySelector('nav[aria-label="4つの手順"]');
-    return { bar: bar ? getComputedStyle(bar).position : null, nav: nav ? getComputedStyle(nav).position : null, barH: bar ? Math.round(bar.getBoundingClientRect().height) : 0, navH: nav ? Math.round(nav.getBoundingClientRect().height) : 0, vh: innerHeight, vw: innerWidth };
+    return { bar: bar ? getComputedStyle(bar).position : null, nav: nav ? getComputedStyle(nav).position : null, tight: bar ? bar.getAttribute('data-bar-tight') === '1' : false, barH: bar ? Math.round(bar.getBoundingClientRect().height) : 0, navH: nav ? Math.round(nav.getBoundingClientRect().height) : 0, vh: innerHeight, vw: innerWidth };
   });
-  for (const [vp, tag, flow] of [[{ width: 390, height: 844 }, '390x844', false], [{ width: 1280, height: 720 }, '1280x720', false], [{ width: 320, height: 256 }, '320x256', true]]) {
+  for (const [vp, tag, flow] of [[{ width: 390, height: 844 }, '390x844', false], [{ width: 1280, height: 720 }, '1280x720', false], [{ width: 960, height: 540 }, '960x540 (a 1920x1080 PC at 200% zoom)', true], [{ width: 320, height: 568 }, '320x568', true], [{ width: 320, height: 256 }, '320x256', true]]) {
     const ctx = await newCtx(vp);
     await seed(ctx, data);
     const p = await ctx.newPage();
@@ -517,8 +521,12 @@ scenario('P15', 'prep screen: the step nav and the bottom bar are sticky on a no
     await p.locator('#bout-0').waitFor({ timeout: 15000 });
     await settle(600);
     const r = await probe(p);
-    if (flow) check(r.bar === 'relative' && /^(static|relative)$/.test(r.nav), `${tag}: bar and nav are normal flow (${JSON.stringify(r)})`);
-    else check(r.bar === 'fixed' && r.nav === 'sticky', `${tag}: bar fixed and nav sticky (${JSON.stringify(r)})`);
+    check(r.bar === 'fixed', `${tag}: the bottom bar stays fixed (${JSON.stringify(r)})`);
+    if (flow) check(/^(static|relative)$/.test(r.nav), `${tag}: the nav is normal flow (${JSON.stringify(r)})`);
+    else check(r.nav === 'sticky', `${tag}: the nav is sticky (${JSON.stringify(r)})`);
+    // r2-110: whatever stays stuck to the screen takes at most 40% (the same share as the match-day footer), unless the screen is tiny
+    const stuck = r.barH + (r.nav === 'sticky' && r.vw < 1024 ? r.navH : 0); // from 1024px wide the nav is a left column, not a top strip
+    if (r.vh >= 500) check(stuck <= r.vh * 0.4 + 1, `${tag}: the parts stuck to the screen take at most 40% of it (${stuck}/${r.vh})`);
     await ctx.close();
   }
   const ctx = await newCtx({ width: 320, height: 568 });
@@ -529,7 +537,469 @@ scenario('P15', 'prep screen: the step nav and the bottom bar are sticky on a no
   await p.addStyleTag({ content: 'html{font-size:200%}' });
   await settle(700);
   const r = await probe(p);
-  check(r.bar === 'relative' && /^(static|relative)$/.test(r.nav), `320x568 + text 200%: the bar and nav no longer cover the page (${JSON.stringify(r)})`);
+  check(r.bar === 'fixed' && /^(static|relative)$/.test(r.nav) && r.tight, `320x568 + text 200%: the nav is normal flow and the bar is fixed and tight (no notes) (${JSON.stringify(r)})`);
+  await ctx.close();
+});
+
+/* ═══════════════ ROUND 2 (r2-NN) ═══════════════ */
+const MUSIC_ON = { music: true, grade: 'optional', age: 'optional', comment: 'optional' };
+/** n bouts. music: true = both fighters get a link and the event has music on */
+const manyBouts = (id, n, { music = false, photo = false, rule = '', current = 0, over = {} } = {}) => {
+  const fighters = [], bouts = [];
+  for (let i = 0; i < n; i++) {
+    fighters.push(F('R' + i, { name: '架空赤' + (i + 1), weight: '45.5', photoDataUrl: photo ? PHOTO : '', musicUrl: music ? 'https://music.apple.com/jp/album/fake/' + i : '' }));
+    fighters.push(F('B' + i, { name: '架空青' + (i + 1), weight: '44', photoDataUrl: photo ? PHOTO : '', musicUrl: music ? 'https://youtu.be/fake' + i : '' }));
+    bouts.push(B('b' + i, 'R' + i, 'B' + i, { rule }));
+  }
+  return T(id, { fighters, bouts, current, entryConfig: music ? MUSIC_ON : undefined, ...over });
+};
+const docW = (p) => p.evaluate(() => ({ sw: document.documentElement.scrollWidth, vw: window.innerWidth }));
+
+/* R45 / r2-45: a held Enter (or Space) key moves ONE bout, not five */
+scenario('R45', 'r2-45: holding Enter or Space on 「次の試合 →」 / 「← 前の試合」 moves only one bout', async () => {
+  const id = 'pl-r45';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 6, { current: 2 }));
+  const p = await openLive(ctx, id);
+  for (const key of ['Enter', ' ']) {
+    await nextBtn(p).focus();
+    const before = await headerNo(p);
+    await p.keyboard.down(key);
+    await settle(560);
+    for (let i = 0; i < 25; i++) { await p.keyboard.down(key); await settle(33); }
+    await p.keyboard.up(key);
+    await settle(500);
+    const after = await headerNo(p);
+    const n = (s) => Number((s.match(/\d+/) || [0])[0]);
+    check(n(after) - n(before) === 1, `holding ${key === ' ' ? 'Space' : 'Enter'} on 「次の試合 →」 for 1.3 s moves exactly one bout (${before} -> ${after})`);
+    const undoLabel = await p.locator('.live-undo button').innerText().catch(() => '');
+    check(new RegExp('第' + n(before) + '試合にもどす').test(undoLabel), `the undo button takes the person back to where they were (${undoLabel})`);
+    await p.locator('.live-undo button').click().catch(() => {});
+    await settle(300);
+  }
+  await prevBtn(p).focus();
+  const b0 = await headerNo(p);
+  await p.keyboard.down('Enter'); await settle(560);
+  for (let i = 0; i < 25; i++) { await p.keyboard.down('Enter'); await settle(33); }
+  await p.keyboard.up('Enter'); await settle(500);
+  const a0 = await headerNo(p);
+  check(Number(b0.match(/\d+/)[0]) - Number(a0.match(/\d+/)[0]) === 1, `holding Enter on 「← 前の試合」 moves exactly one bout back (${b0} -> ${a0})`);
+  // a real second press (key up, then down again, after the double-tap guard) still works
+  await settle(600);
+  await prevBtn(p).focus();
+  await p.keyboard.press('Enter'); await settle(400);
+  check(Number(a0.match(/\d+/)[0]) - Number((await headerNo(p)).match(/\d+/)[0]) === 1, 'a normal second press (after 0.6 s) still goes on');
+  await ctx.close();
+});
+
+/* R46 / r2-46: keyboard focus on the music link is never hidden under the sticky footer */
+scenario('R46', 'r2-46: Tab to 「▶ 入場曲を開く」 keeps the link above the sticky footer', async () => {
+  for (const [vp, tag] of [[{ width: 1280, height: 720 }, '1280x720'], [{ width: 844, height: 390 }, '844x390'], [{ width: 390, height: 844 }, '390x844']]) {
+    const id = 'pl-r46-' + tag;
+    const ctx = await newCtx(vp);
+    await seed(ctx, manyBouts(id, 3, { music: true, photo: true, rule: RULE_A }));
+    const p = await openLive(ctx, id);
+    let seen = 0;
+    for (let i = 0; i < 12 && seen < 2; i++) {
+      await p.keyboard.press('Tab');
+      await settle(120);
+      const r = await p.evaluate(() => {
+        const e = document.activeElement; if (!e || !/入場曲を開く/.test(e.innerText || '')) return null;
+        const b = e.getBoundingClientRect(), f = document.querySelector('footer'), fr = f ? f.getBoundingClientRect() : null;
+        return { top: Math.round(b.top), bottom: Math.round(b.bottom), footerTop: fr ? Math.round(fr.top) : window.innerHeight, footerSticky: f ? getComputedStyle(f).position === 'sticky' : false, vh: window.innerHeight };
+      });
+      if (!r) continue;
+      seen++;
+      check(r.top >= 0 && r.bottom <= (r.footerSticky ? r.footerTop : r.vh), `${tag}: the focused music link #${seen} is fully visible, not under the footer (${JSON.stringify(r)})`);
+    }
+    check(seen === 2, `${tag}: both music links were reached by Tab (${seen})`);
+    await ctx.close();
+  }
+});
+
+/* R47 / r2-47 / r2-98: no sideways scroll in the list on landscape phones, and with big root text */
+scenario('R47', 'r2-47 / r2-98: list view has no sideways scroll on landscape phones; the 「一覧」 button stays inside its card', async () => {
+  for (const [w, h] of [[844, 390], [800, 360], [736, 414], [740, 360], [700, 360], [812, 375], [667, 375], [932, 430], [768, 300]]) {
+    const id = `pl-r47-${w}x${h}`;
+    const ctx = await newCtx({ width: w, height: h });
+    await seed(ctx, manyBouts(id, 3));
+    for (const list of [true, false]) {
+      const p = await openLive(ctx, id, { list });
+      const d = await docW(p);
+      check(d.sw <= d.vw, `${w}x${h} ${list ? 'list' : 'single'}: no sideways scroll (${d.sw}/${d.vw})`);
+      const sw = await p.evaluate(() => { const g = document.querySelector('[role="group"][aria-label="表示のしかた"]'); if (!g) return null; const card = g.parentElement.getBoundingClientRect(); const b = [...g.querySelectorAll('button')].map((x) => x.getBoundingClientRect()); return { cardR: Math.round(card.right), btnR: Math.max(...b.map((x) => Math.round(x.right))), vw: innerWidth }; });
+      if (sw) check(sw.btnR <= sw.cardR + 1 && sw.btnR <= sw.vw, `${w}x${h} ${list ? 'list' : 'single'}: the 「一覧」 button ends inside its white card (${JSON.stringify(sw)})`);
+      await p.close();
+    }
+    await ctx.close();
+  }
+  // root text 200%: the yellow slot must not push the page wider than the screen
+  const id = 'pl-r47-zoom';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 3));
+  const p = await openLive(ctx, id, { list: true });
+  await p.addStyleTag({ content: 'html{font-size:200% !important}' });
+  await settle(400);
+  const d = await docW(p);
+  check(d.sw <= d.vw, `1280x720 list with 200% root text: no sideways scroll (${d.sw}/${d.vw})`);
+  await ctx.close();
+});
+
+/* R48 / r2-48: when the script bundle never starts, the watchdog tells the person (not a forever 「そのまま待つ」) */
+scenario('R48', 'r2-48: with the JS bundle blocked, the loading page carries data-tos-loading and the 10-second alert appears', async () => {
+  const id = 'pl-r48';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  const p = await ctx.newPage();
+  await p.route('**/_next/static/chunks/**', (r) => r.abort());
+  await p.goto(base + '/private/live/?event=' + id);
+  await settle(1000);
+  check((await p.locator('main[data-tos-loading]').count()) === 1, 'the loading <main> carries data-tos-loading');
+  const early = await p.evaluate(() => document.body.innerText);
+  check(!/そのまま待つ/.test(early), `without the script the page does NOT say 「そのまま待つ」 (it would wait forever) (${short(early, 120)})`);
+  await settle(10500);
+  const alert = p.locator('body > div[role="alert"]').first();
+  check((await alert.count()) === 1, 'after 10 seconds an alert is shown');
+  const t = await alert.innerText().catch(() => '');
+  check(/古い/.test(t) && /Chrome/.test(t) && /開き直して/.test(t), `the alert says what to do: open again in Chrome (${short(t, 120)})`);
+  await ctx.close();
+});
+
+/* R49 / r2-49: at 320x568 the red failure toast never covers the retry button of the failed list row */
+scenario('R49', 'r2-49: list view 320x568: the failed row 「この試合を開く」 stays visible above the red toast', async () => {
+  for (const [w, h] of [[320, 568], [390, 640]]) {
+    const id = `pl-r49-${w}`;
+    const ctx = await newCtx({ width: w, height: h });
+    await seed(ctx, manyBouts(id, 12));
+    const p = await openLive(ctx, id, { list: true });
+    await failWrites(p);
+    await p.locator('li#live-list-row-2 button.live-list-open').click();
+    await settle(900);
+    const r = await p.evaluate(() => {
+      const row = document.getElementById('live-list-row-2'), btn = row.querySelector('button.live-list-open'), slot = btn.closest('[data-tos-next]');
+      const toast = document.querySelector('[role="alert"].fixed'); const t = toast ? toast.getBoundingClientRect() : null;
+      const b = btn.getBoundingClientRect(), s = slot ? slot.getBoundingClientRect() : null;
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { btnTop: Math.round(b.top), btnBottom: Math.round(b.bottom), slotTop: s ? Math.round(s.top) : null, toastTop: t ? Math.round(t.top) : null, toastH: t ? Math.round(t.height) : null, vh: innerHeight, hitIsBtn: hit === btn || btn.contains(hit), marker: !!slot };
+    });
+    check(r.marker && r.toastTop !== null, `${w}x${h}: the red toast and the yellow retry slot both exist`);
+    check(r.hitIsBtn && r.btnBottom <= r.toastTop && r.btnTop >= 0, `${w}x${h}: the retry button is on screen and not covered by the toast (${JSON.stringify(r)})`);
+    check(r.slotTop !== null && r.slotTop >= 0, `${w}x${h}: the whole yellow 「次はここ」 frame starts on screen (${r.slotTop})`);
+    check(r.toastH / r.vh <= 0.42, `${w}x${h}: the toast takes at most 42% of the screen (${r.toastH}/${r.vh})`);
+    await ctx.close();
+  }
+});
+
+/* R50 / r2-50: the yellow hint does not ping-pong between 「一覧」 and 「1試合ずつ」 on the last bout */
+scenario('R50', 'r2-50: on the last bout neither view puts a yellow 👉 on the other view button', async () => {
+  const id = 'pl-r50';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 3, { current: 2 }));
+  const s = await openLive(ctx, id);
+  check((await markers(s)).length === 0, `last bout, single view: no yellow marker (${(await markers(s)).join('|')})`);
+  await s.getByRole('button', { name: '一覧', exact: false }).first().click();
+  await settle(300);
+  check((await markers(s)).length === 0, `last bout, list view: no yellow marker either (${(await markers(s)).join('|')})`);
+  const body = await s.evaluate(() => document.body.innerText);
+  check(/いまは最後の試合です。進める試合は、もうありません/.test(body), 'the list says the last bout has nothing left to advance');
+  check(!/試合を進めるときは、上の「1試合ずつ」/.test(body), 'the list does not tell the person to go and advance a bout');
+  // and on the first bout the single view puts the one yellow on the next button, the list on 「1試合ずつ」
+  await seed(ctx, manyBouts(id + 'b', 3, { current: 0 }));
+  const f = await openLive(ctx, id + 'b');
+  const m1 = await markers(f);
+  check(m1.length === 1 && /この試合が終わったら押す/.test(m1[0]), `first bout, single: ONE yellow, on 「次の試合 →」 (${m1.join('|')})`);
+  await f.getByRole('button', { name: '一覧', exact: false }).first().click();
+  await settle(300);
+  const m2 = await markers(f);
+  check(m2.length === 1 && /1試合ずつ/.test(m2[0]), `first bout, list: ONE yellow, on 「1試合ずつ」 (${m2.join('|')})`);
+  await ctx.close();
+});
+
+/* R51 / r2-51 / r2-52 / r2-53 / r2-54 */
+scenario('R51', 'r2-51: an empty fighter name shows the same red line in the list as in the single view', async () => {
+  const id = 'pl-r51';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  const t = manyBouts(id, 2);
+  t.fighters[0] = { ...t.fighters[0], name: '   ' };
+  await seed(ctx, t);
+  const l = await openLive(ctx, id, { list: true });
+  const row0 = await l.locator('#live-list-row-0').innerText();
+  check(/名前未入力/.test(row0) && /名前が入っていません/.test(row0), `list: the empty name has the red line (${short(row0, 160)})`);
+  check(!/名前が入っていません/.test(await l.locator('#live-list-row-1').innerText()), 'list: bout 2 (names filled) has no such line');
+  const s = await openLive(ctx, id);
+  check(/名前が入っていません/.test(await s.evaluate(() => document.body.innerText)), 'single view: same red line');
+  await ctx.close();
+});
+
+scenario('R52', 'r2-52: a fighter with a photo and one without get the same photo box height; the names line up', async () => {
+  for (const [vp, tag] of [[{ width: 1280, height: 720 }, '1280x720'], [{ width: 1366, height: 768 }, '1366x768']]) {
+    const id = 'pl-r52-' + tag;
+    const ctx = await newCtx(vp);
+    const t = manyBouts(id, 2, { photo: true });
+    t.fighters[1] = { ...t.fighters[1], photoDataUrl: '' };
+    await seed(ctx, t);
+    const p = await openLive(ctx, id);
+    const r = await p.evaluate(() => [...document.querySelectorAll('.live-photo')].map((e) => Math.round(e.getBoundingClientRect().height)));
+    const g = await geom(p);
+    check(r.length === 2 && r[0] === r[1] && r[0] >= 72, `${tag}: both photo boxes are the same height, at least 72px (${r.join('/')})`);
+    check(g.names[0] && g.names[1] && g.names[0].top === g.names[1].top, `${tag}: the two names start at the same height (${g.names.map((x) => x && x.top).join('/')})`);
+    await ctx.close();
+  }
+});
+
+scenario('R53', 'r2-53: at 1920x1080 the corner word, class, gym and comment are bigger for a TV read from 3 m', async () => {
+  const id = 'pl-r53';
+  const ctx = await newCtx({ width: 1920, height: 1080 });
+  const t = manyBouts(id, 2, { photo: true, rule: RULE_A });
+  t.fighters[0] = { ...t.fighters[0], fighterClass: 'Aクラス' };
+  await seed(ctx, t);
+  const p = await openLive(ctx, id);
+  const r = await p.evaluate(() => {
+    const a = document.querySelector('article'); const fs = (e) => (e ? parseFloat(getComputedStyle(e).fontSize) : 0);
+    return { band: fs(a.querySelector('.live-corner-band')), pill: fs(a.querySelector('.live-corner-band span.rounded-full')), name: fs(a.querySelector('h2')), gym: fs(a.querySelector('h2 + p')), comment: fs(a.querySelector('b + p')), foot: Math.round(document.querySelector('footer').getBoundingClientRect().bottom), nameBottom: Math.round(a.querySelector('h2 + p').getBoundingClientRect().bottom), footTop: Math.round(document.querySelector('footer').getBoundingClientRect().top), vh: innerHeight };
+  });
+  check(r.band >= 30 && r.pill >= 30, `the corner word and the class pill are >= 30px (${r.band}/${r.pill})`);
+  check(r.name >= 64, `the fighter name is >= 64px (${r.name})`);
+  check(r.gym >= 26, `the gym name is >= 26px (${r.gym})`);
+  check(r.comment >= 21, `the comment text is >= 21px (${r.comment})`);
+  check(r.foot <= r.vh && r.nameBottom <= r.footTop, `the names, the gym and the footer buttons still fit one 1920x1080 screen (name+gym end ${r.nameBottom}, footer ${r.footTop}-${r.foot}, screen ${r.vh})`);
+  await ctx.close();
+});
+
+scenario('R54', 'r2-54: in the list the bout rule runs the full width of the row and can break after each 「／」', async () => {
+  for (const [vp, tag] of [[{ width: 1280, height: 720 }, '1280x720'], [{ width: 390, height: 844 }, '390x844']]) {
+    const id = 'pl-r54-' + tag;
+    const ctx = await newCtx(vp);
+    await seed(ctx, manyBouts(id, 2, { rule: RULE_A }));
+    const p = await openLive(ctx, id, { list: true });
+    const r = await p.evaluate(() => {
+      const li = document.getElementById('live-list-row-0'); const ru = [...li.querySelectorAll('p')].find((x) => x.innerText.startsWith('ルール：'));
+      if (!ru) return null; const a = ru.getBoundingClientRect(), b = li.getBoundingClientRect();
+      return { w: Math.round(a.width), rowW: Math.round(b.width), fs: parseFloat(getComputedStyle(ru).fontSize), wbr: ru.querySelectorAll('wbr').length };
+    });
+    check(!!r && r.w >= r.rowW - 40 && r.fs >= 18 && r.wbr >= 2, `${tag}: the rule line is full width, >= 18px, with break points after 「／」 (${JSON.stringify(r)})`);
+    await ctx.close();
+  }
+});
+
+/* R55 / r2-55: the names do not jump between bouts or when the undo box shrinks */
+scenario('R55', 'r2-55: names keep their place when moving to the last bout and when the undo box shrinks', async () => {
+  const id = 'pl-r55';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 3, { photo: true }));
+  const p = await openLive(ctx, id);
+  // a real mouse click at the button's position (locator.click() scrolls the page by itself and would move the names)
+  const press = async () => { const bx = await nextBtn(p).boundingBox(); await p.mouse.click(bx.x + bx.width / 2, bx.y + bx.height / 2); };
+  await press(); await settle(500);
+  const top2 = (await geom(p)).names[0].top;
+  await settle(1500);
+  await press(); await settle(500);
+  const top3 = (await geom(p)).names[0].top;
+  check(Math.abs(top3 - top2) <= 2, `bout 2 -> last bout: the name stays at the same height (${top2} -> ${top3})`);
+  await settle(11000);
+  const top3s = (await geom(p)).names[0].top;
+  check(Math.abs(top3s - top3) <= 2, `after the big undo box turns into one small line (10 s) the name does not move (${top3} -> ${top3s})`);
+  await ctx.close();
+});
+
+/* R56 / r2-56: the link back to the prep screen says the truth */
+scenario('R56', 'r2-56: 「準備画面へ戻る」 opens in this tab; the note says so and how to come back; one word 準備画面', async () => {
+  const id = 'pl-r56';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 2));
+  const p = await openLive(ctx, id);
+  const body = await p.evaluate(() => document.body.innerText);
+  check(/この画面は、準備画面に変わります/.test(body) && /準備画面の「試合当日の画面を開く」を押します/.test(body), `the note says this screen turns into the prep screen and names the button to come back (${short(body.slice(body.indexOf('この画面は')), 160)})`);
+  check(!/もう1つ開きます/.test(body), 'the old false sentence 「もう1つ開きます」 is gone');
+  check(!/準備の画面/.test(body), 'one word: 準備画面 (not 準備の画面)');
+  const a = p.getByRole('link', { name: /準備画面へ戻る/ }).first();
+  check((await a.getAttribute('target')) === null, 'the link has no target (same tab, as the note says)');
+  await a.click();
+  await p.waitForURL(/\/private\/\?event=/, { timeout: 8000 });
+  // the button the note names really exists on the prep screen
+  await p.waitForFunction(() => document.body.innerText.length > 200, null, { timeout: 15000 });
+  await settle(800);
+  check((await p.evaluate(() => document.body.innerText)).includes('試合当日の画面を開く'), 'the prep screen has the button 「試合当日の画面を開く」 that the note names');
+  await seed(ctx, T('pl-r56-empty'));
+  const e = await openLive(ctx, 'pl-r56-empty');
+  { const et = await e.evaluate(() => document.body.innerText); check(/まだ対戦カードがありません。準備画面で作ってください/.test(et) && !/準備の画面/.test(et), `the empty-bouts screen also says 準備画面 (${short(et, 100)})`); }
+  await ctx.close();
+});
+
+/* R57 / r2-57: wording */
+scenario('R57', 'r2-57: one meaning per phrase; no stray space; the unreadable screen leads with the instruction; a blank title is named', async () => {
+  const id = 'pl-r57';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  const t = manyBouts(id, 2, { music: true, current: 0, over: { title: '' } });
+  t.fighters[0] = { ...t.fighters[0], musicUrl: '' };
+  await seed(ctx, t);
+  const s = await openLive(ctx, id);
+  const sb = await s.evaluate(() => document.body.innerText);
+  check(/この選手は入場曲なし（曲を用意）/.test(sb), 'a fighter without a song reads 「この選手は入場曲なし（曲を用意）」');
+  check(!/⚠ 入場曲なし/.test(sb), 'the old ambiguous 「⚠ 入場曲なし」 is gone');
+  check((await s.locator('header h1').innerText()).trim() === '大会名未設定', 'a blank title shows 「大会名未設定」 (no empty cell)');
+  const l = await openLive(ctx, id, { list: true });
+  await l.getByRole('button', { name: '曲がない試合だけ見る' }).click();
+  const lb = await l.evaluate(() => document.body.innerText);
+  check(/曲がまだの人が出る試合だけです/.test(lb) && !/曲が まだ/.test(lb), 'the filter note has no half-width space');
+  // the event with no music
+  await seed(ctx, manyBouts(id + 'n', 2));
+  const n = await openLive(ctx, id + 'n');
+  check(/この大会は入場曲なし/.test(await n.evaluate(() => document.body.innerText)), 'an event with music off says 「この大会は入場曲なし」');
+  // unreadable data screen: make readPrivateEvent fail (indexedDB.open throws)
+  const bad = await ctx.newPage();
+  await bad.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { get() { throw new Error('blocked'); } }); });
+  await bad.goto(base + '/private/live/?event=pl-r57-bad');
+  await bad.getByText('保存データを読めません').waitFor({ timeout: 15000 });
+  const m = await markers(bad);
+  check(m.length === 1 && /準備画面/.test(m[0]) && !/もう一度ひらく/.test(m[0]), `the unreadable screen: the ONE yellow marker is on 「準備画面へ戻る」, not on 「もう一度ひらく」 (${m.join('|')})`);
+  check(/ふつうのウィンドウで開き直してください/.test(await bad.evaluate(() => document.body.innerText)), 'step ① (open a normal window) is on the screen');
+  await ctx.close();
+});
+
+/* R97 / r2-97: the view-only number jump never leaves the focus on a button that changes the live bout */
+scenario('R97', 'r2-97: 「行く」 twice (Enter, Enter) does not change the live bout', async () => {
+  const id = 'pl-r97';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 4));
+  const p = await openLive(ctx, id, { list: true });
+  await p.locator('#live-list-jump').focus();
+  await p.keyboard.type('4');
+  await p.keyboard.press('Enter');
+  await settle(300);
+  const act = await p.evaluate(() => ({ tag: document.activeElement?.tagName, text: (document.activeElement?.innerText || '').slice(0, 20), openBtn: !!document.activeElement?.classList?.contains('live-list-open') }));
+  check(!act.openBtn, `after the jump the focus is not on 「この試合を開く」 (${JSON.stringify(act)})`);
+  check(act.tag === 'H3' && /第4試合/.test(act.text), `the focus is on the heading 「第4試合」 of the row (${JSON.stringify(act)})`);
+  await p.keyboard.press('Enter'); await settle(300); await p.keyboard.press('Enter'); await settle(500);
+  const d = await idbGet(p, id);
+  check(d.currentBout === 0, `a second Enter and a third Enter leave the live bout at 第1試合 (currentBout=${d.currentBout})`);
+  check(/見るだけ/.test(await p.evaluate(() => document.body.innerText)), 'still on the list, still view-only');
+  // Tab then lands on that row's open button (one deliberate step)
+  await p.keyboard.press('Tab'); await settle(100);
+  check(await p.evaluate(() => document.activeElement?.classList?.contains('live-list-open')), 'one Tab from the heading reaches the row\'s 「この試合を開く」');
+  await ctx.close();
+});
+
+/* R100 / r2-100: the undo notice is announced once; the countdown never changes the live region */
+scenario('R100', 'r2-100: the role=status undo notice does not change every second (the countdown is outside it)', async () => {
+  const id = 'pl-r100';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 4));
+  const p = await openLive(ctx, id, { list: true });
+  await p.locator('li#live-list-row-1 button.live-list-open').click();
+  await p.locator('.live-undo').waitFor({ timeout: 8000 });
+  await p.evaluate(() => {
+    window.__mut = 0;
+    const live = document.querySelector('.live-undo [role="status"]') || document.querySelector('.live-undo[role="status"]');
+    window.__liveFound = !!live;
+    if (live) new MutationObserver((m) => { window.__mut += m.length; }).observe(live, { subtree: true, childList: true, characterData: true, attributes: true });
+  });
+  await settle(4200);
+  const r = await p.evaluate(() => ({ mut: window.__mut, found: window.__liveFound, txt: document.querySelector('.live-undo')?.innerText }));
+  check(r.found, 'the undo notice has a role=status element');
+  check(r.mut === 0, `0 changes inside the live region in 4 s (${r.mut})`);
+  check(/あと\d+秒/.test(r.txt || ''), `the countdown is still shown to the eye (${short(r.txt || '', 120)})`);
+  const outside = await p.evaluate(() => { const c = [...document.querySelectorAll('.live-undo *')].find((e) => /あと\d+秒/.test(e.textContent || '') && e.children.length === 0); return c ? { hidden: c.closest('[aria-hidden="true"]') !== null, inLive: c.closest('[role="status"]') !== null } : null; });
+  check(!!outside && outside.hidden && !outside.inLive, `the seconds sit outside the live region and are aria-hidden (${JSON.stringify(outside)})`);
+  await ctx.close();
+});
+
+/* R103 / r2-103: paper keeps the red/blue corner bands */
+scenario('R103', 'r2-103: print keeps the corner band colours (print-color-adjust: exact), single and list', async () => {
+  const id = 'pl-r103';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 2));
+  for (const list of [false, true]) {
+    const p = await openLive(ctx, id, { list });
+    await p.emulateMedia({ media: 'print' });
+    const r = await p.evaluate(() => [...document.querySelectorAll('.live-corner-band')].map((e) => { const c = getComputedStyle(e); return (c.printColorAdjust || c.webkitPrintColorAdjust || '') + ' ' + c.backgroundColor; }));
+    check(r.length >= 2 && r.every((x) => /^exact /.test(x) && !/rgba\(0, 0, 0, 0\)/.test(x)), `${list ? 'list' : 'single'}: every corner band is print-color-adjust:exact with a fill (${r.join(' | ')})`);
+    await p.close();
+  }
+  await ctx.close();
+});
+
+/* R105 / r2-105: the view button names never break inside a word at 320px and narrower */
+scenario('R105', 'r2-105: 「1試合ずつ」 stays on one line at 320 / 300 / 280px', async () => {
+  for (const w of [320, 300, 280]) {
+    const id = 'pl-r105-' + w;
+    const ctx = await newCtx({ width: w, height: 640 });
+    await seed(ctx, manyBouts(id, 3));
+    for (const list of [false, true]) {
+      const p = await openLive(ctx, id, { list });
+      const r = await p.evaluate(() => [...document.querySelectorAll('[role="group"][aria-label="表示のしかた"] button')].map((b) => { const s = b.querySelector('span'); const lh = parseFloat(getComputedStyle(s).lineHeight) || parseFloat(getComputedStyle(s).fontSize) * 1.25; return { t: s.innerText, h: Math.round(s.getBoundingClientRect().height), lh: Math.round(lh), over: b.scrollWidth > b.clientWidth + 1 }; }));
+      check(r.length === 2 && r.every((x) => x.h <= x.lh * 1.4 && !x.over), `${w}px ${list ? 'list' : 'single'}: both view buttons are one line each (${JSON.stringify(r)})`);
+      const d = await docW(p);
+      check(d.sw <= d.vw, `${w}px ${list ? 'list' : 'single'}: no sideways scroll (${d.sw}/${d.vw})`);
+      await p.close();
+    }
+    await ctx.close();
+  }
+});
+
+/* R106 / r2-106: landscape phones keep red and blue side by side */
+scenario('R106', 'r2-106: on a landscape phone both fighter names are on the first screen, side by side', async () => {
+  for (const [w, h] of [[568, 320], [640, 360], [667, 375], [720, 300], [740, 360], [812, 375]]) {
+    const id = `pl-r106-${w}x${h}`;
+    const ctx = await newCtx({ width: w, height: h });
+    await seed(ctx, manyBouts(id, 3, { photo: true, rule: RULE_A }));
+    const p = await openLive(ctx, id);
+    const g = await geom(p);
+    const [a, b] = g.names;
+    check(a && b && Math.abs(a.top - b.top) <= 4 && a.right <= b.left, `${w}x${h}: red and blue are side by side (${JSON.stringify([a, b])})`);
+    check(a && b && a.top >= 0 && a.top < g.vh && b.top < g.vh, `${w}x${h}: both names start on the first screen without scrolling (vh ${g.vh})`);
+    check(g.docW <= g.vw, `${w}x${h}: no sideways scroll (${g.docW}/${g.vw})`);
+    const bands = await p.evaluate(() => [...document.querySelectorAll('article .live-corner-band')].map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
+    check(/赤コーナー/.test(bands[0] || '') && /青コーナー/.test(bands[1] || ''), `${w}x${h}: the left card is 赤コーナー and the right is 青コーナー (${bands.join(' / ')})`);
+    await ctx.close();
+  }
+});
+
+/* R109 / r2-109: JavaScript off: only the 'turn JavaScript on' message */
+scenario('R109', 'r2-109: with JavaScript off the page does not also say 「そのまま待つ」', async () => {
+  const ctx = await newCtx({ width: 1280, height: 720 }, { javaScriptEnabled: false });
+  const p = await ctx.newPage();
+  await p.goto(base + '/private/live/?event=pl-r109');
+  await settle(800);
+  const t = await p.evaluate(() => document.body.innerText);
+  check(/JavaScript/.test(t) && /オン/.test(t), `the JavaScript-on message is shown (${short(t, 160)})`);
+  check(!/そのまま待つ|3秒ほどかかります/.test(t), 'no contradicting 「そのまま待つ」 / 「3秒ほど」');
+  check((t.match(/Chrome/g) || []).length === 0 || /オン/.test(t), 'the noscript text does not send the person to another browser first');
+  await ctx.close();
+});
+
+/* R112 / r2-112: offline: the live screen warns that closing it cannot be undone without internet */
+scenario('R112', 'r2-112: the live screen says closing needs internet to reopen, and shows a yellow ⚠ when offline', async () => {
+  const id = 'pl-r112';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, manyBouts(id, 2));
+  const p = await openLive(ctx, id);
+  const t = await p.evaluate(() => document.body.innerText);
+  check(!/閉じても大丈夫/.test(t), 'the false 「閉じても大丈夫」 is gone');
+  check(/ネットが弱いときは、閉じないでください/.test(t) && /ネットが必要です/.test(t), `it warns: do not close when the internet is weak; reopening needs internet (${short(t, 40)})`);
+  check(!/ネットがつながっていません/.test(t), 'online: no offline caution');
+  await ctx.setOffline(true);
+  await settle(500);
+  const off = await p.evaluate(() => document.body.innerText);
+  check(/ネットがつながっていません/.test(off) && /閉じないでください/.test(off) && /開き直せません/.test(off), `offline: a yellow caution says do not close (${short(off, 160)})`);
+  check(await p.evaluate(() => !!document.querySelector('.tos-caution')), 'the caution uses the yellow caution style');
+  await ctx.setOffline(false);
+  await settle(500);
+  check(!/ネットがつながっていません/.test(await p.evaluate(() => document.body.innerText)), 'back online: the caution goes away');
+  await ctx.close();
+});
+
+/* R123 / r2-123: an event without entryConfig has music OFF on the match-day screen, like the prep screen says */
+scenario('R123', 'r2-123: no entryConfig -> the match-day screens treat music as OFF (like the prep screen)', async () => {
+  const id = 'pl-r123';
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, T(id, { fighters: [F('R0', { name: '架空赤' }), F('B0', { name: '架空青' })], bouts: [B('b0', 'R0', 'B0')] }));
+  const s = await openLive(ctx, id);
+  const st = await s.evaluate(() => document.body.innerText);
+  check(!/入場曲なし（曲を用意）|曲を用意/.test(st), 'single: no 「曲を用意」 to-do for an event with no music');
+  check(/この大会は入場曲なし/.test(st), 'single: 「この大会は入場曲なし」');
+  const l = await openLive(ctx, id, { list: true });
+  const lt = await l.evaluate(() => document.body.innerText);
+  check(!/入場曲がまだの選手|曲がない試合だけ見る/.test(lt) && /この大会は入場曲なし/.test(lt), 'list: no 「入場曲がまだの選手」 and no filter button');
   await ctx.close();
 });
 

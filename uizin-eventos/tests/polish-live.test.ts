@@ -1,4 +1,4 @@
-// Round-1 polish regression checks for the "live" area (match-day screen /private/live/).
+// Round-1 and round-2 (r2-NN, at the end of the file) polish regression checks for the "live" area (match-day screen /private/live/).
 // Each test names the finding id it guards. Everything here is local and uses fake data only.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { LocalBout, LocalFighter, LocalTournament } from '../core/privateTournament.ts';
-import { MISSING_FIGHTER, NO_NAME, buildRow, displayName, isSamePerson, moveNotice, nowModel } from '../app/private/live/listLogic.ts';
+import { LAST_BOUT_LIST_NOTE, MISSING_FIGHTER, NO_NAME, NO_TITLE, OFFLINE_NOTE, PREP_LINK_NOTE, REOPEN_NOTE, buildRow, displayName, filterNote, isHeldKeyRepeat, isSamePerson, liveMusicOn, moveNotice, musicLabel, nowModel, saveFailNotice } from '../app/private/live/listLogic.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -95,7 +95,8 @@ test('r1-111: 帯が position: sticky か static かを決めるのは globals.c
   assert.ok(!/live-single-footer\{position:sticky/.test(page) && !page.includes('<style>'), 'page.tsx に、ぶつかる sticky ルールも <style> もない（規則は globals.css だけ）');
   assert.match(css, /\.live-single-footer\.live-footer-flow\s*\{\s*position:\s*static/);
   assert.match(page, /live-footer-flow/);
-  assert.match(page, /innerHeight\*0\.4/);
+  assert.match(page, /FOOT_FLOW_SHARE = 0\.4/);
+  assert.match(page, /innerHeight\*FOOT_FLOW_SHARE/);
 });
 
 test('r1-44: 「第N試合にもどす」の案内は、くっつく帯(<footer>)の外にある', () => {
@@ -110,7 +111,9 @@ test('r1-44: 「第N試合にもどす」の案内は、くっつく帯(<footer>
 test('r1-45: 1試合だけの大会は、前・次のボタンも、黄色の「一覧」も、表示のしかたも出さない', () => {
   const page = read('app/private/live/page.tsx');
   assert.match(page, /const oneBout=data\.bouts\.length===1/);
-  assert.match(page, /const yellowList=!list&&!!bout&&!retryDir&&isLast&&!oneBout/);
+  // 最後の試合では押すものがないので、黄色はどこにも付けない（r2-50: 「一覧」と「1試合ずつ」が黄色を押し付け合わない）
+  assert.match(page, /retryDir\?\?\(isLast\?null:'next'\)/);
+  assert.ok(!page.includes('yellowList'), '「一覧」ボタンに黄色を付ける古い決め方は、もうない');
   assert.match(page, /const hideSwitcher=!list&&oneBout/);
   assert.ok(page.includes('この大会は1試合だけです'));
 });
@@ -179,7 +182,7 @@ test('r1-176: classMixMessage は、クラスがちがうときだけ。初期�
   assert.equal(classMixMessage(a, a, DEFAULT_CLASS_SETTINGS), null);
   assert.equal(classMixMessage(a, F('c'), DEFAULT_CLASS_SETTINGS), null);
   const m = classMixMessage(a, b, DEFAULT_CLASS_SETTINGS)!;
-  assert.equal(m.headline, 'クラスがちがいます：赤はAクラス、青はBクラスです。ルールがちがう2人です。おすすめは、同じクラスの2人に選び直すことです。');
+  assert.equal(m.headline, 'クラスがちがいます：赤はAクラス、青はBクラスです。ルールがちがうので、ふつうは同じクラスの人と戦います。');
   assert.deepEqual(m.rules, ['Aクラスのルール：首相撲あり／膝蹴りあり／蹴り足キャッチ', 'Bクラスのルール：パンチとキックのみ']);
 });
 
@@ -207,34 +210,41 @@ test('r1-176: 対戦カードの注意の文と、青を選び直すボタン・
   const cards = read('app/private/cards.tsx');
   const prep = read('app/private/page.tsx');
   assert.match(cards, /classMix\.headline/);
-  assert.match(cards, /下の「ルール・体重の区分」の「ルール」に書きます。試合当日の画面に出ます/);
+  assert.match(cards, /このまま戦ってもかまいません。そのときは、主催者のあなたが、どちらのルールにするか決めて、「ルール」の欄に書きます。/);
+  assert.match(cards, /ルールを書く欄をひらく/, 'r2-161: ルールの欄は閉じているので、ひらくボタンを付ける');
   assert.match(cards, /reselect\(blue, '青を選び直す'\)/);
   assert.match(prep, /classSettings=\{classSettings\}/);
   assert.match(prep, /classLegend\(classSettings\)/);
 });
 
 /* ───────── r1-184: 新しい画面（タブ）の言い方 ───────── */
-test('r1-184: 準備画面の「新しい画面」の説明は、タブと言い、いまの画面は閉じなくてよいと言う。当日の画面は「準備画面が、もう1つ開く」と言う', () => {
+test('r1-184: 準備画面の「新しい画面」の説明は、タブと言い、いまの画面は閉じなくてよいと言う。当日の画面は「この画面が準備画面に変わる」と言う', () => {
   const prep = read('app/private/page.tsx');
   assert.match(prep, /新しい画面（ブラウザでは「タブ」と言います）が開きます。いまの画面は、閉じなくて大丈夫です。/);
   assert.match(prep, /ブラウザの一番上に並んだ名前の中から「試合の準備」を押します/);
-  assert.match(read('app/private/live/page.tsx'), /準備画面が、もう1つ開きます。前から開いている準備画面は、閉じてください。/);
-  assert.match(read('app/private/live/ListView.tsx'), /準備画面が、もう1つ開きます。前から開いている準備画面は、閉じてください。/);
+  // r2-56: 当日の画面の「準備画面へ戻る」は同じタブで開く（この画面が準備画面に変わる）。言葉もその通りに（以前の「もう1つ開きます」は うそだった）
+  const note = read('app/private/live/listLogic.ts');
+  assert.match(note, /PREP_LINK_NOTE = 'この画面は、準備画面に変わります。もとの準備画面が開いたままなら、閉じてください。ここにもどるには、準備画面の「試合当日の画面を開く」を押します。'/);
+  assert.ok(!/準備画面が、もう1つ開きます/.test(note + read('app/private/live/page.tsx') + read('app/private/live/ListView.tsx')));
+  assert.ok(read('app/private/live/page.tsx').includes('{PREP_LINK_NOTE}') && read('app/private/live/ListView.tsx').includes('{PREP_LINK_NOTE}'));
 });
 
 /* ───────── r1-111: 準備画面の上のナビと下の帯も、2つで画面の半分をこえたら、くっつけない ───────── */
 test('r1-111: 準備画面は、手順ナビと下の帯の高さを測って、半分をこえたら両方をくっつけない', () => {
   const prep = read('app/private/page.tsx');
   assert.match(prep, /const \[chromeFlow, setChromeFlow\] = useState\(false\)/);
-  assert.match(prep, /\(navCounts \? barH \+ navH : barH\) > window\.innerHeight \* 0\.5/);
+  // r2-151: 手順ナビだけ流す。下の帯は、いつも画面の下にくっつける（黄色の「次はここ」と保存ボタンの置き場）
+  // r2-133: 割合は、試合当日の画面の下の帯（FOOT_FLOW_SHARE = 0.4）と同じ 4割。流すのは手順ナビだけ
+  assert.match(prep, /navCounts && barH \+ navH > window\.innerHeight \* 0\.4/);
   assert.match(prep, /cls\(chromeFlow \? 'relative' : 'sticky top-0'/);
-  assert.match(prep, /cls\(chromeFlow \? 'relative mt-4' : 'fixed inset-x-0 bottom-0'/);
+  assert.match(prep, /cls\('fixed inset-x-0 bottom-0 z-40/);
+  assert.doesNotMatch(prep, /chromeFlow \? 'relative mt-4'/, '下の帯は、ページの流れに落とさない');
 });
 
 /* ───────── r1-103 / r1-119: タブの名前 ───────── */
 test('r1-103 / r1-119: 4つの画面のタブの名前は、日本語で、それぞれちがう', () => {
-  const titles = ['app/private/layout.tsx', 'app/private/setup/layout.tsx', 'app/private/live/layout.tsx', 'app/private/entry/layout.tsx', 'app/private/google-setup/layout.tsx'].map((p) => (read(p).match(/title: '([^']+)'/) ?? [])[1]);
-  assert.deepEqual(titles, ['試合の準備', '選手の受付をつくる', '試合当日の画面', '選手エントリーシート', 'Google受付をつなぐ']);
+  const titles = ['app/private/layout.tsx', 'app/private/setup/layout.tsx', 'app/private/live/layout.tsx', 'app/private/entry/layout.tsx'].map((p) => (read(p).match(/title: '([^']+)'/) ?? [])[1]);
+  assert.deepEqual(titles, ['試合の準備', '選手の受付をつくる', '試合当日の画面', '選手エントリーシート']);
   assert.equal(new Set(titles).size, titles.length);
   assert.ok(!titles.includes('Tournament OS'));
 });
@@ -291,4 +301,217 @@ test('r1-138: コミットしてはいけない手元のフォルダは、無視
   assert.match(inner, /^bd-\*\/$/m);
   assert.match(inner, /^audit\/$/m);
   assert.ok(!/^public\/_headers\s*$/m.test(inner), 'public/_headers を無視する行がない');
+});
+
+/* ═══════════════ ROUND 2 (r2-NN): 試合当日の画面 ═══════════════ */
+const livePage = () => read('app/private/live/page.tsx');
+const listView = () => read('app/private/live/ListView.tsx');
+const css = () => read('app/globals.css');
+
+test('r2-45: 押しっぱなしのキー（Enter / Space）の連打は、ボタンの上で捨てる（何試合も進まない）', () => {
+  assert.equal(isHeldKeyRepeat({ repeat: true, key: 'Enter' }), true);
+  assert.equal(isHeldKeyRepeat({ repeat: true, key: ' ' }), true);
+  assert.equal(isHeldKeyRepeat({ repeat: false, key: 'Enter' }), false, '1回目の押下は通す');
+  assert.equal(isHeldKeyRepeat({ repeat: true, key: 'a' }), false, '文字入力は止めない');
+  const page = livePage();
+  assert.match(page, /const dropHeldKey=\(event:KeyboardEvent<HTMLElement>\)=>\{if\(isHeldKeyRepeat\(event\)&&\(event\.target as HTMLElement\)\.closest\('button'\)\)event\.preventDefault\(\);\}/);
+  assert.match(page, /<main onKeyDown=\{dropHeldKey\}/, '前・次・もどすのボタンを含む画面ぜんたいで捨てる');
+});
+
+test('r2-46: 下の帯が入場曲のリンクをかくさない（css と JavaScript の両方で scroll-padding-bottom）', () => {
+  assert.match(css(), /html:has\(\.live-single-footer\)\s*\{\s*scroll-padding-bottom:\s*calc\(var\(--live-foot-h,\s*9rem\)\s*\+\s*0\.75rem\)/);
+  const page = livePage();
+  assert.match(page, /root\.style\.setProperty\('--live-foot-h'/);
+  assert.match(page, /root\.style\.scrollPaddingBottom=/, ':has が使えない Safari 15.0〜15.3 のために、JavaScript からも入れる');
+  assert.match(page, /root\.style\.removeProperty\('scroll-padding-bottom'\)/, '画面を出るときに戻す');
+});
+
+test('r2-47 / r2-98: スマホを横にしたとき、上の帯は縮められる・折り返せる（横にはみ出さない）', () => {
+  const block = css().slice(css().indexOf('@media (max-height: 500px) and (min-width: 700px)'));
+  const rule = block.slice(block.indexOf('.live-top > div'), block.indexOf('}', block.indexOf('.live-top > div'))).replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(rule, /flex:\s*0 1 auto/);
+  assert.match(rule, /min-width:\s*0/);
+  assert.match(rule, /max-width:\s*100%/);
+  assert.ok(!/flex:\s*none/.test(rule), 'flex:none は使わない');
+  assert.match(livePage(), /lg:w-\[34rem\] lg:max-w-full/, '黄色の枠の幅は、画面より広くならない');
+});
+
+test('r2-48: 読み込み中の画面に data-tos-loading がある。動かないときの「そのまま待つ」は、動き出してから出す', () => {
+  const page = livePage();
+  const loading = page.slice(page.indexOf('if(!loaded)'), page.indexOf('if(!data)'));
+  assert.match(loading, /<main data-tos-loading="1"/);
+  assert.match(loading, /mounted\s*\?\s*<Caution title="そのまま待つ"/, 'JavaScript が動かないとき（r2-109）は、うその「待つ」を出さない');
+  assert.match(read('app/layout.tsx'), /querySelector\('\[data-tos-loading\]'\)/, '10秒の見張りが、この目印を探す');
+});
+
+test('r2-49: 一覧で保存に失敗したとき、赤い箱の下に「もう一度押す」が隠れない', () => {
+  const page = livePage();
+  assert.match(page, /document\.getElementById\('live-list-row-'\+failedRow\)/);
+  assert.match(page, /target\?\.scrollIntoView\(\{block:'nearest'\}\)/);
+  assert.match(page, /root\.style\.scrollPaddingBottom=h\+'px'/);
+  assert.match(page, /style=\{listToast&&toastH\?\{paddingBottom:toastH\}:undefined\}/);
+});
+
+test('r2-50: 最後の試合では、「一覧」にも「1試合ずつ」にも黄色を付けない（行ったり来たりしない）', () => {
+  const page = livePage(), list = listView();
+  assert.match(page, /const yellowSlot:'prev'\|'next'\|null=!bout\?null:retryDir\?\?\(isLast\?null:'next'\)/);
+  assert.match(page, /viewBtn\('list','一覧',false,''\)/, '「一覧」ボタンは、いつも黄色なし');
+  assert.match(list, /const atLast = data\.currentBout >= total - 1;/);
+  assert.match(list, /const wantSingle = !retryHere && !filtered && nowOnPage && !atLast;/);
+  assert.match(list, /atLast \? LAST_BOUT_LIST_NOTE/);
+  assert.equal(LAST_BOUT_LIST_NOTE, 'いまは最後の試合です。進める試合は、もうありません。');
+});
+
+test('r2-51: 名前が空の選手は、一覧でも赤い行（1試合ずつの画面と同じ）', () => {
+  const byId = new Map([['a', F('a', { name: '  ' })], ['b', F('b')]]);
+  const row = buildRow(B('x', 'a', 'b'), 0, byId, false, 0);
+  assert.equal(row.red.noName, true);
+  assert.equal(row.red.name, NO_NAME);
+  assert.equal(row.blue.noName, false);
+  assert.match(listView(), /corner\.noName \? <ErrorLine className="mt-1\.5">名前が入っていません。準備画面で入れてください<\/ErrorLine>/);
+});
+
+test('r2-52: 写真がある人もない人も、写真の箱は同じ高さ（2人の名前が同じ高さにならぶ）', () => {
+  const page = livePage();
+  assert.equal((page.match(/live-photo relative h-\[clamp\(72px,calc\(100vh-760px\),420px\)\]/g) ?? []).length, 1, '箱は1つの部品で、高さの決め方は1つだけ');
+  assert.ok(!/h-\[72px\]|h-\[clamp\(64px/.test(page), '写真なしだけ72px・写真ありは64px、という食いちがいがない');
+});
+
+test('r2-53: 1600px以上の広い画面（TV）では、字を大きくする', () => {
+  const page = livePage(), list = listView();
+  for (const needle of ['min-[1600px]:text-[32px]', 'min-[1600px]:text-[28px]', 'min-[1600px]:text-[22px]', 'min-[1600px]:text-[clamp(3.5rem,3.6vw,5rem)]']) assert.ok(page.includes(needle), needle);
+  assert.ok(list.includes('min-[1600px]:text-[32px]'), '一覧の赤・青の帯も大きくする');
+});
+
+test('r2-54: 一覧のルールは、2人の下の横いっぱいの行。「／」のうしろで折り返す', () => {
+  const list = listView();
+  assert.match(list, /ルール：<WithBreaks text=\{row\.rule\} \/>/);
+  assert.match(list, /text-\[18px\][^"]*md:col-span-3 lg:col-span-4">ルール：/);
+  assert.ok(!/<p className="[^"]*">\{row\.rule\}<\/p>/.test(list), 'まん中の細い列には、もうルールを置かない');
+});
+
+test('r2-55: 「もどす」の大きい箱が小さい1行に変わっても、その場所の高さを残す（名前が動かない）', () => {
+  const page = livePage();
+  assert.match(page, /const UNDO_MIN_CAP = 72;/);
+  assert.match(page, /style=\{\{minHeight:Math\.min\(undoBigH\.current,UNDO_MIN_CAP\)\|\|undefined\}\}/);
+});
+
+test('r2-56: 「準備画面へ戻る」の言葉は、同じタブで開くことと、もどり方を言う。「準備の画面」とは書かない', () => {
+  assert.match(PREP_LINK_NOTE, /^この画面は、準備画面に変わります。/);
+  assert.match(PREP_LINK_NOTE, /準備画面の「試合当日の画面を開く」を押します。$/);
+  assert.ok(!/<a [^>]*target=/.test(livePage().slice(livePage().indexOf('const prepLink'), livePage().indexOf('const viewBtn'))), 'target を付けない＝同じタブ');
+  for (const text of [read('app/private/live/listLogic.ts'), livePage(), listView()]) assert.ok(!/準備の画面|もう1つ開きます/.test(text));
+});
+
+test('r2-57: 言葉の食いちがい（入場曲なし・半角の空白・大会名が空）', () => {
+  assert.equal(musicLabel('none'), '⚠ この選手は入場曲なし（曲を用意）');
+  assert.ok(!/⚠ 入場曲なし/.test(read('app/private/live/listLogic.ts')), '選手ごとの言葉に、大会ぜんたいと同じ言い方を使わない');
+  assert.equal(NO_TITLE, '大会名未設定');
+  assert.match(livePage(), /data\.title\.trim\(\)\|\|NO_TITLE/);
+  assert.ok(!/曲が まだ/.test(listView()), '半角の空白がない');
+  assert.match(listView(), /曲がまだの人が出る試合だけです。/);
+  assert.equal(filterNote(2, 5), '一部の試合だけ表示中です（5試合中 2試合）。');
+  // 読めない画面: 黄色の「次はここ」は、①と食いちがう「もう一度ひらく」ではなく「準備画面へ戻る」
+  const page = livePage();
+  assert.match(page, /<NextSlot active label=\{readFailed\?'①をしてもだめなとき：準備画面へ':'準備画面へ戻る'\} className="mt-4"><a href=\{back\}/);
+});
+
+test('r2-89: 1つの知らせの中で、「です・ます」と、言い切りの命令（押す。直す。）を混ぜない', () => {
+  const messages: string[] = [
+    moveNotice('list', 0, 3).text, moveNotice('next', 0, 1).text, moveNotice('prev', 1, 0).text,
+    ...(['next', 'prev', 'list', 'undo'] as const).flatMap((via) => { const n = saveFailNotice(via, 2); return [n.text, n.more, n.tip]; }),
+  ];
+  for (const message of messages) {
+    const sentences = message.split('。').filter(Boolean);
+    const polite = sentences.some((x) => /(です|ます|ません)$/.test(x));
+    const bare = sentences.filter((x) => /(押す|入れる|選ぶ|直す|確かめる|閉じて、もう一度押す)$/.test(x));
+    assert.ok(!(polite && bare.length), '言い切りの命令が混ざっている：' + message);
+    assert.ok(!bare.length, 'ていねいな言い方にする：' + message);
+  }
+  for (const source of [livePage(), listView()]) assert.ok(!/準備画面で(選ぶ|入れる|直す|確かめる)</.test(source), '赤い一行は「〜してください」で終える');
+  assert.equal(moveNotice('list', 0, 3).text, '第4試合に変えました。まちがえたら「第1試合にもどす」を押してください。');
+});
+
+test('r2-97: 見るだけの「行く」のあと、キーボードの位置は見出し。状態を変えるボタンには置かない', () => {
+  const list = listView();
+  assert.match(list, /row\.querySelector<HTMLElement>\('h3'\)\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.ok(!/querySelector<HTMLElement>\('button\.live-list-open'\)\?\.focus|\.live-list-open'\)\?\.focus/.test(list), '「この試合を開く」へ移さない');
+  assert.match(list, /id=\{titleId\} tabIndex=\{-1\}/, '見出しは tabIndex=-1 で、フォーカスを受けられる');
+});
+
+test('r2-100: 読み上げの箱（role="status"）の中は変わらない文だけ。残りの秒数は箱の外', () => {
+  const page = livePage();
+  const big = page.slice(page.indexOf('<div ref={undoBigRef}'), page.indexOf('<button type="button" aria-disabled={saving||undefined} onClick={undoPress} style'));
+  const status = big.slice(big.indexOf('<p role="status"'), big.indexOf('</p>', big.indexOf('<p role="status"')));
+  assert.ok(status.includes('{moved.text}') && !/あと\{left\}秒/.test(status), '箱の中に秒数がない');
+  assert.match(big, /<span aria-hidden="true" className="font-black">（あと\{left\}秒）<\/span>/);
+  assert.ok(!/<div ref=\{undoBigRef\} role="status"/.test(page), '大きい箱ぜんたいに role を付けない');
+});
+
+test('r2-103: 紙に出すとき、赤・青の帯の色を消さない（print-color-adjust: exact）。1試合ずつも一覧も同じ', () => {
+  assert.match(css(), /\.live-corner-band\s*\{\s*-webkit-print-color-adjust:\s*exact;\s*print-color-adjust:\s*exact;/);
+  assert.ok(livePage().includes('live-band live-corner-band'));
+  assert.ok(listView().includes("live-corner-band px-3"));
+});
+
+test('r2-105: 見かたのボタンは、言葉の途中で折り返さない', () => {
+  const page = livePage();
+  assert.match(page, /const pick=\(mode:LiveView\)=>'[^']*whitespace-nowrap[^']*'/);
+  assert.match(page, /max-\[359px\]:basis-full/, '359px以下では、2つのボタンを1つずつ横いっぱいに並べる');
+});
+
+test('r2-106: スマホを横にしたとき（高さ500px以下）は、赤と青を左右にならべる', () => {
+  const c = css();
+  const i = c.indexOf('@media (max-height: 500px) and (min-width: 560px) and (max-width: 767px)');
+  assert.ok(i > 0);
+  const block = c.slice(i, c.indexOf('\n}\n', c.indexOf('.live-sec > :nth-child(2)', i)) + 3);
+  assert.match(block, /\.live-sec\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+  assert.match(block, /\.live-sec > :nth-child\(2\)\s*\{\s*order:\s*3;\s*grid-column:\s*1 \/ -1/, 'VS・契約は、2人の下の細い1行');
+});
+
+test('r2-109: JavaScript が動かないとき、「そのまま待つ」と言わない。やることは「オンにする」が先', () => {
+  assert.match(livePage(), /mounted \? <Caution title="そのまま待つ"/);
+  const layout = read('app/layout.tsx');
+  const noscript = layout.slice(layout.indexOf('<noscript>'), layout.indexOf('</noscript>'));
+  assert.ok(noscript.indexOf('「オン」にして') > 0 && noscript.indexOf('「オン」にして') < noscript.indexOf('Chrome'), '先に「オン」。ブラウザを変えるのは、そのあと');
+});
+
+test('r2-110: 準備画面の上のナビと下の帯も、画面の4割をこえたら くっつけない（当日の画面と同じ割合）', () => {
+  const prep = read('app/private/page.tsx');
+  assert.match(prep, /barH \+ navH > window\.innerHeight \* 0\.4/);
+  assert.match(livePage(), /FOOT_FLOW_SHARE = 0\.4/);
+});
+
+test('r2-112: 当日の画面は、「閉じても大丈夫」と言わない。ネットが弱い・切れているときの注意を出す', () => {
+  const page = livePage();
+  assert.ok(!page.includes('閉じても大丈夫'));
+  assert.ok(page.includes('押すたびに保存されます。ネットが弱いときは、閉じないでください'));
+  assert.match(page, /navigator\.onLine!==false/);
+  assert.match(page, /\{online\?null:<Caution title="ネットがつながっていません"/);
+  assert.match(OFFLINE_NOTE, /閉じないでください。閉じると、ネットがないと開き直せません。/);
+  assert.match(REOPEN_NOTE, /開き直すには、ネットが必要です。/);
+  assert.ok(!/serviceWorker/.test(read('app/layout.tsx') + page), 'ネットなしで開き直せる仕組みは、ない。だから正直に書く');
+});
+
+test('r2-120: 古い公開コマンド（go-live）は、確認なしで全部を送らないよう、最初に止める', () => {
+  for (const file of ['scripts/go-live.sh', 'scripts/go-live-tournament.sh']) {
+    const text = read(file);
+    const exitAt = text.indexOf('\nexit 1\n');
+    assert.ok(exitAt > 0, file + ' が最初に exit 1 する');
+    const deployAt = text.indexOf('pages deploy');
+    assert.ok(deployAt === -1 || deployAt > exitAt, file + ' の公開の命令は、exit 1 のあと（動かない）');
+    assert.match(text.slice(0, exitAt), /npm run deploy:private/, '代わりのコマンドを言う');
+  }
+});
+
+test('r2-123: 入場曲を使うかの初期値は、準備画面と当日の画面で同じ（受付の設定がなければ「使わない」）', () => {
+  assert.equal(liveMusicOn({}), false);
+  assert.equal(liveMusicOn({ entryConfig: null }), false);
+  assert.equal(liveMusicOn({ entryConfig: { music: true } }), true);
+  assert.equal(liveMusicOn({ entryConfig: { music: false } }), false);
+  assert.match(read('app/private/page.tsx'), /const entryConfig: EntryFormConfig = data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG;/);
+  assert.match(read('core/entryPackage.ts'), /DEFAULT_ENTRY_CONFIG: EntryFormConfig = \{ music: false,/);
+  assert.match(livePage(), /liveMusicOn\(data\)/);
+  assert.match(listView(), /liveMusicOn\(data\)/);
+  assert.ok(!/entryConfig\?\.music \?\? true/.test(livePage() + listView()), '「?? true」は、もう使わない');
 });

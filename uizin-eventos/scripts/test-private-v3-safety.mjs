@@ -218,7 +218,7 @@ try {
   await small.goto(base + '/private/?event=safety-phone');
   await small.locator('#save-state').waitFor();
   check(await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No horizontal overflow at 390px');
-  check((await small.getByText('次にやる：').first().innerText()).includes('次にやる：'), 'The next step is spelled out at 390px');
+  check((await small.getByText('👉 次はここ：').first().innerText()).includes('👉 次はここ：'), 'The next step is spelled out at 390px');
   await phone.close();
   console.log('Private v3 safety checks passed: ' + checks + '. Local only, fake data.');
 } finally { await browser.close(); }

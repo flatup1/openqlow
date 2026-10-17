@@ -62,7 +62,8 @@ test('overwriteConfirmText: 何が何人変わるかを書く', () => {
   const diff = (name: string) => ({ name, fields: [{ label: '体重', from: '65', to: '70' }, { label: '身長', from: '170', to: '171' }, { label: '戦績', from: '', to: '1戦' }] });
   const text = overwriteConfirmText([diff('赤坂 太郎')]);
   assert.match(text, /^次の1人を、ファイルの内容に書きかえます/);
-  assert.match(text, /赤坂 太郎 体重 65→70、身長 170→171 ほか/);
+  // r2-24: 大事な順（クラス・体重・戦績・名前…）に2つまで。空欄が埋まるだけの変化は、「空欄を埋める」とまとめる
+  assert.match(text, /赤坂 太郎 体重 65→70、身長 170→171、空欄を埋める：戦績/);
   assert.match(text, /よろしいですか？$/);
   assert.match(overwriteConfirmText([diff('a'), diff('b'), diff('c'), diff('d'), diff('e')]), /ほか2人/);
 });

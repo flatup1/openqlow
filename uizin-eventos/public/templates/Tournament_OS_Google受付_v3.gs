@@ -25,6 +25,10 @@ const SETTING_ROWS = [
 ];
 const SELFTEST_JPEG = '/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALIAP//Z';
 let SETTINGS_CACHE_ = null;
+/** 「設定」タブを、空だったので作り直したか（① と画面のメッセージで言う） */
+let SETTINGS_REBUILT_ = false;
+/** ① のあと、画面の上に一緒に言うこと（フォルダを作り直した、など） */
+let SETUP_NOTES_ = [];
 function mode_(text) { const v = String(text || '').trim(); return v === '必須' ? 'required' : v === 'なし' ? 'off' : 'optional'; }
 function dateIso_(text) {
   const t = String(text || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).trim();
@@ -63,14 +67,21 @@ function formatSettings_(sheet) {
  */
 function ensureSettingsSheet_(book) {
   let sheet = book.getSheetByName('設定');
-  if (sheet) return appendMissingSettingRows_(sheet);
+  if (sheet) {
+    // 中身が1つも無い（全部えらんで Delete を押した）ときは、失うものが無いので、表を最初から作り直す
+    if (sheet.getLastRow() === 0) { fillSettingsSheet_(sheet); SETTINGS_REBUILT_ = true; return sheet; }
+    return appendMissingSettingRows_(sheet);
+  }
   sheet = book.insertSheet('設定');
+  fillSettingsSheet_(sheet);
+  return sheet;
+}
+function fillSettingsSheet_(sheet) {
   sheet.getRange(1, 1, 1, 3).setValues([['項目', '値（ここに入れる）', '説明']]).setFontWeight('bold');
   sheet.getRange(2, 2, SETTING_ROWS.length, 1).setNumberFormat('@');
   sheet.getRange(2, 1, SETTING_ROWS.length, 3).setValues(SETTING_ROWS);
   applyDropdowns_(sheet, [''].concat(SETTING_ROWS.map(function (row) { return row[0]; })));
   formatSettings_(sheet);
-  return sheet;
 }
 function appendMissingSettingRows_(sheet) {
   const last = sheet.getLastRow();
@@ -104,15 +115,15 @@ function S_() {
 function settingsProblems_(s) {
   const missing = [], bad = [], raw = s.raw || {};
   if (!s.tournamentName) missing.push('大会名');
-  if (!raw['開催日']) missing.push('開催日'); else if (!s.date) bad.push('「開催日」は、2027-10-03 のように入れてください');
+  if (!raw['開催日']) missing.push('開催日'); else if (!s.date) bad.push('「開催日」は、2027年10月3日 のように入れてください');
   if (!s.venue) missing.push('会場');
   if (!s.organizer) missing.push('主催者名');
   if (!s.contact) missing.push('問い合わせ先');
-  if (!raw['申込締切']) missing.push('申込締切'); else if (!s.deadline) bad.push('「申込締切」は、2027-09-20 のように入れてください');
+  if (!raw['申込締切']) missing.push('申込締切'); else if (!s.deadline) bad.push('「申込締切」は、2027年9月20日 のように入れてください');
   if (!raw['入場曲']) missing.push('入場曲（あり／なしを選ぶ）');
   if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
   if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
-  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + ' のどれかにしてください'); });
+  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
   // クラスの欄は「クラス分け＝あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）
   if (raw['クラス分け'] === 'あり') {
     const sides = [['上', '上のクラス'], ['下', '下のクラス']], norm = function (t) { return String(t || '').normalize('NFKC').trim().toLowerCase(); };
@@ -130,6 +141,12 @@ function settingsProblems_(s) {
     });
     const wins = String(raw['上のクラスにする勝ち数'] || '').normalize('NFKC').trim();
     if (!/^\d{1,2}$/.test(wins) || Number(wins) < 1) bad.push('「上のクラスにする勝ち数」は、1から99の数字で入れてください（例：3）');
+    else {
+      // 画面に出る「3勝以上」「2勝以下」の数字が、勝ち数とちがうと、選手が見る文と、黄色のすすめがくいちがう。どの欄を直すかを言う
+      const upper = /([0-9]+)勝以上/.exec(norm(raw['上のクラスの条件'])), lower = /([0-9]+)勝以下/.exec(norm(raw['下のクラスの条件']));
+      if (upper && Number(upper[1]) !== Number(wins)) bad.push('「上のクラスの条件」の「' + upper[1] + '勝以上」と、「上のクラスにする勝ち数」の' + Number(wins) + 'が、ちがいます（' + Number(wins) + '勝以上に直すか、勝ち数を' + upper[1] + 'に直してください）');
+      if (lower && Number(lower[1]) !== Number(wins) - 1) bad.push('「下のクラスの条件」の「' + lower[1] + '勝以下」と、「上のクラスにする勝ち数」の' + Number(wins) + 'が、ちがいます（上のクラスは' + Number(wins) + '勝以上なので、' + (Number(wins) - 1) + '勝以下に直してください）');
+    }
   }
   // 長すぎる文は、選手に渡すURLに入らない。どの欄かを言う
   [['大会名', 300], ['会場', 300], ['主催者名', 300], ['問い合わせ先', 300], ['会場の地図URL', 500]].forEach(function (pair) { if (String(raw[pair[0]] || '').length > pair[1]) bad.push('「' + pair[0] + '」は' + pair[1] + '文字までにしてください'); });
@@ -165,7 +182,9 @@ function headerCheck_(book, name, headers) {
   while (index < n && head[index] === headers[index]) index++;
   // 途中に1列足された形：そこから先が、ひとつずつ右にずれて同じ
   const inserted = row.length > n && JSON.stringify(row.slice(index + 1, n + 1)) === JSON.stringify(headers.slice(index));
-  return { state: 'bad', name: name, sheet: sheet, headers: headers, index: index, expected: headers[index], actual: String(row[index] === undefined ? '' : row[index]), inserted: inserted };
+  // 1行目を消すと、最初の申込が1行目になる：左上が受付番号の形（申込のデータ）なら「見出しが消えた」と言う
+  const rowGone = index === 0 && /^(?:TEST-)?[A-Z0-9]{1,10}-[0-9A-F]{8,}$/.test(String(row[0]).trim());
+  return { state: 'bad', name: name, sheet: sheet, headers: headers, index: index, expected: headers[index], actual: rowGone ? '' : String(row[index] === undefined ? '' : row[index]), inserted: inserted, rowGone: rowGone };
 }
 /** 後方互換：ok／old／bad の文字だけ返す。 */
 function headerState_(sheet, headers) {
@@ -192,7 +211,8 @@ function headerProblemError_(check) {
   const way = real
     ? '直せないときは、このタブを消さず、ジムの担当者に聞いてください。'
     : '直せないときは、このタブの名前を「' + name + '_古い」に変えて、「① 最初の設定」を押します。新しいタブができます。';
-  if (check.inserted) return adminError_('headers', quoted + 'の1行目に、列が足されています（' + cell + '）。足した' + letter + '列を消してください。消したら「① 最初の設定」を押します。' + way, { tab: name, cell: cell, expected: check.expected });
+  if (check.rowGone) return adminError_('headers', quoted + 'の1行目の見出しが消えています（いちばん上の行が、申込のデータになっています）。まず「元に戻す」を押します（Ctrl を押しながら Z。Macは ⌘ を押しながら Z）。戻らないときは、いちばん上の行を右クリックして、「上に1行挿入」を押します。そのあと、ジムの担当者に、見出しを書き直してもらいます。申込は消えません。直したら「① 最初の設定」を押します。' + way, { tab: name, cell: 'A1', expected: check.expected, rowGone: true });
+  if (check.inserted) return adminError_('headers', quoted + 'の1行目に、列が足されています（' + cell + '）。足した' + letter + '列を消してください（' + letter + '列の上で右クリック →「列を削除」）。消したら「① 最初の設定」を押します。' + way, { tab: name, cell: cell, expected: check.expected, inserted: true });
   return adminError_('headers', quoted + 'の' + cell + 'が' + shown + 'になっています。「' + check.expected + '」に直してください。（列や行を足したり、1行目を並べかえたりしないでください）直したら「① 最初の設定」を押します。' + way, { tab: name, cell: cell, expected: check.expected });
 }
 function withLock_(callback) { const lock=LockService.getScriptLock(); if(!lock.tryLock(25000))throw entryError_('busy','受付が混み合っています。',true);try{return callback();}finally{lock.releaseLock();} }
@@ -205,10 +225,11 @@ function setupTournament() {
     if (props.getProperty('spreadsheetId')) book = SpreadsheetApp.openById(props.getProperty('spreadsheetId'));
     else { book = SpreadsheetApp.getActiveSpreadsheet(); if (!book) throw new Error('このシートの中のメニューから実行してください。'); props.setProperty('spreadsheetId', book.getId()); }
     const fresh = !book.getSheetByName('設定');
+    SETTINGS_REBUILT_ = false; SETUP_NOTES_ = [];
     ensureSettingsSheet_(book);
     SETTINGS_CACHE_ = null;
     const problems = settingsProblems_(S_());
-    if (problems.length) throw new Error('シートの「設定」タブを直してください。' + problems.join('。') + '。直したら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : ''));
+    if (problems.length) throw new Error('シートの「設定」タブを直してください。' + problems.join('。') + '。直したら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : SETTINGS_REBUILT_ ? '（「設定」タブが空だったので、作り直しました）' : ''));
     if (props.getProperty('ownerEmail') && props.getProperty('ownerEmail') !== owner) throw new Error('別の大会が入っています。このシートをもう一度コピーして、新しい大会を作ってください。');
     const storage = storageProblem_();
     if (storage && !props.getProperty('photoFolderId')) throw new Error(storage);
@@ -226,8 +247,15 @@ function setupTournament() {
         try { sheet.getRange(1, 1, 1, pair[1].length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
       } else if (check.state === 'old') upgradeHeader_(check.sheet, pair[1]);
     });
-    if (!props.getProperty('photoFolderId')) { const folder = DriveApp.createFolder('Tournament OS 顔写真 - ' + S_().tournamentName); props.setProperty('photoFolderId', folder.getId()); }
-    if (!props.getProperty('testFolderId')) { const folder = DriveApp.getFolderById(props.getProperty('photoFolderId')).createFolder('テスト写真'); props.setProperty('testFolderId', folder.getId()); }
+    // フォルダがゴミ箱にあるときは、作り直さずに「元に戻す」を案内する（中の写真を失わないため）。完全に消えていたら、新しく作る
+    ['photoFolderId', 'testFolderId'].forEach(function (key) { if (folderState_(props.getProperty(key)) === 'trashed') throw adminError_('folder', FOLDER_GONE); });
+    const photoState = folderState_(props.getProperty('photoFolderId'));
+    if (photoState !== 'ok') {
+      const folder = DriveApp.createFolder('Tournament OS 顔写真 - ' + S_().tournamentName);
+      props.setProperty('photoFolderId', folder.getId());
+      if (photoState === 'missing') SETUP_NOTES_.push('「Tournament OS 顔写真」フォルダが見つからなかったので、新しく作りました。前の写真は、新しいフォルダに入っていません。');
+    }
+    if (folderState_(props.getProperty('testFolderId')) !== 'ok') { const folder = DriveApp.getFolderById(props.getProperty('photoFolderId')).createFolder('テスト写真'); props.setProperty('testFolderId', folder.getId()); }
     checkResources_();
   });
   selfTest_();
@@ -243,12 +271,23 @@ function selfTest_() {
   if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
   return true;
 }
-function isPrivateOwned_(resource,owner){return resource.getOwner().getEmail().toLowerCase()===owner&&resource.getSharingAccess()===DriveApp.Access.PRIVATE&&resource.getEditors().filter(function(user){return user.getEmail().toLowerCase()!==owner;}).length===0&&resource.getViewers().length===0&&!resource.isTrashed();}
+/** 共有が「制限付き・主催者本人だけ」か。ゴミ箱に入っているかは、ここでは見ない（共有の話にしない。trashedOrMissing_ で別に言う） */
+function isPrivateOwned_(resource,owner){return resource.getOwner().getEmail().toLowerCase()===owner&&resource.getSharingAccess()===DriveApp.Access.PRIVATE&&resource.getEditors().filter(function(user){return user.getEmail().toLowerCase()!==owner;}).length===0&&resource.getViewers().length===0;}
+/** フォルダの状態：ok＝使える／trashed＝ゴミ箱／missing＝見つからない（完全に消した）。idが空なら none。 */
+function folderState_(id){
+  if(!id)return'none';
+  try{return DriveApp.getFolderById(id).isTrashed()?'trashed':'ok';}catch(_){return'missing';}
+}
+const FOLDER_GONE='Googleドライブの「Tournament OS 顔写真」フォルダが、ゴミ箱に入っているか、見つかりません。Googleドライブの「ゴミ箱」を開き、そのフォルダを選んで「元に戻す」を押してください。戻したら、メニュー「① 最初の設定」を押します。';
+function folderOf_(id){
+  if(folderState_(id)!=='ok')throw adminError_('folder',FOLDER_GONE);
+  return DriveApp.getFolderById(id);
+}
 function checkResources_(){
   const props=PropertiesService.getScriptProperties(),owner=assertOwner_();
   if(props.getProperty('ownerEmail')!==owner||props.getProperty('eventId')!==S_().eventId)throw adminError_('setup','この大会の初期設定を確認してください。「① 最初の設定」を押してください。');
-  const book=SpreadsheetApp.openById(props.getProperty('spreadsheetId')),sheetFile=DriveApp.getFileById(book.getId()),folder=DriveApp.getFolderById(props.getProperty('photoFolderId'));
-  if(!isPrivateOwned_(sheetFile,owner)||!isPrivateOwned_(folder,owner)||!isPrivateOwned_(DriveApp.getFolderById(props.getProperty('testFolderId')),owner))throw adminError_('sharing','申込表と写真フォルダの共有を「制限付き・主催者本人だけ」にしてください。（シートの右上の「共有」と、Driveの「Tournament OS 顔写真」フォルダの両方です）');
+  const book=SpreadsheetApp.openById(props.getProperty('spreadsheetId')),sheetFile=DriveApp.getFileById(book.getId()),folder=folderOf_(props.getProperty('photoFolderId')),testFolder=folderOf_(props.getProperty('testFolderId'));
+  if(!isPrivateOwned_(sheetFile,owner)||!isPrivateOwned_(folder,owner)||!isPrivateOwned_(testFolder,owner))throw adminError_('sharing','申込表と写真フォルダの共有を「制限付き・主催者本人だけ」にしてください。（シートの右上の「共有」と、Driveの「Tournament OS 顔写真」フォルダの両方です）');
   const tables=TABLES.map(function(pair){return headerCheck_(book,pair[0],pair[1]);});
   // どれか1つでも違っていたら（タブが無い・空も含む）、何も書き換えずに止まる。全部そろって（または古い形だけ）のときだけ、足りない1マスを足す。
   tables.forEach(function(t){if(t.state==='bad'||t.state==='missing')throw headerProblemError_(t);});
@@ -262,7 +301,11 @@ function statusInfo_() {
   const info = { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, ready: ready, accepting: props.getProperty('accepting') === 'true' };
   if (!ready) return info;
   const resources = checkResources_(), s = S_(), problems = settingsProblems_(s);
-  info.eventId = s.eventId; info.testComplete = testComplete_(resources.book); info.settingsProblem = problems.join('。'); info.storageProblem = storageProblem_();
+  info.eventId = s.eventId; info.testComplete = testComplete_(resources.book); info.settingsProblem = problems.join('。').slice(0, 600); info.storageProblem = storageProblem_();
+  // 締切を過ぎたら、新しい申込は受けない（saveEntry_ と同じ決まり）。「受付中」と言い続けない。止めたのが会長なら stopped
+  const pastDeadline = !problems.length && Date.now() > deadlineTime_();
+  if (pastDeadline) { info.accepting = false; info.closedBy = 'deadline'; }
+  else if (!info.accepting && props.getProperty('everOpened') === 'true') info.closedBy = 'stopped';
   // 「設定」タブに、クラスの行が無い（古い版のコピー）ときだけ知らせる。画面が黄色の注意を出す。
   if (!s.classRows) info.classRows = false;
   if (!problems.length) { info.title = s.tournamentName; info.date = s.date; info.venue = s.venue; info.venueUrl = s.venueUrl; info.organizer = s.organizer; info.contact = s.contact; info.deadline = s.deadline; info.music = s.music; info.grade = s.grade; info.age = s.age; info.comment = s.comment;
@@ -273,7 +316,7 @@ function statusInfo_() {
 }
 function showStatus() {
   const s = statusInfo_();
-  const text = ['設定: ' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト: ' + (s.testComplete ? '済み' : 'まだ'), '受付: ' + (s.accepting ? '受付中' : '停止中'), '締切: ' + (s.deadline || '未設定')].join('\n');
+  const text = ['設定：' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト：' + (s.testComplete ? '済み' : 'まだ'), '受付：' + (s.accepting ? '受付中' : s.closedBy === 'deadline' ? 'しめきりました（締切を過ぎています）' : '停止中'), '締切：' + (s.deadline || '未設定')].join('\n');
   Logger.log(text);
   try { SpreadsheetApp.getUi().alert('いまの状態', text, SpreadsheetApp.getUi().ButtonSet.OK); } catch (_) {}
   return s;
@@ -282,7 +325,7 @@ function showStatus() {
 function storageProblem_() {
   try {
     const limit = DriveApp.getStorageLimit(), used = DriveApp.getStorageUsed();
-    if (limit > 0 && limit - used < MIN_FREE_BYTES) return 'Googleの保存容量が、ほとんど残っていません（あと約' + Math.max(0, Math.floor((limit - used) / 1048576)) + 'MB）。写真が保存できなくなります。Driveや Gmail の要らないものを消すか、容量を追加してください。';
+    if (limit > 0 && limit - used < MIN_FREE_BYTES) return 'Googleの保存容量が、ほとんど残っていません（あと約' + Math.max(0, Math.floor((limit - used) / 1048576)) + 'MB）。写真が保存できなくなります。DriveやGmailの要らないものを消すか、容量を追加してください。';
   } catch (_) { /* 容量が調べられない環境では、何も言わない */ }
   return '';
 }
@@ -299,8 +342,8 @@ function menuRun_(fn, doneMessage) {
     return null;
   }
 }
-function menuSetup() { return menuRun_(setupTournament, '準備できました。架空の1件の自動テストも済みました。次は「拡張機能」→「Apps Script」→「デプロイ」→「新しいデプロイ」→「ウェブアプリ」です。'); }
-function menuOpen() { return menuRun_(openEntries, '受付を開始しました。アプリの画面にもどると、自動で確かめます。出ないときは「もう一度確かめる」を押します。'); }
+function menuSetup() { return menuRun_(setupTournament, function () { return '準備できました。架空の1件の自動テストも済みました。次は「拡張機能」→「Apps Script」→「デプロイ」→「新しいデプロイ」→「ウェブアプリ」です。' + SETUP_NOTES_.join(''); }); }
+function menuOpen() { return menuRun_(openEntries, '受付を開始しました。ブラウザの「選手の受付をつくる」のタブにもどると、自動で確かめます。出ないときは「もう一度確かめる」を押します。'); }
 function menuClose() { return menuRun_(closeEntries, '受付を停止しました。申込済みのデータは残っています。'); }
 /** ZIPのリンクは、20秒で消える小さな通知ではなく、押せるリンクの入った箱で見せる。 */
 function showZipDialog_(url) {
@@ -328,7 +371,7 @@ function doGet(e) {
     try { body = statusInfo_(); } catch (error) {
       body = { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, ready: false, error: error.code || 'error' };
       // 見出しの問題だけ、直すタブとマスを画面に伝える（タブの名前と、あるべき見出しだけ。申込の中身・メールは入れない）
-      if (error.detail && (error.code === 'headers' || error.code === 'missing')) { body.errorTab = String(error.detail.tab || ''); if (error.detail.cell) body.errorCell = String(error.detail.cell); if (error.detail.expected) body.errorExpected = String(error.detail.expected); }
+      if (error.detail && (error.code === 'headers' || error.code === 'missing')) { body.errorTab = String(error.detail.tab || ''); if (error.detail.cell) body.errorCell = String(error.detail.cell); if (error.detail.expected) body.errorExpected = String(error.detail.expected); if (error.detail.inserted) body.errorInserted = true; if (error.detail.rowGone) body.errorRowGone = true; }
     }
     return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
   }
@@ -344,10 +387,10 @@ function testComplete_(book){
   const photoId=String(values[12]).match(/\/d\/([\w-]+)/);if(!photoId)return false;
   const file=DriveApp.getFileById(photoId[1]),parents=file.getParents();let inside=false;
   while(parents.hasNext())if(parents.next().getId()===props.getProperty('testFolderId'))inside=true;
-  return inside&&file.getSize()>0&&isPrivateOwned_(file,props.getProperty('ownerEmail'));
+  return inside&&file.getSize()>0&&!file.isTrashed()&&isPrivateOwned_(file,props.getProperty('ownerEmail'));
 }
 function openEntries(){
-  return withLock_(function(){const resources=checkResources_();const problems=settingsProblems_(S_());if(problems.length)throw new Error(problems.join('。')+'。');if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');if(Date.now()>deadlineTime_())throw new Error('締切を過ぎています。「設定」タブの申込締切を直してください。');PropertiesService.getScriptProperties().setProperty('accepting','true');Logger.log('受付を開始しました。アプリの画面にもどると、自動で確かめます。出ないときは「もう一度確かめる」を押してください。');SpreadsheetApp.flush();return true;});
+  return withLock_(function(){const resources=checkResources_();const problems=settingsProblems_(S_());if(problems.length)throw new Error(problems.join('。')+'。');if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');if(Date.now()>deadlineTime_())throw new Error('締切を過ぎています。「設定」タブの申込締切を直してください。');PropertiesService.getScriptProperties().setProperties({accepting:'true',everOpened:'true'});Logger.log('受付を開始しました。ブラウザの「選手の受付をつくる」のタブにもどると、自動で確かめます。出ないときは「もう一度確かめる」を押してください。');SpreadsheetApp.flush();return true;});
 }
 function closeEntries(){assertOwner_();PropertiesService.getScriptProperties().setProperty('accepting','false');Logger.log('受付を停止しました。申込済みデータは残っています。');}
 function deadlineTime_(){const time=Date.parse(S_().deadline+'T23:59:59+09:00');if(!Number.isFinite(time))throw entryError_('deadline','主催者が締切を設定する必要があります。',false);return time;}
@@ -358,7 +401,19 @@ function doPost(e){
 }
 /** 送られた「upper／lower」の印から、設定タブの今の名前を返す。送られた文字そのものは保存しない。 */
 function classLabel_(p){const c=S_().classes;if(!c.enabled)return'';return p.fighterClass==='upper'?c.upper.name:c.lower.name;}
-function text_(p,key,max,required){const text=String(p[key]==null?'':p[key]).trim();if((required&&!text)||text.length>max)throw entryError_('input','入力内容を確認して、申し込みページへ戻ってください。',false);return text;}
+/** 見えない文字（向きの印・幅ゼロの空白など）を取り、改行を \n にそろえ、前後の空白を取る。画面（申し込みページ）の決まりと同じ。フォームの送信は、改行を \r\n にするので、そろえないと文字数が1つずつ増える。 */
+function norm_(value){return String(value==null?'':value).replace(/\r\n?/g,'\n').replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g,'').trim();}
+const FIELD_JA_={gym:'ジム名',name:'選手名',height:'身長',weight:'体重',record:'戦績',grade:'学年',age:'年齢',comment:'意気込み',musicUrl:'入場曲のリンク',contactName:'お名前',contactPhone:'電話番号',contactEmail:'メールアドレス',photoDataUrl:'写真',requestId:'申込を確認する番号'};
+function text_(p,key,max,required){const text=norm_(p[key]);if((required&&!text)||text.length>max)throw entryError_('input','入力内容を確認して、申し込みページへ戻ってください。'+(FIELD_JA_[key]?'（直す所：'+FIELD_JA_[key]+'）':''),false);return text;}
+/** メールアドレスの形（画面と同じ）。< > ( ) \" ' 空白 , ; は不可。@は1つ。ドメインは「.」で区切った2つ以上で、空の部分・「-」で始まる／終わる部分は不可。いちばん後ろは英字2文字以上。 */
+function emailOk_(v){
+  v=String(v==null?'':v);
+  if(/[<>()"'\s,;\u3000]/.test(v))return false;
+  const at=v.split('@');if(at.length!==2||!at[0])return false;
+  const labels=at[1].split('.');if(labels.length<2)return false;
+  for(let i=0;i<labels.length;i++){const l=labels[i];if(!/^[a-z0-9-]+$/i.test(l)||l.charAt(0)==='-'||l.charAt(l.length-1)==='-')return false;}
+  return /^(?:[a-z]{2,}|xn--[a-z0-9-]*[a-z0-9])$/i.test(labels[labels.length-1]);
+}
 /** クラスが選ばれているか。新しい申込のときだけ調べる（保存ずみの申込の再送は、設定が変わっていても確認だけする）。 */
 function checkClass_(p){
   const cs=S_().classes;
@@ -374,23 +429,26 @@ function classRetryOk_(stored,p){
 }
 /** 電話番号：画面と同じ規則の安全網。数字だけにして、0から始まる10〜11けた／同じ数字だけ・フリーダイヤルは不可／携帯は11けた。 */
 function phoneOk_(raw){
-  const d=String(raw==null?'':raw).normalize('NFKC').replace(/[\s\-ー－―‐‑–—−]/g,'');
-  if(!/^0\d{9,10}$/.test(d))return false;
+  const d=norm_(String(raw==null?'':raw).normalize('NFKC')).replace(/[\s\-ー－―‐‑–—−]/g,'');
+  // 10けた（固定電話など）か、11けた（050・070・080・090の携帯）。「00」で始まる番号は無い
+  if(!/^(?:0[5789]0\d{8}|0[1-9]\d{8})$/.test(d))return false;
   if(/^(\d)\1+$/.test(d)||/^0(120|800)/.test(d))return false;
   return !(/^0[5789]0/.test(d)&&d.length!==11);
 }
 function validateEntry_(p){
-  if((p.protocol!=='2'&&p.protocol!=='3')||p.eventId!==S_().eventId||(p.mode!=='test'&&p.mode!=='live'))throw entryError_('event','大会の受付URLが違います。主催者から新しいURLをもらってください。',false);
+  // 見えない文字・改行（\r\n）をそろえてから調べる。あとで保存する値も、同じそろえかたになる
+  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail'].forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
+  if((p.protocol!=='2'&&p.protocol!=='3')||p.eventId!==S_().eventId||(p.mode!=='test'&&p.mode!=='live'))throw entryError_('event','大会の申し込みリンクが違います。主催者から新しいリンクをもらってください。',false);
   if(p.website)throw entryError_('spam','送信を受け付けられませんでした。',false);
   if(p.consent!=='yes')throw entryError_('consent','個人情報の取扱いへの同意が必要です。申込ページにもどって、同意のチェックを入れてください。',false);
   const request=text_(p,'requestId',100,true);if(!/^[\w-]{32,100}$/.test(request))throw entryError_('input','申込を確認する番号が正しくありません。',false);
   const limits={gym:120,name:80,height:10,weight:10,record:300,contactName:100,contactPhone:30,contactEmail:200,photoDataUrl:1800100};
   Object.keys(limits).forEach(function(key){text_(p,key,limits[key],true);});
   const height=Number(p.height),weight=Number(p.weight);
-  if(!Number.isFinite(height)||height<50||height>250||!Number.isFinite(weight)||weight<10||weight>250||!phoneOk_(p.contactPhone)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.contactEmail))throw entryError_('input','身長・体重・電話番号・メールアドレスを確認してください。',false);
+  if(!Number.isFinite(height)||height<50||height>250||!Number.isFinite(weight)||weight<10||weight>250||!phoneOk_(p.contactPhone)||!emailOk_(p.contactEmail))throw entryError_('input','身長・体重・電話番号・メールアドレスを確認してください。',false);
   if(p.age&&(!/^\d{1,3}$/.test(p.age)||Number(p.age)<1||Number(p.age)>120))throw entryError_('input','年齢を確認してください。',false);
   ['grade','age','comment'].forEach(function(key){text_(p,key,key==='comment'?500:30,S_()[key]==='required');});
-  if(S_().music&&!/^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//.test(text_(p,'musicUrl',500,true)))throw entryError_('input','入場曲はApple MusicかYouTubeのURLを入力してください。',false);
+  if(S_().music&&!/^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//i.test(text_(p,'musicUrl',500,true)))throw entryError_('input','入場曲はApple MusicかYouTubeのURLを入力してください。',false);
   return request;
 }
 function saveEntry_(p){
@@ -404,8 +462,10 @@ function saveEntry_(p){
     const existing=findRow_(sheet,18,requestId);let values;
     if(existing){
       values=sheet.getRange(existing,1,1,19).getDisplayValues()[0];
+      // 保存のときに付く守りの「'」や、改行の形（CRLF／LF）のちがいは、「変わった」ではない。両方を同じ形にそろえてくらべる
+      const same=function(a,b){return JSON.stringify(a.map(retryNorm_))===JSON.stringify(b.map(retryNorm_));};
       const expected=[String(p.gym).trim(),String(p.name).trim(),S_().grade==='off'?'':String(p.grade||'').trim(),S_().age==='off'?'':String(p.age||'').trim(),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),S_().comment==='off'?'':String(p.comment||'').trim(),S_().music?String(p.musicUrl||'').trim():''];
-      if(JSON.stringify(values.slice(3,12))!==JSON.stringify(expected)||JSON.stringify(values.slice(13,17))!==JSON.stringify([String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
+      if(!same(values.slice(3,12),expected)||!same(values.slice(13,17),[String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
       const photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),values[0],p.photoDataUrl,true);
       if(photoUrl!==values[12])throw entryError_('photo','保存済みの写真と申込表が一致しません。主催者へご連絡ください。',false);
     }
@@ -444,9 +504,9 @@ function savePhoto_(folderId,receiptNo,dataUrl,requireExisting){
   if(!match||match[1].length>1800000)throw entryError_('photo','写真を選び直してください。',false);
   const bytes=Utilities.base64Decode(match[1]);
   if(bytes.length<4||(bytes[0]&255)!==255||(bytes[1]&255)!==216||(bytes[bytes.length-2]&255)!==255||(bytes[bytes.length-1]&255)!==217)throw entryError_('photo','写真を読み取れませんでした。',false);
-  const folder=DriveApp.getFolderById(folderId),files=folder.getFilesByName(receiptNo+'.jpg');
+  const folder=folderOf_(folderId),files=folder.getFilesByName(receiptNo+'.jpg');
   if(files.hasNext()){
-    const file=files.next();if(!isPrivateOwned_(file,assertOwner_())||!file.getSize())throw entryError_('photo','写真の保存先を主催者が確認する必要があります。',false);
+    const file=files.next();if(file.isTrashed()||!isPrivateOwned_(file,assertOwner_())||!file.getSize())throw entryError_('photo','写真の保存先を主催者が確認する必要があります。',false);
     if(hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,file.getBlob().getBytes()))!==hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,bytes)))throw entryError_('changed','送信後に写真が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
     return file.getUrl();
   }
@@ -457,18 +517,28 @@ function savePhoto_(folderId,receiptNo,dataUrl,requireExisting){
 }
 function receipt_(requestId,isTest){return(isTest?'TEST-':'')+S_().eventId.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8)+'-'+hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,requestId)).slice(0,20).toUpperCase();}
 function hex_(bytes){return bytes.map(function(b){return('0'+((b&255).toString(16))).slice(-2);}).join('');}
-function clean_(value,max){const text=String(value==null?'':value).trim().slice(0,max);return/^[=+\-@]/.test(text)?"'"+text:text;}
+/** 再送のくらべ用：改行をそろえ、clean_ が付けた先頭の「'」（= + - @ の守り）をはずす */
+function retryNorm_(value){let text=String(value==null?'':value).replace(/\r\n?/g,'\n').trim();if(/^'[=+\-@]/.test(text))text=text.slice(1);return text;}
+function clean_(value,max){const text=norm_(value).slice(0,max);return/^[=+\-@]/.test(text)?"'"+text:text;}
 function escape_(value){return String(value==null?'':value).replace(/[&<>"']/g,function(char){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char];});}
 function resultPage_(receiptNo,message,error,p){
   const success=Boolean(receiptNo),retry=!success&&(!error||error.retryable!==false);
   // まだ保存されていないと言い切れる失敗だけ「送れませんでした」。保存ずみかもしれない失敗（再送・写真）は、確認が必要と言う
-  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','closed','capacity','setup','headers','missing','sharing','owner'].indexOf(error.code)>=0;
+  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','closed','capacity','setup','headers','missing','sharing','owner','folder'].indexOf(error.code)>=0;
+  // 色と言葉の約束：成功は緑と ✓、失敗は赤と ✕、確認が必要なのは黄色と ⚠（色だけで伝えない）
+  const tone=success?'ok':notSaved?'bad':'warn';
+  const mark=success?'✓ ':notSaved?'✕ ':'⚠ ';
   const title=success?'申し込みが完了しました':notSaved?'送れませんでした':'保存結果の確認が必要です';
+  const frame={ok:'#bbf7d0',bad:'#b91c1c',warn:'#ca8a04'}[tone],fill={ok:'#ffffff',bad:'#fef2f2',warn:'#fefce8'}[tone];
   const detail=success?(p.mode==='test'?'テスト受付番号：':'受付番号：')+receiptNo:message;let retryForm='';
+  // 問い合わせ先は、主催者が「設定」タブに書いた、選手に見せてよいもの。読めないときは出さない
+  let contact='';try{contact=String(S_().contact||'');}catch(_){contact='';}
   if(retry){const endpoint=ScriptApp.getService().getUrl();if(/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint||'')){
     const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','fighterClass','photoDataUrl'];
-    retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ申込番号で保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
-  return HtmlService.createHtmlOutput('<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:32px 16px;background:#f1f5f9;color:#0f172a;text-align:center}.box{max-width:540px;margin:auto;border:2px solid #bbf7d0;border-radius:24px;padding:28px;background:white}h1{font-size:26px}b{display:block;margin:20px 0;font-size:20px;overflow-wrap:anywhere}button{font-size:18px;font-weight:bold;padding:18px;border:0;border-radius:14px;background:#1d4ed8;color:white}p{line-height:1.8}</style></head><body><main class="box"><h1>'+title+'</h1><b>'+escape_(detail)+'</b>'+retryForm+'<p>'+(success?'受付番号をスクリーンショットで保存してください。この画面は閉じて大丈夫です。':notSaved?'受付番号は出ていません。直せるときは、ブラウザの「戻る」で申込ページにもどって直し、もう一度送ります。直せないときは主催者へご連絡ください。':'受付番号が出るまで完了ではありません。解決しない場合は主催者へご連絡ください。')+'</p></main></body></html>').setTitle(title).addMetaTag('viewport','width=device-width,initial-scale=1');
+    retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ内容で、保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
+  const guide=success?'受付番号が出ています。この画面の写真をとってください。この画面は閉じて大丈夫です。':notSaved?'受付番号は出ていません。直せるときは、ブラウザの「戻る」で申込ページにもどって直し、もう一度送ります。直せないときは、下の問い合わせ先へご連絡ください。':'受付番号が出るまで完了ではありません。解決しない場合は、下の問い合わせ先へご連絡ください。';
+  const contactLine=contact?'<p>問い合わせ：'+escape_(contact)+'</p>':'';
+  return HtmlService.createHtmlOutput('<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:32px 16px;background:#f1f5f9;color:#0f172a;text-align:center}.box{max-width:540px;margin:auto;border:4px solid '+frame+';border-radius:24px;padding:28px;background:'+fill+'}h1{font-size:26px}b{display:block;margin:20px 0;font-size:20px;overflow-wrap:anywhere}button{font-size:18px;font-weight:bold;padding:18px;border:0;border-radius:14px;background:#1d4ed8;color:white}p{line-height:1.8}</style></head><body><main class="box"><h1>'+mark+title+'</h1><b>'+escape_(detail)+'</b>'+retryForm+'<p>'+guide+'</p>'+contactLine+'</main></body></html>').setTitle(title).addMetaTag('viewport','width=device-width,initial-scale=1');
 }
 /** 主催者がOS用名簿と写真を自分のDriveへZIP保存する。連絡先は含めない。 */
 function exportTournament(){
@@ -494,7 +564,7 @@ function exportRows_(rows,folder,prefix){
     const csv='\uFEFF'+csvRows.map(function(row){return row.map(function(cell){return'"'+clean_(cell,2000).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
     const files=[Utilities.newBlob(csv,'text/csv','players.csv')];
     let totalBytes=csv.length*3;
-    rows.slice(1).forEach(function(row){const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。受付番号 '+row[0]);const file=DriveApp.getFileById(id[1]);if(file.isTrashed()||!isPrivateOwned_(file,assertOwner_()))throw new Error('写真の保存・共有を確認してください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});
+    rows.slice(1).forEach(function(row){const who='受付番号 '+row[0]+'（'+String(row[2]||'').slice(0,20)+'）';const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。'+who);let file;try{file=DriveApp.getFileById(id[1]);}catch(_){throw new Error(who+' の写真が見つかりません（Googleドライブから消えています）。Googleドライブのゴミ箱に入っていないか、見てください。');}if(file.isTrashed())throw new Error(who+' の写真が、Googleドライブのゴミ箱に入っています。ゴミ箱を開いて「元に戻す」を押してから、もう一度やってください。');if(!isPrivateOwned_(file,assertOwner_()))throw new Error(who+' の写真の共有が、「制限付き」になっていません。写真の共有を「制限付き」に直してから、もう一度やってください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});
     const zipName=prefix+S_().eventId+'.zip', older=[], found=folder.getFilesByName(zipName);
     while(found.hasNext())older.push(found.next());
     const zip=folder.createFile(Utilities.zip(files,zipName));

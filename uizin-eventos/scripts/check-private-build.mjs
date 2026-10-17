@@ -41,6 +41,18 @@ need(pages.some((p) => p.startsWith('apply/')), '選手の申込画面（/apply/
 need(pages.some((p) => p.startsWith('private/setup/')), '設定の画面（/private/setup/）がありません。');
 need(pages.some((p) => p.startsWith('private/live/')), '試合当日の画面（/private/live/）がありません。');
 
+// 1b. 古い「別の方法で受付をつくる」画面（private/google-setup）は、公開してはいけない。
+//     この画面は、主催者のメールアドレスと合言葉（setupKey）を、ブラウザに残すため。使える道は /private/setup/（v3）だけ。
+//     画面の置き場所・画面の名前・その画面だけの保存の書き込み（setItem('tournament-google-setup:…')）・古い _headers の設定の、どれか1つでも残っていたら止める。
+//     ソースのファイルは消さない。公開用フォルダに入れないだけ（scripts/build-private-pages.sh の LEGACY_ROUTES）。
+need(!existsSync(join(dir, 'templates/Tournament_OS_Google受付.gs')), '古い版のGoogleのプログラム（templates/Tournament_OS_Google受付.gs）が公開用フォルダに入っています。使えるひな形は v3 だけです。scripts/build-private-pages.sh の LEGACY_FILES を確かめてください。');
+need(!existsSync(join(dir, 'private/google-setup')) && !pages.some((p) => p.includes('google-setup')), '古い受付画面（private/google-setup）が公開用フォルダに入っています。主催者のメールと合言葉をブラウザに残すので、公開できません。scripts/build-private-pages.sh の LEGACY_ROUTES を確かめてください。');
+for (const f of files.filter((f) => /\.(js|html|txt|json|gs|css)$/.test(f) || /(^|\/)_headers$/.test(rel(f)))) {
+  const t = text(f);
+  // 古い画面が「書く」ところと、その画面だけの言葉。（画面が古い覚え書きを「消す」ための名前は、あってよい）
+  if (/setItem\(\s*["'`]tournament-google-setup:|\/private\/google-setup|主催者本人のGoogleメールアドレス|Google受付をつなぐ/.test(t)) problems.push('古い受付画面（google-setup）の名前や保存の書き込みが、公開用フォルダに残っています: ' + rel(f));
+}
+
 // 2. 名簿を読み込む部品が、本当にコピーされている（これが抜けると、公開後に名簿の取り込みが動かない）。
 //    呼び出す側の名前（unzipSync など）ではなく、部品の中にだけある文字で探す。
 const all = js.map((f) => text(f));
@@ -91,7 +103,7 @@ if (existsSync(join(dir, '_headers'))) {
   }
   const GOOGLE = ['https://script.google.com', 'https://script.googleusercontent.com'];
   const SAFE_TOKENS = ["'self'", "'none'", 'data:', 'blob:', "'unsafe-inline'", ...GOOGLE];
-  const REQUIRED_PATHS = ['/private/', '/private/entry/*', '/private/live/*', '/private/setup/*', '/private/google-setup/*', '/apply/*'];
+  const REQUIRED_PATHS = ['/private/', '/private/entry/*', '/private/live/*', '/private/setup/*', '/apply/*'];
   for (const path of REQUIRED_PATHS) {
     const block = blocks.get(path);
     if (!block) { problems.push('_headers に ' + path + ' の設定がありません。'); continue; }
@@ -113,7 +125,7 @@ if (existsSync(join(dir, '_headers'))) {
       need((directives.get('connect-src') || []).join(' ') === "'none'", '_headers の /apply/* の connect-src は \'none\' でなければなりません（申込の画面は、外へ通信しません）。');
       const fa = directives.get('form-action') || [];
       need(fa.length > 0 && fa.every((t) => GOOGLE.includes(t)), '_headers の /apply/* の form-action は、Google の2つだけでなければなりません。');
-    } else if (path !== '/private/setup/*' && path !== '/private/google-setup/*') {
+    } else if (path !== '/private/setup/*') {
       need((directives.get('connect-src') || []).join(' ') === "'self'", '_headers の ' + path + ' の connect-src は \'self\' でなければなりません。');
       need((directives.get('form-action') || []).join(' ') === "'none'", '_headers の ' + path + ' の form-action は \'none\' でなければなりません。');
     }

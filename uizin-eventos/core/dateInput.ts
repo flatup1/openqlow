@@ -1,8 +1,16 @@
-/** Normalize pasted Japanese dates and eight-digit dates without guessing missing days. */
+/**
+ * Normalize pasted Japanese dates and eight-digit dates without guessing missing days.
+ * 日づけに時刻がくっついた文字（「2027/10/3 10:00」）は、数字をつなげて別の日づけにしない。そのまま返す（日づけとしては読まない）。
+ */
 export function dateDigits(value: string): string {
   const text = value.normalize('NFKC').trim();
-  const parts = text.match(/^(\d{4})[年/.-](\d{1,2})[月/.-](\d{1,2})日?$/);
-  return parts ? parts[1] + parts[2].padStart(2, '0') + parts[3].padStart(2, '0') : text.replace(/[^0-9]/g, '').slice(0, 8);
+  // 「2027年10月3日」「2027/10/3」のあとに、曜日（日・(日)・日曜日）だけが付いていてもよい
+  const parts = text.match(/^(\d{4})[年/.-](\d{1,2})[月/.-](\d{1,2})日?(?:\s*[(（]?[日月火水木金土](?:曜日?)?[)）]?)?$/);
+  if (parts) return parts[1] + parts[2].padStart(2, '0') + parts[3].padStart(2, '0');
+  // 数字がちょうど8けたのときだけ、数字以外を取り除く（「abc2027x1003」→ 20271003）。時刻などの数字が混ざって8けたを超えるときは、切り取らない
+  const digits = text.replace(/[^0-9]/g, '');
+  // 年・月・日・時・分・秒・「〜」・「:」が残っているのは、日づけと別の数（時刻・「3日〜4日」の4）が混ざっているとき。数字をつなげて別の日づけにしない
+  return digits.length === 8 && !/[年月日時分秒〜~～:：]/.test(text.replace(/\d/g, '')) ? digits : text;
 }
 
 export function formatDateInput(value: string): string {

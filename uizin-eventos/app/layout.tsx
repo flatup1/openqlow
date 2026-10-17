@@ -40,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
         <noscript>
           <div role="alert" style={{ background: '#fef08a', color: '#1c1917', border: '3px solid #a16207', borderRadius: 10, padding: '12px 14px', margin: 12, fontSize: 18, fontWeight: 700, lineHeight: 1.6 }}>
-            ⚠ このページは、JavaScript（ジャバスクリプト）を使います。ブラウザの設定で、JavaScript を「オン」にしてください。または、Chrome か Safari で、開き直してください。
+            ⚠ このページは、JavaScript（ジャバスクリプト）を使います。ブラウザの設定で、JavaScript を「オン」にしてください。そのあと、ページを開き直してください。（設定がわからないときは、Chrome か Safari で開いてください。）
           </div>
         </noscript>
         {children}

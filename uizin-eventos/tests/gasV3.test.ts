@@ -137,9 +137,9 @@ test('v3: 同じ申込番号の再送は1件のまま、大会IDが違えば拒�
   const h = harness(); h.ready();
   const p = h.params('test'); const a = h.call('saveEntry_', p), b = h.call('saveEntry_', p);
   assert.equal(a, b); assert.equal(h.rows('テスト申込').length, 3);
-  assert.throws(() => h.call('saveEntry_', h.params('test', { eventId: 'other-cup' })), /受付URL/);
+  assert.throws(() => h.call('saveEntry_', h.params('test', { eventId: 'other-cup' })), /申し込みリンク/);
   h.call('saveEntry_', h.params('test', { protocol: '2' }));
-  assert.throws(() => h.call('saveEntry_', h.params('test', { protocol: '9' })), /受付URL/);
+  assert.throws(() => h.call('saveEntry_', h.params('test', { protocol: '9' })), /申し込みリンク/);
 });
 
 test('v3: 申込表・写真フォルダが公開共有・直接共有・削除済みなら受付を止める', () => {
@@ -147,7 +147,8 @@ test('v3: 申込表・写真フォルダが公開共有・直接共有・削除�
   const folder = h.resources.get(h.props.get('photoFolderId')!)!;
   folder.sharing = 'ANYONE'; assert.throws(() => h.call('saveEntry_', h.params()), /共有/);
   folder.sharing = 'PRIVATE'; folder.viewers = [{ getEmail: () => 'x@example.com' }]; assert.throws(() => h.call('saveEntry_', h.params()), /共有/);
-  folder.viewers = []; folder.trashed = true; assert.throws(() => h.call('saveEntry_', h.params()), /共有/);
+  // ゴミ箱に入っているときは、共有の話にしない。ゴミ箱から戻す道を言う（r2-62）
+  folder.viewers = []; folder.trashed = true; assert.throws(() => h.call('saveEntry_', h.params()), /ゴミ箱/);
 });
 
 test('v3: 数式になる文字は無害化し、写真が壊れていれば保存しない', () => {

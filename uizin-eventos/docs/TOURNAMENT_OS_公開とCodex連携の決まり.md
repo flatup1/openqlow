@@ -33,11 +33,12 @@ npm run deploy:private
 3. 名簿を読む部品（ZIP・Excel）が、本当に入っている（抜けると、公開後に取り込みが動かない）
 4. HTML・JSが指しているファイルが、すべて存在する
 5. 付属ファイル：`_headers`・ひな形のプログラム・`template-link.json`。`template-link.json` は、空か、`https://docs.google.com/spreadsheets/d/…/copy` の形だけ
-6. 安全のための設定（`_headers`）の中身：6つの道すじ（`/private/`・`/private/entry/*`・`/private/live/*`・`/private/setup/*`・`/private/google-setup/*`・`/apply/*`）すべてに、`default-src 'self'`・`object-src 'none'`・`frame-src 'none'`・`base-uri 'none'`・`frame-ancestors 'none'`・`Referrer-Policy: no-referrer`・`nosniff`・`DENY`・`X-Robots-Tag: noindex`。許す宛先は「自分・none・data:・blob:・Googleの2つ」だけ。`/apply/*` は `connect-src 'none'`、送れる先は Google の2つだけ
+6. 安全のための設定（`_headers`）の中身：5つの道すじ（`/private/`・`/private/entry/*`・`/private/live/*`・`/private/setup/*`・`/apply/*`）すべてに、`default-src 'self'`・`object-src 'none'`・`frame-src 'none'`・`base-uri 'none'`・`frame-ancestors 'none'`・`Referrer-Policy: no-referrer`・`nosniff`・`DENY`・`X-Robots-Tag: noindex`。許す宛先は「自分・none・data:・blob:・Googleの2つ」だけ。`/apply/*` は `connect-src 'none'`、送れる先は Google の2つだけ
 7. 外のスクリプト・フォント・画像・CSSを読み込む書き方が無い（文章の中のリンクは数えない）。外へ通信する書き方（`fetch("https://…")` など）も止める
 8. 鍵・秘密・個人情報らしき文字が入っていない（Google・AWS・GitHub・Slack の鍵、JWT、`sk-…`、`password: "…"` の形、本物らしい電話番号とメールアドレス。見本の `name@example.com`・`090-1234-5678` の形は許す）。大きさ・種類に関わらず、文字のファイルは全部読む
 9. 古い Safari で動かない書き方が無い（クラスの `static` ブロック、正規表現の後読み）
 10. CSS に `@layer` が残っていない。Tailwind v4 は、規則を `@layer` の中に入れて出す。Safari 15.0〜15.3 は `@layer` を知らず、その塊を捨てて、レイアウトが全部消える。`postcss.config.mjs` の小さな部品が、`@layer` を取りのぞく（手書きの規則には、強さを保つ `:not(#\#)` を足す）。Safari 15.4 以降は、どちらでも同じ見た目
+11. 古い「別の方法で受付をつくる」画面（`private/google-setup`）は、公開用フォルダに入っていない。主催者のメールと合言葉（setupKey）をブラウザに残し、プライバシーの決まりに合わないため。入っていたら止まる（画面の置き場所・`tournament-google-setup:` の書き込み・`_headers` の古い設定・その画面だけが使う古い版のGoogleのプログラム `templates/Tournament_OS_Google受付.gs`）。ソースのファイルは消さず、`scripts/build-private-pages.sh` の `LEGACY_ROUTES` と `LEGACY_FILES` で外している。使える道は `/private/setup/`（v3）だけ
 
 手で動かす場合：`npm run verify:private-build`
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { classMismatch, CLASS_NEUTRAL_NOTE, suggestClass, suggestText } from '../../core/classRules.ts';
 import { formatDateInput } from '../../core/dateInput.ts';
-import { entryErrors, type EntryFighter } from '../../core/entryPackage.ts';
+import { emailFormOk, entryErrors, lowerLinkHost, MUSIC_URL_FORM, phoneFormOk, stripInvisible, type EntryFighter } from '../../core/entryPackage.ts';
 import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
 import { photoToDataUrl } from '../lib/privateStore.ts';
 
@@ -28,8 +28,6 @@ type ContactNow = { name: string; phone: string; email: string };
 const SENT_KEY = 'tos-apply-sent-v1';
 const SENT_WINDOW_MS = 2 * 60 * 60 * 1000;
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
-const MUSIC_URL = /^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//;
-const EMAIL_FORM = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const inputBase = 'mt-2 block w-full min-h-14 min-w-0 rounded-2xl border-2 px-4 py-3 text-lg font-medium text-slate-950 outline-none transition placeholder:text-slate-500 focus:border-indigo-700 focus:ring-4 focus:ring-indigo-600 disabled:opacity-70';
 const blank = (): EntryFighter => ({ id: '', gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '' });
@@ -38,21 +36,24 @@ const greyBtn = 'min-h-12 rounded-xl border-2 border-slate-500 bg-white px-4 tex
 const darkBtn = 'min-h-12 rounded-xl border-2 border-slate-900 bg-white px-4 text-[1.0625rem] font-bold text-slate-900';
 
 const SHORT: Record<Key, string> = { gym: 'ジム名', name: '選手名', height: '身長', weight: '体重', record: '戦績', fighterClass: 'クラス', grade: '学年', age: '年齢', comment: '意気込み', musicUrl: '入場曲のリンク', photo: '写真', contactName: 'お名前', contactPhone: '電話番号', contactEmail: 'メールアドレス', consent: '同意のチェック' };
-const NEXT_LABEL: Record<Key, string> = { gym: 'ジム名を入れる', name: '選手名を入れる', height: '身長を入れる', weight: '体重を入れる', record: '戦績を入れる', fighterClass: 'クラスを選ぶ', grade: '学年を入れる', age: '年齢を入れる', comment: '意気込みを入れる', musicUrl: '入場曲のリンクを入れる', photo: 'ここを押して写真を選ぶ', contactName: 'お名前を入れる', contactPhone: '電話番号を入れる', contactEmail: 'メールアドレスを入れる', consent: '最後にここにチェック' };
+const NEXT_LABEL: Record<Key, string> = { gym: 'ジム名を入れる', name: '選手名を入れる', height: '身長を入れる', weight: '体重を入れる', record: '戦績を入れる', fighterClass: 'クラスを選ぶ', grade: '学年を入れる', age: '年齢を入れる', comment: '意気込みを入れる', musicUrl: '入場曲のリンクを入れる', photo: 'ここを押して写真をえらぶ', contactName: 'お名前を入れる', contactPhone: '電話番号を入れる', contactEmail: 'メールアドレスを入れる', consent: '最後にここにチェック' };
 const TEXT_KEYS: Key[] = ['gym', 'name', 'height', 'weight', 'record', 'grade', 'age', 'comment', 'musicUrl', 'contactName', 'contactPhone', 'contactEmail'];
 
-const nfkc = (value: string) => value.normalize('NFKC');
+/** 全角→半角にそろえ、見えない文字（向きの印・幅ゼロの空白など）を取る。これを通してから、ほかの決まりで調べる */
+const nfkc = (value: string) => stripInvisible(value.normalize('NFKC'));
 const noSpace = (value: string) => value.replace(/\s+/g, '');
-const trimAll = (value: string) => value.replace(/^[\s　]+|[\s　]+$/g, '');
+const trimAll = (value: string) => stripInvisible(value).replace(/^[\s　]+|[\s　]+$/g, '');
 /** 数字の欄を、数字だけにそろえる。全角・単位・コンマ・「15.0」を自動で直す（この画面の中だけの整形。受付側のルールは変えない）。 */
 const cleanNumber = (value: string, units: RegExp) => noSpace(nfkc(value).replace(units, '')).replace(/,/g, '.').replace(/^(\d+)\.0+$/, '$1');
 function normalizeFighter(f: EntryFighter): EntryFighter {
   return {
     ...f,
+    // 見えない文字だけの欄は、空と同じ。前後の空白も取る
+    gym: trimAll(f.gym), name: trimAll(f.name), grade: trimAll(f.grade), record: trimAll(f.record), comment: trimAll(f.comment),
     height: cleanNumber(f.height, /センチメートル|センチ|cm|m/gi),
     weight: cleanNumber(f.weight, /キログラム|キロ|kg/gi),
     age: cleanNumber(f.age, /歳|才|さい/g),
-    musicUrl: noSpace(nfkc(f.musicUrl)),
+    musicUrl: lowerLinkHost(noSpace(nfkc(f.musicUrl))),
   };
 }
 /** 電話番号：全角→半角、ハイフン・長音・点・かっこ・空白を外す、+81 は先頭の0にする（「/」で2つ並べた番号などは、のこして赤で知らせる） */
@@ -97,7 +98,7 @@ function friendly(key: Key): string {
     case 'age': return '年齢がまだです。数字だけ入力してください。例：15';
     case 'comment': return '意気込みがまだです。入力してください。';
     case 'musicUrl': return '入場曲のリンクがまだです。Apple MusicかYouTubeのリンクを貼ってください。';
-    case 'photo': return '顔写真がまだです。下の「📷 写真をえらぶ」を押してください。';
+    case 'photo': return '顔写真がまだです。上の「📷 写真をえらぶ（撮る・アルバムから）」を押してください。';
     default: return '入力してください。';
   }
 }
@@ -136,20 +137,23 @@ function problemFor(key: Key, nf: EntryFighter, contact: ContactNow, config: Pub
       if (!config.music || !value) return null;
       if (value.length > 500) return { text: 'リンクが長すぎます。曲の「共有」からコピーし直してください', early: true };
       if (/spotify/i.test(value)) return { text: 'Spotify は使えません。Apple Music か YouTube で同じ曲を探してください', early: false };
-      return MUSIC_URL.test(value) ? null : { text: 'Apple MusicかYouTubeのリンクを貼ってください。例：https://music.apple.com/…', early: false };
+      return MUSIC_URL_FORM.test(value) ? null : { text: 'Apple MusicかYouTubeのリンクを貼ってください。例：https://music.apple.com/…', early: false };
     }
     case 'contactName': return tooLong(contact.name, 100);
     case 'contactPhone': {
       const p = contact.phone;
       if (!p) return null;
-      if (/\D/.test(p)) return { text: '電話番号は、1つだけ、数字だけで入れてください。文字や、2つ目の番号は消します。例：09012345678', early: false };
+      if (/\D/.test(p)) return { text: '電話番号は、数字だけで、1つだけ入れてください。文字や、2つ目の番号は消してください。例：09012345678', early: false };
       if (!/^0\d{9,10}$/.test(p)) return { text: '電話番号は0から始まる10〜11けたです。例：09012345678', early: false };
       // フリーダイヤルは、けた数より先に知らせる（0800-123-456 は10けた）
-      if (/^0(120|800)/.test(p)) return { text: 'フリーダイヤル（0120・0800）は、電話がつながりません。連絡がつく電話番号を入れてください。例：09012345678', early: false };
+      if (/^0(120|800)/.test(p)) return { text: 'フリーダイヤル（0120・0800）では、主催者がかけても、本人につながりません。連絡がつく携帯電話などの番号を入れてください。例：09012345678', early: false };
       // いちばんよくある打ちまちがい：1けた足りない・多い。携帯（050・070・080・090）は、かならず11けた
       if (/^0[5789]0/.test(p) && p.length !== 11) return { text: `携帯の電話番号は11けたです。いま${p.length}けたです。1けた足りないか、多いかもしれません。例：09012345678`, early: false };
       // 0000000000・09000000000・03-0000-0000 のように、同じ数字が後ろにならぶ番号
       if (/^(\d)\1+$/.test(p) || /(\d)\1{7}$/.test(p)) return { text: '同じ数字がならんでいます。電話番号をもう一度見てください。例：09012345678', early: false };
+      // 「00」で始まる番号は無い。11けたは、携帯（050・070・080・090）だけ
+      if (/^00/.test(p)) return { text: '「00」で始まる番号は、使えません。日本の電話番号を入れてください。例：09012345678', early: false };
+      if (!phoneFormOk(p)) return { text: '11けたの番号は、携帯電話（050・070・080・090で始まる）だけです。もう一度見てください。例：09012345678', early: false };
       return null;
     }
     case 'contactEmail': {
@@ -159,7 +163,8 @@ function problemFor(key: Key, nf: EntryFighter, contact: ContactNow, config: Pub
       if (/\s/.test(value)) return { text: 'メールアドレスの途中に空白があります。空白を取って、1つだけ入れてください。例：name@example.com', early: false };
       if (/[,;、，；]/.test(value) || (value.match(/@/g) || []).length > 1) return { text: 'メールアドレスは、1つだけ入れてください。例：name@example.com', early: false };
       if (/[^\x00-\x7F]/.test(value)) return { text: '日本語は使えません。半角で入れてください。例：name@example.com', early: false };
-      return EMAIL_FORM.test(value) ? null : { text: 'メールアドレスの形がちがいます。例：name@example.com', early: false };
+      if (/[<>()"']/.test(value)) return { text: 'メールアドレスに、使えない記号（< > ( ) " \'）があります。記号を取って、アドレスだけを入れてください。例：name@example.com', early: false };
+      return emailFormOk(value) ? null : { text: 'メールアドレスの形がちがいます。例：name@example.com', early: false };
     }
     default: return null;
   }
@@ -185,7 +190,7 @@ function validate(nf: EntryFighter, hasPhoto: boolean, config: PublicEntryConfig
     errors.push('クラスを選んでください。');
     put('fighterClass', 'クラスを選んでください（' + config.classes.upper.name + 'か' + config.classes.lower.name + '）。');
   }
-  if (!contact.name.trim()) { errors.push('連絡先のお名前を入力してください。'); put('contactName', 'お名前がまだです。連絡がつく人の名前を入力してください。'); }
+  if (!trimAll(contact.name)) { errors.push('連絡先のお名前を入力してください。'); put('contactName', 'お名前がまだです。連絡がつく人の名前を入力してください。'); }
   if (!contact.phone) { errors.push('電話番号を確認してください。'); put('contactPhone', '電話番号がまだです。例：09012345678（ハイフンは、あってもなくてもOKです）'); }
   if (!contact.email) { errors.push('メールアドレスを確認してください。'); put('contactEmail', 'メールアドレスがまだです。例：name@example.com'); }
   else {
@@ -284,9 +289,9 @@ function Field({ id, label, hint, example, error, note, next, nextPrefix, extra,
   </NextBox>;
 }
 
-function Fold({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
+function Fold({ id, title, sub, children }: { id?: string; title: string; sub?: string; children: ReactNode }) {
   return <details id={id} className="group mt-4 scroll-mt-24 rounded-2xl border-2 border-slate-300 bg-white">
-    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-4 text-lg font-bold"><span className="min-w-0">{title}</span><span aria-hidden="true" className="shrink-0 text-[1.0625rem] font-medium text-slate-700"><span className="group-open:hidden">▶ ひらく</span><span className="hidden group-open:inline">▼ とじる</span></span></summary>
+    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-4 text-lg font-bold"><span className="min-w-0">{title}{sub ? <span className="mt-0.5 block text-[1.0625rem] font-medium text-slate-700">{sub}</span> : null}</span><span aria-hidden="true" className="shrink-0 text-[1.0625rem] font-medium text-slate-700"><span className="group-open:hidden">▶ ひらく</span><span className="hidden group-open:inline">▼ とじる</span></span></summary>
     <div className="border-t-2 border-slate-200 p-4 text-lg leading-relaxed">{children}</div>
   </details>;
 }
@@ -465,6 +470,8 @@ export default function PublicApply() {
   }, [reviewing]);
 
   const nf = useMemo(() => normalizeFighter(fighter), [fighter]);
+  /** 連絡先のお名前（見えない文字・前後の空白を取ったもの） */
+  const cname = trimAll(contactName);
   const phone = useMemo(() => normalizePhone(contactPhone), [contactPhone]);
   const email = useMemo(() => normalizeEmail(contactEmail), [contactEmail]);
   // クラス分け（シートの設定が「あり」のときだけ出る）。戦績の文字を読む処理は、入力のたびに1回だけ走らせる
@@ -472,7 +479,7 @@ export default function PublicApply() {
   const classSuggest = useMemo(() => (classes ? suggestClass(fighter.record, classes) : null), [classes, fighter.record]);
   const classMismatchText = useMemo(() => (classes && chosenClass ? classMismatch(fighter.record, classes[chosenClass].name, classes) : ''), [classes, chosenClass, fighter.record]);
   const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '']);
-  const contactNow: ContactNow = { name: contactName, phone, email };
+  const contactNow: ContactNow = { name: cname, phone, email };
   const hasInput = [fighter.gym, fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl, contactName, contactPhone, contactEmail].some((v) => v.trim()) || Boolean(photo) || consent || Boolean(chosenClass);
   hasInputRef.current = hasInput;
   // 確認の画面は、中身が本当に変わったときだけ閉じる（前後の空白を消すだけの自動なおしでは、閉じない）
@@ -568,22 +575,29 @@ export default function PublicApply() {
     }
     document.getElementById('f-' + key)?.focus({ preventScroll: true });
   };
+  /** 赤い帯の「とじる」：閉じたあと、フォーカスが消えないよう、まちがいのある最初の欄（なければジム名）へ移す */
+  const closeMessage = () => {
+    setMessage('');
+    const keys = (Object.keys(fieldErrors) as Key[]).map((key) => ({ key, el: document.getElementById(key === 'photo' ? 'f-photo' : 'f-' + key) })).filter((x): x is { key: Key; el: HTMLElement } => Boolean(x.el));
+    keys.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    (keys[0]?.el ?? document.getElementById('f-gym'))?.focus({ preventScroll: true });
+  };
   const focusFirst = (fields: FieldErrors) => {
     const boxes = (Object.keys(fields) as Key[]).map((key) => ({ key, el: document.getElementById(key === 'photo' ? 'f-photo-box' : 'f-' + key) })).filter((x): x is { key: Key; el: HTMLElement } => Boolean(x.el));
     boxes.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
     if (boxes[0]) focusField(boxes[0].key);
   };
 
-  const order: Array<[Key, boolean]> = [['gym', !!fighter.gym.trim()], ['name', !!fighter.name.trim()], ['height', !!nf.height], ['weight', !!nf.weight], ['record', !!fighter.record.trim()],
+  const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight], ['record', !!nf.record],
     ...(classes ? [['fighterClass', !!chosenClass] as [Key, boolean]] : []),
-    ...(config.grade === 'required' ? [['grade', !!fighter.grade.trim()] as [Key, boolean]] : []), ...(config.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(config.comment === 'required' ? [['comment', !!fighter.comment.trim()] as [Key, boolean]] : []),
-    ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo], ['contactName', !!contactName.trim()], ['contactPhone', !!phone], ['contactEmail', !!email], ['consent', consent]];
+    ...(config.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(config.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(config.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
+    ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo], ['contactName', !!cname], ['contactPhone', !!phone], ['contactEmail', !!email], ['consent', consent]];
 
   const submit = (confirmed = false, resend = false) => {
     if (sendingRef.current) return;
     if (photoLoadingRef.current) { setReviewing(false); say('まだ送れません：写真を準備しています。写真が表示されてから押してください。', 'warn'); return; }
     if (confirmed && !reviewing && !resend) return;
-    const { errors, fields } = validate(nf, Boolean(photo), config, { name: contactName, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass);
+    const { errors, fields } = validate(nf, Boolean(photo), config, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass);
     if (errors.length) {
       setReviewing(false);
       setAttempted(true);
@@ -665,10 +679,10 @@ export default function PublicApply() {
   const deadlineShort = deadlineInfo ? `${deadlineInfo.m}月${deadlineInfo.d}日` : config.deadline;
   const deadlineUnclear = Boolean(config.deadline) && !deadlineInfo;
 
-  const infoItems = [fighter.gym.trim(), fighter.name.trim(), nf.height, nf.weight, fighter.record.trim(), photo,
+  const infoItems = [nf.gym, nf.name, nf.height, nf.weight, nf.record, photo,
     ...(classes ? [chosenClass] : []),
-    ...(config.grade === 'required' ? [fighter.grade.trim()] : []), ...(config.age === 'required' ? [nf.age] : []), ...(config.comment === 'required' ? [fighter.comment.trim()] : []), ...(config.music ? [nf.musicUrl] : [])].map(Boolean);
-  const contactItems = [contactName.trim(), phone, email, consent ? 'yes' : ''].map(Boolean);
+    ...(config.grade === 'required' ? [nf.grade] : []), ...(config.age === 'required' ? [nf.age] : []), ...(config.comment === 'required' ? [nf.comment] : []), ...(config.music ? [nf.musicUrl] : [])].map(Boolean);
+  const contactItems = [cname, phone, email, consent ? 'yes' : ''].map(Boolean);
   const filled = [...infoItems, ...contactItems].filter(Boolean).length;
   const total = infoItems.length + contactItems.length;
   const left = total - filled;
@@ -693,14 +707,14 @@ export default function PublicApply() {
   let nextKind: 'none' | 'field' | 'confirm' | 'resend' | 'send' | 'call' | 'wait' = 'none';
   if (endpointReady && !askNew) {
     if (sending) nextKind = 'wait';
-    else if (reviewing) nextKind = callFirst ? 'call' : 'send';
+    else if (reviewing) nextKind = callFirst ? 'call' : online ? 'send' : 'none';
     else if (photoLoading) nextKind = 'none';
     else if (todoKey || stickOk) nextKind = 'field';
-    else nextKind = confirmationPending ? 'resend' : 'confirm';
+    else nextKind = confirmationPending && !changedAfterSend ? 'resend' : 'confirm';
   }
   const markKey: Key | null = nextKind === 'field' ? (stickOk ? stick : todoKey) : null;
   const nextLabel = (key: Key): string => {
-    if (key === 'photo') return photoError && !photo ? 'もう一度「📷 写真をえらぶ」を押す' : NEXT_LABEL.photo;
+    if (key === 'photo') return photoError && !photo ? 'もう一度、写真をえらぶ' : NEXT_LABEL.photo;
     if (key === 'contactEmail' && emailAsk) return 'メールアドレスの質問に答える';
     // 「直す」は、何か入っていて、赤い文が出ているときだけ。空っぽの欄や、入力の途中では、まちがいと言わない
     const empty = order.find(([k]) => k === key)?.[1] === false;
@@ -720,10 +734,10 @@ export default function PublicApply() {
   const fieldProps = (key: Key) => ({ error: shown(key) || undefined, note: notes[key], next: markKey === key ? nextLabel(key) : undefined, nextPrefix: prefix });
 
   const META: Record<'gym' | 'name' | 'height' | 'weight' | 'record' | 'grade' | 'age' | 'comment' | 'musicUrl' | 'contactName' | 'contactPhone' | 'contactEmail', { hint: string; example: string[] }> = {
-    gym: { hint: '通っているジムの名前です。', example: ['フラットアップジム'] },
+    gym: { hint: '通っているジム・道場の名前です。通っていない時は「無所属」と入れてください。', example: ['フラットアップジム'] },
     name: { hint: '試合で呼ばれる名前です。本名でも、あだ名でもOK', example: ['山田 太郎'] },
     height: { hint: '数字だけ入れてください。「cm」は書かなくてもOK', example: ['170'] },
-    weight: { hint: '試合に出る体重（kg）です', example: ['55'] },
+    weight: { hint: '試合に出る体重（kg）です。わからない時は、今の体重を入れてください。', example: ['55'] },
     record: { hint: '試合の成績です。はじめてなら「初試合」と書いてください', example: ['初試合', '3勝1敗', '空手3年'] },
     grade: { hint: '30文字までです', example: ['中2', '高1', '社会人'] },
     age: { hint: '数字だけ入れてください', example: ['15'] },
@@ -740,7 +754,7 @@ export default function PublicApply() {
     </Field>;
   const gradeField = () => fighterField('grade', '学年 ' + (config.grade === 'required' ? '必須' : '任意'));
   const ageField = () => fighterField('age', '年齢 ' + (config.age === 'required' ? '必須' : '任意'), undefined, 'numeric');
-  const commentLeft = 500 - fighter.comment.trim().length;
+  const commentLeft = 500 - nf.comment.length;
   const commentField = () => <Field key="comment" id="f-comment" label={'意気込み ' + (config.comment === 'required' ? '必須' : '任意')} hint={META.comment.hint} example={META.comment.example} {...fieldProps('comment')}
     extra={<><p className="mt-2 text-[1.0625rem] font-bold text-slate-700">{commentLeft >= 0 ? `あと${commentLeft}文字（500文字まで）` : ''}</p><Caution className="mt-2">会場の画面に出ます。住所や電話番号は書かない</Caution></>}>
     <textarea {...ids('comment', { hint: true, example: true })} rows={3} className={look('comment')} value={fighter.comment} autoComplete="off" onChange={(e) => change('comment', e.target.value)} onBlur={() => leaveSoon('comment')} />
@@ -750,7 +764,7 @@ export default function PublicApply() {
 
   // クラス分け（シートの設定が「あり」のときだけ出る）。
   // 大きな2つの選択肢。それぞれの『すぐ下』に、条件とルールを出す。選ぶのは本人。目安（黄）と ちがい（赤）は、見せるだけで、送るのは止めない。
-  const classNeutral = Boolean(classes && !classSuggest && fighter.record.trim() && touched.record);
+  const classNeutral = Boolean(classes && !classSuggest && nf.record && touched.record);
   const classErr = fieldErrors.fighterClass;
   const classField = () => {
     if (!classes) return null;
@@ -760,6 +774,9 @@ export default function PublicApply() {
         <legend className="block p-0 text-lg font-bold leading-snug [text-wrap:balance]">クラス<Chip tone="need" size="text-[1.0625rem]">必須</Chip></legend>
         <p id="f-fighterClass-hint" className="mt-1 text-[1.0625rem] font-medium leading-relaxed text-slate-700">条件とルールを読んで、合うほうを選んでください。</p>
         {classErr ? <ErrorLine id="f-fighterClass-err" size="text-lg" className="mt-3"><span className="min-w-0">{classErr}</span></ErrorLine> : null}
+        <div id="f-fighterClass-live">{classSuggest ? <Caution title="目安" status size="text-lg" className="mt-3"><span className="font-bold">{suggestText(classSuggest.name)}</span>{classMismatchText ? null : <p className="mt-1">目安です。どちらにするかは、ご自分で決めてください。</p>}</Caution> : null}
+        {classNeutral ? <p role="status" className="tos-note mt-3 text-lg"><span aria-hidden="true" className="tos-icon">i</span>{CLASS_NEUTRAL_NOTE}</p> : null}
+        {classMismatchText ? <><ErrorLine status icon="⚠" size="text-lg" className="mt-3"><span className="min-w-0">{classMismatchText}</span></ErrorLine><p className="mt-1 text-lg font-bold text-slate-800">合っていれば、そのまま送れます。</p></> : null}</div>
         <div className="mt-3 grid gap-3">
           {sides.map(([key, side]) => {
             const on = chosenClass === key;
@@ -776,9 +793,6 @@ export default function PublicApply() {
             </label>;
           })}
         </div>
-        {classSuggest ? <Caution title="目安" status size="text-lg" className="mt-3"><span className="font-bold">{suggestText(classSuggest.name)}</span>{classMismatchText ? null : <p className="mt-1">目安です。どちらにするかは、ご自分で決めてください。</p>}</Caution> : null}
-        {classNeutral ? <p role="status" className="tos-note mt-3 text-lg"><span aria-hidden="true" className="tos-icon">i</span>{CLASS_NEUTRAL_NOTE}</p> : null}
-        {classMismatchText ? <><ErrorLine status icon="⚠" size="text-lg" className="mt-3"><span className="min-w-0">{classMismatchText}</span></ErrorLine><p className="mt-1 text-lg font-bold text-slate-800">合っていれば、そのまま送れます。</p></> : null}
       </fieldset>
     </NextBox>;
   };
@@ -846,11 +860,11 @@ export default function PublicApply() {
   const msgBox = tone === 'error' ? 'tos-error' : tone === 'ok' ? 'tos-ok' : tone === 'warn' ? 'tos-caution' : 'rounded-xl border-2 border-slate-500 bg-white';
   const msgIcon = tone === 'error' ? '✕' : tone === 'ok' ? '✓' : tone === 'warn' ? '⚠' : 'ℹ';
   /** メッセージの箱。上にくっつく帯は小さく（画面の35%まで）。送れなかったとき（confirmationPending）は、ボタンの すぐ上に ふつうに置く */
-  const messageBox = (top: boolean) => message && !sending ? <div id={top ? 'apply-msg' : 'apply-msg-inline'} role={tone === 'error' ? 'alert' : 'status'} className={(top ? 'sticky top-2 z-20 max-h-[35vh] overflow-y-auto ' : '') + 'mt-4 text-[1.0625rem] font-bold shadow ' + msgBox + (tone === 'info' ? ' p-3' : '')}><div className="flex flex-row items-start gap-2"><div className="min-w-0 flex-1"><p><span aria-hidden="true" className="tos-icon">{msgIcon}</span>{message}</p>{confirmationPending && telLink ? <p className="mt-1">{telLink}</p> : null}</div>{top ? <button type="button" onClick={() => setMessage('')} className="min-h-12 shrink-0 rounded-xl border-2 border-current bg-white px-2 text-[1.0625rem] font-bold text-slate-900">とじる</button> : null}</div></div> : null;
+  const messageBox = (top: boolean) => message && !sending ? <div id={top ? 'apply-msg' : 'apply-msg-inline'} role={tone === 'error' ? 'alert' : 'status'} className={(top ? 'sticky top-2 z-20 max-h-[35vh] overflow-y-auto ' : '') + 'mt-4 text-[1.0625rem] font-bold shadow ' + msgBox + (tone === 'info' ? ' p-3' : '')}><div className="flex flex-row items-start gap-2"><div className="min-w-0 flex-1"><p><span aria-hidden="true" className="tos-icon">{msgIcon}</span>{message}</p>{confirmationPending && telLink ? <p className="mt-1">{telLink}</p> : null}</div>{top ? <button type="button" onClick={closeMessage} className="min-h-12 shrink-0 rounded-xl border-2 border-current bg-white px-2 text-[1.0625rem] font-bold text-slate-900">とじる</button> : null}</div></div> : null;
   const stepLine = <span aria-hidden="true">📍</span>;
   const showRow = (value: string) => endpointReady || Boolean(value);
 
-  return <main className="tos-apply min-h-screen bg-slate-50 px-4 py-4 text-lg font-medium leading-relaxed text-slate-950 [color-scheme:light] sm:py-10 [min-height:100dvh]"><div className="mx-auto w-full max-w-3xl overflow-x-clip [overflow-wrap:anywhere] [word-break:auto-phrase]">
+  return <main className="tos-apply min-h-screen bg-slate-50 px-4 py-4 text-lg font-medium leading-relaxed text-slate-950 [color-scheme:light] sm:py-10"><div className="mx-auto w-full max-w-3xl tos-apply-wrap overflow-x-clip">
     <header className="rounded-3xl bg-slate-900 p-4 text-white sm:p-8">
       <div className="flex items-center justify-between gap-3">{statusLabel ? <p className={'rounded-full px-3 py-1 text-[1.0625rem] font-bold ' + (isTest || deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white/15')}>{isTest || deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}{statusLabel}</p> : <span />}<p aria-hidden="true" className="text-3xl">🥊</p></div>
       <h1 className="mt-3 text-2xl font-black leading-tight [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1>
@@ -858,7 +872,7 @@ export default function PublicApply() {
       {endpointReady ? <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">約3分で終わります</p> : null}
       {endpointReady || config.date || config.venue || config.deadline ? <dl className="mt-3 divide-y divide-white/20 rounded-2xl bg-white/10 px-3">
         {showRow(config.date) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">開催日</dt><dd className="min-w-0 text-lg font-bold">{dateText || '未定'}</dd></div> : null}
-        {showRow(config.venue) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">会場</dt><dd className="min-w-0 text-lg font-bold">{isVenueUrl(config.venueUrl) ? <a href={config.venueUrl} target="_blank" rel="noreferrer" className="underline underline-offset-4">{config.venue || '地図を開く'} ↗</a> : config.venue || '未定'}</dd></div> : null}
+        {showRow(config.venue) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">会場</dt><dd className="min-w-0 text-lg font-bold">{isVenueUrl(config.venueUrl) ? <a href={config.venueUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center underline underline-offset-4">{config.venue || '地図を開く'} ↗</a> : config.venue || '未定'}</dd></div> : null}
         {showRow(config.deadline) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">締切</dt><dd className="min-w-0 text-lg font-bold">{deadlineText ? <span className={'inline-block rounded-2xl px-3 py-0.5 ' + (deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white text-slate-950')}>{deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}<span aria-hidden="true" className="tos-icon">⏰</span>申し込みは{deadlineText}</span> : '未定'}</dd></div> : null}
       </dl> : null}
     </header>
@@ -868,7 +882,7 @@ export default function PublicApply() {
     {endpointReady && isTest ? <ErrorLine big className="mt-4">これはテストです。ここから送っても、大会には届きません</ErrorLine> : null}
     {endpointReady && deadlinePassed ? <ErrorLine className="mt-4">申し込みの締切は過ぎています（{deadlineShort}まで）</ErrorLine> : null}
     {endpointReady && deadlineUnclear && !deadlinePassed ? <Caution className="mt-4">申し込みの締切は「{config.deadline}」です。過ぎていないか、確かめてください</Caution> : null}
-    {recentSent ? <div className="tos-ok mt-4"><p><span aria-hidden="true" className="tos-icon">✓</span>さっき、申し込みを送りました。受付番号の画面が出た方は、もう申し込み済みです。</p><p className="tos-danger mt-1"><span aria-hidden="true" className="tos-icon">✕</span>同じ人の申し込みを、2回しないでください</p><details className="mt-2"><summary className="flex min-h-12 cursor-pointer items-center text-[1.0625rem] underline underline-offset-4">別の選手を申し込む</summary><button type="button" onClick={() => setRecentSent(false)} className="mt-2 min-h-12 w-full rounded-2xl border-2 border-slate-500 bg-white px-4 text-lg font-bold text-slate-900">この表示を消して、別の選手を申し込む</button></details></div> : null}
+    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>入れた文字と写真は、消えています。最初から入れ直して、送ってください。</li></ul><button type="button" onClick={() => setRecentSent(false)} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
     {askNew ? <>
       <Caution className="mt-4">別の大会のリンクです。入力を消して新しく始めますか？</Caution>
       <DangerConfirm title="消えます：いま入れた内容" lines={['選手の情報・写真・連絡先が、ぜんぶ消えます', '消したあとは、元にもどせません']} safeLabel="今のまま続ける" dangerLabel="消して新しく始める" onSafe={() => setPendingHash('')} onDanger={startNew} />
@@ -888,11 +902,11 @@ export default function PublicApply() {
           {fighterField('gym', 'ジム名 必須')}
           {fighterField('name', '選手名 必須', <Note className="mt-2">保護者の名前ではなく、出る人の名前</Note>)}
           {fighterField('height', '身長（cm）必須', undefined, 'decimal')}
-          {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}<Note className="mt-2">試合に出る体重です（わからない時は、今の体重）</Note></>, 'decimal')}
-          {fighterField('record', '戦績 必須', fighter.record.trim() === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : undefined)}
+          {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}</>, 'decimal')}
+          {fighterField('record', '戦績 必須', nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : undefined)}
           {classField()}
           {requiredExtra}
-          {config.music ? <Field id="f-musicUrl" label="入場曲のリンク 必須" hint={META.musicUrl.hint} example={META.musicUrl.example} extra={<Note className="mt-2">曲のアプリで「共有」→「リンクをコピー」</Note>} {...fieldProps('musicUrl')}><input {...ids('musicUrl', { hint: true, example: true })} className={look('musicUrl')} value={fighter.musicUrl} placeholder="Apple Music または YouTube" inputMode="url" autoComplete="off" enterKeyHint="next" onChange={(e) => change('musicUrl', e.target.value)} onBlur={() => leaveSoon('musicUrl')} /></Field> : null}
+          {config.music ? <Field id="f-musicUrl" label="入場曲のリンク 必須" hint={META.musicUrl.hint} example={META.musicUrl.example} extra={<Note className="mt-2">曲のアプリで「共有」→「リンクをコピー」</Note>} {...fieldProps('musicUrl')}><input {...ids('musicUrl', { hint: true, example: true })} className={look('musicUrl')} value={fighter.musicUrl} placeholder="Apple Music または YouTube" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" enterKeyHint="next" onChange={(e) => change('musicUrl', e.target.value)} onBlur={() => leaveSoon('musicUrl')} /></Field> : null}
         </div>
         <div id="f-photo-box" className={'mt-8 scroll-mt-24 rounded-3xl p-4 focus-within:ring-4 focus-within:ring-indigo-600 ' + (photo ? 'border-2 border-dashed border-emerald-600 bg-emerald-50' : photoError || fieldErrors.photo ? 'border-[3px] border-solid border-red-700 bg-white' : 'border-2 border-dashed border-slate-500 bg-white')}>
           <h3 className="text-lg font-bold leading-snug"><LabelText label="顔写真 必須" /></h3>
@@ -911,13 +925,13 @@ export default function PublicApply() {
       </section>
       <section className={card} hidden={!endpointReady}>
         <h2 className="flex items-center gap-3 text-2xl font-black"><span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-700 text-xl text-white">2</span>連絡先</h2>
-        <p className="mt-3 rounded-2xl border-2 border-slate-300 bg-white p-3 text-[1.0625rem] font-bold text-slate-800">🔒 主催者からの連絡だけに使います。入力した内容は、この申し込みサイトには残りません。主催者のGoogleの表にだけ保存されます。</p>
+        <Note className="mt-3 font-bold">主催者からの連絡だけに使います。入力した内容は、この申し込みサイトには残りません。主催者のGoogleの表にだけ保存されます。</Note>
         <div id="contact-fields" className="mt-8 grid scroll-mt-24 gap-8">
           <Field id="f-contactName" label="連絡先のお名前 必須" hint={META.contactName.hint} example={META.contactName.example} {...fieldProps('contactName')}><input {...ids('contactName', { hint: true, example: true })} className={look('contactName')} value={contactName} autoComplete="name" enterKeyHint="next" onChange={(e) => { setContactName(e.target.value); clearError('contactName'); }} onBlur={() => leaveSoon('contactName')} /></Field>
-          <Field id="f-contactPhone" label="電話番号 必須" hint={META.contactPhone.hint} example={META.contactPhone.example} {...fieldProps('contactPhone')}><input {...ids('contactPhone', { hint: true, example: true })} className={look('contactPhone')} type="tel" inputMode="tel" autoComplete="tel" enterKeyHint="next" value={contactPhone} onChange={(e) => { setContactPhone(e.target.value); clearError('contactPhone'); }} onBlur={() => leaveSoon('contactPhone')} /></Field>
+          <Field id="f-contactPhone" label="電話番号 必須" hint={META.contactPhone.hint} example={META.contactPhone.example} {...fieldProps('contactPhone')}><input {...ids('contactPhone', { hint: true, example: true })} className={look('contactPhone')} type="tel" inputMode="tel" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="tel" enterKeyHint="next" value={contactPhone} onChange={(e) => { setContactPhone(e.target.value); clearError('contactPhone'); }} onBlur={() => leaveSoon('contactPhone')} /></Field>
           <Field id="f-contactEmail" label="メールアドレス 必須" hint={META.contactEmail.hint} example={META.contactEmail.example} {...fieldProps('contactEmail')}
             extra={emailAsk && suspect ? <Caution className="mt-2"><span className="block">「{suspect.bad}」になっています。「{suspect.good}」ではありませんか？</span><span className="mt-2 flex flex-wrap gap-3"><button type="button" onClick={() => { setContactEmail(suspect.fixed); setEmailOk(suspect.fixed); clearError('contactEmail'); }} className={darkBtn}>直す</button><button type="button" onClick={() => { setEmailOk(email); clearError('contactEmail'); }} className={greyBtn}>このまま使う</button></span></Caution> : undefined}>
-            <input {...ids('contactEmail', { hint: true, example: true })} className={look('contactEmail')} type="email" inputMode="email" autoComplete="email" enterKeyHint="done" value={contactEmail} onChange={(e) => { setContactEmail(e.target.value); clearError('contactEmail'); }} onBlur={() => leaveSoon('contactEmail')} /></Field>
+            <input {...ids('contactEmail', { hint: true, example: true })} className={look('contactEmail')} type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="email" enterKeyHint="done" value={contactEmail} onChange={(e) => { setContactEmail(e.target.value); clearError('contactEmail'); }} onBlur={() => leaveSoon('contactEmail')} /></Field>
         </div>
         <NextBox id="f-consent-box" on={markKey === 'consent'} label={NEXT_LABEL.consent} prefix={prefix} float className="mt-8">
           <p id="f-consent-note" className="text-[1.0625rem] font-bold text-slate-800">18歳未満の方は、保護者の方と一緒に入力して、チェックしてください。集める情報は「名前・電話・メール・写真」です。</p>
@@ -928,7 +942,7 @@ export default function PublicApply() {
       </section>
     </fieldset>
     <form ref={formRef} action={endpointReady ? config.endpoint : undefined} method="post" target="_self" className="hidden">
-      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: fighter.gym, name: fighter.name, grade: config.grade === 'off' ? '' : fighter.grade, age: config.age === 'off' ? '' : nf.age, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: fighter.record, fighterClass: classes ? chosenClass : '', comment: config.comment === 'off' ? '' : fighter.comment, musicUrl: config.music ? nf.musicUrl : '', contactName, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: config.grade === 'off' ? '' : nf.grade, age: config.age === 'off' ? '' : nf.age, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', comment: config.comment === 'off' ? '' : nf.comment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
     </form>
     {reviewing ? <section aria-label="送る前の確認" className="my-6 rounded-3xl border-2 border-indigo-700 bg-white p-4 sm:p-6">
       <h2 ref={reviewHeadingRef} tabIndex={-1} className="scroll-mt-24 text-2xl font-black outline-none">送る前の確認</h2>
@@ -938,26 +952,25 @@ export default function PublicApply() {
       <div className="mt-4 rounded-2xl border-2 border-slate-300 p-3"><dl><dt className="text-[1.0625rem] text-slate-600">大会</dt><dd className="break-words text-lg font-bold">{config.title}</dd></dl></div>
       <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">選手の情報</h3><button type="button" aria-label="選手の情報を直す" onClick={() => fix('gym')} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>
         <dl className="mt-2 grid gap-3">
-          {([['ジム名', fighter.gym], ['選手名', fighter.name], ['身長', nf.height ? nf.height + ' cm' : ''], ['体重', nf.weight ? nf.weight + ' kg' : ''], ['戦績', fighter.record],
+          {([['ジム名', nf.gym], ['選手名', nf.name], ['身長', nf.height ? nf.height + ' cm' : ''], ['体重', nf.weight ? nf.weight + ' kg' : ''], ['戦績', nf.record],
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
-            ...(config.grade !== 'off' ? [['学年', fighter.grade]] : []), ...(config.age !== 'off' ? [['年齢', nf.age]] : []), ...(config.comment !== 'off' ? [['意気込み', fighter.comment]] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
+            ...(config.grade !== 'off' ? [['学年', nf.grade]] : []), ...(config.age !== 'off' ? [['年齢', nf.age]] : []), ...(config.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>
-        {classMismatchText ? <ErrorLine icon="⚠" className="mt-3"><span className="min-w-0">{classMismatchText} 合っていれば、そのまま送れます。</span></ErrorLine> : null}</div>
+        {classMismatchText ? <><ErrorLine icon="⚠" className="mt-3"><span className="min-w-0">{classMismatchText} 合っていれば、そのまま送れます。</span></ErrorLine><button type="button" onClick={() => fix('fighterClass')} className={greyBtn + ' mt-2 w-full'}>クラスを選び直す</button></> : null}</div>
       <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">顔写真</h3><button type="button" aria-label="写真を直す" onClick={() => fix('photo')} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>{photo ? <img src={photo} alt="" className="mt-2 h-28 w-24 rounded-xl bg-slate-100 object-contain" /> : <p className="mt-2 text-[1.0625rem] text-slate-600">（未入力）</p>}</div>
       <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">連絡先</h3><button type="button" aria-label="連絡先を直す" onClick={fixContact} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>
         <dl className="mt-2 grid gap-3">
-          <div className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">お名前</dt><dd className="break-words text-lg font-bold">{contactName}</dd></div>
+          <div className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">お名前</dt><dd className="break-words text-lg font-bold">{cname}</dd></div>
           <div className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">電話番号</dt><dd className="break-words text-3xl font-black tracking-wide">{phone}</dd><Caution className="mt-2">この番号で電話がつながりますか？ 主催者から電話します。</Caution></div>
-          <div className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">メールアドレス</dt><dd className="break-words text-2xl font-black">{email}</dd><Caution className="mt-2">もう一度、読み合わせてください</Caution></div>
+          <div className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">メールアドレス</dt><dd className="break-words text-2xl font-black">{email}</dd><Caution className="mt-2">もう一度、見くらべてください</Caution></div>
         </dl></div>
-      {!online ? <Caution className="mt-3">電波のある場所で押す</Caution> : null}
-      {deadlinePassed ? <ErrorLine className="mt-3">いま送っても、受け付けられないことがあります。先に主催者に電話する</ErrorLine> : null}
+            {deadlinePassed ? <ErrorLine className="mt-3">いま送っても、受け付けられないことがあります。先に主催者に電話する</ErrorLine> : null}
       {deadlinePassed && !tel ? <p className="mt-2 font-bold">{noContactText}</p> : null}
       {callFirst ? <NextBox on={nextKind === 'call'} label="主催者に電話する" prefix="次はここ" className="mt-3">{telLink}</NextBox> : null}
       <p className="tos-danger mt-4 text-[1.0625rem]"><span aria-hidden="true" className="tos-icon">✕</span>送ったあとは、ここでは直せません（直すときは主催者に連絡）</p>
       <p className="mt-1 text-[1.0625rem] font-bold text-slate-900">電話番号とメールが合っているか、もう一度見てください。</p>
       <NextBox on={nextKind === 'send'} label="正しければ、下のボタンを押す" prefix="次はここ" className="mt-3">
-        <button disabled={sending||photoLoading||!endpointReady} aria-disabled={!online ? true : undefined} onClick={() => { if (!online) { say('失敗：電波がありません。電波のある場所で、もう一度押してください。', 'error'); offlineMsgRef.current = true; return; } submit(true); }} className={'w-full text-xl ' + (locked || !online ? 'tos-locked min-h-14 rounded-xl px-4 py-3 font-black' : isTest ? 'tos-safe-btn' : 'tos-main')}>この内容で送信する</button>
+        <button disabled={sending||photoLoading||!endpointReady} aria-disabled={!online ? true : undefined} onClick={() => { if (!online) { say('送れません：電波がありません。まだ送っていません。電波のある場所で、もう一度押してください。', 'error'); offlineMsgRef.current = true; return; } submit(true); }} className={'w-full text-xl ' + (locked || !online ? 'tos-locked min-h-14 rounded-xl px-4 py-3 font-black' : isTest ? 'tos-safe-btn' : 'tos-main')}>この内容で送信する</button>
         {!online ? <LockReason>電波がありません。電波のある場所で押してください</LockReason> : null}
       </NextBox>
       <div className="tos-note mt-3 text-[1.0625rem]">
@@ -968,6 +981,7 @@ export default function PublicApply() {
           <li>閉じる（戻らない）。</li>
         </ol>
         <p className="mt-2 font-bold">「送れませんでした」と出たときだけ、ブラウザの「戻る」で戻って、直してからもう一度送ります。</p>
+        <p className="mt-1">戻ると、入れた文字と写真が消えていることがあります。そのときは、最初から入れ直してください。</p>
         <p className="mt-2 text-slate-700">失敗したときのために、この確認の画面も写真にとっておくと安心です。</p>
       </div>
       <p className="mt-3 text-[1.0625rem] font-bold text-slate-700"><span aria-hidden="true" className="tos-icon">✓</span>「戻って直す」を押しても、入力は消えません</p>
@@ -979,13 +993,13 @@ export default function PublicApply() {
       {badKeys.length ? <ErrorLine className="mb-2">直す所：{badKeys.map((key) => SHORT[key]).join('、')}</ErrorLine> : null}
       {confirmationPending ? messageBox(false) : null}
       <NextBox id="f-submit-box" flush float on={nextKind === 'confirm' || nextKind === 'resend'} className="mt-8" label={nextKind === 'resend' ? 'Googleの画面が出ないときだけ、押す' : '確認のボタンを押す'} prefix="次はここ">
-        <button id="f-submit" disabled={sending||photoLoading||!endpointReady} onClick={() => (confirmationPending ? submit(true, true) : submit())} className={'w-full text-xl ' + (locked ? 'tos-locked min-h-14 rounded-xl px-4 py-3 font-black' : 'tos-main')}>{sending ? '⏳ 送信しています…' : photoLoading ? '写真を準備しています…' : confirmationPending ? (changedAfterSend ? 'この内容で送る' : 'もう一度送る（二重になりません）') : '入力内容を確認する →'}</button>
+        <button id="f-submit" disabled={sending||photoLoading||!endpointReady} onClick={() => (confirmationPending && !changedAfterSend ? submit(true, true) : submit())} className={'w-full text-xl ' + (locked ? 'tos-locked min-h-14 rounded-xl px-4 py-3 font-black' : 'tos-main')}>{sending ? '⏳ 送信しています…' : photoLoading ? '写真を準備しています…' : confirmationPending && !changedAfterSend ? 'もう一度送る（二重になりません）' : '入力内容を確認する →'}</button>
         {lockReason ? <LockReason>{lockReason}</LockReason> : null}
       </NextBox>
       {endpointReady && !sending ? (confirmationPending
         ? <div className="mt-2 space-y-2">
           {changedAfterSend
-            ? <Caution title="直したときは"><span className="block">受付番号が出なかった方は、直して送って大丈夫です。</span><span className="mt-1 block">受付番号が出た方は、もう申し込み済みです。同じ人を、もう一度送らないでください。</span></Caution>
+            ? <Caution title="直したときは"><span className="block">受付番号が出なかった方は、直して送って大丈夫です。上の「入力内容を確認する →」を押すと、確認の画面が出ます。</span><span className="mt-1 block">受付番号が出た方は、もう申し込み済みです。同じ人を、もう一度送らないでください。</span></Caution>
             : <p className="text-[1.0625rem] text-slate-700">前と同じ内容なので、二重にはなりません。</p>}
           <p className="tos-danger text-[1.0625rem]"><span aria-hidden="true" className="tos-icon">✕</span>次のボタンを押すと、いま入っている内容が消えます（送った申し込みは、消えません）。</p>
           <button type="button" onClick={resetAll} className={greyBtn + ' w-full'}>別の人を申し込む（入力を消して、最初から）</button>
@@ -993,7 +1007,7 @@ export default function PublicApply() {
         : <p className="tos-note mt-2 text-[1.0625rem]"><span aria-hidden="true" className="tos-icon">i</span>まだ送りません。次の画面で、まちがいがないか見るだけです。</p>) : null}
     </div>}
     {endpointReady ? <Note className="mt-4">下の「使い道」と「困ったとき」も、読んでください。押すと開きます。</Note> : null}
-    <Fold id="privacy-fold" title="どんな情報を、何のために使いますか？"><ul className="list-disc space-y-1 pl-6"><li>集めるもの：選手の情報・顔写真・連絡先（名前・電話・メール・写真）</li><li>見る人：主催者と、大会の運営の人</li><li>使うこと：組み合わせ作り、大会の連絡、当日の会場の画面での紹介（名前・写真・戦績・一言）</li><li>電話番号とメールは、会場の画面には出ません。</li></ul></Fold>
+    <Fold id="privacy-fold" title="使い道" sub="どんな情報を、何のために使いますか？"><ul className="list-disc space-y-1 pl-6"><li>集めるもの：選手の情報・顔写真・連絡先（名前・電話・メール・写真）</li><li>見る人：主催者と、大会の運営の人</li><li>使うこと：組み合わせ作り、大会の連絡、当日の会場の画面での紹介（名前・写真・戦績・一言）</li><li>電話番号とメールは、会場の画面には出ません。</li></ul></Fold>
     <Fold title="困ったとき"><ul className="space-y-3"><li><b>写真が選べないとき</b><br />LINEの右上のメニューから「他のブラウザで開く」（またはSafari）を選んで、開き直してください。</li><li><b>Googleの画面が出ないとき</b><br />少し待ってから、もう一度ボタンを押してください。同じ申し込みは、二重になりません。</li><li><b>受付番号が出ないとき</b><br />主催者に電話してください。{telLink ? <><br />{telLink}</> : null}</li></ul></Fold>
     <p className="mb-8 mt-6 text-center text-[1.0625rem] font-bold text-slate-700">問い合わせ：{config.contact || '大会主催者へご確認ください'}</p>
   </div></main>;

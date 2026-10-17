@@ -335,7 +335,7 @@ test('r1-140: robots(noindex)・空のアイコン・全ブロックの X-Robots
   assert.match(layout, /robots: \{ index: false, follow: false \}/);
   assert.match(layout, /icons: \{ icon: 'data:,' \}/);
   const blocks = HEADERS.split(/\n(?=\/)/).filter((b) => b.trim());
-  assert.ok(blocks.length >= 6);
+  assert.ok(blocks.length >= 5, 'private/・entry・live・setup・apply（古い google-setup の分は、公開しないので無い）');
   for (const b of blocks) assert.match(b, /X-Robots-Tag: noindex, nofollow/, b.split('\n')[0]);
 });
 

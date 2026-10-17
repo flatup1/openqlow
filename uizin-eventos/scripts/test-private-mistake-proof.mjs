@@ -1166,7 +1166,7 @@ scenario('PRIVATE-C', 'PRIVATE', 'making the match cards wrongly', async (vp) =>
   await mistake({ id: 'C02', screen: SCR, vp: V, op: '赤・青コーナーの選手を選ぶ', what: '赤と同じ選手を青にも選ぼうとする', risk: 'P1', guard: '「もう片方に選択中」で選べなくなる。選べないわけを書く' }, page, async () => {
     await page.locator('#bout-0-red').selectOption('F01');
     const dis = await page.locator('#bout-0-blue option[value="F01"]').evaluate((o) => ({ disabled: o.disabled, text: o.textContent }));
-    check(dis.disabled && /もう片方|選択中/.test(dis.text), 'C02: the same fighter cannot be chosen in the other corner and the option says why (' + short(dis.text, 50) + ')');
+    check(dis.disabled && /もう片方|選択中|コーナーで選んでいます/.test(dis.text), 'C02: the same fighter cannot be chosen in the other corner and the option says why (' + short(dis.text, 50) + ')');
     await page.locator('#bout-0-blue').evaluate((s) => { s.value = 'F01'; s.dispatchEvent(new Event('change', { bubbles: true })); }); await settle(300);
     const v = await page.evaluate(() => [document.querySelector('#bout-0-red').value, document.querySelector('#bout-0-blue').value]);
     if (v[0] === 'F01' && v[1] === 'F01') {
@@ -1468,7 +1468,7 @@ scenario('PRIVATE-F', 'PRIVATE', 'adding or fixing one fighter, photos, danger b
     const bt = await box.innerText();
     check(/架空赤選手/.test(bt) && /第1試合/.test(bt), 'M12: the box names the fighter and the bout that loses a corner (' + short(bt, 120) + ')');
     check(await box.locator('.tos-danger').count() >= 1, 'M12: the loss is written in red');
-    await colourAudit(page, 'private delete-fighter box ' + V, { markers: 0 }); // 確認の箱が開いている：赤い箱が主役。黄色は出さない
+    await colourAudit(page, 'private delete-fighter box ' + V, { markers: 1, markerText: /やめる/ }); // 確認の箱が開いている：赤い箱が主役。黄色は、安全な「やめる」に1つだけ（迷ったら「やめる」）
     check(await page.evaluate(() => /^やめる/.test(document.activeElement?.innerText.trim() || '')), 'M12: focus is on やめる (not the dangerous button)');
     const danger = box.getByRole('button', { name: /消す/ });
     check(/消す|もどせません/.test(await danger.innerText()), 'M12: the red button names what happens (' + short(await danger.innerText(), 30) + ')');
@@ -1528,10 +1528,10 @@ scenario('PRIVATE-G', 'PRIVATE', 'new event, other pages, the colour language at
     check(page.url() === urlNow || (await idbGet(page, id)) !== null, 'N01: the current event was not destroyed');
     return 'no box; url now ' + short(page.url(), 80);
   });
-  await mistake({ id: 'N02', screen: SCR, vp: V, op: '「申し込みページをつくる画面へ →」', what: '保存していない内容があるのに、別の画面へのリンクを押す', risk: 'P1', guard: '保存していない内容があるときは、画面を離れる前に「このページを離れますか」が出る' }, page, async () => {
+  await mistake({ id: 'N02', screen: SCR, vp: V, op: '「選手の受付をつくる画面へ →」', what: '保存していない内容があるのに、別の画面へのリンクを押す', risk: 'P1', guard: '保存していない内容があるときは、画面を離れる前に「このページを離れますか」が出る' }, page, async () => {
     await page.locator('#field-venue').fill('未保存の会場2'); await settle(200);
     page.__dlg.log.length = 0; page.__dlg.mode = 'dismiss';
-    await page.getByRole('link', { name: /申し込みページをつくる画面へ/ }).first().click().catch(() => {}); await settle(800);
+    await page.getByRole('link', { name: /選手の受付をつくる画面へ/ }).first().click().catch(() => {}); await settle(800);
     const left = /\/private\/setup\//.test(page.url());
     check(!left ? true : page.__dlg.log.some((d) => d.type === 'beforeunload') || (await idbGet(page, id)).venue === '未保存の会場2', 'N02: it asked first, or the venue was kept');
     check((await val(page, '#field-venue').catch(() => '未保存の会場2')) === '未保存の会場2' || left, 'N02: the typed venue is still there when staying');
@@ -1627,7 +1627,7 @@ scenario('LIVE-A', 'LIVE', 'tapping the wrong thing during the matches', async (
     check((await curNo(page)) !== '4', 'L01: it never runs past the last bout');
     return 'now 第' + (await curNo(page)) + '試合';
   });
-  await mistake({ id: 'L02', screen: LSCR, vp: V, op: '「← 前の試合」「次の試合 →」', what: '最後の試合で「次の試合」を押す／最初の試合で「前の試合」を押す', risk: 'P1', guard: '押せない方は灰色＋「🔒 いちばん最後です」。黄色は「一覧」に移る' }, page, async () => {
+  await mistake({ id: 'L02', screen: LSCR, vp: V, op: '「← 前の試合」「次の試合 →」', what: '最後の試合で「次の試合」を押す／最初の試合で「前の試合」を押す', risk: 'P1', guard: '押せない方は灰色＋「🔒 いちばん最後です」。押すものが無いので黄色は出さず、理由を言葉で書く' }, page, async () => {
     await settle(1100);
     if ((await curNo(page)) !== '3') { for (let i = 0; i < 3 && (await curNo(page)) !== '3'; i++) { await settle(1100); await nextLive(page).click({ force: true }).catch(() => {}); await settle(700); } }
     check((await curNo(page)) === '3', 'L02: on the last bout');
@@ -1636,8 +1636,8 @@ scenario('LIVE-A', 'LIVE', 'tapping the wrong thing during the matches', async (
     await nextLive(page).click({ force: true }).catch(() => {}); await settle(400);
     check((await curNo(page)) === '3' && (await storedBout(page, id)) === 2, 'L02: pressing it changes nothing');
     const m = await markerOf(page);
-    check(m.length === 1 && /一覧/.test(m[0]), 'L02: the one yellow marker moves to 一覧 (' + short(m[0] || 'none', 50) + ')', true);
-    await colourAudit(page, 'live last bout ' + V);
+    check(m.length === 0 && /最後|進める試合は、もうありません/.test(await text(page)), 'L02: the last bout has nothing left to press, so there is no yellow marker (it would ping-pong between 一覧 and 1試合ずつ), and the page says why (' + short(m[0] || 'none', 50) + ')', true);
+    await colourAudit(page, 'live last bout ' + V, { markers: 0 });
     return 'locked; marker: ' + short(m[0] || 'none', 60);
   });
   await mistake({ id: 'L03', screen: LSCR, vp: V, op: '「元にもどす」', what: 'まちがえて進めたので、もどす', risk: 'P1', guard: '「元にもどす」が大きく出る。押すと前の試合に戻り、保存される' }, page, async () => {

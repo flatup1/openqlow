@@ -214,11 +214,14 @@ await scenario('P3', 'Back after sending: message, timer, new request id, reset'
   await page.getByLabel('選手名 必須', { exact: true }).fill('架空選手改');
   await page.getByLabel('ジム名 必須', { exact: true }).click();
   const t = await bodyText(page);
-  check(!!(await page.getByRole('button', { name: 'この内容で送る', exact: true }).count()), 'P3 after a change the button is 「この内容で送る」');
+  check(!!(await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).count()) && !(await page.getByRole('button', { name: 'この内容で送る', exact: true }).count()), 'P3 after a change the button is 「入力内容を確認する →」 (the read-over screen comes first, r2-11)');
   check(/受付番号が出なかった方は、直して送って大丈夫です/.test(t) && /受付番号が出た方は、もう申し込み済みです/.test(t), 'P3 the note separates 出なかった方 (may correct) from 出た方 (already applied)');
   check(!/別の人の申し込みになります|変えないでください|この新しい内容で送る/.test(t), 'P3 the old "do not change / another person" wording is gone');
   check(!!(await page.getByRole('button', { name: '別の人を申し込む（入力を消して、最初から）', exact: true }).count()), 'P3 the 「別の人を申し込む」 button is there');
-  await page.getByRole('button', { name: 'この内容で送る', exact: true }).click();
+  await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).click();
+  await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 5000 });
+  check(ctx.__posts.length === 2, 'P3 r2-11: pressing 「入力内容を確認する →」 after a change sends NOTHING; the review screen opens first (' + ctx.__posts.length + ' posts)');
+  await sendBtn(page).click();
   await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
   check(ctx.__posts.length === 3 && ctx.__posts[2].get('requestId') && ctx.__posts[2].get('requestId') !== firstId && ctx.__posts[2].get('name') === '架空選手改', 'P3 changed content is sent with a NEW request id');
   await page.goBack({ waitUntil: 'commit' });
@@ -396,7 +399,7 @@ await scenario('P10', 'offline message clears when back online', [PHONE], async 
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await settle(300);
   const t = await bodyText(page);
-  check(!/失敗：電波がありません/.test(t), 'P10 back online: the old red line is gone (' + short((await redLines(page)).join('|'), 80) + ')');
+  check(!/送れません：電波がありません/.test(t), 'P10 back online: the old red line is gone (' + short((await redLines(page)).join('|'), 80) + ')');
   await ctx.close();
 });
 
@@ -509,6 +512,330 @@ await scenario('P14', 'focus ring on checkbox / summary; dialog returns focus', 
   check((await page.getByRole('alertdialog').count()) === 0, 'P14 Escape closes the dialog even when the focus is not inside it');
   check(await page.evaluate(() => document.activeElement && document.activeElement.id === 'f-gym'), 'P14 after closing, the focus is back in the field it came from');
   check((await val(page, '#f-gym')) === '架空ジム', 'P14 nothing typed was lost');
+  await ctx.close();
+});
+
+/* ═══════════════════════════ ROUND 2 (fix-apply-r2) ═══════════════════════════ */
+
+/* ───────────────────────── P15 r2-1 / r2-4 / r2-132: the class hint is right, and it sits ABOVE the two cards ───────────────────────── */
+await scenario('P15', 'class hint: no wrong Aクラス for 週3-4回, and the hint is above the cards', [SMALL, PHONE, DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({}, DEFAULT_CLASS_SETTINGS));
+  const rec = page.getByLabel('戦績 必須', { exact: true });
+  const hint = async () => (await page.locator('#f-fighterClass-live').innerText()).replace(/\s+/g, ' ');
+  for (const [text, want] of [['週3-4回練習しています。試合は初めてです', 'Bクラス'], ['空手3-4年', null], ['空手歴3-4年・初試合', 'Bクラス'], ['小学5-6年生', null], ['10-12歳', null], ['初試合（目標3勝）', null], ['初心者', 'Bクラス'], ['特になし', 'Bクラス']]) {
+    await rec.fill(text); await rec.blur(); await settle(80);
+    const h = await hint();
+    check(!/Aクラスです/.test(h), 'P15 ' + JSON.stringify(text) + ' never suggests Aクラス (' + short(h, 60) + ')');
+    if (want) check(h.includes('戦績からは、' + want + 'です'), 'P15 ' + JSON.stringify(text) + ' -> ' + want + ' (' + short(h, 60) + ')');
+    else check(!h.includes('戦績からは、'), 'P15 ' + JSON.stringify(text) + ' -> no suggestion (' + short(h, 60) + ')');
+  }
+  // the condition words a parent copies are still read when they decide the class; the ones that do not decide give no hint
+  for (const [text, want] of [['3勝以上', 'Aクラス'], ['2勝以下', 'Bクラス'], ['5勝以下', null], ['3勝を目指します', null]]) {
+    await rec.fill(text); await rec.blur(); await settle(80);
+    const h = await hint();
+    if (want) check(h.includes('戦績からは、' + want + 'です'), 'P15 ' + JSON.stringify(text) + ' -> ' + want + ' (' + short(h, 60) + ')');
+    else check(!h.includes('戦績からは、'), 'P15 ' + JSON.stringify(text) + ' -> no suggestion (' + short(h, 60) + ')');
+  }
+  // the yellow hint and the red line are above the first card; the red line shows when the choice differs
+  await rec.fill('5勝2敗'); await rec.blur(); await settle(80);
+  await page.locator('#f-fighterClass input[value=lower]').check({ force: true }); await settle(120);
+  const pos = await page.evaluate(() => {
+    const y = (e) => (e ? e.getBoundingClientRect().top + window.scrollY : null);
+    const cardEl = document.querySelector('#f-fighterClass label');
+    const yellow = [...document.querySelectorAll('#f-fighterClass-live .tos-caution')][0];
+    const red = [...document.querySelectorAll('#f-fighterClass-live .tos-error')][0];
+    return { card: y(cardEl), yellow: y(yellow), red: y(red), yellowText: yellow && yellow.innerText, redText: red && red.innerText };
+  });
+  check(pos.yellow !== null && pos.yellow < pos.card, 'P15 the yellow hint is above the first card (' + pos.yellow + ' < ' + pos.card + ')');
+  check(pos.red !== null && pos.red < pos.card && /戦績と合っていますか/.test(pos.redText || ''), 'P15 the red 戦績と合っていますか line is above the first card');
+  // the review screen has the button to pick the class again, next to the red line
+  await fillAll(page, { over: { '戦績 必須': '5勝2敗' } });
+  await page.locator('#f-fighterClass input[value=lower]').check({ force: true });
+  await reviewBtn(page).click();
+  await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor();
+  const again = page.getByRole('button', { name: 'クラスを選び直す', exact: true });
+  check((await again.count()) === 1, 'P15 the review screen has 「クラスを選び直す」 beside the red line');
+  await again.click(); await settle(300);
+  check(await page.evaluate(() => !document.querySelector('[aria-label="送る前の確認"]') && !!document.activeElement && (document.activeElement.id === 'f-fighterClass' || !!document.activeElement.closest('#f-fighterClass'))), 'P15 「クラスを選び直す」 goes back to the class box and focuses it');
+  const seen = await page.evaluate(() => { const r = document.getElementById('f-fighterClass-live').getBoundingClientRect(); const bar = document.getElementById('apply-msg'); return { top: r.top, vh: window.innerHeight, bar: bar ? bar.getBoundingClientRect().bottom : 0 }; });
+  check(seen.top >= seen.bar - 1 && seen.top < seen.vh - 60, 'P15 the class hint starts on screen, under the message bar (' + JSON.stringify(seen) + ')');
+  await ctx.close();
+});
+
+/* ───────────────────────── P16 r2-2: invisible characters ───────────────────────── */
+await scenario('P16', 'invisible characters pasted with a value are removed', [PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({ music: true }));
+  const fillBlur = async (sel, v) => { await page.locator(sel).fill(v); await page.locator(sel).blur(); await settle(120); };
+  await fillBlur('#f-contactPhone', '‪090-1234-5678‬');
+  check((await val(page, '#f-contactPhone')) === '09012345678' && !(await redLines(page)).some((x) => /電話/.test(x)), 'P16 phone with U+202A/U+202C -> 09012345678, no red');
+  await fillBlur('#f-contactPhone', '​09012345678');
+  check((await val(page, '#f-contactPhone')) === '09012345678' && !(await redLines(page)).some((x) => /電話/.test(x)), 'P16 phone with a zero-width space -> clean, no red');
+  await fillBlur('#f-contactEmail', '‪a@b.com‬');
+  check((await val(page, '#f-contactEmail')) === 'a@b.com' && !(await redLines(page)).some((x) => /メール|日本語/.test(x)), 'P16 e-mail with U+202A/U+202C -> a@b.com, no "日本語は使えません"');
+  await fillBlur('#f-height', '​170');
+  check((await val(page, '#f-height')) === '170' && !(await redLines(page)).some((x) => /数字だけ/.test(x)), 'P16 height with a zero-width space -> 170, no red');
+  await fillBlur('#f-weight', '‪60‬');
+  check((await val(page, '#f-weight')) === '60', 'P16 weight with bidi marks -> 60');
+  await fillBlur('#f-musicUrl', '​https://music.apple.com/jp/x');
+  check((await val(page, '#f-musicUrl')) === 'https://music.apple.com/jp/x' && !(await redLines(page)).some((x) => /Apple Music/.test(x)), 'P16 music link with a zero-width space is cleaned');
+  // a gym / name made only of zero-width spaces is EMPTY: the red "まだです" line, and nothing is sent
+  await fillAll(page, { skip: ['ジム名 必須', '選手名 必須'], over: {} });
+  await page.locator('#f-musicUrl').fill('https://music.apple.com/jp/x');
+  await page.locator('#f-gym').fill('​'); await page.locator('#f-name').fill('​​');
+  await reviewBtn(page).click(); await settle(300);
+  const red = (await redLines(page)).join(' | ');
+  check(/ジム名がまだです/.test(red) && /選手名がまだです/.test(red), 'P16 a gym / name of only U+200B counts as empty (' + short(red, 120) + ')');
+  check(ctx.__posts.length === 0 && (await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'P16 and the review screen does not open');
+  await page.locator('#f-gym').fill('​架空ジム'); await page.locator('#f-name').fill('架空選手​');
+  await reviewBtn(page).click();
+  await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 5000 });
+  await sendBtn(page).click();
+  await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+  const post = ctx.__posts[0];
+  check(post && post.get('gym') === '架空ジム' && post.get('name') === '架空選手' && post.get('contactPhone') === '09012345678', 'P16 what is posted has no invisible characters (' + (post && [post.get('gym'), post.get('name'), post.get('contactPhone')].map((x) => JSON.stringify(x)).join(' ')) + ')');
+  await ctx.close();
+});
+
+/* ───────────────────────── P17 r2-3 / r2-13: reopening the link after a send ───────────────────────── */
+await scenario('P17', 'reopen after a send: yellow, both branches, no green', [PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({}));
+  await fillAll(page);
+  await reviewBtn(page).click();
+  await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor();
+  check(/戻ると、入れた文字と写真が消えていることがあります/.test(await bodyText(page)), 'P17 the review screen says that going back may clear the form');
+  await sendBtn(page).click();
+  await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+  const again = await openApply(ctx, hashFor({}));
+  const t = await bodyText(again);
+  check(/さっき、申し込みを送りました。/.test(t), 'P17 the banner is there');
+  check(/受付番号の画面が出た方：申し込み済みです。同じ人を、もう一度送らないでください。/.test(t), 'P17 branch 1: receipt number appeared -> done, do not send again');
+  check(/「送れませんでした」と出た方、何も出なかった方：入れた文字と写真は、消えています。最初から入れ直して、送ってください。/.test(t), 'P17 branch 2: failed -> typing is cleared, fill in again and send');
+  const banner = await again.evaluate(() => { const e = [...document.querySelectorAll('.tos-caution')].find((x) => /さっき、申し込みを送りました/.test(x.innerText)); const okOne = [...document.querySelectorAll('.tos-ok')].some((x) => /さっき/.test(x.innerText)); return { yellow: !!e, green: okOne }; });
+  check(banner.yellow && !banner.green, 'P17 the banner is a yellow caution, not a green ✓');
+  check((await again.getByRole('button', { name: '別の選手を申し込む', exact: false }).count()) === 0 && !/別の選手を申し込む/.test(t), 'P17 the old name 「別の選手を申し込む」 is gone');
+  await again.getByLabel('ジム名 必須', { exact: true }).fill('入力は消えない');
+  await again.getByRole('button', { name: 'この表示を消す', exact: true }).click(); await settle(150);
+  check(!/さっき、申し込みを送りました/.test(await bodyText(again)), 'P17 「この表示を消す」 hides the banner');
+  check((await val(again, '#f-gym')) === '入力は消えない', 'P17 and it does NOT clear the form (that is 「別の人を申し込む」 only)');
+  await ctx.close();
+});
+
+/* ───────────────────────── P18 r2-5 / r2-6 / r2-7 / r2-8 / r2-80: messages for phone, e-mail, music link ───────────────────────── */
+await scenario('P18', 'phone / e-mail / link messages say what to DO and catch impossible values', [PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({ music: true }));
+  const red = async (sel, v) => { await page.locator(sel).fill(v); await page.locator(sel).blur(); await settle(150); return (await redLines(page)).join(' | '); };
+  let r = await red('#f-contactPhone', '09012345678(母)');
+  check(/消してください/.test(r) && !/消します/.test(r), 'P18 phone with text: asks the parent to delete (no false promise 消します) (' + short(r, 90) + ')');
+  r = await red('#f-contactPhone', '0800-123-456');
+  check(/主催者がかけても、本人につながりません/.test(r) && !/電話がつながりません/.test(r), 'P18 free-dial: the real reason is told (' + short(r, 90) + ')');
+  r = await red('#f-contactPhone', '00-1234-5678');
+  check(/「00」で始まる番号は、使えません/.test(r) && (await greenLines(page)).length === 0, 'P18 00-1234-5678 -> red, and NO green 自動で直しました (' + short(r, 70) + ')');
+  r = await red('#f-contactPhone', '01234567890');
+  check(/11けたの番号は、携帯電話/.test(r), 'P18 01234567890 -> red (' + short(r, 70) + ')');
+  for (const ok of ['09012345678', '03-1234-5678', '０８０－１２３４－５６７８']) { r = await red('#f-contactPhone', ok); check(!/電話番号は|けた|番号/.test(r), 'P18 ' + ok + ' is accepted (' + short(r, 60) + ')'); }
+  for (const bad of ['<a@b.com>', '(a@b.com)', 'a@b.c', 'a@b..com', 'a@-b.com']) { r = await red('#f-contactEmail', bad); check(/メールアドレス/.test(r), 'P18 e-mail ' + bad + ' -> red (' + short(r, 60) + ')'); }
+  for (const ok of ['a@b.com', 'taro..hanako@docomo.ne.jp', 'x.@ezweb.ne.jp']) { r = await red('#f-contactEmail', ok); check(!/メールアドレス/.test(r), 'P18 e-mail ' + ok + ' is accepted (' + short(r, 60) + ')'); }
+  r = await red('#f-musicUrl', 'ＨＴＴＰＳ：／／ｍｕｓｉｃ．ａｐｐｌｅ．ｃｏｍ／ｊｐ／Album');
+  check(!/Apple Music/.test(r) && (await val(page, '#f-musicUrl')) === 'https://music.apple.com/jp/Album', 'P18 upper-case / full-width scheme and host -> lower case, no red; the path keeps its case (' + (await val(page, '#f-musicUrl')) + ')');
+  r = await red('#f-musicUrl', 'Https://Youtu.be/AbC');
+  check(!/YouTube/.test(r) && (await val(page, '#f-musicUrl')) === 'https://youtu.be/AbC', 'P18 Https://Youtu.be/AbC -> https://youtu.be/AbC');
+  for (const sel of ['#f-musicUrl', '#f-contactEmail', '#f-contactPhone']) {
+    const a = await page.locator(sel).evaluate((e) => ({ c: e.getAttribute('autocapitalize'), k: e.getAttribute('autocorrect'), s: e.getAttribute('spellcheck') }));
+    check(a.c === 'none' && a.k === 'off' && a.s === 'false', 'P18 ' + sel + ' has autocapitalize none / autocorrect off / spellcheck false (' + JSON.stringify(a) + ')');
+  }
+  await ctx.close();
+});
+
+/* ───────────────────────── P19 r2-10: offline on the review screen ───────────────────────── */
+await scenario('P19', 'offline: no yellow frame on a locked button, honest message', [SMALL, PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({}));
+  await fillAll(page);
+  await reviewBtn(page).click();
+  await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor();
+  check((await nextMarks(page)).length === 1, 'P19 online review: exactly one 👉 (' + (await nextMarks(page)).join('|') + ')');
+  await ctx.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await settle(250);
+  check((await nextMarks(page)).length === 0, 'P19 offline: NO yellow 👉 次はここ (the button is grey and locked) (' + (await nextMarks(page)).join('|') + ')');
+  check(/🔒\s*電波がありません/.test(await bodyText(page)), 'P19 offline: the grey 🔒 reason is printed');
+  await sendBtn(page).click({ force: true }).catch(() => {});
+  await settle(250);
+  const t = await bodyText(page);
+  check(/送れません：電波がありません。まだ送っていません。電波のある場所で、もう一度押してください。/.test(t) && !/失敗：/.test(t), 'P19 tapping it says 送れません… まだ送っていません (not 失敗)');
+  check(ctx.__posts.length === 0, 'P19 nothing was posted');
+  await ctx.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settle(250);
+  check((await nextMarks(page)).length === 1, 'P19 back online: the yellow 👉 is back');
+  await ctx.close();
+});
+
+/* ───────────────────────── P20 r2-11: after Back + a change, the read-over screen is not skipped ───────────────────────── */
+await scenario('P20', 'bfcache: a changed form goes through the review screen', [PHONE], async (vp) => {
+  const ctx = await newCtx(vp, bfBrowser);
+  const page = await ctx.newPage();
+  await page.goto(base + '/apply/' + hashFor({}));
+  await page.getByLabel('ジム名 必須', { exact: true }).waitFor({ timeout: 15000 });
+  await fillAll(page);
+  await reviewBtn(page).click();
+  await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor();
+  await sendBtn(page).click();
+  await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+  await page.goBack({ waitUntil: 'commit' });
+  await page.getByText('受付番号の画面が出ましたか').first().waitFor({ timeout: 8000 });
+  // change the PHONE (the thing the review screen exists to double-check)
+  await page.locator('#f-contactPhone').fill('08099998888'); await page.locator('#f-gym').click();
+  const label = (await page.locator('#f-submit').innerText()).trim();
+  check(label === '入力内容を確認する →', 'P20 after a change the main button is 「入力内容を確認する →」 (' + label + ')');
+  const n0 = ctx.__posts.length;
+  await page.locator('#f-submit').click(); await settle(500);
+  check(ctx.__posts.length === n0, 'P20 pressing it does NOT post (' + ctx.__posts.length + ' vs ' + n0 + ')');
+  check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 1, 'P20 the review screen with the new phone opens');
+  check(/08099998888/.test(await bodyText(page)), 'P20 the new phone is on that screen');
+  await sendBtn(page).click();
+  await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+  const a = ctx.__posts[0].get('requestId'), b = ctx.__posts[ctx.__posts.length - 1].get('requestId');
+  check(ctx.__posts.length === n0 + 1 && a !== b && ctx.__posts[ctx.__posts.length - 1].get('contactPhone') === '08099998888', 'P20 then it posts once, with a NEW request id and the new phone');
+  await ctx.close();
+});
+
+/* ───────────────────────── P21 r2-12 / r2-14 / r2-15 / r2-16 / r2-93: wording and sizes ───────────────────────── */
+await scenario('P21', 'photo error, weight hint, gym hint, map link, 使い道', [PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({ venueUrl: 'https://maps.app.goo.gl/abc' }));
+  const fieldText = async (id) => (await page.locator('#' + id).innerText()).replace(/\s+/g, ' ');
+  const weightBox = await page.locator('#f-weight').evaluate((e) => e.closest('[class*="relative"]').innerText.replace(/\s+/g, ' '));
+  check((weightBox.match(/試合に出る体重/g) || []).length === 1, 'P21 the weight field says it once (' + short(weightBox, 100) + ')');
+  check(/試合に出る体重（kg）です。わからない時は、今の体重を入れてください。/.test(weightBox), 'P21 the one weight sentence includes 「わからない時は、今の体重」');
+  const gymBox = await page.locator('#f-gym').evaluate((e) => e.closest('[class*="relative"]').innerText.replace(/\s+/g, ' '));
+  check(/通っていない時は「無所属」と入れてください/.test(gymBox), 'P21 the gym field says what to write with no gym (' + short(gymBox, 100) + ')');
+  const link = page.locator('a', { hasText: '架空体育館' });
+  const box = await link.boundingBox();
+  check(box && box.height >= 44, 'P21 the map link is at least 44px tall (' + (box && box.height) + ')');
+  await fillAll(page, { photo: false });
+  await reviewBtn(page).click(); await settle(300);
+  const photoBox = await page.locator('#f-photo-box').innerText();
+  check(/上の「📷 写真をえらぶ（撮る・アルバムから）」を押してください。/.test(photoBox) && !/下の「/.test(photoBox), 'P21 the photo error names the exact button and says 上 (' + short(photoBox, 120) + ')');
+  check(/📷 写真をえらぶ（撮る・アルバムから）/.test(photoBox), 'P21 and that button exists with exactly that name');
+  const badge = (await nextMarks(page)).join(' | ');
+  check(/写真をえらぶ/.test(badge) && !/写真を選ぶ/.test(badge), 'P21 the yellow badge says えらぶ (' + badge + ')');
+  const t = await bodyText(page);
+  check(/下の「使い道」と「困ったとき」も、読んでください/.test(t), 'P21 the sentence names 「使い道」');
+  check((await page.locator('#privacy-fold summary').innerText()).includes('使い道'), 'P21 and a fold really is titled 使い道');
+  await ctx.close();
+});
+
+/* ───────────────────────── P22 r2-17: keyboard focus after 「とじる」 ───────────────────────── */
+await scenario('P22', 'closing the red bar keeps the keyboard in the form', [DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({}));
+  await reviewBtn(page).click(); await settle(400);
+  const close = page.getByRole('button', { name: 'とじる', exact: true });
+  check((await close.count()) === 1, 'P22 the red bar has 「とじる」');
+  await close.focus(); await page.keyboard.press('Enter'); await settle(250);
+  const where = await page.evaluate(() => { const a = document.activeElement; return { tag: a && a.tagName, id: a && a.id }; });
+  check(where.tag !== 'BODY' && /^f-/.test(where.id), 'P22 after Enter on 「とじる」 the focus is in the first field with a problem (' + JSON.stringify(where) + ')');
+  check((await close.count()) === 0, 'P22 and the bar is closed');
+  await ctx.close();
+});
+
+/* ───────────────────────── P23 r2-104: forced colors (Windows High Contrast) ───────────────────────── */
+await scenario('P23', 'forced-colors: a focused text field has a visible outline', [DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({ music: true, comment: 'optional' }));
+  await page.emulateMedia({ forcedColors: 'active' });
+  for (const sel of ['#f-name', '#f-contactEmail', '#f-comment', '#f-musicUrl']) {
+    await page.locator(sel).focus(); await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab'); await settle(60);
+    const o = await page.locator(sel).evaluate((e) => { const c = getComputedStyle(e); return { style: c.outlineStyle, w: parseFloat(c.outlineWidth) }; });
+    check(o.style !== 'none' && o.w >= 3, 'P23 ' + sel + ' shows an outline in forced-colors (' + JSON.stringify(o) + ')');
+  }
+  await ctx.close();
+});
+
+/* ───────────────────────── P24 r2-115 / r2-122: static title, dvh, no hydration error on a browser without randomUUID ───────────────────────── */
+await scenario('P24', 'static title of /apply/, min-height rule order, old-browser /private/ without a React error', [PHONE], async (vp) => {
+  const html = await (await fetch(base + '/apply/')).text();
+  check(/<title>大会の申し込み<\/title>/.test(html), 'P24 /apply/ static HTML has the title 大会の申し込み (' + short((html.match(/<title>[^<]*<\/title>/) || [''])[0], 60) + ')');
+  check(/name="description" content="選手の申し込みページです。"/.test(html), 'P24 and a Japanese description');
+  check(/name="robots" content="noindex/.test(html), 'P24 and noindex is kept');
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({}));
+  const mh = await page.evaluate(() => { const m = document.querySelector('main.tos-apply'); return { px: parseFloat(getComputedStyle(m).minHeight), h: window.innerHeight }; });
+  check(Math.abs(mh.px - mh.h) < 2, 'P24 the apply page min-height follows the visible height (dvh wins over vh) (' + JSON.stringify(mh) + ')');
+  const cls = await page.evaluate(() => document.querySelector('main.tos-apply').className);
+  check(/\bmin-h-screen\b/.test(cls), 'P24 the main keeps min-h-screen (100vh) as the fallback for a browser that cannot read dvh');
+  await ctx.close();
+  const old = await newCtx(vp);
+  const p2 = await old.newPage();
+  const errs = [];
+  p2.on('pageerror', (e) => errs.push(e.message));
+  p2.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  await p2.addInitScript(() => { try { Object.defineProperty(Crypto.prototype, 'randomUUID', { value: undefined, configurable: true }); } catch { /* */ } });
+  await p2.goto(base + '/private/?event=oldx1'); await settle(1500);
+  check(/ブラウザが古い|Chrome/.test(await bodyText(p2)), 'P24 a browser without randomUUID sees the old-browser page');
+  check(!errs.some((m) => /418|425|423|[Hh]ydrat/.test(m)), 'P24 and there is no React hydration error (' + short(errs.join(' | '), 120) + ')');
+  await old.close();
+});
+
+/* ───────────────────────── P25 r2-22: a date pasted with a time is NOT turned into a different date ───────────────────────── */
+await scenario('P25', 'date + time pasted into 開催日 stays as typed and shows the red message', [DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await ctx.newPage();
+  attach(page);
+  await page.goto(base + '/private/?event=date-r2-22');
+  await page.locator('#field-date').waitFor({ timeout: 15000 });
+  for (const typed of ['2027/10/3 10:00', '2027年10月3日(日) 10:00', '2027-10-3 12:30', '2027/1/2 10:00']) {
+    await page.locator('#field-date').fill(typed); await page.locator('#field-date').blur(); await settle(200);
+    const v = await val(page, '#field-date');
+    const t = await bodyText(page);
+    check(v === typed && !/自動で直しました[^\n]*年\d+月\d+日/.test(t), 'P25 "' + typed + '" is not rewritten (' + v + ')');
+  }
+  await page.locator('#field-date').fill('2027年10月3日(日)'); await page.locator('#field-date').blur(); await settle(200);
+  check((await val(page, '#field-date')) === '2027年10月3日', 'P25 a plain date with a weekday is still read');
+  await ctx.close();
+});
+
+/* ───────────────────────── P26 r2-34: keyboard focus after 消す / 直す on the prep screen ───────────────────────── */
+await scenario('P26', 'focus is not lost after removing a bout / a fighter or saving an edit', [DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await ctx.newPage();
+  attach(page);
+  await page.goto(base + '/private/?event=focus-r2-34');
+  await page.locator('#field-title').waitFor({ timeout: 15000 });
+  const HEAD = '管理番号,ジム名,選手名,学年,年齢,身長,体重,戦績・競技歴,試合への意気込み,入場曲URL（Apple Music推奨）';
+  const csv = [HEAD, ...[1, 2, 3, 4].map((n) => `"F${n}","架空${n}ジム","架空${n}選手","中1","13","155","60","初試合","",""`)].join('\n');
+  await page.locator('#pick-file').setInputFiles({ name: 'players.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
+  await settle(900);
+  const active = () => page.evaluate(() => { const a = document.activeElement; return { tag: a && a.tagName, id: (a && a.id) || '' }; });
+  // a bout: add, then remove it with the keyboard
+  await page.getByRole('button', { name: '＋ 試合を追加', exact: true }).click(); await settle(300);
+  const rm = page.getByRole('button', { name: /^この試合を消す/ }).first();
+  if ((await rm.count()) === 0) note('no 「この試合を消す」 button found; the bout check is skipped'); else {
+    await rm.focus(); await page.keyboard.press('Enter'); await settle(500);
+    const a = await active();
+    check(a.tag !== 'BODY', 'P26 after removing a bout the focus is not on <body> (' + JSON.stringify(a) + ')');
+  }
+  // a fighter: 消す -> ✕ 消す（もどせません）
+  const del = page.getByRole('button', { name: '消す 架空4選手', exact: true });
+  await del.scrollIntoViewIfNeeded().catch(() => {});
+  if ((await del.count()) === 0) { const fold = page.locator('summary', { hasText: '選手の一覧' }); if (await fold.count()) await fold.first().click(); await settle(200); }
+  await del.focus(); await page.keyboard.press('Enter'); await settle(300);
+  await page.getByRole('button', { name: '✕ 消す（もどせません）', exact: true }).focus(); await page.keyboard.press('Enter'); await settle(500);
+  const b = await active();
+  check(b.id === 'fighter-note', 'P26 after removing a fighter the focus is on the green result line (' + JSON.stringify(b) + ')');
+  // an edit: 直す -> change weight -> この内容で直す
+  const edit = page.getByRole('button', { name: '直す 架空3選手', exact: true });
+  await edit.focus(); await page.keyboard.press('Enter'); await settle(400);
+  const w = page.locator('[id^="edit-"][id$="-weight"]').first();
+  await w.fill('61'); await w.blur();
+  await page.getByRole('button', { name: 'この内容で直す', exact: true }).focus(); await page.keyboard.press('Enter'); await settle(500);
+  const c = await active();
+  check(/^edit-note-/.test(c.id), 'P26 after 「この内容で直す」 the focus is on the "直しました" line (' + JSON.stringify(c) + ')');
   await ctx.close();
 });
 

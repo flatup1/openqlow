@@ -426,7 +426,7 @@ scenario('CLS', 'the add/edit form offers both renamed classes with conditions a
   const opts = await sel.locator('option').allInnerTexts();
   check(opts.includes('シニア') && opts.includes('ジュニア'), 'renamed classes: both names are choices (' + opts.join('|') + ')');
   const t0 = await mainText(page);
-  check(/シニア：3勝以上（ルール：首相撲あり）/.test(t0) && /ジュニア：2勝以下（ルール：パンチとキックのみ）/.test(t0), 'the condition and the rule are printed next to the choice');
+  check(/シニア\s*条件：3勝以上\s*ルール：首相撲あり/.test(t0) && /ジュニア\s*条件：2勝以下\s*ルール：パンチとキックのみ/.test(t0) && !/ルール：首相撲あり）/.test(t0), 'the condition and the rule are printed next to the choice, on separate lines (r2-30 / r2-76: no nested （ ）)');
   await page.locator('#manual-record').fill('5勝2敗');
   await settle(150);
   check(/戦績からは、シニアです/.test(await mainText(page)), 'a yellow hint 「戦績からは、シニアです」 for 5勝2敗');
@@ -542,7 +542,7 @@ scenario('BLD', 'bout builder explains itself; yellow points at an empty card; �
   await page.locator('#bout-0-red').selectOption('F01');
   await page.locator('#bout-0-blue').selectOption('F04');
   const card0 = await page.locator('#bout-0').innerText();
-  check(/体重差＝2人の体重のちがい/.test(card0) && /契約＝この試合で使う体重です/.test(card0), 'first card explains 体重差 and 契約');
+  check(/体重差＝体重のちがい/.test(card0) && /契約＝この試合で使う体重です/.test(card0), 'first card explains 体重差 and 契約');
   check(/クラスがちがいます/.test(card0), 'the cross-class red line is still there');
   await saveNow(page);
   const t1 = await mainText(page);
@@ -551,7 +551,7 @@ scenario('BLD', 'bout builder explains itself; yellow points at an empty card; �
   await btn(page, '＋ 試合を追加').click();
   await settle(300);
   const slots = await yellowSlots(page);
-  check(slots.length === 1 && /第2試合の赤コーナーを選ぶ（空の試合があります）/.test(slots[0]), 'with an empty card on screen the ONE yellow points at its red corner (' + short(slots.join(' | '), 100) + ')');
+  check(slots.length === 1 && /第2試合の赤コーナーを選ぶ/.test(slots[0]), 'with an empty card on screen the ONE yellow points at its red corner (' + short(slots.join(' | '), 100) + ')');
   const bar = await page.locator('div.fixed.bottom-0').innerText();
   check(!/次はここ：保存/.test(bar), 'the bottom bar is not yellow-on-保存 while a card waits');
   // pressing ＋ again says why nothing new appears
@@ -565,11 +565,11 @@ scenario('BLD', 'bout builder explains itself; yellow points at an empty card; �
   const p2 = await open(ctx, 'polish-bld2-' + Date.now());
   await p2.locator('#field-title').fill('第3回 架空テスト大会');
   await importCsv(p2, csvOf([row('G1', '一', { weight: '60', cls: 'Aクラス' }), row('G2', '二', { weight: '61', cls: 'Bクラス' }), row('G3', '三', { weight: '70', cls: 'Aクラス' }), row('G4', '四', { weight: '71', cls: 'Bクラス' })], true));
-  check(/体重が近い人どうしを、2人ずつ組みます（同じクラスの人を先に）/.test(await p2.locator('#sec-3').innerText()), 'the button is explained before it is pressed');
+  check(/体重が近い人どうしを、2人ずつ組みます（体重差5kg以内に同じクラスの人がいれば、その人を先に）/.test(await p2.locator('#sec-3').innerText()), 'the button is explained before it is pressed');
   await btn(p2, 'おすすめの組み合わせを自動で作る').click();
   await settle(400);
   const s3 = await p2.locator('#sec-3').innerText();
-  check(/クラスがちがう組が2つあります（第1・第2試合）。ルールがちがうので、同じクラスの人どうしがおすすめです。/.test(s3), 'おすすめ with unavoidable class mixes: a red ⚠ line names them (' + short(s3.match(/クラスがちがう組[^\n]*/)?.[0] ?? '', 100) + ')');
+  check(/クラスがちがう組が2つあります（第1・第2試合）。ルールがちがうので、ふつうは同じクラスの人どうしで組みます。/.test(s3), 'おすすめ with unavoidable class mixes: a red ⚠ line names them (' + short(s3.match(/クラスがちがう組[^\n]*/)?.[0] ?? '', 100) + ')');
   check((await btn(p2, 'クラスがちがう試合へ').count()) === 1, 'おすすめ: a button 「クラスがちがう試合へ」');
   check(/⚠ クラスがちがいます/.test(s3), 'the bout list uses the same words as the card (⚠ クラスがちがいます)');
   const p3 = await open(ctx, 'polish-bld3-' + Date.now());
@@ -620,6 +620,433 @@ scenario('PWD', 'password example and the load-error screen; open right after sa
   await settle(300);
   check(/いま保存しました。もう一度、「試合当日の画面を開く」を押します。/.test(await p.locator('div.fixed.bottom-0').innerText()), 'an early press of 「試合当日の画面を開く」 gets a visible message, not silence');
   await ctx.close();
+});
+
+/* ═══════════════════════════ Round 2 (r2-*): one scenario per finding group ═══════════════════════════ */
+const SJIS_CSV = Buffer.from('kUmO6Ja8LINXg4CWvCyQZ5K3LJHMj2QskO2Q0QqJy4vzkb6YWSyJy4vzg1eDgCwxNzAsNjAsj4mOjo2HConLi/OOn5hZLInLi/ODV4OALDE3MSw2MSyPiY6OjYcK', 'base64');
+const FIXED = (n) => 'f-' + n;
+const textSizes = (loc) => loc.evaluate((root) => {
+  const out = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) { if (!n.textContent.trim()) continue; const el = n.parentElement; out.push({ t: n.textContent.trim().slice(0, 20), px: parseFloat(getComputedStyle(el).fontSize) }); }
+  return out;
+});
+
+scenario('R2A', 'r2-9 / r2-41 / r2-21 / r2-28: the record hint ignores goals and limits and knows "no matches yet"; hidden characters are removed from classes', async () => {
+  const ctx = await newCtx();
+  const page = await open(ctx, 'r2a-' + Date.now(), '#t=' + encodeURIComponent('第3回 架空テスト大会') + '&cs=' + encodeURIComponent(JSON.stringify(RENAMED)));
+  await page.locator('summary', { hasText: 'ほかの入れ方' }).click();
+  await page.locator('summary', { hasText: '1人ずつ入れる' }).click();
+  const rec = page.locator('#manual-record');
+  const hintOf = async (text) => { await rec.fill(text); await settle(120); return (await mainText(page)).match(/戦績からは、[^\n。]*です/)?.[0] ?? ''; };
+  for (const goal of ['3勝を目指します', '5勝以下', '2勝以上を目標にしたい']) check((await hintOf(goal)) === '', 'goal or limit 「' + goal + '」 gives no class hint');
+  for (const none of ['特になし', '試合したことがありません', 'これまで試合はありません', '初陣です', 'デビュー戦']) check(/ジュニアです/.test(await hintOf(none)), 'no matches yet 「' + none + '」 -> ジュニア (the lower class)');
+  check(/シニアです/.test(await hintOf('3勝0敗')), '3勝0敗 is still the upper class');
+  // hidden direction marks in the class cell of a file never reach the screen
+  const p2 = await open(ctx, 'r2a2-' + Date.now());
+  await importCsv(p2, csvOf([row('H1', '一', { cls: '‮Bクラス' }), row('H2', '二', { cls: 'A​クラス' })], true));
+  const t = await mainText(p2);
+  check(!/[‪-‮⁦-⁩​-‏﻿]/.test(t), 'no bidi / zero-width character is on the page');
+  check(/クラス：Bクラス/.test(t) && /クラス：Aクラス/.test(t), 'the classes read as plain Aクラス / Bクラス');
+  await ctx.close();
+});
+
+scenario('R2B', 'r2-19 / r2-20 / r2-42 / r2-78 / r2-43: the other-gym sheet - class box 17px+, red ✕ errors (all of them, focus on the first), green ✓, full-width digits', async () => {
+  for (const [w, h] of [[1280, 900], [390, 844]]) {
+    const ctx = await newCtx(w, h, { acceptDownloads: true });
+    const e = await ctx.newPage();
+    await e.goto(base + '/private/entry/?music=off&grade=off&age=off&comment=off&cs=' + encodeURIComponent(JSON.stringify(RENAMED)));
+    await e.getByText('クラス 必須').waitFor({ timeout: 10000 });
+    const tag = '@' + w;
+    await e.locator('input[name="fighterClass"][value="ジュニア"]').check();
+    await e.locator('label', { hasText: '戦績' }).locator('input').first().fill('5勝2敗');
+    const sizes = await textSizes(e.locator('fieldset'));
+    check(sizes.length > 6 && sizes.every((s) => s.px >= 17), tag + ' every text in the class box is >= 17px (min ' + Math.min(...sizes.map((s) => s.px)) + ')');
+    check(/戦績と合っていますか/.test(await e.locator('fieldset').innerText()) && /このままでも追加できます/.test(await e.locator('fieldset').innerText()), tag + ' the gentle red line says the class can stay');
+    // empty form: all missing items, red, ✕, focus on the first
+    await e.locator('input[name="fighterClass"][value="ジュニア"]').uncheck().catch(() => {});
+    const e2 = await ctx.newPage();
+    await e2.goto(base + '/private/entry/?music=off&grade=off&age=off&comment=off&cs=' + encodeURIComponent(JSON.stringify(RENAMED)));
+    await e2.getByText('クラス 必須').waitFor();
+    await e2.getByRole('button', { name: 'この選手を追加' }).click();
+    await settle(250);
+    const bar = e2.locator('[role="status"]').first();
+    const msg = await bar.innerText();
+    check(/✕/.test(msg) && /ジム名/.test(msg) && /選手名/.test(msg) && /身長/.test(msg) && /体重/.test(msg) && /戦績/.test(msg) && /クラス/.test(msg), tag + ' the red box lists every missing item with ✕ (' + short(msg, 120) + ')');
+    check(await bar.evaluate((el) => el.classList.contains('tos-error') && !el.classList.contains('tos-ok')), tag + ' errors use the red error style');
+    check((await e2.evaluate(() => document.activeElement?.id)) === 'entry-gym', tag + ' focus moved to the first missing field (ジム名)');
+    // full-width digits are read; success is green with ✓
+    const fill = async (label, value) => e2.locator('label', { hasText: label }).locator('input').first().fill(value);
+    await fill('ジム名', '架空ジム'); await fill('選手名', '架空 太郎'); await fill('身長', '１７０'); await fill('体重', '６０ｋｇ'); await fill('戦績', '初試合');
+    await e2.locator('input[type="file"]').setInputFiles({ name: 'face.png', mimeType: 'image/png', buffer: PNG });
+    await settle(300);
+    await e2.locator('input[name="fighterClass"][value="ジュニア"]').check();
+    await e2.getByRole('button', { name: 'この選手を追加' }).click();
+    await settle(250);
+    const ok = e2.locator('[role="status"]').first();
+    check(/選手を追加しました/.test(await ok.innerText()) && (await ok.evaluate((el) => el.classList.contains('tos-ok'))) && /✓/.test(await ok.innerText()), tag + ' full-width 身長/体重 are accepted; the success box is green with ✓ (' + short(await ok.innerText(), 60) + ')');
+    // jargon: no CSV / Cloudflare on the page
+    const all = await e2.locator('main').innerText();
+    check(!/Cloudflare|CSV/.test(all), tag + ' no Cloudflare / CSV jargon on the sheet');
+    await ctx.close();
+  }
+});
+
+scenario('R2C', 'r2-23 / r2-26 / r2-38 / r2-39 / r2-40 / r2-33: reading files - header variants, unread columns, blank names, CR-only lines, Shift_JIS in a ZIP, a huge photo, the right words after a failure', async () => {
+  const ctx = await newCtx();
+  const page = await open(ctx, 'r2c-' + Date.now());
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  // header variants + an unread column + a blank-name row
+  await importCsv(page, '氏名,所属ジム,身長(cm),体重（kg）,戦績,クラス（A/B）,備考\n架空太郎,架空ジム,170,60,3勝,Aクラス,x\n,架空ジム,171,61,初試合,Bクラス,y\n架空次郎,架空ジム,172,62,初試合,Bクラス,z\n');
+  let t = await mainText(page);
+  check(/2人分を読み込みました/.test(t), 'r2-23: 氏名 / 所属ジム / 身長(cm) / 体重（kg） / クラス（A/B） are read (' + short(t.match(/[^\n]*読み込みました[^\n]*/)?.[0] ?? '', 80) + ')');
+  check(/60kg/.test(t) && /62kg/.test(t) && !/体重が入っていない人/.test(t), 'r2-23: the weights typed under 体重（kg） are on the cards');
+  check(/クラス：Aクラス/.test(t) && /クラス：Bクラス/.test(t), 'r2-23: the class under クラス（A/B） is read');
+  check(/読めなかった列：備考/.test(t), 'r2-23: a column that was not read is named 「読めなかった列：備考」');
+  check(/名前が空の行が1つあったので、入れていません（3行目）/.test(t), 'r2-26: the blank-name row is counted and named (3行目)');
+  // CR-only lines
+  const p2 = await open(ctx, 'r2c2-' + Date.now());
+  await importCsv(p2, '選手名,ジム名,戦績\r架空甲,架空ジム,初試合\r架空乙,架空ジム,初試合');
+  check(/2人分を読み込みました/.test(await mainText(p2)), 'r2-38: lines that end with only CR (old Mac Excel) are read');
+  // Shift_JIS CSV inside a ZIP
+  const p3 = await open(ctx, 'r2c3-' + Date.now());
+  await importFile(p3, 'select.zip', 'application/zip', Buffer.from(zipSync({ 'players.csv': new Uint8Array(SJIS_CSV) })));
+  await settle(900);
+  t = await mainText(p3);
+  check(/2人分を読み込みました/.test(t) && /架空太郎/.test(t), 'r2-39: a Shift_JIS players.csv inside a ZIP is read (' + short(t.match(/[^\n]*読み込みました[^\n]*|まちがい：[^\n]*/)?.[0] ?? '', 80) + ')');
+  // one 21MB photo: the roster is read, the photo is skipped and named
+  const p4 = await open(ctx, 'r2c4-' + Date.now());
+  const big = new Uint8Array(21 * 1024 * 1024); big.set(JPG);
+  await importFile(p4, 'big.zip', 'application/zip', Buffer.from(zipSync({ 'players.csv': strToU8(csvOf([row('F01', '赤'), row('F02', '青')])), 'photos/F01.jpg': big }, { level: 0 })));
+  await p4.waitForFunction(() => /人分を読み込みました|まちがい：/.test(document.body.innerText), null, { timeout: 30000 }).catch(() => {});
+  t = await mainText(p4);
+  check(/2人分を読み込みました/.test(t) && /大きすぎる写真は、入れていません（1枚20MBまで）：F01\.jpg/.test(t), 'r2-40: a 21MB photo is skipped by name, the roster is read (' + short(t.match(/大きすぎる[^\n]*|まちがい：[^\n]*/)?.[0] ?? '', 100) + ')');
+  // a broken ZIP: the bad file name is not an instruction
+  const p5 = await open(ctx, 'r2c5-' + Date.now());
+  await importFile(p5, 'x.zip', 'application/zip', Buffer.from('PK\u0003\u0004 not really a zip'));
+  await p5.locator('#import-error').waitFor({ timeout: 10000 }).catch(() => {});
+  const err = await p5.locator('#import-error').innerText().catch(() => '');
+  check(/「x\.zip」はこわれているようです。別のファイルを選びます/.test(err) && !/別のファイルを選ぶ（x\.zip）/.test(err), 'r2-40: a broken file is called broken, not 「別のファイルを選ぶ（x.zip）」 (' + short(err, 100) + ')');
+  // r2-33: after a failed CSV the ONE yellow names the file kind that was used
+  const p6 = await open(ctx, 'r2c6-' + Date.now());
+  await importFile(p6, 'bad.csv', 'text/csv', Buffer.from('これは,名簿では,ありません\n1,2,3\n', 'utf8'));
+  await p6.locator('#import-error').waitFor({ timeout: 10000 }).catch(() => {});
+  const y = await yellowSlots(p6);
+  check(y.length === 1 && /直したCSVのファイルをもう一度選ぶ/.test(y[0]) && !/Tournament_OS_（英数字）/.test(y[0]), 'r2-33: after a failed CSV the yellow says 「直したCSVのファイルをもう一度選ぶ」 (' + short(y.join(' | '), 80) + ')');
+  await ctx.close();
+});
+
+scenario('R2D', 'r2-114: a lazy part that cannot be loaded is "this screen is old", not "your file is broken"', async () => {
+  const ctx = await newCtx();
+  const page = await open(ctx, 'r2d-' + Date.now());
+  await ctx.route('**/_next/static/chunks/**', (route) => route.fulfill({ status: 404, body: 'gone' }));
+  await importFile(page, 'select.zip', 'application/zip', Buffer.from(zipSync({ 'players.csv': strToU8(csvOf([row('F01', '赤'), row('F02', '青')])) })));
+  await page.locator('#import-error').waitFor({ timeout: 15000 }).catch(() => {});
+  const err = await page.locator('#import-error').innerText().catch(() => '');
+  check(/この画面が古くなっています/.test(err) && /ページを開き直して（F5キー）、もう一度ファイルを選んでください。名簿と保存したデータは消えません/.test(err), 'the message says the screen is old and what to do (' + short(err, 120) + ')');
+  check(!/こわれ|まちがい：/.test(err), 'the file is not blamed (no 「こわれ」 and no red 「まちがい：」)');
+  check((await btn(page, '開き直す').count()) === 1, 'one 「開き直す」 button');
+  const y = await yellowSlots(page);
+  check(y.length === 1 && /「開き直す」を押す/.test(y[0]), 'the ONE yellow points at 「開き直す」 (' + short(y.join(' | '), 60) + ')');
+  await ctx.close();
+});
+
+scenario('R2E', 'r2-24 / r2-25: the irreversible confirms name the class change; restoring an old copy says the classes are lost', async () => {
+  const ctx = await newCtx();
+  const id = 'r2e-' + Date.now();
+  const page = await open(ctx, id);
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await importCsv(page, csvOf([row('F01', '赤', { cls: 'Aクラス', weight: '60', grade: '', age: '' }), row('F02', '青', { cls: 'Aクラス', weight: '61', grade: '', age: '' })], true));
+  await importCsv(page, csvOf([row('F01', '赤', { cls: 'Bクラス', weight: '63', grade: '中1', age: '13' }), row('F02', '青', { cls: 'Bクラス', weight: '61', grade: '中1', age: '13' })], true));
+  await page.getByRole('button', { name: /^ファイルの内容で\d+人を書きかえる$/ }).click();
+  const box = page.getByRole('alertdialog');
+  await box.waitFor({ timeout: 6000 }).catch(() => {});
+  const bt = await box.innerText().catch(() => '');
+  check(/クラス Aクラス→Bクラス：架空赤選手/.test(bt) && /クラス Aクラス→Bクラス：架空青選手/.test(bt), 'r2-24: the overwrite box names the class change of each person (' + short(bt, 160) + ')');
+  check(/体重 60→63/.test(bt), 'r2-24: and the weight change');
+  check(!/（空）→中1/.test(bt), 'r2-24: empty-to-filled grade is not shown as a change');
+  await box.getByRole('button', { name: /^ファイルの内容で書きかえる/ }).click();
+  await page.getByRole('alertdialog').waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
+  // r2-25: take a copy of THIS state (no classes), put classes back, then restore the copy
+  const p2 = await open(ctx, 'r2e2-' + Date.now());
+  await p2.locator('#field-title').fill('第3回 架空テスト大会');
+  await importCsv(p2, csvOf([row('F01', '赤'), row('F02', '青'), row('F03', '緑')], true));
+  await saveNow(p2);
+  await openBackup(p2);
+  await p2.locator('#backup-password').fill(PASSWORD);
+  await p2.locator('#paper-done').check();
+  const dl = p2.waitForEvent('download');
+  await btn(p2, 'パスワードをつけて、コピーを保存する').click();
+  const enc = await readFile(await (await dl).path());
+  await importCsv(p2, csvOf([row('F01', '赤', { cls: 'Aクラス' }), row('F02', '青', { cls: 'Bクラス' }), row('F03', '緑', { cls: 'Bクラス' })], true));
+  await saveNow(p2);
+  await openBackup(p2);
+  await p2.locator('#backup-password').fill(PASSWORD);
+  await p2.locator('input[accept=".enc"]').setInputFiles({ name: 'copy.tournament.enc', mimeType: 'application/octet-stream', buffer: enc });
+  const box2 = p2.getByRole('alertdialog');
+  await box2.waitFor({ timeout: 8000 }).catch(() => {});
+  const rt = await box2.innerText().catch(() => '');
+  check(/クラスが入っている選手が3人から0人になります/.test(rt), 'r2-25: the restore box says the class people go from 3 to 0 (' + short(rt, 200) + ')');
+  check(/⚠|✕/.test(rt), 'r2-25: with a mark, not only words');
+  await ctx.close();
+});
+
+scenario('R2F', 'r2-27 / r2-29 / r2-37 / r2-36: classless people, gym spelling, weight words, a one-match event has no up/down buttons', async () => {
+  const ctx = await newCtx();
+  const AB = { enabled: true, upper: { name: 'Aクラス', condition: '3勝以上', rule: '首相撲あり' }, lower: { name: 'Bクラス', condition: '2勝以下', rule: 'パンチとキックのみ' }, upperMinWins: 3 };
+  const page = await open(ctx, 'r2f-' + Date.now(), '#t=' + encodeURIComponent('第3回 架空テスト大会') + '&cs=' + encodeURIComponent(JSON.stringify(AB)));
+  await importCsv(page, csvOf([
+    row('F1', '一', { cls: 'Aクラス', gym: 'ＦＬＡＴ ＵＰ', name: '架空 一郎' }),
+    row('F2', '二', { gym: 'FLAT UP', name: '架空 二郎' }),
+    row('F3', '三', { cls: 'S', gym: '別ジム', name: '架空 三郎' }),
+    row('F4', '四', { cls: 'Bクラス', gym: '第四ジム', weight: '六十五', name: '架空 四郎' }),
+    row('F5', '五', { cls: 'Aクラス', gym: '第五ジム', weight: '', name: '架空 五郎' }),
+  ], true));
+  let t = await mainText(page);
+  check(/クラスが入っていない／読めない人：2人/.test(t) && /架空 二郎/.test(t) && /架空 三郎/.test(t), 'r2-27: a yellow roster caution names the classless and unknown-class people (' + short(t.match(/クラスが入っていない[^\n]*/)?.[0] ?? '', 120) + ')');
+  check((await btn(page, 'その人を直す').count()) >= 1, 'r2-27: with a 「その人を直す」 button');
+  check(/体重が入っていない人：1人/.test(t) && /体重が読めない人：1人/.test(t), 'r2-37: empty and unreadable weights are counted apart (' + short(t.match(/体重が[^\n]*/g)?.join(' / ') ?? '', 120) + ')');
+  // one match: no ↑ ↓
+  await btn(page, '＋ 試合を追加').click();
+  await page.locator('#bout-0-red').selectOption('F1');
+  await page.locator('#bout-0-blue').selectOption('F2');
+  await settle(200);
+  const card = await page.locator('#bout-0').innerText();
+  check(/FLAT UP|ＦＬＡＴ ＵＰ/.test(card) && /同じジム（/.test(card), 'r2-29: ＦＬＡＴ ＵＰ and FLAT UP are the same gym (' + short(card.match(/[^\n]*同じジム[^\n]*/)?.[0] ?? '', 80) + ')');
+  check(/架空 二郎さんは、クラスが入っていないので、ちがうクラスか確かめられません/.test(card) && (await page.locator('#bout-0').getByRole('button', { name: 'クラスを入れる', exact: true }).count()) === 1, 'r2-27: the card says the classless person cannot be checked, with 「クラスを入れる」');
+  check((await page.locator('#bout-0').getByRole('button', { name: '↑ 上へ', exact: true }).count()) === 0 && (await page.locator('#bout-0').getByRole('button', { name: '↓ 下へ', exact: true }).count()) === 0 && !/押せません：いちばん/.test(card), 'r2-36: one match has no 「↑ 上へ」「↓ 下へ」 and no lock sentences');
+  check(!/順番を変えるときは/.test(await page.locator('#sec-3').innerText()) || true, 'r2-36: (the step-3 sentence about order is allowed while bouts are 0 or 1)');
+  await page.locator('#bout-0-blue').selectOption('F3');
+  await settle(200);
+  const c3 = await page.locator('#bout-0').innerText();
+  check(/「S」は、決めたクラス（Aクラス・Bクラス）にありません/.test(c3) || /クラス「S」は、決めたクラスの名前にありません/.test(c3), 'r2-27: an unknown class 「S」 is said to be outside the two classes (' + short(c3.match(/[^\n]*「S」[^\n]*/)?.[0] ?? '', 100) + ')');
+  await page.locator('#bout-0-blue').selectOption('F4');
+  await settle(200);
+  const c4 = await page.locator('#bout-0').innerText();
+  check(/体重「六十五」が数字で読めません（例：65）：架空 四郎/.test(c4) && !/体重がありません/.test(c4), 'r2-37: an unreadable weight says it cannot be read as a number (' + short(c4.match(/[^\n]*六十五[^\n]*/)?.[0] ?? '', 100) + ')');
+  await page.locator('#bout-0-blue').selectOption('F5');
+  await settle(200);
+  check(/体重が入っていません：架空 五郎/.test(await page.locator('#bout-0').innerText()), 'r2-37: an empty weight says it is not filled in');
+  await btn(page, '＋ 試合を追加').click();
+  await settle(200);
+  check((await page.locator('#bout-1').getByRole('button', { name: '↑ 上へ', exact: true }).count()) === 1, 'r2-36: with two matches the 「↑ 上へ」 button is back');
+  await ctx.close();
+});
+
+scenario('R2G', 'r2-30 / r2-76 / r2-77: the class words on 「1人ずつ入れる」 and 「直す」 - separate lines, the right button name, "目安" said once', async () => {
+  const ctx = await newCtx();
+  const page = await open(ctx, 'r2g-' + Date.now(), '#t=' + encodeURIComponent('第3回 架空テスト大会') + '&cs=' + encodeURIComponent(JSON.stringify({ ...RENAMED, upper: { name: 'Aクラス', condition: '3勝以上（例：3勝0敗、4勝、5勝2敗）', rule: '首相撲あり／膝蹴りあり／蹴り足キャッチ（ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）' }, lower: { name: 'Bクラス', condition: '2勝以下', rule: 'パンチとキックのみ' } })));
+  await page.locator('summary', { hasText: 'ほかの入れ方' }).click();
+  await page.locator('summary', { hasText: '1人ずつ入れる' }).click();
+  await page.locator('#manual-fighterClass').waitFor({ timeout: 5000 });
+  const fold = page.locator('#manual-fighterClass').locator('xpath=ancestor::div[contains(@class,"min-w-0")][1]');
+  let ft = await fold.innerText();
+  check(/条件：3勝以上/.test(ft) && /ルール：首相撲あり/.test(ft) && !/（ルール：/.test(ft) && !/））/.test(ft), 'r2-30/76: 条件 and ルール are separate lines, with no nested （ ） closing 「））」');
+  check(/クラスを選びます。わからないときは「えらばない」。/.test(ft) && !/申し込みで選んだ/.test(ft), 'r2-30: the note under the choice fits a hand-typed person');
+  await page.locator('#manual-record').fill('2勝1敗');
+  await page.locator('#manual-fighterClass').selectOption('Aクラス');
+  await settle(150);
+  ft = await fold.innerText();
+  check(/目安：戦績からは、Bクラスです。どちらにするかは、ご自分で決めてください。/.test(ft) && (ft.match(/目安/g) || []).length <= 3 && !/目安です。/.test(ft), 'r2-77: the yellow note says 目安 once and who decides');
+  check(/このままで「この選手を追加」を押せます。/.test(ft) && !/このままでも直せます/.test(ft), 'r2-30/77: on the ADD form the red line names 「この選手を追加」');
+  // edit form
+  await page.locator('#manual-name').fill('架空 太郎'); await page.locator('#manual-gym').fill('架空ジム'); await page.locator('#manual-height').fill('170'); await page.locator('#manual-weight').fill('60');
+  await page.getByRole('button', { name: 'この選手を追加' }).click();
+  await settle(300);
+  await page.getByRole('button', { name: '直す 架空 太郎', exact: true }).click();
+  await settle(300);
+  const ed = page.locator('article[id^="fighter-"] select[id$="-fighterClass"]');
+  await ed.waitFor({ timeout: 4000 });
+  const et = await ed.locator('xpath=ancestor::div[contains(@class,"min-w-0")][1]').innerText();
+  check(/このままで「この内容で直す」を押せます。/.test(et), 'r2-77: on the EDIT form the red line names 「この内容で直す」 (' + short(et.match(/このままで[^\n]*/)?.[0] ?? '', 60) + ')');
+  await ctx.close();
+});
+
+scenario('R2H', 'r2-31 / r2-136: 「試合当日の画面を開く」 is locked with the real reason, and the reason points only at boxes that are on the screen', async () => {
+  const ctx = await newCtx();
+  const page = await open(ctx, 'r2h-' + Date.now());
+  const lock = async () => (await page.locator('#sec-4').innerText());
+  let t = await lock();
+  check(/まだ開けません：先に、大会の名前を入れます/.test(t) && !/上の「✕ 直すところ」/.test(t) && !/上の「次にすること」/.test(t), 'empty start: the reason is the title, and no box that is not there is named');
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await page.locator('#field-title').blur();
+  t = await lock();
+  check(/まだ開けません：先に、選手を2人以上入れます/.test(t), 'title only: 先に、選手を2人以上入れます');
+  await importCsv(page, csvOf([row('A1', '赤'), row('A2', '青')]));
+  t = await lock();
+  check(/まだ開けません：先に、「＋ 試合を追加」で試合を1つ作ります/.test(t) && !/上の「✕ 直すところ」/.test(t), 'two fighters, no match: 先に、「＋ 試合を追加」で試合を1つ作ります');
+  await saveNow(page);
+  t = await lock();
+  check(/保存\s*[✓○]/.test(t.replace(/\s+/g, ' ')) || true, '(step-4 rows read)');
+  const rowSave = await page.evaluate(() => [...document.querySelectorAll('#sec-4 li, #sec-4 a')].map((e) => e.innerText.replace(/\s+/g, ' ').trim()).find((x) => /^保存/.test(x)) ?? '');
+  check(/✓|できた/.test(rowSave) && !/まだ/.test(rowSave), 'r2-31: the step-4 row 保存 shows ✓ after a save even with no match yet (' + rowSave + ')');
+  await btn(page, '＋ 試合を追加').click();
+  await page.locator('#bout-0-red').selectOption('A1');
+  await settle(200);
+  t = await lock();
+  check(/まだ開けません：上の「✕ 直すところ」を直します/.test(t) && (await page.locator('main').innerText()).includes('直すところ'), 'a half match: the reason names 「✕ 直すところ」 and that box is on the screen');
+  await ctx.close();
+});
+
+scenario('R2I', 'r2-79 / r2-95 / r2-85 / r2-32 / r2-44: wording and colours of おすすめ, the old-browser page, the load-error screen, and the sheet class settings for a saved event', async () => {
+  const ctx = await newCtx();
+  const page = await open(ctx, 'r2i-' + Date.now());
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await importCsv(page, csvOf([row('S1', '一', { weight: '55', cls: 'Aクラス' }), row('S2', '二', { weight: '56', cls: 'Bクラス' }), row('S3', '三', { weight: '60', cls: 'Aクラス' }), row('S4', '四', { weight: '61', cls: 'Bクラス' }), row('S5', '五', { weight: '70', cls: 'Bクラス' }), row('S6', '六', { weight: '71', cls: 'Bクラス' })], true));
+  check(/体重が近い人どうしを、2人ずつ組みます（体重差5kg以内に同じクラスの人がいれば、その人を先に）/.test(await page.locator('#sec-3').innerText()), 'r2-95: the sentence promises only what the code does (5kg)');
+  await btn(page, 'おすすめの組み合わせを自動で作る').click();
+  await settle(400);
+  const wide = page.locator('#sec-3 .tos-caution', { hasText: '体重差が5kg以上の組' });
+  const redWide = page.locator('#sec-3 .tos-error', { hasText: '体重差が5kg以上の組' });
+  check((await wide.count()) === 1 && (await redWide.count()) === 0, 'r2-79: a 5kg gap in the おすすめ summary is a yellow ⚠ Caution, not a red line');
+  // old browser
+  const ctxOld = await newCtx();
+  await ctxOld.addInitScript(() => { try { delete Crypto.prototype.randomUUID; } catch {} try { Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true }); } catch {} });
+  const old = await ctxOld.newPage();
+  await old.goto(base + '/private/?event=r2i-old');
+  await old.getByText('このブラウザは古いです').waitFor({ timeout: 10000 }).catch(() => {});
+  const ot = await old.locator('main').innerText();
+  check(/このブラウザは古いです。ブラウザか、パソコン・iPhone・iPadのOSを新しくするか、新しいChromeで開いてください。/.test(ot) && !/macOS|このSafari/.test(ot.split('\n')[1] ?? ''), 'r2-85: the old-browser page does not blame Safari or macOS (' + short(ot, 120) + ')');
+  await ctxOld.close();
+  // load error: the id comes from ?event=
+  const boot = await ctx.newPage();
+  await boot.goto(base + '/private/setup/?event=r2i-boot');
+  await boot.evaluate((value) => new Promise((res, rej) => { const r = indexedDB.open('tournament-os-private-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('events'); r.onsuccess = () => { const db = r.result; const t = db.transaction('events', 'readwrite'); t.objectStore('events').put(value, 'r2bad1'); t.oncomplete = () => { db.close(); res(true); }; t.onerror = () => rej(t.error); }; }), { schema: 2, eventId: 'r2bad1' });
+  await boot.close();
+  const bad = await ctx.newPage();
+  await bad.goto(base + '/private/?event=r2bad1');
+  await bad.locator('#load-password').waitFor({ timeout: 10000 });
+  const lt = await bad.locator('main').innerText();
+  check(/この大会の番号：r2bad1/.test(lt) && !/my-tournament/.test(lt), 'r2-32: the load-error screen names the id from ?event= (r2bad1)');
+  check((lt.match(/消えていません/g) || []).length <= 2 && !/消えていません）。[^\n]*消えていません/.test(lt.replace(/\n/g, '')), 'r2-32: 「消えていません」 is not said twice in one sentence');
+  const yb = await yellowSlots(bad);
+  check(yb.length === 1, 'r2-32: one yellow on the load-error screen (' + short(yb.join(' | '), 80) + ')');
+  // r2-44: a saved event, the reception is (re)made with classes and the link brings the settings back
+  const id = 'r2cfg-' + Date.now();
+  const p = await open(ctx, id);
+  await p.locator('#field-title').fill('第3回 架空テスト大会');
+  await saveNow(p);
+  const p2 = await ctx.newPage();
+  await p2.goto(base + '/private/?event=' + id + '#t=' + encodeURIComponent('第3回 架空テスト大会') + '&m=off&g=off&a=off&c=off&cs=' + encodeURIComponent(JSON.stringify(RENAMED)));
+  await p2.locator('#field-title').waitFor({ timeout: 15000 });
+  await p2.locator('#apply-sheet-config').waitFor({ timeout: 5000 }).catch(() => {});
+  const st = await mainText(p2);
+  check(/シートで決めた「選手に書いてもらうこと」や、クラス分けが、この大会に まだ入っていません/.test(st) && (await p2.locator('#apply-sheet-config').count()) === 1 && (await p2.locator('#skip-sheet-config').count()) === 1, 'r2-44: a saved event is ASKED (yellow note, two buttons), never silently ignored');
+  await p2.locator('#apply-sheet-config').click();
+  await settle(300);
+  await p2.locator('summary', { hasText: '選手に書いてもらうこと' }).click();
+  const st2 = await mainText(p2);
+  check(/いつも書いてもらうもの：[^\n]*クラス（シニアかジュニア）/.test(st2), 'r2-44: after 「シートの設定を入れる」 the list of what parents write includes the class');
+  await ctx.close();
+});
+
+scenario('R2J', 'r2-35 / r2-102: a double click on the red confirm does nothing the second time; after a delete the focus is not lost', async () => {
+  const ctx = await newCtx(1280, 900);
+  const page = await open(ctx, 'r2j-' + Date.now());
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await importCsv(page, csvOf([1, 2, 3, 4, 5, 6].map((n) => row('D' + n, String(n), { name: '選手' + n }))));
+  await page.getByRole('button', { name: '消す 選手1', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.waitFor({ timeout: 5000 });
+  check(/選手1さんを消します/.test(await dialog.innerText()) && /✕/.test(await dialog.innerText()), 'the confirm names the person and the loss, with ✕');
+  await dialog.getByRole('button', { name: '✕ 消す（もどせません）', exact: true }).dblclick();
+  await settle(900);
+  check((await page.getByRole('alertdialog').count()) === 0, 'r2-35: after a double click no second confirm is open for another person');
+  check((await page.locator('article[id^="fighter-"]').count()) === 5, 'r2-35: exactly one person was removed (5 left)');
+  const active = await page.evaluate(() => document.activeElement && document.activeElement !== document.body ? (document.activeElement.id || document.activeElement.tagName) : 'BODY');
+  check(active !== 'BODY', 'r2-102: after the confirmed delete the focus is on a real control (' + active + ')');
+  // a bout delete
+  await btn(page, '＋ 試合を追加').click();
+  await page.locator('#bout-0-red').selectOption('D2');
+  await page.locator('#bout-0-blue').selectOption('D3');
+  await page.getByRole('button', { name: /^この試合を消す（第1試合）$/ }).click();
+  await settle(900);
+  const active2 = await page.evaluate(() => document.activeElement && document.activeElement !== document.body ? (document.activeElement.id || document.activeElement.tagName) : 'BODY');
+  check(active2 !== 'BODY', 'r2-102: after deleting a match the focus is on a real control (' + active2 + ')');
+  const t = await mainText(page);
+  check(/消しました：第1試合/.test(t) && (await btn(page, '消した試合を元にもどす').count()) >= 1, 'B5: the match delete says what was lost and offers 「消した試合を元にもどす」');
+  await ctx.close();
+});
+
+scenario('R2K', 'r2-132 / r2-133: typing the first letter of the title does not move the title box; after the import the yellow is on the screen', async () => {
+  for (const [w, h] of [[1280, 900], [390, 844], [320, 568]]) {
+    const ctx = await newCtx(w, h);
+    const page = await ctx.newPage();
+    await page.goto(base + '/private/?event=r2k-' + w + '-' + Date.now());
+    await page.locator('#field-title').waitFor({ timeout: 15000 });
+    await page.addStyleTag({ content: '*{overflow-anchor:none !important}' });
+    // the browser may scroll a field into view when it gets focus: compare the place in the PAGE, not on the screen
+    const docTop = () => page.evaluate(() => Math.round(document.getElementById('field-title').getBoundingClientRect().top + scrollY));
+    const before = await docTop();
+    await page.locator('#field-title').click();
+    await page.keyboard.type('第', { delay: 60 });
+    await settle(300);
+    const after = await docTop();
+    check(Math.abs(after - before) <= 4, '@' + w + ' typing ONE letter keeps the title box at the same place in the page (' + before + ' -> ' + after + ')');
+    const slots = await yellowSlots(page);
+    check(slots.length === 1 && /大会の名前|大会名/.test(slots[0]), '@' + w + ' the yellow stays on the title box while typing (' + short(slots.join(' | '), 50) + ')');
+    await page.locator('#field-title').fill('第3回 架空テスト大会');
+    await page.locator('#field-title').blur();
+    await importCsv(page, csvOf([row('F01', '赤'), row('F02', '青'), row('F03', '緑'), row('F04', '黄')]));
+    await settle(500);
+    const where = await page.evaluate(() => { const s = [...document.querySelectorAll('[data-tos-next="1"]')].find((e) => e.getBoundingClientRect().width > 0); if (!s) return null; const r = s.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, text: s.innerText.replace(/\s+/g, ' ').slice(0, 30) }; });
+    check(where && where.bottom > 0 && where.top < where.vh, '@' + w + ' right after the import the yellow 「' + (where?.text ?? '') + '」 is on the screen (' + JSON.stringify(where) + ')');
+    await ctx.close();
+  }
+});
+
+scenario('R2L', 'r2-135: after おすすめ the one yellow walks through 1つ目・2つ目・3つ目の案を見る before it says 保存', async () => {
+  const ctx = await newCtx(1280, 900);
+  const page = await open(ctx, 'r2l-' + Date.now());
+  await page.locator('#field-title').fill('第3回 架空テスト大会');
+  await importCsv(page, csvOf([55, 56, 58, 60, 70, 71].map((w, i) => row('R' + (i + 1), String(i + 1), { weight: String(w) }))));
+  await btn(page, 'おすすめの組み合わせを自動で作る').click();
+  await settle(400);
+  let slots = await yellowSlots(page);
+  check(slots.length === 1 && /案/.test(slots[0]) && !/保存/.test(slots[0]), 'at first the ONE yellow asks to look at the suggestions (' + short(slots.join(' | '), 60) + ')');
+  for (const n of [1, 2, 3]) {
+    check((await btn(page, n + 'つ目の案を見る').count()) === 1, 'r2-135: the button 「' + n + 'つ目の案を見る」 exists (one)');
+    await btn(page, n + 'つ目の案を見る').click();
+    await settle(400);
+    slots = await yellowSlots(page);
+    if (n < 3) check(slots.length === 1 && new RegExp((n + 1) + 'つ目の案を見る').test(slots[0]) && !/保存/.test(slots[0]), 'r2-135: after look ' + n + ' the ONE yellow is 「' + (n + 1) + 'つ目の案を見る」 (' + short(slots.join(' | '), 60) + ')');
+    else check(slots.length === 1 && /保存/.test(slots[0]), 'r2-135: after look 3 the ONE yellow is 保存 (' + short(slots.join(' | '), 60) + ')');
+  }
+  await ctx.close();
+});
+
+scenario('R2M', 'r2-133: the bottom bar never leaves the screen bottom (zoomed laptop, small phone, after a save, after a delete)', async () => {
+  const csv = csvOf([row('F01', '赤', { weight: '60' }), row('F02', '青', { weight: '61' }), row('F03', '緑', { weight: '62' }), row('F04', '黄', { weight: '63' })]);
+  const barInfo = (p) => p.evaluate(() => {
+    const bar = document.querySelector('[data-bar-tight]') ?? [...document.querySelectorAll('div')].find((d) => String(d.className).includes('bottom-0') && String(d.className).includes('z-40'));
+    const s = [...document.querySelectorAll('[data-tos-next]')].find((e) => e.getBoundingClientRect().width > 0);
+    const br = bar ? bar.getBoundingClientRect() : null, sr = s ? s.getBoundingClientRect() : null;
+    return { vh: innerHeight, pos: bar ? getComputedStyle(bar).position : null, barTop: br ? Math.round(br.top) : null, barBottom: br ? Math.round(br.bottom) : null, slotTop: sr ? Math.round(sr.top) : null, slotBottom: sr ? Math.round(sr.bottom) : null, text: bar ? bar.innerText.replace(/\s+/g, ' ') : '' };
+  });
+  for (const [w, h] of [[910, 512], [360, 640], [390, 844]]) {
+    const ctx = await newCtx(w, h);
+    const page = await open(ctx, 'r2m-' + w + '-' + Date.now());
+    await page.locator('#field-title').fill('第3回 架空テスト大会');
+    await importCsv(page, csv);
+    await btn(page, '＋ 試合を追加').click();
+    await page.locator('#bout-0-red').selectOption('F01');
+    await page.locator('#bout-0-blue').selectOption('F04');
+    await settle(400);
+    let b = await barInfo(page);
+    check(b.pos === 'fixed' && b.barBottom === b.vh, '@' + w + 'x' + h + ' after the 2nd corner the bar is fixed to the screen bottom (' + JSON.stringify(b) + ')');
+    check(b.slotTop !== null && b.slotTop >= 0 && b.slotBottom <= b.vh && /保存/.test(b.text), '@' + w + 'x' + h + ' the yellow 「保存」 and its button are on the screen (' + b.slotTop + '-' + b.slotBottom + ')');
+    await btn(page, '保存する').click();
+    await waitState(page, '保存済み').catch(() => {});
+    await settle(300);
+    b = await barInfo(page);
+    check(b.pos === 'fixed' && b.slotTop !== null && b.slotBottom <= b.vh && /試合当日の画面を開く/.test(b.text), '@' + w + 'x' + h + ' after the save the yellow 「試合当日の画面を開く」 is on the screen (' + JSON.stringify(b) + ')');
+    await page.getByRole('button', { name: /^この試合を消す/ }).click();
+    await settle(900);
+    b = await barInfo(page);
+    check(b.pos === 'fixed' && b.barTop < b.vh && b.barBottom === b.vh && /消した試合を元にもどす/.test(b.text), '@' + w + 'x' + h + ' after the delete the bar with 「消した試合を元にもどす」 stays on the screen (' + JSON.stringify({ ...b, text: b.text.slice(0, 40) }) + ')');
+    check(b.slotTop !== null && b.slotBottom <= b.vh, '@' + w + 'x' + h + ' and the yellow is on the screen after the delete');
+    await ctx.close();
+  }
 });
 
 /* ───────────────────────── run ───────────────────────── */

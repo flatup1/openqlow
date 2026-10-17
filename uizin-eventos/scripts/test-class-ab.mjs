@@ -295,6 +295,11 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
       // added by the adversarial pass: phrases a parent really writes
       ['2勝以下', 'B'], ['3勝以上', 'A'], ['通算3勝', 'A'], ['プロ戦績3勝0敗', 'A'], ['2戦2勝', 'B'], ['1勝1敗1分け', 'B'], ['0勝3敗', 'B'], ['勝利なし', 'B'], ['2024/3/1 初出場', 'B'], ['10月に初出場', 'B'], ['3勝ち', 'A'], ['２０２５年１０月 ３勝', 'A'],
       ['3連勝', null], ['全勝', null], ['3戦全勝', null], ['3.5勝', null], ['1000勝', null], ['5敗', null], ['2勝1敗とか3勝1敗', null], ['2024/3/1', null], ['3/1', null], ['Aクラス', null],
+      // round 2 (r2-1): a number range with a unit (times a week, years, age) is NOT a win-loss record -> no suggestion or Bクラス, never Aクラス
+      ['週3-4回練習しています。試合は初めてです', 'B'], ['空手歴3-4年・初試合', 'B'], ['空手3-4年', null], ['小学5-6年生', null], ['10-12歳', null], ['キック3-4年', null], ['ジュニア大会3-4回出場', null],
+      // round 2 (r2-132): a zero word together with a win count, or a wish, is not decided; plain beginner phrases are read as Bクラス
+      ['初試合（目標3勝）', null], ['初出場です。3勝したい', null], ['初出場。3勝を目指します', null], ['試合経験なし 3勝は無理', null],
+      ['特になし', 'B'], ['ありません', 'B'], ['試合経験ありません', 'B'], ['出場なし', 'B'], ['戦績:なし', 'B'], ['初戦', 'B'], ['初心者', 'B'], ['デビュー戦', 'B'], ['試合に出たことがない', 'B'], ['ナシ', 'B'], ['0 試合', 'B'],
     ];
     for (const [text, want] of CASES) {
       await rec.fill(text);

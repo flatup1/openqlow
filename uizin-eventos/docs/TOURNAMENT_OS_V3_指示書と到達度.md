@@ -113,7 +113,7 @@
 |---|---|---|
 | 0 | 済 | 対戦カード警告（`c1e9006` に push 済み） |
 | 1 | **作成済み・模擬Googleで検証済み・本物のGoogleは未** | `public/templates/Tournament_OS_Google受付_v3.gs`（build `3.20261004.2`）。旧版は残してある。メニュー5つ／`onOpen` で「設定」タブを自動作成／`doGet?action=ping`（公開してよい項目だけ）／実行者を自動記録／鍵・署名・確認コードなし。`tests/gasV3.test.ts` 16本 |
-| 2 | **作成済み・模擬Googleで検証済み・本物のGoogleは未** | 新画面 `/private/setup/`（3段階・「いまここ n/3」と「次の1つ」・自動確認・自動確認が使えないときの貼り付け確認・読み取った設定の確認表・設定ファイル）。旧 `/private/google-setup/` はそのまま。`core/setupV3.ts`＋`tests/setupV3.test.ts` 12本（Googleのスクリプトの返事を画面側が読むつなぎ目のテストを含む）、ブラウザ試験 `scripts/test-setup-v3-browser.mjs` 56項目（PC・スマホサイズ） |
+| 2 | **作成済み・模擬Googleで検証済み・本物のGoogleは未** | 新画面 `/private/setup/`（3段階・「いまここ n/3」と「次の1つ」・自動確認・自動確認が使えないときの貼り付け確認・読み取った設定の確認表・設定ファイル）。旧 `/private/google-setup/` は、ソースは残すが公開しない（主催者のメールと合言葉をブラウザに残すため。`build-private-pages.sh` の `LEGACY_ROUTES` と `check-private-build.mjs` で止める）。`core/setupV3.ts`＋`tests/setupV3.test.ts` 12本（Googleのスクリプトの返事を画面側が読むつなぎ目のテストを含む）、ブラウザ試験 `scripts/test-setup-v3-browser.mjs` 56項目（PC・スマホサイズ） |
 | 3 | 未 | 本物のGoogleで通す。**最初に確かめること**は下の「要検証」 |
 | 4 | 未 | スマホ・LINE内・Cloudflare公開（承認後） |
 | 5 | 未 | 会長用の手順書 |

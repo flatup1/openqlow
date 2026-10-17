@@ -146,7 +146,8 @@ test('黄色の場所は、状態ごとに1つ。画面のどこかの欄か、�
   assert.deepEqual([markerOf({ dirty: true }).where, markerOf({ dirty: true }).label], ['bar', '保存']);
   assert.equal(markerOf().where, 'bar');
   assert.equal(markerOf().label, '試合当日の画面を開く');
-  assert.equal(markerOf({ opened: true }).where, 'none', '全部終わったら黄色は0個');
+  // r2-156: 開いたあとも、黄色は1つ残す（帯の中。「当日は、開いた画面で試合を進める」）。ここで もう一度押すと、もう1つ開く
+  assert.deepEqual([markerOf({ opened: true }).where, markerOf({ opened: true }).label], ['bar', '当日は、開いた画面で試合を進める']);
 });
 
 test('黄色は、ぶつかり > 確認の箱 > 続きから開く大会 > 直後のつづき > いつもの順番', () => {
@@ -267,7 +268,8 @@ test('取り込みの失敗は、見出しとくわしい文に分かれる（�
   const blocked = importErrorParts(new ImportProblem('blocked'), 'a.csv', ['電話', '電話番号', 'メール', 'メールアドレス']);
   assert.equal(blocked.head, '個人情報の列があります：電話番号、メールアドレス');
   assert.match(blocked.hint, /Googleシートの④で作ったZIP/);
-  assert.match(importErrorParts(new Error('Invalid zip data'), 'こわれ.zip').head, /^ファイルがこわれています。別のファイルを選ぶ/);
+  // r2-40: 悪いファイルの名前を、命令のうしろのかっこに入れない（「別のファイルを選ぶ（x.zip）」は、x.zip を選べと読める）
+  assert.equal(importErrorParts(new Error('Invalid zip data'), 'こわれ.zip').head, '「こわれ.zip」はこわれているようです。別のファイルを選びます');
   assert.match(importErrorParts(new Error('同じ管理番号が2つあります。'), 'd.csv').detail, /同じ選手が2回/);
   for (const error of [new ImportProblem('no-list'), new ImportProblem('empty'), new Error('x')]) assert.ok(!importErrorParts(error, 'f').detail.includes('今の名簿は変えていません'));
 });
@@ -276,8 +278,9 @@ test('保存の失敗の理由・試合の問題・古いコピーの言い方',
   assert.equal(saveReasonShort('quota'), 'パソコンの空きが足りません');
   assert.equal(saveReasonShort('other'), '');
   assert.match(saveReasonText('quota'), /空き/);
-  assert.equal(shortProblem({ side: 'blue', text: '' }, 1), '第2試合の青が空');
-  assert.equal(shortProblem({ side: 'same', text: '' }, 0), '第1試合で同じ人が赤と青');
+  // r2-160: 「青が空」は、子どもに「青い空」と読める。青コーナー と言う
+  assert.equal(shortProblem({ side: 'blue', text: '' }, 1), '第2試合の青コーナーが、まだ入っていません');
+  assert.equal(shortProblem({ side: 'same', text: '' }, 0), '第1試合で、同じ人が赤と青に入っています');
   const day = 86_400_000;
   assert.equal(oldCopyText(1000, 1000 + 3 * day + 5), 'このコピーは3日前のものです');
   assert.equal(oldCopyText(1000, 1000 + day / 2), '');

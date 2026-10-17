@@ -10,6 +10,14 @@
 
 set -euo pipefail
 
+# ここから先は、動かしません（公開の約束を、まもるため）。
+# このコマンドは、古い公開先（uizin-eventos）へ、out/ の全部（古い /admin/ /op/ /mc/ も）を、
+# 確認（check-private-build.mjs）も通さず、コミットしていない状態のまま送ってしまいます。
+# 公開は「npm run deploy:private」だけを使います（確認を通った out-private-pages だけを、tournament-os-v3 へ送る）。
+echo "このコマンドは使いません。公開は「npm run deploy:private」だけを使います。" >&2
+echo "（古い公開先へ、確認なしで全部を送ってしまうため、止めてあります）" >&2
+exit 1
+
 cd "$(cd "$(dirname "$0")/.." && pwd -P)"
 
 BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RESET=$'\033[0m'

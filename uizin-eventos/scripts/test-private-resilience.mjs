@@ -331,10 +331,12 @@ scenario('A', 'new event, half-finished save, close, reopen', async (vp) => {
   check((await page.locator('#sec-2').innerText()).includes('6人 入っています') && (await boutCount(page)) === 2, 'reopen: 6 fighters and 2 bouts come back');
   const bv = await boutValues(page);
   check(bv[0][0] === 'F01' && bv[0][1] === 'F02' && bv[1][0] === 'F03' && bv[1][1] === '', 'reopen: bout picks (including the half-finished one) come back');
-  check((await page.locator('main').innerText()).includes('いま開いている大会：架空ジム交流大会'), 'reopen: top line names the event');
+  // r2-132: 幅760px未満では、「いま開いている大会：」と大会名を別の行に置く（1文字で折り返しが変わらないように）。だから、あいだの改行はゆるす
+  check(/いま開いている大会：\s*架空ジム交流大会/.test(await page.locator('main').innerText()), 'reopen: top line names the event');
   check(!(await page.title()).startsWith('●') && (await stateOf(page)).includes('保存済み'), 'reopen: shows 保存済み, no dot');
   check((await page.locator('nav[aria-label="4つの手順"] [aria-current="step"]').count()) === 1, 'reopen: exactly one 現在地 marker in the step bar');
-  check((await page.locator('main').innerText()).includes('次にすること'), 'reopen: shows 次にすること');
+  // 「次にすること」の箱は、黄色の「👉 次はここ」の1つに まとまった（言葉をそろえた）。いまも、次の仕事の文が出ていることを確かめる
+  check((await page.locator('main').innerText()).includes('👉 次はここ'), 'reopen: shows 👉 次はここ (the next job)');
   await ctx.close();
 });
 
@@ -1034,7 +1036,11 @@ scenario('L', 'keyboard-only main path with visible focus', async (vp) => {
   if (!chooser) await page.locator('#pick-file').setInputFiles({ name: 'players.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV6) });
   if (chooser) await chooser.setFiles({ name: 'players.csv', mimeType: 'text/csv', buffer: Buffer.from(CSV6) });
   await page.getByText('6人分を読み込みました').first().waitFor({ timeout: 8000 }).catch(() => {});
-  check(await tabUntil(page, { text: '＋ 試合を追加' }, 300, log), 'Tab reaches ＋ 試合を追加');
+  // r2-134: 名簿を入れた直後、フォーカスは、もう「＋ 試合を追加」にある（黄色の「次はここ」と同じ所）。そこにいるなら、Tab を押さずに、そのまま Enter を押す
+  await settle(300);
+  const focusOnAdd = await page.evaluate(() => document.activeElement?.id === 'add-bout');
+  if (focusOnAdd) log.push(await page.evaluate(RING));
+  check(focusOnAdd || await tabUntil(page, { text: '＋ 試合を追加' }, 300, log), (focusOnAdd ? 'after the import the keyboard focus is already on ＋ 試合を追加 (r2-134)' : 'Tab reaches ＋ 試合を追加'));
   await page.keyboard.press('Enter');
   await settle(500);
   check(await page.evaluate(() => document.activeElement?.id) === 'bout-0-red', 'after adding a bout, focus moves to the red picker');

@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { LocalTournament } from '../../../core/privateTournament.ts';
 import {
-  EMPTY_LIST_MESSAGE, LIST_PAGE_SIZE, MUSIC_NEW_TAB, NO_MUSIC_DONE, NO_MUSIC_EVENT, boutNumberProblem, buildPageRows, clampPage, filterNote, jumpDoneText, musicLabel, nowModel, openWarning, pageButtonText, pageCount, pageJumpList, pageLabel, pageOfBout,
+  EMPTY_LIST_MESSAGE, LAST_BOUT_LIST_NOTE, LIST_PAGE_SIZE, MUSIC_NEW_TAB, NO_MUSIC_DONE, NO_MUSIC_EVENT, PREP_LINK_NOTE, REOPEN_NOTE, boutNumberProblem, buildPageRows, clampPage, filterNote, jumpDoneText, liveMusicOn, musicLabel, nowModel, openWarning, pageButtonText, pageCount, pageJumpList, pageLabel, pageOfBout,
   pagerState, parseBoutNumber, summarizeMusic, totalLabel,
   type CornerModel, type RowModel,
 } from './listLogic.ts';
-import { Caution, ErrorLine, Hint, NextSlot, cx } from './liveMarks.tsx';
+import { Caution, ErrorLine, Hint, NextSlot, WithBreaks, cx } from './liveMarks.tsx';
 
 /*
  * 赤と青は、色だけでなく「言葉」と「形」でも分ける（白黒の印刷・プロジェクター・色の見分けにくい人のため）:
@@ -48,7 +48,7 @@ function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: b
   const look = LOOK[corner.side];
   const label = corner.label + ' ' + corner.name + (corner.gym ? ' ' + corner.gym : '') + (corner.fighterClass ? ' ' + corner.fighterClass : '');
   return <div role="group" aria-label={label} className={'min-w-0 overflow-hidden rounded-xl border-[3px] bg-white ' + look.border}>
-    <p className={'px-3 py-0.5 text-2xl font-black leading-snug ' + look.band}><span aria-hidden="true">{look.mark} </span>{corner.label}</p>
+    <p className={'live-corner-band px-3 py-0.5 text-2xl font-black leading-snug min-[1600px]:text-[32px] ' + look.band}><span aria-hidden="true">{look.mark} </span>{corner.label}</p>
     <div className="p-2">
       <div className="flex items-start gap-3">
         <Photo corner={corner} />
@@ -58,9 +58,10 @@ function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: b
           {corner.fighterClass ? <p className="mt-0.5"><span className="inline-block rounded-full border-2 border-slate-700 bg-white px-3 text-[17px] font-black text-slate-900 [overflow-wrap:anywhere]">{corner.fighterClass}</span></p> : null}
         </div>
       </div>
-      {!corner.present ? <ErrorLine className="mt-1.5">選手が選ばれていません。準備画面で選ぶ</ErrorLine> : null}
+      {!corner.present ? <ErrorLine className="mt-1.5">選手が選ばれていません。準備画面で選んでください</ErrorLine> : null}
+      {corner.noName ? <ErrorLine className="mt-1.5">名前が入っていません。準備画面で入れてください</ErrorLine> : null}
       {musicEnabled && corner.music !== 'empty' ? <div className="live-list-noprint mt-1.5"><MusicChip corner={corner} /></div> : null}
-      {musicEnabled && corner.music === 'broken' ? <ErrorLine className="live-list-noprint mt-1.5">曲のリンクが使えません。Apple Music か YouTube の https:// だけ使えます。準備画面で直す</ErrorLine> : null}
+      {musicEnabled && corner.music === 'broken' ? <ErrorLine className="live-list-noprint mt-1.5">曲のリンクが使えません。Apple Music か YouTube の https:// だけ使えます。準備画面で直してください</ErrorLine> : null}
     </div>
   </div>;
 }
@@ -73,28 +74,29 @@ function Row({ row, musicEnabled, saving, pressed, failed, retry, flash, onOpen 
   return <li id={'live-list-row-' + row.index} aria-labelledby={titleId} aria-current={row.isCurrent ? 'true' : undefined}
     className={'live-list-row grid gap-1.5 rounded-2xl p-2.5 md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,1fr)] lg:grid-cols-[13rem_minmax(0,1fr)_minmax(0,11rem)_minmax(0,1fr)] ' + frame + (flash ? ' ring-4 ring-emerald-600 ring-offset-2' : '')}>
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 md:col-span-3 lg:col-span-1 lg:flex-col lg:items-start lg:gap-y-2">
-      <h3 id={titleId} className="text-2xl font-black">{row.title}</h3>
+      <h3 id={titleId} tabIndex={-1} className="live-list-focus rounded-lg px-1 text-2xl font-black">{row.title}</h3>
       {row.isCurrent ? <span className="live-list-noprint rounded-full bg-emerald-800 px-3 py-1 text-[17px] font-black text-white"><span aria-hidden="true">▶ </span>いま進行中</span> : null}
       {flash ? <span className="rounded-full border-2 border-emerald-700 bg-emerald-100 px-3 py-1 text-[17px] font-black text-emerald-950"><span aria-hidden="true">👈 </span>ここです</span> : null}
       <NextSlot active={retry && !saving} label="もう一度押す" className="ml-auto max-w-full lg:ml-0">
         <button type="button" aria-disabled={saving || undefined} onClick={() => { if (!saving) onOpen(row.index); }} aria-label={row.openLabel}
           className={'live-list-open live-list-focus live-list-noprint touch-manipulation min-h-[48px] rounded-xl border-2 bg-white px-3 text-[17px] font-black ' + (saving ? 'tos-locked whitespace-normal' : 'whitespace-nowrap') + (row.isCurrent ? ' border-emerald-800 text-emerald-950' : ' border-slate-700 text-slate-900')}>{word}</button>
       </NextSlot>
-      {failed ? <ErrorLine className="live-list-noprint basis-full lg:basis-auto">この行は開けませんでした。もう一度押す</ErrorLine> : null}
+      {failed ? <ErrorLine className="live-list-noprint basis-full lg:basis-auto">この行は開けませんでした。もう一度押してください</ErrorLine> : null}
       {!row.isCurrent && !saving ? <p className="live-list-noprint m-0 basis-full text-[17px] font-bold leading-snug text-slate-900 lg:basis-auto"><span aria-hidden="true">⚠ </span>{openWarning(row.index)}</p> : null}
     </div>
     <Corner corner={row.red} musicEnabled={musicEnabled} />
     <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-3 px-1 text-center md:flex-col md:justify-center md:gap-0">
       <p className="text-[17px] font-black text-slate-600" aria-hidden="true">VS</p>
       <p className="text-[28px] font-black leading-tight [overflow-wrap:anywhere]"><span className="sr-only">契約 </span>{row.contract}</p>
-      {row.noContract ? <ErrorLine className="w-full">体重が入っていません（準備画面で入れる）</ErrorLine> : null}
-      {row.sameFighter ? <ErrorLine className="w-full">まちがい：赤と青が同じ選手です。準備画面で直す</ErrorLine> : null}
-      {row.rule ? <p className="w-full text-[17px] leading-snug text-slate-700 [overflow-wrap:anywhere]">ルール：{row.rule}</p> : null}
+      {row.noContract ? <ErrorLine className="w-full">体重が入っていません（準備画面で入れてください）</ErrorLine> : null}
+      {row.sameFighter ? <ErrorLine className="w-full">まちがい：赤と青が同じ選手です。準備画面で直してください</ErrorLine> : null}
     </div>
     <Corner corner={row.blue} musicEnabled={musicEnabled} />
+    {/* ルールは、2人の下に、横いっぱいの1行で出す（まん中の細い列に入れると、言葉の途中で切れる）。「／」のうしろで折り返す */}
+    {row.rule ? <p className="m-0 text-[18px] font-bold leading-snug text-slate-800 [overflow-wrap:anywhere] md:col-span-3 lg:col-span-4">ルール：<WithBreaks text={row.rule} /></p> : null}
     {/* クラスや「同じ人」の注意は、2人の下に、横いっぱいで出す（まん中の細い列に入れると、1行8文字の細長い箱になる）。紙には出さない */}
-    {row.classMix ? <ErrorLine mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">クラスがちがう試合です。ルールがちがうので、準備画面で組み合わせを確かめる</ErrorLine> : null}
-    {row.samePerson ? <ErrorLine mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">同じ人かもしれません：赤と青が、同じ名前・同じジムです。準備画面で確かめる</ErrorLine> : null}
+    {row.classMix ? <ErrorLine mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">クラスがちがう試合です。ルールがちがうので、準備画面で組み合わせを確かめてください</ErrorLine> : null}
+    {row.samePerson ? <ErrorLine mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">同じ人かもしれません：赤と青が、同じ名前・同じジムです。準備画面で確かめてください</ErrorLine> : null}
   </li>;
 }
 
@@ -136,7 +138,7 @@ function measureSticky(): void {
  */
 export default function ListView({ data, eventId, saving, onOpen, onWantSingle, pressedIndex = null, retryIndex = null }: { data: LocalTournament; eventId: string; saving: boolean; onOpen: (index: number) => void; onWantSingle?: (want: boolean) => void; pressedIndex?: number | null; retryIndex?: number | null }) {
   const total = data.bouts.length;
-  const musicEnabled = data.entryConfig?.music ?? true;
+  const musicEnabled = liveMusicOn(data);
   const summary = summarizeMusic(data, musicEnabled);
   const [onlyMissing, setOnlyMissing] = useState(false);
   const filtered = musicEnabled && onlyMissing && summary.bouts.length > 0 ? summary.bouts : null;
@@ -185,7 +187,8 @@ export default function ListView({ data, eventId, saving, onOpen, onWantSingle, 
     if (!row) return;
     measureSticky();
     row.scrollIntoView({ block: 'start' });
-    if (target.focus) row.querySelector<HTMLElement>('button.live-list-open')?.focus({ preventScroll: true });
+    // 見るだけの移動なので、キーボードの位置は「第N試合」の見出しへ置く。「この試合を開く」のボタンに置くと、続けてもう一度 Enter を押しただけで、いまの試合が変わってしまう
+    if (target.focus) row.querySelector<HTMLElement>('h3')?.focus({ preventScroll: true });
   }, [tick]);
 
   const go = (next: number) => { moved.current = true; setChosen(clampPage(next, count)); setJumpDone(''); setFlash(null); };
@@ -219,7 +222,9 @@ export default function ListView({ data, eventId, saving, onOpen, onWantSingle, 
   const yellowFilter = !retryHere && !!filtered;
   const yellowNow = !retryHere && !filtered && !nowOnPage;
   // ふだんの一覧（いまの試合が見えている）：ここには『次に押すもの』はない。試合を進めるのは「1試合ずつ」の画面なので、黄色は上の「1試合ずつ」ボタンに付く（page.tsx）
-  const wantSingle = !retryHere && !filtered && nowOnPage;
+  // 最後の試合のときは、進める試合がない。「1試合ずつ」へ行く理由がないので、黄色を付けない（1試合ずつの画面と、黄色を押し付け合わない）
+  const atLast = data.currentBout >= total - 1;
+  const wantSingle = !retryHere && !filtered && nowOnPage && !atLast;
   return <section aria-labelledby="live-list-title" className="mt-3">
     <WantSingle want={wantSingle} onChange={onWantSingle} />
     <Caution className="live-list-noprint mb-2">ここは見るだけです。<b>「この試合を開く」</b>を押すと、いまの試合が変わります（そのあと、「第◯試合にもどす」のボタンで戻せます）。</Caution>
@@ -237,7 +242,7 @@ export default function ListView({ data, eventId, saving, onOpen, onWantSingle, 
               </NextSlot>}
         </div>
         {nowOnPage
-          ? <p className="mt-1 text-[17px] font-bold text-emerald-900"><span aria-hidden="true">✓ </span>いまの試合は このページです（見るだけ。試合は変わりません）。試合を進めるときは、上の「1試合ずつ」を押します。</p>
+          ? <p className="mt-1 text-[17px] font-bold text-emerald-900"><span aria-hidden="true">✓ </span>いまの試合は このページです（見るだけ。試合は変わりません）。{atLast ? LAST_BOUT_LIST_NOTE : '試合を進めるときは、上の「1試合ずつ」を押します。'}</p>
           : <p className="mt-1 text-[17px] font-bold text-slate-950"><span aria-hidden="true">⚠ </span>いまの試合は {now.title}（{now.page + 1}ページ目）です</p>}
       </div> : null}
       <nav aria-label="ページの切りかえ" className="live-pager live-list-noprint rounded-2xl border-2 border-slate-400 bg-white p-2 shadow-md">
@@ -267,7 +272,7 @@ export default function ListView({ data, eventId, saving, onOpen, onWantSingle, 
                   </NextSlot>
                 : <button type="button" aria-describedby="live-list-music-summary" onClick={toggleMissing} className="live-list-focus touch-manipulation min-h-[48px] rounded-xl border-2 border-slate-700 bg-white px-4 text-[17px] font-black text-slate-900">曲がない試合だけ見る</button>}
             </div>
-            {filtered ? <p className="m-0 mt-1 text-[17px] font-bold text-slate-950">{filterNote(filtered.length, total)}曲が まだの人が出る試合だけです。</p> : null}
+            {filtered ? <p className="m-0 mt-1 text-[17px] font-bold text-slate-950">{filterNote(filtered.length, total)}曲がまだの人が出る試合だけです。</p> : null}
           </Caution>
         : <div className="tos-ok">
             <p id="live-list-music-summary" className="m-0 text-xl font-black leading-snug">
@@ -304,7 +309,8 @@ export default function ListView({ data, eventId, saving, onOpen, onWantSingle, 
     <div className="live-list-noprint mt-8 grid gap-1 border-t-2 border-slate-300 pt-4">
       <Hint>直しても、いまの試合は変わりません</Hint>
       <a href={'/private/?event=' + encodeURIComponent(eventId)} className="live-list-focus inline-flex min-h-[48px] items-center justify-self-start rounded-xl border-2 border-slate-500 bg-white px-4 text-[17px] font-bold text-slate-800">準備画面へ戻る（選手や試合をなおす）</a>
-      <Hint>準備画面が、もう1つ開きます。前から開いている準備画面は、閉じてください。</Hint>
+      <Hint>{PREP_LINK_NOTE}</Hint>
+      <Hint>{REOPEN_NOTE}</Hint>
     </div>
   </section>;
 }

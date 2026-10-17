@@ -147,6 +147,8 @@ try {
 
     /* 8. スマホ: キーボードが出ている間も、小さな「保存」を1回押せば保存される */
     if (mobile) {
+      // r2-35: 確認の箱に答えた直後の0.7秒は、画面全体を見えない板が覆う（ダブルクリックの2回目を捨てるため）。ロボットは人より速いので、板が消えるまで待つ
+      await page.waitForFunction(() => !document.querySelector('[data-tos-shield]'), null, { timeout: 4000 });
       await page.evaluate(() => { const vv = window.visualViewport; Object.defineProperty(vv, 'height', { configurable: true, get: () => 400 }); vv.dispatchEvent(new Event('resize')); });
       await page.locator('#field-venue').focus();
       await page.getByLabel('会場', { exact: true }).fill('架空体育館');

@@ -1,6 +1,6 @@
-import { fingerprint, normalizeKey, pick, toRows } from './csv.ts';
+import { fingerprint, INVISIBLE_KEEP_JOINERS_RE, normalizeKey, pick, stripInvisibleChars, toRowsIndexed } from './csv.ts';
 import type { EntryFormConfig } from './entryPackage.ts';
-import { cleanClassLabel, parseClassSettings } from './classRules.ts';
+import { cleanClassLabel, DEFAULT_CLASS_SETTINGS, normalizeClassLoose, parseClassSettings } from './classRules.ts';
 
 export type LocalFighter = {
   id: string;
@@ -53,8 +53,27 @@ export function privateHeaders(csv: string): string[] {
   return PRIVATE_HEADERS.filter((word) => first.includes(word));
 }
 
-/** 「クラス」の列の見出し（別の言い方も読む）。見出しがあれば、中が空でも「クラスの列がある」と数える */
-const CLASS_HEADERS = ['クラス', 'class', 'fighter_class', 'クラス区分', '申込クラス', '申し込みクラス', '区分'];
+/**
+ * 見出しの読み方（別の言い方も読む）。見出しは、全角・半角、大文字・小文字、うしろの（単位）のちがいを無くして比べる
+ * （「体重（kg）」「体重(kg)」「ＮＡＭＥ」も読める）。
+ * 「クラス」の列は、見出しがあれば、中が空でも「クラスの列がある」と数える。
+ */
+const ALIASES = {
+  id: ['管理番号', 'id'],
+  name: ['選手名', '名前', '氏名', 'お名前', '選手名（リングネーム）', 'リングネーム', 'ファイター名', 'fighter_name', 'name'],
+  gym: ['ジム名', '所属ジム', '所属gym', '所属', 'ジム', 'チーム', 'gym', 'team'],
+  grade: ['学年', 'grade'],
+  age: ['年齢', 'age'],
+  height: ['身長', 'height'],
+  weight: ['体重', '試合時の希望体重（kg）', '希望体重', 'weight'],
+  record: ['戦績', '戦績・競技歴', '競技歴', 'record'],
+  comment: ['意気込み', '試合への意気込み', 'comment'],
+  musicUrl: ['入場曲', '入場曲url', '入場曲URL（Apple Music推奨）', '入場曲のリンク', 'music_url', 'music'],
+} as const;
+/** このアプリが書く名前と、はっきりクラスとわかる見出し */
+const CLASS_HEADERS = ['クラス', 'fighter_class', 'クラス区分', '申込クラス', '申し込みクラス'];
+/** 「class」「区分」は、体重の区分・男子／女子の区分のこともある。中身が Aクラス／Bクラス のときだけ、クラスの列として読む */
+const WEAK_CLASS_HEADERS = ['class', '区分'];
 
 /** 1つの欄に入れられる文字数の上限（保存の検査は5000文字。これを超えると、保存がすべて失敗するので、取り込みのときに切る） */
 export const HARD_TEXT_LIMIT = 5000;
@@ -75,38 +94,68 @@ export type ImportResult = {
   hasClassColumn: boolean;
   /** 長すぎて切った欄の数（HARD_TEXT_LIMIT 超え） */
   cut: number;
+  /** 読めなかった列の見出し（このアプリが使わない列）。黙って捨てないよう、画面に出す */
+  unreadHeaders: string[];
+  /** 選手名が空だったので入れなかった行の番号（ファイルの上から数えて何行目か。見出しが1行目） */
+  skippedLines: number[];
 };
+
+const NO_IMPORT = (blockedHeaders: string[]): ImportResult => ({ fighters: [], blockedHeaders, hasClassColumn: false, cut: 0, unreadHeaders: [], skippedLines: [] });
 
 export function importFighters(csv: string): ImportResult {
   const blockedHeaders = privateHeaders(csv);
-  if (blockedHeaders.length) return { fighters: [], blockedHeaders, hasClassColumn: false, cut: 0 };
-  const rows = toRows(csv);
-  const classKeys = CLASS_HEADERS.map(normalizeKey);
-  const hasClassColumn = rows.some((row) => classKeys.some((key) => key in row));
+  if (blockedHeaders.length) return NO_IMPORT(blockedHeaders);
+  // 「"」が閉じないままのファイルは、あとの行が黙って消えるので、読まずに止める（CsvQuoteError）
+  const { headers, rows: indexed } = toRowsIndexed(csv, { strict: true });
+  const rows = indexed.map((item) => item.row);
+  const known = new Set<string>([...Object.values(ALIASES).flat(), ...CLASS_HEADERS, ...WEAK_CLASS_HEADERS].map(normalizeKey));
+  const keyOf = (header: string) => normalizeKey(header);
+  const strongClass = CLASS_HEADERS.map(normalizeKey);
+  let classKeys = strongClass.filter((key) => headers.some((header) => keyOf(header) === key));
+  // 「class」「区分」: 中身が Aクラス／Bクラス（A・B・上・下 も）だけのときに限って、クラスの列にする
+  const weakKeys = WEAK_CLASS_HEADERS.map(normalizeKey).filter((key) => headers.some((header) => keyOf(header) === key));
+  const weakOk = (key: string) => {
+    const values = rows.map((row) => (row[key] ?? '').trim()).filter(Boolean);
+    return values.every((value) => ['Aクラス', 'Bクラス'].includes(normalizeClassLoose(cleanClassLabel(value), DEFAULT_CLASS_SETTINGS)));
+  };
+  const weakUsed = classKeys.length === 0 ? weakKeys.filter(weakOk) : [];
+  classKeys = [...classKeys, ...weakUsed];
+  const classAliases = classKeys.length ? classKeys : strongClass;
+  const unreadHeaders: string[] = [];
+  for (const header of headers) {
+    const key = keyOf(header);
+    if (!header || !key) continue;
+    const used = known.has(key) && !(WEAK_CLASS_HEADERS.map(normalizeKey).includes(key) && !weakUsed.includes(key));
+    if (!used && !unreadHeaders.includes(header)) unreadHeaders.push(header);
+  }
+  const hasClassColumn = classKeys.length > 0;
   let cut = 0;
-  const limit = (raw: string): string => { const value = unguardCell(raw); if (value.length <= HARD_TEXT_LIMIT) return value; cut++; return value.slice(0, HARD_TEXT_LIMIT); };
-  const fighters = rows.map((row, index): LocalFighter => {
-    const name = limit(pick(row, '選手名', '名前', '選手名（リングネーム）', 'fighter_name', 'name'));
-    const gym = limit(pick(row, 'ジム名', '所属gym', '所属', 'gym', 'team'));
-    const stable = limit(pick(row, '管理番号', 'id') || fingerprint(String(index), name, gym));
-    const cls = cleanClassLabel(pick(row, ...CLASS_HEADERS));
-    return {
+  const limit = (raw: string): string => { const value = unguardCell(raw.replace(INVISIBLE_KEEP_JOINERS_RE, '')); if (value.length <= HARD_TEXT_LIMIT) return value; cut++; return value.slice(0, HARD_TEXT_LIMIT); };
+  const skippedLines: number[] = [];
+  const fighters: LocalFighter[] = [];
+  rows.forEach((row, index) => {
+    const name = limit(pick(row, ...ALIASES.name));
+    if (name.trim() === '') { skippedLines.push(indexed[index].line); return; }
+    const gym = limit(pick(row, ...ALIASES.gym));
+    const stable = limit(pick(row, ...ALIASES.id) || fingerprint(String(index), name, gym));
+    const cls = cleanClassLabel(pick(row, ...classAliases));
+    fighters.push({
       id: stable,
       gym,
       name,
-      grade: limit(pick(row, '学年', 'grade')),
-      age: limit(pick(row, '年齢', 'age')),
-      height: limit(pick(row, '身長', '身長（cm）', 'height')),
-      weight: limit(pick(row, '体重', '試合時の希望体重（kg）', 'weight')),
-      record: limit(pick(row, '戦績', '戦績・競技歴', 'record')),
-      comment: limit(pick(row, '意気込み', '試合への意気込み', 'comment')),
-      musicUrl: limit(pick(row, '入場曲', '入場曲url', '入場曲URL（Apple Music推奨）', 'music_url')),
+      grade: limit(pick(row, ...ALIASES.grade)),
+      age: limit(pick(row, ...ALIASES.age)),
+      height: limit(pick(row, ...ALIASES.height)),
+      weight: limit(pick(row, ...ALIASES.weight)),
+      record: limit(pick(row, ...ALIASES.record)),
+      comment: limit(pick(row, ...ALIASES.comment)),
+      musicUrl: limit(pick(row, ...ALIASES.musicUrl)),
       photoDataUrl: '',
       ...(cls ? { fighterClass: cls } : {}),
-    };
-  }).filter((fighter) => fighter.name.trim() !== '');
+    });
+  });
   if (new Set(fighters.map((fighter) => fighter.id)).size !== fighters.length) throw new Error('同じ管理番号が2つあります。原本で重複を確認してください。今ある名簿は変えていません。');
-  return { fighters, blockedHeaders: [], hasClassColumn, cut };
+  return { fighters, blockedHeaders: [], hasClassColumn, cut, unreadHeaders, skippedLines };
 }
 
 /** Re-import by receipt, retaining cards and fighters absent from this file. Never guess by name. */
@@ -131,7 +180,10 @@ export function contractWeight(red: LocalFighter | undefined, blue: LocalFighter
 }
 
 /** 名前とジムが同じかを見るための印（全角・半角と空白の差は無視する）。名前が空のときは空の文字 */
-export const sameFighterKey = (fighter: LocalFighter): string => fighter.name.trim() ? fighter.name.normalize('NFKC').replace(/\s+/g, '') + '|' + fighter.gym.normalize('NFKC').replace(/\s+/g, '') : '';
+export const sameFighterKey = (fighter: LocalFighter): string => fighter.name.trim() ? stripInvisibleChars(fighter.name).normalize('NFKC').replace(/\s+/g, '') + '|' + gymKey(fighter.gym) : '';
+
+/** ジム名を比べるための印（全角・半角、大文字・小文字、空白、見えない文字のちがいは同じ）。空のジム名は空の文字。「同じジムか」は、全部ここで決める */
+export const gymKey = (gym: string): string => stripInvisibleChars(String(gym ?? '')).normalize('NFKC').toLowerCase().replace(/[\s\u3000]+/g, '');
 
 /** Soft warnings for one card. They never block saving; the organizer decides. */
 export const WEIGHT_GAP_WARN_KG = 5;
@@ -142,7 +194,7 @@ export function boutWarnings(bout: LocalBout, fighters: LocalFighter[], bouts: L
   if (red && blue) {
     const a = parse(red.weight), b = parse(blue.weight);
     if (Number.isFinite(a) && Number.isFinite(b) && a >= 10 && b >= 10 && Math.abs(a - b) >= WEIGHT_GAP_WARN_KG) warnings.push('体重差が ' + (Math.round(Math.abs(a - b) * 10) / 10) + 'kg あります（' + red.name + ' ' + a + 'kg / ' + blue.name + ' ' + b + 'kg）。');
-    if (red.gym.trim() && red.gym.trim() === blue.gym.trim()) warnings.push('同じジム（' + red.gym.trim() + '）の選手どうしです。');
+    if (gymKey(red.gym) && gymKey(red.gym) === gymKey(blue.gym)) warnings.push('同じジム（' + red.gym.trim() + '）の選手どうしです。');
     // 管理番号はちがうのに、名前もジムも同じ（同じ人が2回申し込んだ）。赤と青に同じ人を入れていないか
     if (red.id !== blue.id && sameFighterKey(red) && sameFighterKey(red) === sameFighterKey(blue)) warnings.push('赤と青が、同じ人かもしれません（' + red.name + '・名前もジムも同じです）。');
   }
