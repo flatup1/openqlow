@@ -64,6 +64,8 @@ async function openSetup(ctx, id, { step = 1, ticks = [false, false, false, fals
   await page.addInitScript(([k, v]) => { try { if (!localStorage.getItem(k)) localStorage.setItem(k, v); } catch { /* 試験の準備だけ */ } }, [KEY(id), JSON.stringify({ step, endpoint: url, ticks, verified: false })]);
   await page.goto(base + '/private/setup/?event=' + id);
   await page.getByText(/いまここ \d \/ 3/).first().waitFor({ timeout: 15000 });
+  // 画面は、ひな形のリンクを読み込む間「読み込んでいます…」と出し、その間は黄色を出さない（作り）。数えるのは、読み込みが終わってから
+  await page.waitForFunction(() => !document.body.innerText.includes('読み込んでいます…'), null, { timeout: 5000 }).catch(() => undefined);
   return page;
 }
 const frames = (p) => p.locator('[data-tos-next]');
