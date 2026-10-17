@@ -85,4 +85,193 @@ for (const dangerous of [/systemctl restart/, /npm run deploy/, /rm -rf/, /git p
 assert.match(script, /git fetch/, "取り直しは fetch で行う");
 assert.doesNotMatch(executable, /^set -e\b/m, "途中で止まらず最後まで全部見る");
 
+// 301/302 を「ページが無い」と誤報しないこと。
+// 本番の /webos/ が 301 を返したとき、追いかけずに落第にして
+// 「XServer に index.html があるか確かめろ」と間違った案内を出した。
+// 転送は「別の住所へ案内されている」だけなので、最後まで追って着いた先で判定する。
+assert.match(script, /curl -s -o \/dev\/null -L/, "転送を追いかけて最後の答えを見る");
+assert.match(script, /url_effective/, "着いた先のURLを読む");
+assert.match(script, /\^3\[0-9\]\[0-9\]\$/, "3xx を転送として扱う");
+assert.match(script, /へ転送されています/, "どこへ転送されたかを表示する");
+// 中身の読み出しも転送後のURLから行う（転送前から読むと空になる）
+assert.match(script, /curl -s -L -m 15 "\$\{WEBOS_TARGET\}"/, "版の比較は転送先の中身で行う");
+
+// 「ページが古い」の原因を2つに切り分けること。
+// 2026-10-02、ファイルは全部上がっていたのに .htaccess の RewriteRule が
+// /webos/ を古い webos.html へ向けていた。検査は「上げ直せ」としか言えず、
+// すでに上げ終えた人に、やり直す必要のない作業をさせるところだった。
+// index.html を直接開いて新しければ、届いている＝振り分けの問題と分かる。
+assert.match(script, /index\.html" 2>\/dev\/null/, "index.htmlを直接開いて切り分ける");
+assert.match(script, /振り分けられています/, "振り分けの問題だと名指しする");
+assert.match(script, /\.htaccess/, "直す場所を案内する");
+assert.match(script, /バックアップ/, ".htaccessの編集前にバックアップを促す");
+assert.match(script, /8ファイル全部/, "上げ直す場合は全部だと伝える");
+
+// AIKA と openQLOW を混同しないこと（AGENTS.md の決まり）。
+//
+//   「AIKAは守りの顧客対応。openQLOWは攻めの営業・経営支援。混同しない。」
+//
+// この検査は openqlow-webhook を見ている。これはJIN専用のLINE窓口で、
+// お客さま対応は AIKA（別サーバー・別リポジトリ）の担当。
+// 以前ここには「LINEの自動応答（お客さま対応）」と書いてあり、止まったときに
+// 「これはお客さまに影響します」と出していた。事実と違ううえ、反映作業の
+// リスクを実際より重く見せ、オーナーの判断を誤らせる表示だった。
+{
+  // openqlow-webhook を見ている箇所（2番）を切り出して検査する。
+  const section = script.slice(
+    script.indexOf("--- 2."),
+    script.indexOf("--- 3."),
+  );
+  assert.ok(section.length > 0, "2番の節が読み取れる");
+  assert.match(section, /JIN専用/, "openQLOW側はJIN専用だと明記する");
+  assert.match(section, /AIKA/, "お客さま対応はAIKA側だと案内する");
+
+  // 画面に出る行だけを見る。コメントには「以前こう書いてあった」という
+  // 直した経緯が引用されており、それを禁止語として拾ってしまう。
+  const spoken = section
+    .split("\n")
+    .filter(line => !/^\s*#/.test(line))
+    .join("\n");
+  assert.doesNotMatch(
+    spoken,
+    /お客さまに影響します|お客さまへの返信は止まっていません/,
+    "openQLOWの停止を「お客さまへの影響」と言わない（それはAIKAの担当）",
+  );
+}
+
+// 印が読めないことを「一度も反映できていない」と言い換えないこと。
+//
+// 2026-10-02、同期の --delete が deployed-version.txt を消し、そのあとビルドが
+// 失敗して書き直されなかった。本番は前の版で動き続けていたのに、この検査は
+//   「本番に deployed-version.txt がありません＝一度も新しいコードを送れていません」
+// と出した。印の有無は「何が動いているか」を知る手がかりが無いという話で、
+// 「送れていない」は別の主張。確かめていないことを断定してはいけない。
+assert.match(
+  script,
+  /印が読めません/,
+  "印が無いときは「読めない」と言う",
+);
+assert.doesNotMatch(
+  script
+    .split("\n")
+    .filter(line => !/^\s*#/.test(line))
+    .join("\n"),
+  /一度も新しいコードを送れていません/,
+  "印が無いことを「一度も送れていない」と断定しない",
+);
+
+// 3番（/journey）は AIKA VPS。こちらはお客さま側の経路なので、担当を明記する。
+assert.match(script, /AIKA VPS/, "受け口が別サーバーだと明記する");
+
+// ---- ③ 本番の設定に、テスト用のニセ番号が残っていないか ----
+//
+// 2026-10-02、本番の JIN_LINE_USER_ID にテスト用の番号が入っていた。
+// ロボットは「社長はこの番号の人」と覚えるので、本物のJINが会員扱いになり、
+// LINEからの承認コマンドが一切効かない状態が続いた。画面はどこも緑のままだった。
+// 一度起きた事故は、人の注意ではなく検査で止める。
+assert.match(script, /JIN_LINE_USER_ID/, "本番の承認者IDを確認する");
+assert.match(script, /owner:testvalue/, "テスト用のニセ番号を見分ける");
+assert.match(script, /owner:empty/, "空の場合も見逃さない");
+
+// 禁止する番号を直書きすると、テスト用の番号が増えたときに守備範囲から漏れる。
+// テストファイルから拾って突き合わせることで、検査が自動で追従する。
+assert.match(
+  script,
+  /--include='\*\.test\.ts'/,
+  "禁止する番号はテストファイルから拾う（直書きしない）",
+);
+assert.doesNotMatch(
+  script.split("\n").filter(line => !/^\s*#/.test(line)).join("\n"),
+  /U[0-9a-f]{32}/,
+  "ニセ番号をスクリプト本文に直書きしない",
+);
+
+// シークレットが空だと、受信を全部拒否したり返信が黙って消えたりする。
+// どちらも「画面は緑なのに動かない」型の故障なので、必ず見る。
+assert.match(script, /LINE_CHANNEL_SECRET/, "チャネルシークレットの有無を確認する");
+assert.match(script, /LINE_CHANNEL_ACCESS_TOKEN/, "アクセストークンの有無を確認する");
+
+// シークレットが空でも、DRY_RUN が false 以外なら署名を確かめずに受け付けてしまう
+// （webhook_auth.ts）。「全部拒否します」と案内すると、なりすましの危険を見落とす。
+assert.match(script, /dryrun:on/, "DRY_RUN の状態を印で返す");
+assert.match(script, /署名のない受信も通してしまいます/, "DRY_RUN 中のシークレット空を、なりすましの危険として伝える");
+
+// 診断が秘密を手元に持ってくると、診断そのものが情報漏れの経路になる。
+// VPS側で判定させ、返すのは set / empty / ok のような印だけにする。
+assert.match(script, /値は表示しません/, "値を表示しないと明示する");
+assert.match(script, /:set|:empty/, "有無の印だけを返す");
+assert.doesNotMatch(
+  script,
+  /echo\s+"?\$OWNER/,
+  "承認者IDの値そのものを出力しない",
+);
+
+// ---- 転送が終わらないとき（輪になっているとき）を「ページが無い」と誤報しないこと ----
+//
+// 2026-10-02 に「301 を追いかけずに落第にする」誤報を直したが、抜け穴が残っていた。
+// 追いかけた先が また転送 だった場合（転送が輪になっている場合）を拾えず、
+// 最後の else に落ちて こう出していた:
+//
+//   ❌ https://flatupnarita.jp/webos/ が 301（200が正解）
+//   次の一手: XServer の public_html/webos/ に index.html があるか確かめる
+//
+// 2026-10-12 の本番の検査で実際にこれが出た。ファイルの有無はこの症状と
+// 関係がないので、すでに上げてある人に見当違いの作業をさせる案内だった。
+//
+// ここは文字列の検査では足りない（分岐の抜け穴が問題なので、実際に通す）。
+// 手元に「延々と転送し続けるサーバー」を立てて、検査を本当に走らせて確かめる。
+{
+  const { createServer } = await import("node:http");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+
+  const server = createServer((req, res) => {
+    const port = server.address().port;
+    const next = req.url.startsWith("/a") ? "/b/" : "/a/";
+    res.writeHead(301, { Location: `http://127.0.0.1:${port}${next}` });
+    res.end();
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+
+  try {
+    // --public: GitHubやSSHを見ない（手元で完結させる）
+    const result = await run("bash", ["deploy/scripts/check-prod.sh", "--public"], {
+      env: {
+        ...process.env,
+        OPENQLOW_WEBOS_URL: `http://127.0.0.1:${port}/a/`,
+        // 3番は外へ出る検査なので、同じ手元のサーバーへ向ける（結果は見ない）
+        OPENQLOW_JOURNEY_URL: `http://127.0.0.1:${port}/a/`,
+      },
+      timeout: 120000,
+    }).catch(err => err); // 失敗があれば exit 1 で返るので、それも結果として受け取る
+
+    const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+
+    assert.match(
+      out,
+      /転送が輪になっていて/,
+      "転送が輪になっているときは、そう名指しする",
+    );
+    assert.doesNotMatch(
+      out,
+      /index\.html があるか確かめる/,
+      "転送が終わらないことを「ファイルが無い」と案内しない（原因が別）",
+    );
+    assert.match(
+      out,
+      /まずブラウザで .* を開き/,
+      "訪問者に何が見えるかは、ブラウザで確かめるよう案内する",
+    );
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+// 転送を追いかける回数に上限を置くこと。
+// 既定の50回まで付き合うと、輪になっているときに先に時間切れになり、
+// 「輪になっている」と言えなくなる（原因が消える）。
+assert.match(script, /--max-redirs 10/, "転送の追いかけに上限を置く");
+
 console.log("check-prod tests passed");
