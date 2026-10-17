@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>UIZIN 進行画面</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Archivo:wght@600;800&display=swap">
+<style>
+/* 会場のどの端末でも同じ見え方にするため、明るい配色で固定する */
+:root{
+  color-scheme: light;
+  --paper:#f2f2ef; --card:#ffffff; --ink:#16171b; --ink-2:#62666f;
+  --line:#dedbd5; --red:#c8102e; --red-soft:#fdeef0; --blue:#0b56c4; --blue-soft:#ecf2fd;
+  --go:#146c46; --go-soft:#e7f4ee; --gold:#8a6b1f;
+  --pad: 12px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Zen Kaku Gothic New",system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+  font-feature-settings:"palt"; -webkit-text-size-adjust:100%;
+  overflow:hidden;
+}
+#app{height:100%; display:flex; flex-direction:column; min-height:0}
+
+/* ---- 上のバー ---- */
+header{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) var(--pad) 8px;
+  background:var(--card); border-bottom:2px solid var(--ink);
+}
+.brand{font-family:Archivo,sans-serif; font-weight:800; letter-spacing:.14em; font-size:.7rem; color:var(--gold)}
+.now{display:flex; align-items:baseline; gap:8px; margin-inline-start:auto}
+.now b{font-size:clamp(1.15rem,4.2vw,1.7rem); font-weight:900; letter-spacing:.02em; font-variant-numeric:tabular-nums}
+.now span{font-size:.76rem; color:var(--ink-2); font-weight:700; font-variant-numeric:tabular-nums}
+.part-chip{font-size:.72rem; font-weight:800; color:var(--ink-2); border:1px solid var(--line);
+  border-radius:999px; padding:3px 9px; white-space:nowrap}
+
+/* ---- 対戦カード ---- */
+main{flex:1 1 auto; min-height:0; display:flex; gap:8px; padding:8px var(--pad); align-items:stretch}
+.corner{
+  flex:1 1 0; min-width:0; min-height:0; display:flex; flex-direction:column;
+  background:var(--card); border:2px solid var(--line); border-radius:12px; overflow:hidden;
+}
+.corner.red{border-color:var(--red)}
+.corner.blue{border-color:var(--blue)}
+.tag{flex:0 0 auto; font-size:.72rem; font-weight:900; letter-spacing:.14em; color:#fff;
+  padding:3px 10px; font-family:Archivo,sans-serif}
+.corner.red .tag{background:var(--red)}
+.corner.blue .tag{background:var(--blue)}
+
+.shot{position:relative; flex:1 1 40px; min-height:0; background:#eceae6;
+  display:flex; align-items:center; justify-content:center; overflow:hidden}
+/* 写真は全員ぶん 600x800（3:4）に揃え、顔の大きさと位置も合わせてある。
+   だから cover で枠いっぱいに出しても顔は切れない。余白が出ないので並びが揃う。
+   枠が横長になる端末では上から20%を基準に切るので、頭は落ちない。 */
+.shot img{width:100%; height:100%; object-fit:cover; object-position:center 20%;
+  position:relative; z-index:1}
+.shot svg{position:absolute; inset:0; margin:auto; width:52%; height:76%; color:#c6c3bd; z-index:0}
+.shot iframe{position:absolute; inset:0; width:100%; height:100%; border:0; z-index:2; background:#000}
+
+.who{flex:0 0 auto; padding:7px 10px 9px; display:flex; flex-direction:column; gap:2px}
+.nm{font-size:clamp(1.05rem,4.4vw,1.75rem); font-weight:900; line-height:1.15; overflow-wrap:anywhere}
+.corner.red .nm{color:var(--red)}
+.corner.blue .nm{color:var(--blue)}
+.gym{font-size:clamp(.68rem,2.5vw,.86rem); font-weight:700; color:var(--ink-2); line-height:1.3; overflow-wrap:anywhere}
+.say{margin-top:5px; padding-top:5px; border-top:1px solid var(--line);
+  font-size:clamp(.78rem,3vw,1.02rem); font-weight:700; line-height:1.4; overflow-wrap:anywhere}
+
+/* ---- 入場曲ボタン ---- */
+.song{flex:0 0 auto; padding:0 8px 8px}
+.tune{font-size:.68rem; color:var(--ink-2); font-weight:700; line-height:1.3;
+  margin:0 2px 5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.play{
+  width:100%; min-height:52px; border:0; border-radius:10px; cursor:pointer; text-decoration:none;
+  font-family:inherit; font-size:clamp(.88rem,3.2vw,1.05rem); font-weight:900; color:#fff;
+  display:flex; align-items:center; justify-content:center; gap:7px; line-height:1.2; text-align:center;
+}
+.corner.red .play{background:var(--red)}
+.corner.blue .play{background:var(--blue)}
+.play.on{background:var(--go)}
+.corner .play[disabled]{background:#e3e1dc; color:#84878e; cursor:default}
+/* class の display:flex が [hidden] に勝ってしまうので、明示的に打ち消す */
+.play[hidden]{display:none}
+.play:focus-visible, .nav button:focus-visible, select:focus-visible{outline:3px solid var(--gold); outline-offset:2px}
+
+/* ---- 中央のVS ---- */
+.mid{flex:0 0 auto; align-self:center; display:flex; flex-direction:column; align-items:center; gap:5px; padding:0 2px}
+.vs{font-family:Archivo,sans-serif; font-weight:800; font-size:clamp(.9rem,3.4vw,1.3rem); color:var(--ink-2); letter-spacing:.06em}
+.kg{font-size:clamp(.66rem,2.4vw,.82rem); font-weight:800; color:var(--gold);
+  font-variant-numeric:tabular-nums; white-space:nowrap; text-align:center; line-height:1.2}
+.kg small{display:block; font-size:.78em; color:var(--ink-2); font-weight:700; letter-spacing:.05em}
+.cls{font-size:.64rem; color:var(--ink-2); font-weight:700; writing-mode:vertical-rl; letter-spacing:.1em; max-height:9em; overflow:hidden}
+
+/* ---- 下のバー ---- */
+.nav{
+  flex:0 0 auto; display:flex; gap:8px; align-items:stretch;
+  padding:8px var(--pad) calc(env(safe-area-inset-bottom,0px) + 10px);
+  background:var(--card); border-top:2px solid var(--ink);
+}
+.nav button{
+  flex:1 1 0; min-height:60px; border-radius:12px; border:2px solid var(--ink); background:var(--card);
+  font-family:inherit; font-size:clamp(.95rem,3.6vw,1.2rem); font-weight:900; color:var(--ink); cursor:pointer;
+}
+.nav button.next{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+.nav button[disabled]{opacity:.32; cursor:default}
+.jump{flex:0 0 auto; display:flex; flex-direction:column; justify-content:center; gap:2px}
+.jump label{font-size:.6rem; font-weight:800; color:var(--ink-2); letter-spacing:.08em; text-align:center}
+select{
+  font-family:inherit; font-size:1rem; font-weight:900; padding:6px 8px; min-height:34px;
+  border:2px solid var(--line); border-radius:9px; background:var(--card); color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---- 横に広い画面では写真を大きく ---- */
+@media (min-width:720px){
+  :root{--pad:20px}
+  main{gap:14px}
+  .who{padding:10px 14px 12px}
+  .song{padding:0 12px 12px}
+  .tune{font-size:.78rem}
+}
+@media (min-height:600px){ .shot{min-height:110px} }
+@media (max-height:520px){ .say{display:none} .shot{min-height:0} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="brand">UIZIN 2026</span>
+    <span class="part-chip" id="part">一部</span>
+    <span class="now"><b id="mno">第1試合</b><span id="mtot"></span></span>
+  </header>
+
+  <main>
+    <section class="corner red" id="c-red">
+      <span class="tag">RED 赤</span>
+      <div class="shot" id="shot-red"></div>
+      <div class="who">
+        <span class="nm" id="nm-red"></span>
+        <span class="gym" id="gym-red"></span>
+        <span class="say" id="say-red"></span>
+      </div>
+      <div class="song">
+        <p class="tune" id="tune-red"></p>
+        <a class="play" id="link-red" target="_blank" rel="noopener" hidden></a>
+        <button class="play" id="play-red" type="button"></button>
+      </div>
+    </section>
+
+    <div class="mid">
+      <span class="vs">VS</span>
+      <span class="kg" id="kg"><small>契約</small><span id="kgv"></span></span>
+      <span class="cls" id="cls"></span>
+    </div>
+
+    <section class="corner blue" id="c-blue">
+      <span class="tag">BLUE 青</span>
+      <div class="shot" id="shot-blue"></div>
+      <div class="who">
+        <span class="nm" id="nm-blue"></span>
+        <span class="gym" id="gym-blue"></span>
+        <span class="say" id="say-blue"></span>
+      </div>
+      <div class="song">
+        <p class="tune" id="tune-blue"></p>
+        <a class="play" id="link-blue" target="_blank" rel="noopener" hidden></a>
+        <button class="play" id="play-blue" type="button"></button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="nav">
+    <button id="prev" type="button">←　前の試合</button>
+    <div class="jump">
+      <label for="pick">試合番号</label>
+      <select id="pick"></select>
+    </div>
+    <button id="next" class="next" type="button">次の試合　→</button>
+  </nav>
+</div>
+
+<!--
+  ここに当日の進行データ（JSON）を貼る。**貼った状態のファイルをコミットしないこと。**
+  選手名・意気込み・体重・写真は個人情報で、このリポジトリは公開されている。
+  手順: このファイルを手元にコピー → コピーの側にデータを貼る → そのコピーを当日使う。
+  形式: [{"no":1,"part":"一部","cls":"キッズ",
+         "red":{"n":"名前","t":"所属","c":"意気込み","p":"/p/xxxx.jpg","r":"戦績",
+                "song":{"t":"曲名","a":"アーティスト","u":"URL","yt":"","apple":""}},
+         "blue":{ 同上 }, "w":16.5}]
+-->
+<script id="data" type="application/json">[]</script>
+<script>
+(function () {
+  'use strict';
+  var M = JSON.parse(document.getElementById('data').textContent);
+  // データが空のまま開かれたら、落ちずに理由を出す。
+  // このファイルは公開リポジトリに置くので、選手のデータは入れたまま置かない。
+  if (!M || M.length === 0) {
+    document.body.innerHTML =
+      '<div style="padding:40px;font-family:system-ui;line-height:1.9">' +
+      '<h1 style="font-size:24px;margin:0 0 16px">進行データが入っていません</h1>' +
+      '<p>このファイルは<strong>型だけ</strong>です。当日使うときは、手元にコピーしてから' +
+      '<code>&lt;script id="data"&gt;</code> に進行データを貼ってください。</p>' +
+      '<p><strong>データを貼ったファイルは、リポジトリに置かないでください。</strong>' +
+      '選手名・意気込み・体重・写真は個人情報です。</p></div>';
+    return;
+  }
+  var TOTAL = M.length;
+  var SIL = '<svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">'
+    + '<circle cx="32" cy="21" r="13"/>'
+    + '<path d="M32 38c-12.7 0-23 8.6-23 19.2V64h46v-6.8C55 46.6 44.7 38 32 38z"/></svg>';
+
+  var idx = 0;          // 0 はじまり
+  var playingSide = null;
+  var warm = {};        // 一度読んだ写真は覚えておく（次に出すとき待たない）
+
+  // 写真は WebP と JPEG の両方を置いてある。WebP は同じ見た目で6割軽い。
+  // 読めない古い端末（iOS 13以前など）は JPEG に落ちる。判定は1回だけ、1ミリ秒。
+  var EXT = '.jpg';
+  var fmtDone = false;
+  function srcFor(path) { return path ? path.replace(/\.jpg$/, EXT) : ''; }
+  var fmtReady = new Promise(function (done) {
+    var probe = new Image();
+    probe.onload = function () { if (probe.width > 0) EXT = '.webp'; done(); };
+    probe.onerror = function () { done(); };
+    probe.src = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
+  });
+
+  function prefetch(n) {
+    if (n < 0 || n >= TOTAL || !fmtDone) return;
+    ['red', 'blue'].forEach(function (s) {
+      var u = srcFor(M[n][s].p);
+      if (!u || warm[u]) return;
+      var im = new Image();
+      im.decoding = 'async';
+      im.src = u;
+      // 絵に変換するところまで先に済ませる。切り替えた瞬間に描画待ちが出ない。
+      if (im.decode) { im.decode().catch(function () {}); }
+      warm[u] = im;
+    });
+  }
+
+  // 開いてしばらくしたら、残り全部を静かに取りに行く。
+  // 会場の回線が途中で細くなっても、一度取っておけば写真は待たされない。
+  function warmAll() {
+    var order = [];
+    for (var d = 1; d < TOTAL; d++) { order.push(idx + d, idx - d); }
+    var i = 0;
+    function step() {
+      if (i >= order.length) return;
+      prefetch(order[i++]);
+      setTimeout(step, 60);
+    }
+    for (var k = 0; k < 4; k++) { setTimeout(step, k * 15); }
+  }
+
+  function saved() {
+    var h = parseInt((location.hash || '').replace('#', ''), 10);
+    if (h >= 1 && h <= TOTAL) return h - 1;
+    try {
+      var v = parseInt(localStorage.getItem('uizin.match'), 10);
+      if (v >= 1 && v <= TOTAL) return v - 1;
+    } catch (e) {}
+    return 0;
+  }
+  function remember(n) {
+    try { localStorage.setItem('uizin.match', String(n + 1)); } catch (e) {}
+    if (history.replaceState) history.replaceState(null, '', '#' + (n + 1));
+    else location.hash = '#' + (n + 1);
+  }
+
+  function ytId(url) {
+    var m = String(url).match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/)([\w-]{11})/);
+    return m ? m[1] : '';
+  }
+
+  function stopMusic() {
+    playingSide = null;
+    ['red', 'blue'].forEach(function (s) {
+      var f = document.querySelector('#shot-' + s + ' iframe');
+      if (f) f.remove();
+    });
+    paintButtons();
+  }
+
+  function paintButtons() {
+    ['red', 'blue'].forEach(function (s) {
+      var f = M[idx][s].song;
+      var b = document.getElementById('play-' + s);
+      var a = document.getElementById('link-' + s);
+      // Apple Music はリンクで開く。window.open はポップアップ禁止の端末で
+      // 無言で失敗することがあり、当日それに気づけないため使わない。
+      var useLink = !!f.apple;
+      a.hidden = !useLink;
+      b.hidden = useLink;
+      if (useLink) {
+        a.href = f.u;
+        a.textContent = '▶　入場曲';
+        return;
+      }
+      b.classList.toggle('on', playingSide === s);
+      if (!f.u) { b.disabled = true; b.textContent = '入場曲なし'; return; }
+      b.disabled = false;
+      b.textContent = playingSide === s ? '■　止める' : '▶　入場曲';
+    });
+  }
+
+  function play(side) {
+    var f = M[idx][side].song;
+    if (!f.u) return;
+    if (playingSide === side) { stopMusic(); return; }
+    stopMusic();
+    var id = ytId(f.yt);
+    if (!id) return;
+    var fr = document.createElement('iframe');
+    fr.src = 'https://www.youtube.com/embed/' + id + '?autoplay=1&playsinline=1&rel=0';
+    fr.allow = 'autoplay; encrypted-media; picture-in-picture';
+    fr.title = M[idx][side].n + ' の入場曲';
+    fr.setAttribute('allowfullscreen', '');
+    document.getElementById('shot-' + side).appendChild(fr);
+    playingSide = side;
+    paintButtons();
+  }
+
+  function draw() {
+    var m = M[idx];
+    document.getElementById('part').textContent = m.part;
+    document.getElementById('mno').textContent = '第' + m.no + '試合';
+    document.getElementById('mtot').textContent = '/ 全' + TOTAL + '試合';
+    document.getElementById('cls').textContent = m.cls || '';
+    document.getElementById('kgv').textContent = m.w ? m.w.toFixed(1) + 'kg' : '—';
+
+    ['red', 'blue'].forEach(function (s) {
+      var f = m[s];
+      var shot = document.getElementById('shot-' + s);
+      shot.innerHTML = SIL;
+      if (f.p && fmtDone) {
+        var img = new Image();
+        img.alt = '';
+        img.decoding = 'async';
+        img.onerror = function () { img.remove(); };   // 読めなければ人型のまま
+        img.src = srcFor(f.p);
+        shot.appendChild(img);
+      }
+      document.getElementById('nm-' + s).textContent = f.n;
+      document.getElementById('gym-' + s).textContent = [f.t || '所属未確認', f.r].filter(Boolean).join('　/　');
+      document.getElementById('say-' + s).textContent = f.c || '';
+      var t = f.song;
+      document.getElementById('tune-' + s).textContent =
+        t.u ? (t.t || '入場曲') + (t.a ? '／' + t.a : '') : '入場曲なし（会場BGM）';
+    });
+
+    document.getElementById('prev').disabled = idx === 0;
+    document.getElementById('next').disabled = idx === TOTAL - 1;
+    document.getElementById('pick').value = String(idx);
+    paintButtons();
+    prefetch(idx + 1); prefetch(idx + 2); prefetch(idx - 1);
+  }
+
+  function go(n) {
+    if (n < 0 || n >= TOTAL || n === idx) return;
+    stopMusic();
+    idx = n;
+    remember(idx);
+    draw();
+  }
+
+  var pick = document.getElementById('pick');
+  M.forEach(function (m, i) {
+    var o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = String(m.no);
+    pick.appendChild(o);
+  });
+  pick.addEventListener('change', function () { go(parseInt(pick.value, 10)); });
+  document.getElementById('prev').addEventListener('click', function () { go(idx - 1); });
+  document.getElementById('next').addEventListener('click', function () { go(idx + 1); });
+  document.getElementById('play-red').addEventListener('click', function () { play('red'); });
+  document.getElementById('play-blue').addEventListener('click', function () { play('blue'); });
+  window.addEventListener('hashchange', function () { go(saved()); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft') go(idx - 1);
+    if (e.key === 'ArrowRight') go(idx + 1);
+  });
+
+  idx = saved();
+  remember(idx);
+  draw();                       // 名前・意気込み・ボタンは形式判定を待たずに出す
+  fmtReady.then(function () {
+    fmtDone = true;
+    draw();                     // 形式が決まったら写真を貼る（ここまで約1ミリ秒）
+    prefetch(idx + 1); prefetch(idx + 2); prefetch(idx - 1);
+    setTimeout(warmAll, 1200);
+  });
+})();
+</script>
+</body>
+</html>
