@@ -22,6 +22,19 @@
 
 ## 1. 現在の到達度
 
+### 1-0. いまの数（2026-10-12 の時点）
+
+下の 1-1〜1-3 と、「2. 作成ずみ」の表にある数（255本・ブラウザ72項目・12本・56項目・build `3.20261004.2` など）は、**書いた日（2026-10-04 ごろ）の値**です。いまは、次のとおりです。
+
+| 項目 | いまの数 |
+|---|---|
+| ひな形シートのプログラム（build） | `3.20261010.5`（クラス分けの8行つき） |
+| 単体テスト（`npm test`） | 508本 合格・失敗0（tests/polish-misc.test.ts を含む） |
+| `tests/setupV3.test.ts` | 15本 |
+| 画面の確認（`scripts/test-*.mjs`） | 13本。browser 86 / setup 60 / v3-safety 44 / glance 84 / class-ab 820 / mistake-proof 3331項目（224ケース）ほか。数は増えるので、`npm run verify:all` の最後の表を見る |
+| 全部を動かす1つのコマンド | `npm run verify:all`（`bash scripts/verify-private-all.sh`）。約30分 |
+| 本物のGoogle・実機スマホ・LINEの中 | **まだ**（Googleの送信は模擬。2026-10-03 のテスト用アカウントでの確認は、build `3.20261004.2` まで） |
+
 ### 1-1. 点数（正直な自己採点）
 
 | 項目 | 配点 | 現在 | 理由 |
@@ -100,7 +113,7 @@
 |---|---|---|
 | 0 | 済 | 対戦カード警告（`c1e9006` に push 済み） |
 | 1 | **作成済み・模擬Googleで検証済み・本物のGoogleは未** | `public/templates/Tournament_OS_Google受付_v3.gs`（build `3.20261004.2`）。旧版は残してある。メニュー5つ／`onOpen` で「設定」タブを自動作成／`doGet?action=ping`（公開してよい項目だけ）／実行者を自動記録／鍵・署名・確認コードなし。`tests/gasV3.test.ts` 16本 |
-| 2 | **作成済み・模擬Googleで検証済み・本物のGoogleは未** | 新画面 `/private/setup/`（3段階・「いまここ n/3」と「次の1つ」・自動確認・自動確認が使えないときの貼り付け確認・読み取った設定の確認表・設定ファイル）。旧 `/private/google-setup/` はそのまま。`core/setupV3.ts`＋`tests/setupV3.test.ts` 12本（Googleのスクリプトの返事を画面側が読むつなぎ目のテストを含む）、ブラウザ試験 `scripts/test-setup-v3-browser.mjs` 56項目（PC・スマホサイズ） |
+| 2 | **作成済み・模擬Googleで検証済み・本物のGoogleは未** | 新画面 `/private/setup/`（3段階・「いまここ n/3」と「次の1つ」・自動確認・自動確認が使えないときの貼り付け確認・読み取った設定の確認表・設定ファイル）。旧 `/private/google-setup/` は、ソースは残すが公開しない（主催者のメールと合言葉をブラウザに残すため。`build-private-pages.sh` の `LEGACY_ROUTES` と `check-private-build.mjs` で止める）。`core/setupV3.ts`＋`tests/setupV3.test.ts` 12本（Googleのスクリプトの返事を画面側が読むつなぎ目のテストを含む）、ブラウザ試験 `scripts/test-setup-v3-browser.mjs` 56項目（PC・スマホサイズ） |
 | 3 | 未 | 本物のGoogleで通す。**最初に確かめること**は下の「要検証」 |
 | 4 | 未 | スマホ・LINE内・Cloudflare公開（承認後） |
 | 5 | 未 | 会長用の手順書 |

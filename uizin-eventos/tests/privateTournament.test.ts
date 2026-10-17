@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { boutWarnings, contractWeight, importFighters, mergeFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
+import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { isAppsScriptUrl, isVenueUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
 
 test('汎用CSVの日本語見出しを選手情報へ変換する', () => {
@@ -53,7 +54,7 @@ test('募集項目は名簿と一緒に保存・復元でき、旧バックア�
   assert.equal(isLocalTournament({...data,entryConfig}),true);
   for(const entryConfig of [null,{music:'yes',grade:'required',age:'optional',comment:'off'},{music:true,grade:'wrong',age:'optional',comment:'off'}])assert.equal(isLocalTournament({...data,entryConfig}),false);
   const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');
-  assert.match(admin,/data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG/);assert.match(admin,/if\(await save\(\)\)location\.href=googleSetup/);
+  assert.match(admin,/data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG/);assert.doesNotMatch(admin,/google-setup/,'古い受付画面（公開しない）への道は、準備の画面に無い');
 });
 test('写真の選び直しは古い写真・遅れて終わる加工を送らず、加工中に送信できない',()=>{
   const source=readFileSync(new URL('../app/apply/page.tsx',import.meta.url),'utf8');
@@ -71,12 +72,14 @@ test('再取り込みは管理番号で更新・追加し、写真・元の選�
   const snapshot=JSON.stringify(original),incoming=importFighters('管理番号,選手名,体重\nF1,赤,56\nF3,赤,60').fighters;
   const merged=mergeFighters(original,incoming);assert.equal(merged.length,3);assert.equal(merged[0].weight,'56');assert.equal(merged[0].photoDataUrl,original[0].photoDataUrl);assert.deepEqual(merged[1],original[1]);assert.equal(merged[2].id,'F3');assert.equal(JSON.stringify(original),snapshot);
   assert.throws(()=>mergeFighters(original,[incoming[0],incoming[0]]),/同じ管理番号/);
-  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/mergeKeepExisting\(current, fighters\)/);assert.ok(!/\bmergeFighters\(/.test(source),'名簿の読み込みは、前からいる人を黙って書きかえない');assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
+  const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/mergeKeepExisting\(current, fighters(?:, \{[^}]*\})?\)/);assert.ok(!/\bmergeFighters\(/.test(source),'名簿の読み込みは、前からいる人を黙って書きかえない');assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
 });
 
 test('入場曲を使わない大会では曲リンクを出さず、同じ注意文を重ねない',()=>{
   const source=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
-  assert.match(source,/musicEnabled=data\.entryConfig\?\.music \?\? true/);
+  // r2-123: 入場曲を使うかは、準備画面と同じ決め方（受付の設定がない大会は「使わない」）。listLogic.ts の liveMusicOn が1か所で決める
+  assert.match(source,/musicEnabled=liveMusicOn\(data\)/);
+  assert.match(readFileSync(new URL('../app/private/live/listLogic.ts',import.meta.url),'utf8'),/\(data\.entryConfig \?\? DEFAULT_ENTRY_CONFIG\)\.music/);
   assert.match(source,/musicEnabled \? safeMusicUrl/);
   assert.match(source,/この大会は入場曲なし/);assert.ok(!source.includes('曲なし・URL要確認'));
   assert.equal((source.match(/musicEnabled=\{musicEnabled\}/g)||[]).length,2);
@@ -197,7 +200,9 @@ test('Cloudflareの重複ヘッダーでGoogle接続確認を止めず、選手�
   const headers=readFileSync(new URL('../public/_headers',import.meta.url),'utf8');
   const blocks=headers.trim().split(/\n\s*\n/).map(block=>{const lines=block.split('\n');return{path:lines[0],policy:lines.find(line=>line.trim().startsWith('Content-Security-Policy:'))||''};});
   const policies=(path:string)=>blocks.filter(block=>block.path.endsWith('*')?path.startsWith(block.path.slice(0,-1)):block.path===path).map(block=>block.policy);
-  const setup=policies('/private/google-setup/');assert.equal(setup.length,1);assert.match(setup[0],/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/);assert.doesNotMatch(setup[0],/form-action 'none'/);
+  // 古い「別の方法で受付をつくる」画面は公開しない（D-1）。だから、その画面に Google へ送る許可を出した設定も、もう無い。
+  assert.equal(policies('/private/google-setup/').length,0,'公開しない画面に、Googleへ送る許可を残さない');
+  const apply=policies('/apply/');assert.equal(apply.length,1);assert.match(apply[0],/form-action https:\/\/script\.google\.com https:\/\/script\.googleusercontent\.com;/);assert.match(apply[0],/connect-src 'none'/);
   for(const path of ['/private/','/private/entry/','/private/live/']){const matched=policies(path);assert.equal(matched.length,1);assert.match(matched[0],/form-action 'none'/);assert.match(matched[0],/connect-src 'self';/);}
 });
 
@@ -218,4 +223,87 @@ test('対戦カードの注意：体重差・同じジム・複数試合を警�
   const two = [bout('1', 'A', 'B'), bout('2', 'A', 'C')];
   assert.ok(boutWarnings(two[0], fighters, two).some((w) => w.includes('2 試合')));
   assert.deepEqual(boutWarnings(bout('3', '', ''), fighters, []), []);
+});
+
+test('クラス: 取り込みは「クラス」列を読み、無い名簿には項目を足さない。クラスは個人情報ではなく止めない', () => {
+  const withClass = importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス');
+  assert.deepEqual(withClass.blockedHeaders, []);
+  assert.equal(withClass.fighters[0].fighterClass, 'Aクラス');
+  assert.equal(importFighters('管理番号,選手名,class\nF1,赤,Bクラス').fighters[0].fighterClass, 'Bクラス');
+  assert.equal(importFighters('id,name,fighter_class\nF1,赤,Bクラス').fighters[0].fighterClass, 'Bクラス');
+  const old = importFighters('管理番号,選手名\nF1,赤').fighters[0];
+  assert.equal('fighterClass' in old, false);
+  assert.deepEqual(old, { id: 'F1', gym: '', name: '赤', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', photoDataUrl: '' });
+  const blankCell = importFighters('管理番号,選手名,クラス\nF1,赤,').fighters[0];
+  assert.equal('fighterClass' in blankCell, false, '空のクラスは項目ごと無い');
+  assert.equal(importFighters('管理番号,選手名,クラス\nF1,赤,' + 'あ'.repeat(60)).fighters[0].fighterClass?.length, 40);
+  assert.equal(privateHeadersOk(), true);
+});
+function privateHeadersOk() { return importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス').blockedHeaders.length === 0; }
+
+test('クラス: 復元前の検証は、クラスなしの旧データを今までどおり通し、おかしなクラスだけ断る', () => {
+  const base = { id: 'x', gym: '', name: 'n', grade: '', age: '', height: '', weight: '51', record: '', comment: '', musicUrl: '', photoDataUrl: '' };
+  const data = emptyTournament('local-test');
+  assert.equal(isLocalTournament({ ...data, fighters: [base] }), true);
+  assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass: 'Aクラス' }] }), true);
+  assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass: '' }] }), true);
+  assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass: 'あ'.repeat(40) }] }), true);
+  for (const fighterClass of [5, [], null, {}, 'あ'.repeat(41)]) assert.equal(isLocalTournament({ ...data, fighters: [{ ...base, fighterClass }] }), false);
+  const withClass = { ...data, fighters: [{ ...base, fighterClass: 'Aクラス' }, { ...base, id: 'y' }] };
+  assert.equal(isLocalTournament(JSON.parse(JSON.stringify(withClass))), true);
+  assert.equal('fighterClass' in emptyTournament(), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(withClass)).fighters[0].fighterClass, 'Aクラス');
+});
+
+test('クラス: 再取り込みでもクラスは名簿に残る', () => {
+  const current = importFighters('管理番号,選手名\nF1,赤').fighters;
+  const merged = mergeFighters(current, importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス').fighters);
+  assert.equal(merged[0].fighterClass, 'Aクラス');
+});
+
+test('クラス: 申込ページ用のURLは、クラスなしなら今までと同じで、あれば短く往復できる', () => {
+  const cfg = { endpoint: 'https://script.google.com/macros/s/AKfycbyTEST_ONLY/exec', eventId: 'test-cup', title: 't', organizer: 'o', date: 'd', venue: 'v', venueUrl: '', deadline: '2099-11-30', contact: 'c', music: false, grade: 'optional' as const, age: 'optional' as const, comment: 'optional' as const, protocol: '3', mode: 'live' as const };
+  const oldHash = publicEntryHash(cfg);
+  assert.doesNotMatch(oldHash, /cls|classes/);
+  const oldRead = publicEntryConfig(oldHash);
+  assert.deepEqual(oldRead, cfg);
+  assert.equal('classes' in oldRead, false);
+  const withDefaults = { ...cfg, classes: DEFAULT_CLASS_SETTINGS };
+  const h = publicEntryHash(withDefaults);
+  assert.match(h, /cls=on/); assert.doesNotMatch(h, /cuN|cuC|cuR|clN|clC|clR|cw=/);
+  assert.deepEqual(publicEntryConfig(h), withDefaults);
+  const custom = { ...cfg, classes: { enabled: true as const, upper: { name: '上級', condition: '5勝以上', rule: '首相撲あり' }, lower: { name: '初級', condition: '4勝以下', rule: 'パンチのみ' }, upperMinWins: 5 } };
+  const hc = publicEntryHash(custom);
+  for (const key of ['cuN=', 'cuC=', 'cuR=', 'clN=', 'clC=', 'clR=', 'cw=5']) assert.ok(hc.includes(key), key);
+  assert.deepEqual(publicEntryConfig(hc), custom);
+  assert.equal(publicEntryConfig(hc + '&unknown=1').title, 't', '知らない項目は無視');
+  const classesOf = (hash: string) => publicEntryConfig(hash).classes;
+  assert.equal(classesOf(oldHash + '&cls=off'), undefined);
+  assert.equal(classesOf(oldHash)?.upperMinWins, undefined);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=x')?.upperMinWins, 3);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=0')?.upperMinWins, 3);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=100')?.upperMinWins, 3);
+  assert.equal(classesOf(oldHash + '&cls=on&cw=7')?.upperMinWins, 7);
+  assert.equal(classesOf(oldHash + '&cls=on&cuN=' + 'あ'.repeat(30))?.upper.name.length, 12, '長すぎる名前は切る');
+  assert.equal(classesOf(oldHash + '&cls=on&cuC=' + 'あ'.repeat(100))?.upper.condition.length, 60);
+  assert.equal(classesOf(oldHash + '&cls=on&cuR=' + 'あ'.repeat(200))?.upper.rule.length, 80);
+  assert.equal(classesOf(oldHash + '&cls=on&cuN=Bクラス'), undefined, '名前が同じなら、クラスの設定ごと捨てる');
+  assert.equal('classes' in publicEntryConfig(oldHash + '&cls=on&cuN=Bクラス'), false);
+  assert.equal(publicEntryConfig(oldHash + '&cls=on&cuN=Bクラス').title, 't');
+});
+
+test('クラス: 準備の画面は、クラスを黄・赤の言葉で出す（札には言葉、ちがいは赤で⚠、止めない）', () => {
+  const cards = readFileSync(new URL('../app/private/cards.tsx', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../app/private/page.tsx', import.meta.url), 'utf8');
+  assert.match(cards, /boutClassWarning\(red, blue\)/);
+  assert.match(cards, /<ErrorLine role="status" mark="⚠ " className="\[overflow-wrap:anywhere\]">\{classMix\.headline\}<\/ErrorLine>/, '赤い箱に ⚠ と言葉（どのクラスか・どのルールがちがうか・おすすめ）');
+  assert.match(cards, /クラス：\{f\.fighterClass\}/, '選手の札にクラスの言葉');
+  assert.match(cards, /\$\{f\.fighterClass \? f\.fighterClass \+ ' ' : ''\}\$\{kgText\(f\.weight\)\} \$\{f\.name\}/, '選ぶ欄は「Aクラス 65kg 名前（ジム）」（せまい画面で閉じていても、クラスが切れない）');
+  assert.match(cards, /id=\{classId\}/);
+  assert.match(page, /クラス：\{fighter\.fighterClass\}/, '名簿の札にクラスの言葉');
+  assert.match(page, /⚠ クラスがちがいます/, '試合の一覧にも言葉（カードと同じ言い方）');
+  assert.match(page, /classChoices\(data\.fighters, classOptIn\)/, 'クラスを使わない大会には欄を出さない');
+  assert.match(page, /tidyClass\(result\.fighter\)/);
+  assert.match(page, /tidyClass\(\{ \.\.\.result\.fighter/);
+  assert.ok(!/classWarn[^\n]*disabled|classWarn[^\n]*aria-disabled/.test(cards), 'クラスのちがいで、ボタンを止めない');
 });

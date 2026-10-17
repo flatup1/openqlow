@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyTournament, isLocalTournament, validateTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
 import {
-  backupIsFresh, boutProblems, dropBlankBouts, eventListName, gapLevel, importErrorParts, importErrorText, ImportProblem, isBlankBout, isHalfBout, isTitleReal, monthDayClockPad, nextAction, nextActionKey, oldCopyText,
-  overwriteBoxText, overwriteConfirmText, pickMarker, restoreBoxText, restoreConfirmText, sameExceptProgress, sameFighterExists, saveReasonShort, saveReasonText, shortProblem, tooLong, unplacedFighters, useOtherBoxText,
+  backupIsFresh, boutProblems, classChanged, classChoices, describeClassChange, dropBlankBouts, eventListName, gapLevel, importErrorParts, importErrorText, ImportProblem, isBlankBout, isHalfBout, isTitleReal, knownClasses, mergeKeepExisting, monthDayClockPad, nextAction, nextActionKey, oldCopyText,
+  overwriteBoxText, overwriteConfirmText, pickMarker, restoreBoxText, restoreConfirmText, sameExceptProgress, sameFighterExists, sameClassName, saveReasonShort, saveReasonText, shortProblem, tidyClass, tooLong, unplacedFighters, useOtherBoxText,
   weightGap, weightMissing, type MarkerInput, type NextActionState, type NextState,
 } from '../app/private/logic.ts';
 import { checkFighter, checkMusic, checkNumber, describeChange, foldKana, normalizePassword, readDate, readNumber, shorten } from '../app/private/normalize.ts';
@@ -90,12 +90,12 @@ test('確認の箱の文: 1行目は結論と数。「よろしいですか？�
   const restored = base({ title: '戻したい大会', updatedAt: new Date(2027, 9, 3, 14, 3).getTime(), fighters: [fighter('A'), fighter('B')], bouts: [bout('1', 'A', 'B')] });
   const box = restoreBoxText({ restored, current, dirty: true, everSaved: true });
   assert.equal(box.verdict, 'いまの内容は消えて、コピーの内容に入れかわります：選手4人→2人・試合2つ→1つ。');
-  assert.deepEqual(box.lines.slice(0, 2), ['！選手が4人から2人に減ります。', '！試合が2つから1つに減ります。']);
+  assert.deepEqual(box.lines.slice(0, 2), ['⚠ 減ります：選手が4人から2人になります。', '⚠ 減ります：試合が2つから1つになります。']);
   assert.ok(box.lines.some((l) => l.includes('『戻したい大会』のコピー')) && box.lines.some((l) => l.includes('まだ保存していない変更あり')));
   assert.ok(![box.verdict, ...box.lines].some((l) => l.includes('よろしいですか')));
   const empty = restoreBoxText({ restored: { ...restored, fighters: [], bouts: [] }, current: base({ fighters: [], bouts: [] }), dirty: false, everSaved: false });
   assert.match(empty.verdict, /^コピーの内容を戻します（なくなるものはありません）：選手0人→0人/);
-  assert.match(restoreConfirmText({ restored, current, dirty: true, everSaved: true }), /^いまの内容は消えて、コピーの内容に入れかわります。\n！選手が4人から2人に減ります。/);
+  assert.match(restoreConfirmText({ restored, current, dirty: true, everSaved: true }), /^いまの内容は消えて、コピーの内容に入れかわります。\n⚠ 減ります：選手が4人から2人になります。/);
 
   const diff = { name: '赤坂', fields: [{ label: '体重', from: '65', to: '60' }] };
   const over = overwriteBoxText([diff, diff]);
@@ -137,7 +137,7 @@ const markerOf = (over: Partial<NextActionState> = {}, extra: Partial<MarkerInpu
 test('黄色の場所は、状態ごとに1つ。画面のどこかの欄か、下の帯のボタン', () => {
   assert.equal(markerOf({ titleReal: false, everSaved: false, dirty: true, fighters: 0, nonBlankBouts: 0 }).where, 'title');
   assert.equal(markerOf({ fighters: 0, nonBlankBouts: 0 }).where, 'file');
-  assert.match(markerOf({ fighters: 0, nonBlankBouts: 0 }).label, /選手名簿\.zip/);
+  assert.match(markerOf({ fighters: 0, nonBlankBouts: 0 }).label, /Tournament_OS_/, 'ZIPの名前は、受付のスクリプトが実際に作る名前（Tournament_OS_…zip）');
   assert.equal(markerOf({ nonBlankBouts: 0 }).where, 'add-bout');
   const blank = markerOf({ nonBlankBouts: 0 }, { blankIndex: 1 });
   assert.deepEqual([blank.where, blank.index, blank.side], ['bout', 1, 'red']);
@@ -145,8 +145,9 @@ test('黄色の場所は、状態ごとに1つ。画面のどこかの欄か、�
   assert.deepEqual([half.where, half.index, half.side, half.label], ['bout', 1, 'blue', '第2試合の青コーナーを選ぶ']);
   assert.deepEqual([markerOf({ dirty: true }).where, markerOf({ dirty: true }).label], ['bar', '保存']);
   assert.equal(markerOf().where, 'bar');
-  assert.equal(markerOf().label, '当日の画面を開く');
-  assert.equal(markerOf({ opened: true }).where, 'none', '全部終わったら黄色は0個');
+  assert.equal(markerOf().label, '試合当日の画面を開く');
+  // r2-156: 開いたあとも、黄色は1つ残す（帯の中。「当日は、開いた画面で試合を進める」）。ここで もう一度押すと、もう1つ開く
+  assert.deepEqual([markerOf({ opened: true }).where, markerOf({ opened: true }).label], ['bar', '当日は、開いた画面で試合を進める']);
 });
 
 test('黄色は、ぶつかり > 確認の箱 > 続きから開く大会 > 直後のつづき > いつもの順番', () => {
@@ -267,18 +268,114 @@ test('取り込みの失敗は、見出しとくわしい文に分かれる（�
   const blocked = importErrorParts(new ImportProblem('blocked'), 'a.csv', ['電話', '電話番号', 'メール', 'メールアドレス']);
   assert.equal(blocked.head, '個人情報の列があります：電話番号、メールアドレス');
   assert.match(blocked.hint, /Googleシートの④で作ったZIP/);
-  assert.match(importErrorParts(new Error('Invalid zip data'), 'こわれ.zip').head, /^ファイルがこわれています。別のファイルを選ぶ/);
+  // r2-40: 悪いファイルの名前を、命令のうしろのかっこに入れない（「別のファイルを選ぶ（x.zip）」は、x.zip を選べと読める）
+  assert.equal(importErrorParts(new Error('Invalid zip data'), 'こわれ.zip').head, '「こわれ.zip」はこわれているようです。別のファイルを選びます');
   assert.match(importErrorParts(new Error('同じ管理番号が2つあります。'), 'd.csv').detail, /同じ選手が2回/);
   for (const error of [new ImportProblem('no-list'), new ImportProblem('empty'), new Error('x')]) assert.ok(!importErrorParts(error, 'f').detail.includes('今の名簿は変えていません'));
 });
 
 test('保存の失敗の理由・試合の問題・古いコピーの言い方', () => {
-  assert.equal(saveReasonShort('quota'), '空きが足りません');
+  assert.equal(saveReasonShort('quota'), 'パソコンの空きが足りません');
   assert.equal(saveReasonShort('other'), '');
   assert.match(saveReasonText('quota'), /空き/);
-  assert.equal(shortProblem({ side: 'blue', text: '' }, 1), '第2試合の青が空');
-  assert.equal(shortProblem({ side: 'same', text: '' }, 0), '第1試合で同じ人が赤と青');
+  // r2-160: 「青が空」は、子どもに「青い空」と読める。青コーナー と言う
+  assert.equal(shortProblem({ side: 'blue', text: '' }, 1), '第2試合の青コーナーが、まだ入っていません');
+  assert.equal(shortProblem({ side: 'same', text: '' }, 0), '第1試合で、同じ人が赤と青に入っています');
   const day = 86_400_000;
   assert.equal(oldCopyText(1000, 1000 + 3 * day + 5), 'このコピーは3日前のものです');
   assert.equal(oldCopyText(1000, 1000 + day / 2), '');
+});
+
+/* ───────── クラス（Aクラス・Bクラス）: 新しい画面（黄色・赤の言葉）の上でも、今までの約束を守る ───────── */
+
+test('クラス: 前の人のクラスが空なら、ファイルのクラスを自動で足す（ちがいには数えない）。ちがうクラス同士だけ「ちがい」に出る（undefined は出さない）', () => {
+  const current = [fighter('A'), fighter('B')];
+  const incoming = [fighter('A', { fighterClass: 'Aクラス' }), fighter('B')];
+  const result = mergeKeepExisting(current, incoming);
+  // 親が申し込みで選んだ値なので、空だった人には黙って足してよい（手で直した値は動かさない）
+  assert.equal(result.differs.length, 0);
+  assert.equal(result.classesFilled, 1);
+  assert.equal(result.changed, true);
+  assert.equal(result.merged.find((f) => f.id === 'A')?.fighterClass, 'Aクラス');
+  assert.ok(!JSON.stringify(result).includes('undefined'));
+  // 同じ並び（クラスなし同士・クラスあり同士）は、ちがいなし
+  assert.equal(mergeKeepExisting(current, [fighter('A'), fighter('B')]).differs.length, 0);
+  assert.equal(mergeKeepExisting(current, [fighter('A'), fighter('B')]).classesFilled, 0);
+  const withClass = [fighter('A', { fighterClass: 'Bクラス' })];
+  assert.equal(mergeKeepExisting(withClass, [fighter('A', { fighterClass: 'Ｂクラス' })]).differs.length, 0, '全角・半角のちがいは同じ');
+  // ちがうクラスは「ちがい」に出て、書きかえの確認の文にも出る
+  const clash = mergeKeepExisting(withClass, [fighter('A', { fighterClass: 'Aクラス' })]);
+  assert.deepEqual(clash.differs[0].fields, [{ label: 'クラス', from: 'Bクラス', to: 'Aクラス' }]);
+  assert.ok(overwriteConfirmText(clash.differs).includes('クラス Bクラス→Aクラス') && !overwriteConfirmText(clash.differs).includes('undefined'));
+  // クラスの列がある見出しで、中が空: 前のクラスと「ちがい」になる（空は、はっきり空にする意味）
+  const blank = mergeKeepExisting(withClass, [fighter('A')]);
+  assert.deepEqual(blank.differs[0].fields, [{ label: 'クラス', from: 'Bクラス', to: '' }]);
+  // クラスの列が無い古いファイル（hasClassColumn=false）: クラスを比べない・書きかえても前のクラスを消さない
+  const noColumn = mergeKeepExisting(withClass, [fighter('A', { weight: '70' })], { hasClassColumn: false });
+  assert.deepEqual(noColumn.differs[0].fields.map((f) => f.label), ['体重'], 'クラスは、ちがいに数えない');
+  assert.equal(noColumn.overwritten[0].fighterClass, 'Bクラス', '書きかえても、親が選んだクラスは消さない');
+  assert.equal(mergeKeepExisting(withClass, [fighter('A')], { hasClassColumn: false }).differs.length, 0);
+  assert.equal(mergeKeepExisting(current, incoming, { hasClassColumn: false }).classesFilled, 0, '列が無いなら、足すものもない');
+});
+
+test('クラス: 変わったら「進み具合だけの違い」ではない。進み具合だけなら同じ', () => {
+  const a = base({ bouts: [bout('1', 'A', 'B')], currentBout: 0 });
+  const withClass = { ...a, fighters: a.fighters.map((f) => f.id === 'A' ? { ...f, fighterClass: 'Aクラス' } : f) };
+  assert.equal(sameExceptProgress(a, withClass), false);
+  assert.equal(sameExceptProgress(withClass, withClass), true);
+  assert.equal(sameExceptProgress(withClass, { ...withClass, currentBout: 0, updatedAt: withClass.updatedAt + 9 }), true);
+  // 空文字とクラスなしは同じ扱い
+  assert.equal(sameExceptProgress(a, { ...a, fighters: a.fighters.map((f) => ({ ...f, fighterClass: '' })) }), true);
+});
+
+test('クラス: 名簿に出てくるクラスの名前（空・重なり・全角半角ちがいは1つにする）', () => {
+  assert.deepEqual(knownClasses([fighter('A'), fighter('B')]), []);
+  assert.deepEqual(knownClasses([fighter('A', { fighterClass: 'Aクラス' }), fighter('B', { fighterClass: ' Aクラス ' }), fighter('C', { fighterClass: 'Ａクラス' }), fighter('D', { fighterClass: 'Bクラス' }), fighter('E', { fighterClass: '' })]), ['Aクラス', 'Bクラス']);
+  assert.equal(sameClassName('Ａクラス', 'Aクラス'), true);
+  assert.equal(sameClassName('Aクラス', 'Bクラス'), false);
+});
+
+test('クラス: 「1人ずつ入れる」「直す」で選べるクラス（クラスを使わない大会には欄を出さない）', () => {
+  const none = [fighter('A'), fighter('B')];
+  assert.deepEqual(classChoices(none, false), [], 'クラスが無く、押してもいないときは欄なし');
+  assert.deepEqual(classChoices(none, true), ['Aクラス', 'Bクラス'], '「クラスも入れる」を押したあと');
+  assert.deepEqual(classChoices([fighter('A', { fighterClass: 'Aクラス' })], false), ['Aクラス', 'Bクラス'], '初期の名前だけなら、2つとも選べる');
+  assert.deepEqual(classChoices([fighter('A', { fighterClass: 'Ａクラス' })], false), ['Aクラス', 'Bクラス']);
+  assert.deepEqual(classChoices([fighter('A', { fighterClass: '上級' }), fighter('B', { fighterClass: '初級' })], false), ['上級', '初級'], 'シートで別の名前にしたときは、その名前');
+  assert.deepEqual(classChoices([fighter('A', { fighterClass: '上級' })], true), ['上級'], '別の名前が出ているときは、初期の名前を足さない');
+});
+
+test('クラス: 入れるときの整え。空は項目ごと無くし、長すぎは40文字までで、ほかの項目は変えない', () => {
+  const plain = fighter('A');
+  const cleaned = tidyClass({ ...plain, fighterClass: '' });
+  assert.equal('fighterClass' in cleaned, false, '空は項目ごと無い（古い形のまま）');
+  assert.deepEqual(cleaned, plain);
+  assert.equal('fighterClass' in tidyClass({ ...plain, fighterClass: '   ' }), false);
+  assert.equal('fighterClass' in tidyClass(plain), false);
+  assert.equal(tidyClass({ ...plain, fighterClass: '  Aクラス ' }).fighterClass, 'Aクラス');
+  assert.equal(tidyClass({ ...plain, fighterClass: 'あ'.repeat(60) }).fighterClass?.length, 40);
+  assert.equal(tidyClass({ ...plain, fighterClass: 'A\u0000クラス' }).fighterClass, 'Aクラス');
+  const kept = tidyClass({ ...plain, fighterClass: 'Bクラス', photoDataUrl: 'data:image/png;base64,AAAA' });
+  assert.equal(kept.photoDataUrl, 'data:image/png;base64,AAAA');
+  assert.equal(kept.name, plain.name);
+});
+
+test('クラス: 直したかの見分けと、直した所の短い言い方', () => {
+  const a = fighter('A');
+  assert.equal(classChanged(a, { ...a, fighterClass: '' }), false, '空とクラスなしは同じ');
+  assert.equal(classChanged(a, { ...a, fighterClass: 'Aクラス' }), true);
+  assert.equal(classChanged({ ...a, fighterClass: 'Aクラス' }, { ...a, fighterClass: 'Bクラス' }), true);
+  assert.equal(describeClassChange(a, { ...a, fighterClass: '' }), '');
+  assert.equal(describeClassChange(a, { ...a, fighterClass: 'Aクラス' }), 'クラス （空） → Aクラス');
+  assert.equal(describeClassChange({ ...a, fighterClass: 'Aクラス' }, { ...a, fighterClass: 'Bクラス' }), 'クラス Aクラス → Bクラス');
+  assert.equal(describeClassChange({ ...a, fighterClass: 'Bクラス' }, a), 'クラス Bクラス → （空）');
+});
+
+test('クラス: 検査（checkFighter）はクラスを消さず、まちがいにも数えない。describeChange は文字の欄だけ', () => {
+  const input = fighter('A', { height: '170', weight: '60', record: '初試合', fighterClass: 'Bクラス' });
+  const added = checkFighter(input, DEFAULT_ENTRY_CONFIG, 'add');
+  assert.deepEqual(added.problems, []);
+  assert.equal(added.fighter.fighterClass, 'Bクラス');
+  assert.equal(checkFighter(input, DEFAULT_ENTRY_CONFIG, 'edit').fighter.fighterClass, 'Bクラス');
+  assert.equal(describeChange(fighter('A'), { ...fighter('A'), fighterClass: 'Aクラス' }), '');
 });

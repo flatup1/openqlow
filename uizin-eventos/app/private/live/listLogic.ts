@@ -1,4 +1,6 @@
-import { contractWeight, safeMusicUrl, type LocalBout, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
+import { boutClassWarning } from '../../../core/classRules.ts';
+import { DEFAULT_ENTRY_CONFIG } from '../../../core/entryPackage.ts';
+import { contractWeight, safeMusicUrl, sameFighterKey, type LocalBout, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
 
 /** 試合当日の画面の見かた。1試合ずつ（ふだん）か、一覧か。 */
 export type LiveView = 'single' | 'list';
@@ -110,6 +112,14 @@ export function pageJumpList(pages: number, current: number, mustKeep?: number):
   return out;
 }
 
+/**
+ * この大会で入場曲を使うか。準備画面（app/private/page.tsx）と同じ決め方: 受付の設定（entryConfig）がない大会は、初期設定の「使わない」。
+ * （前は、こちらだけ「使う」にしていて、準備画面は「いいえ」と言うのに、当日の画面は「曲を用意」と言っていた）
+ */
+export function liveMusicOn(data: { entryConfig?: { music: boolean } | null }): boolean {
+  return (data.entryConfig ?? DEFAULT_ENTRY_CONFIG).music;
+}
+
 /** 入場曲の状態。off=この大会は入場曲なし / empty=選手がいない（何も出さない） */
 export type MusicState = 'off' | 'empty' | 'link' | 'broken' | 'none';
 
@@ -126,7 +136,7 @@ export function musicState(fighter: LocalFighter | undefined, musicEnabled: bool
  */
 export function musicLabel(state: MusicState): string {
   if (state === 'link') return '♪ 曲を開く';
-  if (state === 'none') return '⚠ 入場曲なし（曲を用意）';
+  if (state === 'none') return '⚠ この選手は入場曲なし（曲を用意）';
   if (state === 'broken') return '⚠ 曲のリンクを確認';
   return '';
 }
@@ -135,17 +145,43 @@ export function musicLabel(state: MusicState): string {
 export const MUSIC_NEW_TAB = '↗ 別のタブ';
 
 export const MISSING_FIGHTER = '選手未選択';
+/** 選手はいるが、名前が空（または空白だけ）のとき。1試合ずつの画面と一覧で同じ言葉 */
+export const NO_NAME = '名前未入力';
+
+/** 選手の名前を画面に出す形。選手がいない=「選手未選択」、名前が空=「名前未入力」（空白だけの名前も空と同じ） */
+export const displayName = (fighter: LocalFighter | undefined): string => (fighter ? fighter.name.trim() || NO_NAME : MISSING_FIGHTER);
+
+/** 赤と青が、管理番号はちがうのに、名前もジムも同じ（同じ人が2回申し込んだ）。準備画面の対戦カードと同じ見分け方 */
+export function isSamePerson(red: LocalFighter | undefined, blue: LocalFighter | undefined): boolean {
+  if (!red || !blue || red.id === blue.id) return false;
+  const key = sameFighterKey(red);
+  return key !== '' && key === sameFighterKey(blue);
+}
 export const NO_CONTRACT = '契約未入力';
 export const NO_MUSIC_EVENT = 'この大会は入場曲なし';
 export const NO_MUSIC_DONE = '入場曲はぜんぶそろっています';
-export const EMPTY_LIST_MESSAGE = 'まだ対戦カードがありません。準備の画面で作ってください。';
+/** 大会名が空のとき、一番上の帯に出す名前（準備画面と同じ言葉） */
+export const NO_TITLE = '大会名未設定';
+/** 「準備画面へ戻る」のとなりに書く、ほんとうに起きること（この画面が準備画面に変わる。別のタブは開かない） */
+export const PREP_LINK_NOTE = 'この画面は、準備画面に変わります。もとの準備画面が開いたままなら、閉じてください。ここにもどるには、準備画面の「試合当日の画面を開く」を押します。';
+/** 閉じたあとに、また開くには、ネットが要る（保存したデータは消えないが、ページ自体はネットから読む） */
+export const REOPEN_NOTE = 'この画面を閉じたあとに開き直すには、ネットが必要です。会場のネットが弱いときは、閉じないでください。';
+/** ネットが切れているときの黄色の注意 */
+export const OFFLINE_NOTE = 'いま、ネットがつながっていません。この画面を閉じないでください。閉じると、ネットがないと開き直せません。データは、このパソコンの中に保存されています。';
+/** 最後の試合のとき、一覧に出す言葉（進める試合は もうない） */
+export const LAST_BOUT_LIST_NOTE = 'いまは最後の試合です。進める試合は、もうありません。';
+export const EMPTY_LIST_MESSAGE = 'まだ対戦カードがありません。準備画面で作ってください。';
 
 export type CornerModel = {
   side: 'red' | 'blue';
   label: '赤コーナー' | '青コーナー';
   present: boolean;
+  /** 選手はいるが、名前が空（または空白だけ）。一覧でも赤い行を出す（1試合ずつの画面と同じ） */
+  noName: boolean;
   name: string;
   gym: string;
+  /** クラスの名前（Aクラスなど）。ないときは ''。見せるだけで、色は使わない */
+  fighterClass: string;
   photoDataUrl: string;
   music: MusicState;
   musicUrl: string;
@@ -159,9 +195,13 @@ export type RowModel = {
   rule: string;
   red: CornerModel;
   blue: CornerModel;
+  /** 赤と青のクラスがちがう（どちらも入っていて、ちがうとき） */
+  classMix: boolean;
   openLabel: string;
   /** 赤と青が同じ選手（まちがい）。選手が選ばれていない（空）ときは false */
   sameFighter: boolean;
+  /** 管理番号はちがうが、名前もジムも同じ（同じ人かもしれない） */
+  samePerson: boolean;
   /** 体重もクラス名もなく「契約未入力」になる試合 */
   noContract: boolean;
 };
@@ -172,8 +212,10 @@ function corner(side: 'red' | 'blue', fighter: LocalFighter | undefined, musicEn
     side,
     label: side === 'red' ? '赤コーナー' : '青コーナー',
     present: !!fighter,
-    name: fighter ? fighter.name.trim() || '名前未入力' : MISSING_FIGHTER,
+    noName: !!fighter && !fighter.name.trim(),
+    name: displayName(fighter),
     gym: fighter?.gym.trim() ?? '',
+    fighterClass: fighter?.fighterClass?.trim() ?? '',
     photoDataUrl: fighter?.photoDataUrl ?? '',
     music: state,
     musicUrl: state === 'link' && fighter ? safeMusicUrl(fighter.musicUrl) : '',
@@ -193,9 +235,11 @@ export function buildRow(bout: LocalBout, index: number, byId: Map<string, Local
     contract,
     noContract: contract === NO_CONTRACT,
     sameFighter: !!bout.redId && bout.redId === bout.blueId,
+    samePerson: isSamePerson(red, blue),
     rule: bout.rule.trim(),
     red: r,
     blue: b,
+    classMix: boutClassWarning(red, blue) !== '',
     openLabel: 'この試合を開く ' + title + ' 赤コーナー ' + r.name + ' 対 青コーナー ' + b.name,
   };
 }
@@ -248,7 +292,7 @@ export function nowModel(data: Pick<LocalTournament, 'bouts' | 'fighters' | 'cur
   const bout = data.bouts[data.currentBout];
   if (!bout) return null;
   const byId = new Map(data.fighters.map((f) => [f.id, f]));
-  const name = (id: string) => { const f = byId.get(id); return f ? f.name.trim() || '名前未入力' : MISSING_FIGHTER; };
+  const name = (id: string) => displayName(byId.get(id));
   const title = '第' + (data.currentBout + 1) + '試合';
   return { index: data.currentBout, title, text: title + '　' + name(bout.redId) + ' 対 ' + name(bout.blueId), page: pageOfBout(data.currentBout, total, size) };
 }
@@ -305,7 +349,7 @@ export function moveNotice(via: MoveVia, before: number, after: number): MoveNot
   const b = '第' + (before + 1) + '試合', a = '第' + (after + 1) + '試合';
   if (via === 'prev') return { text: a + 'にもどりました', undoLabel: b + 'にすすむ' };
   if (via === 'next') return { text: b + ' → ' + a + 'に進みました', undoLabel: b + 'にもどす' };
-  return { text: a + 'に変えました。まちがえたら右のボタン →', undoLabel: b + 'にもどす' };
+  return { text: a + 'に変えました。まちがえたら「' + b + 'にもどす」を押してください。', undoLabel: b + 'にもどす' };
 }
 
 /** 元にもどす案内を、大きい箱で見せる秒数。そのあとは小さい灰の1行になる */
@@ -317,7 +361,8 @@ export function undoSecondsLeft(since: number, now: number, limit = UNDO_BIG_SEC
   return Math.max(0, limit - passed);
 }
 
-/** 同じ向きのボタンが続けて押された（ダブルタップ）か。まちがって2つ進まないための印 */
+/** 同じ向きのボタンが続けて押された（ダブルタップ）か。まちがって2つ進まないための印。
+ *  キーを押しっぱなしにしたときの連打（key repeat）は、ここでは止めない（0.5秒あとから始まるため）。page.tsx の onKeyDown が、e.repeat のキーを捨てる */
 export const REPEAT_PRESS_MS = 450;
 export function isRepeatPress(last: { dir: string; at: number } | null, dir: string, now: number, gap = REPEAT_PRESS_MS): boolean {
   return !!last && last.dir === dir && now - last.at >= 0 && now - last.at < gap;
@@ -326,10 +371,15 @@ export function isRepeatPress(last: { dir: string; at: number } | null, dir: str
 /** 保存できなかったときの赤い言葉。text=何があったか / more=いまの状態と、次に押すもの / tip=ありがちな原因と、やること。ぶつかったとき（別の画面で変わった）は page.tsx が別に作る */
 export function saveFailNotice(via: MoveVia | 'undo', currentBout: number): { text: string; more: string; tip: string } {
   const here = '第' + (currentBout + 1) + '試合';
-  const tip = '写真が多いと保存できないことがあります。ほかのタブを閉じて、もう一度押す。';
-  if (via === 'list') return { text: '失敗：この行は開けませんでした。保存できなかったため、試合は進めていません。', more: 'まだ' + here + 'のままです。もう一度「この試合を開く」を押す。', tip };
-  if (via === 'undo') return { text: '失敗：保存できなかったため、試合は戻せていません。', more: 'まだ' + here + 'のままです。もう一度、同じボタンを押す。', tip };
-  return { text: '失敗：保存できなかったため、試合は進めていません。', more: 'まだ' + here + 'のままです。もう一度「' + (via === 'prev' ? '← 前の試合' : '次の試合 →') + '」を押す。', tip };
+  const tip = '写真が多いと保存できないことがあります。ほかのタブを閉じて、もう一度押してください。';
+  if (via === 'list') return { text: '失敗：この行は開けませんでした。保存できなかったため、試合は進めていません。', more: 'まだ' + here + 'のままです。もう一度「この試合を開く」を押してください。', tip };
+  if (via === 'undo') return { text: '失敗：保存できなかったため、試合は戻せていません。', more: 'まだ' + here + 'のままです。もう一度、同じボタンを押してください。', tip };
+  return { text: '失敗：保存できなかったため、試合は進めていません。', more: 'まだ' + here + 'のままです。もう一度「' + (via === 'prev' ? '← 前の試合' : '次の試合 →') + '」を押してください。', tip };
+}
+
+/** 押しっぱなしのキー（Enter / Space）の連打か。押しっぱなしで、何試合も進まないように、ボタンの上では捨てる */
+export function isHeldKeyRepeat(event: { repeat?: boolean; key?: string }): boolean {
+  return !!event.repeat && (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar');
 }
 
 /** 絞り込み中の黄色い注意 */

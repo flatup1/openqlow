@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isTemplateCopyLink, parsePing, parsePingText, pingUrl, templateCopyLink } from '../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isTemplateCopyLink, parsePing, parsePingText, pingUrl, templateCopyLink } from '../core/setupV3.ts';
 import { publicEntryConfig, publicEntryHash, publicEntryReady } from '../core/publicEntry.ts';
+import { CLASS_LIMITS, DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { harness } from './helpers/gasV3Harness.ts';
 
 const endpoint = 'https://script.google.com/macros/s/AKfycbyTEST_ONLY/exec';
@@ -131,4 +132,47 @@ test('つなぎ目: Googleのスクリプトの返事を画面側が読み、設
   assert.match(String(receipt), /^[A-Z0-9-]+$/);
   assert.equal(h.rows('申込原本（個人情報あり）').length, 2);
   assert.equal(config.title, 'テスト大会'); assert.equal(config.deadline, '2099-11-30');
+});
+
+test('クラス分け: pingのクラスは正しい形だけ残り、classMode が true のときだけ読む', () => {
+  const on = ping({ classMode: true, classes: DEFAULT_CLASS_SETTINGS });
+  assert.equal(on.classMode, true); assert.deepEqual(on.classes, DEFAULT_CLASS_SETTINGS);
+  const bad = ping({ classMode: true, classes: { ...DEFAULT_CLASS_SETTINGS, upperMinWins: 0 } });
+  assert.equal(bad.classMode, true); assert.equal(bad.classes, undefined);
+  assert.equal(ping({ classMode: true, classes: { ...DEFAULT_CLASS_SETTINGS, enabled: false } }).classes, undefined);
+  assert.equal(ping({ classes: DEFAULT_CLASS_SETTINGS }).classes, undefined, 'classMode がないクラスは捨てる');
+  assert.equal(ping({ classMode: false, classes: DEFAULT_CLASS_SETTINGS }).classes, undefined);
+  assert.equal(ping().classMode, undefined);
+});
+
+test('クラス分け: 申込ページへ渡す設定にクラスが入り、読めないときは「クラス」で始まる文で止まる', () => {
+  const live = entryConfigFromPing(ping({ accepting: true, classMode: true, classes: DEFAULT_CLASS_SETTINGS }), endpoint, 'live');
+  assert.deepEqual(live.classes, DEFAULT_CLASS_SETTINGS);
+  const hash = publicEntryHash(live);
+  assert.match(hash, /cls=on/); assert.doesNotMatch(hash, /cuN|clN|cw=/);
+  assert.deepEqual(publicEntryConfig(hash), { ...live, venueUrl: '' });
+  const custom = { ...DEFAULT_CLASS_SETTINGS, upper: { ...DEFAULT_CLASS_SETTINGS.upper, name: 'エキスパート' }, upperMinWins: 5 };
+  const c = entryConfigFromPing(ping({ classMode: true, classes: custom }), endpoint, 'test');
+  assert.deepEqual(publicEntryConfig(publicEntryHash(c)).classes, custom);
+  assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: { ...DEFAULT_CLASS_SETTINGS, upperMinWins: 0 } }), endpoint, 'live'), /^Error: クラス/);
+  assert.throws(() => entryConfigFromPing(ping({ classMode: true }), endpoint, 'live'), /クラス/);
+  const none = entryConfigFromPing(ping({ accepting: true }), endpoint, 'live');
+  assert.equal('classes' in none, false);
+  assert.equal(publicEntryHash(none).includes('cls='), false);
+  const longest = { ...DEFAULT_CLASS_SETTINGS, upper: { name: '！'.repeat(CLASS_LIMITS.name), condition: '！'.repeat(CLASS_LIMITS.condition), rule: '！'.repeat(CLASS_LIMITS.rule) }, lower: { name: '？'.repeat(CLASS_LIMITS.name), condition: '？'.repeat(CLASS_LIMITS.condition), rule: '？'.repeat(CLASS_LIMITS.rule) } };
+  const worst = entryConfigFromPing(ping({ classMode: true, classes: longest }), endpoint, 'live');
+  assert.ok(publicEntryHash(worst).length <= 4500, '一番長くても4500文字以内');
+  // 長すぎるURLの文は、いちばん長い欄を名前で言う。ここでは大会名（299字）がいちばん長いので、クラスのせいにしない
+  assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: 文が長すぎて、選手に渡すURLに入りません。「大会名」（セル B2）を短くしてください。$/);});
+
+test('クラス分け: 古い版 3.20261004.4 も新しい版も受け付け、知らない版は古いと言う', () => {
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261010.5');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5']);
+  assert.equal(diagnose(ping({ build: '3.20261004.4' })).stage, 'need-open');
+  assert.equal(diagnose(ping({ build: '3.20261004.4', accepting: true })).stage, 'ready');
+  assert.equal(diagnose(ping({ build: '3.20261004.4', ready: false })).stage, 'not-setup');
+  assert.equal(diagnose(ping({ build: '3.20261010.5', accepting: true })).stage, 'ready');
+  for (const build of ['3.0.0', '3.20261010.4', '']) assert.equal(diagnose(ping({ build })).stage, 'old-build');
+  const old = entryConfigFromPing(ping({ build: '3.20261004.4', accepting: true }), endpoint, 'live');
+  assert.equal('classes' in old, false);
 });

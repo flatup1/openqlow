@@ -15,8 +15,15 @@ export const cx = (...parts: Array<string | false | null | undefined>): string =
 const BIG: { fontSize: string } = { fontSize: '1.0625rem' };
 
 /** 黄色い「👉 次はここ：〇〇」の札。ボタンの『中』には入れず、ボタンの外・直前に置く */
+/** 「第1試合」のような、途中で行が変わると読めない言葉は、1つの塊にする（「第」と「1試合」に割れない） */
+function keepTogether(children: ReactNode): ReactNode {
+  if (typeof children !== 'string') return children;
+  return children.split(/(第\d+試合)/).map((part, i) => /^第\d+試合$/.test(part) ? <span key={i} style={{ whiteSpace: 'nowrap' }}>{part}</span> : part);
+}
 export function NextBadge({ children, tight = false }: { children?: ReactNode; tight?: boolean }) {
-  return <span className="tos-next-badge" style={tight ? { ...BIG, padding: '0 8px' } : BIG}><span aria-hidden="true">👉</span> 次はここ{children ? '：' : ''}{children}</span>;
+  // 長い文が何行にも折り返しても、細長いだ円にならないよう、角は丸め切らず（14px）、ふつうの文として流す（live の BADGE と同じ）
+  const badge: CSSProperties = { ...BIG, borderRadius: '14px', display: 'inline-block' };
+  return <span className="tos-next-badge" style={tight ? { ...badge, padding: '0 8px' } : badge}><span aria-hidden="true">👉</span> 次はここ{children ? '：' : ''}{keepTogether(children)}</span>;
 }
 
 /**
@@ -41,8 +48,9 @@ export function Caution({ children, title = '気をつけて', className = '', i
 }
 
 /** 赤い「✕ まちがい／失敗」。まちがいの『すぐ下』に置く。文は『何がまちがいか』と『どうするか』 */
-export function ErrorLine({ id, children, role = 'alert', className = '' }: { id?: string; children: ReactNode; role?: 'alert' | 'status' | null; className?: string }) {
-  return <p id={id} role={role ?? undefined} tabIndex={-1} className={cx('tos-error  focus:outline-none', className)}><span aria-hidden="true">✕ </span>{children}</p>;
+export function ErrorLine({ id, children, role = 'alert', className = '', mark = '✕ ' }: { id?: string; children: ReactNode; role?: 'alert' | 'status' | null; className?: string; mark?: '✕ ' | '⚠ ' }) {
+  // mark: ふつうは「✕」。止めない注意（クラスのちがいなど）は「⚠」にする（どちらも、赤い箱に記号と言葉）
+  return <p id={id} role={role ?? undefined} tabIndex={-1} className={cx('tos-error  focus:outline-none', className)}><span aria-hidden="true">{mark}</span>{children}</p>;
 }
 
 /** 緑の「✓ できた／保存した」 */
@@ -75,9 +83,11 @@ export function StepNo({ n }: { n: number }) {
  * 1行目＝「✕ 取り消せない：」＋何がどう変わるか。消えるものは赤い太字で1行ずつ。
  * ボタンは2つだけ: 左（大きい・黒い枠）が安全な「やめる」＝最初にフォーカス・Escも同じ。右が赤い枠の危ないほう。
  */
-export function DangerConfirm({ id, label, verdict, lines = [], safeLabel, dangerLabel, onYes, onNo, head = '取り消せない', note, children, tone = 'danger' }: {
+export function DangerConfirm({ id, label, verdict, lines = [], safeLabel, dangerLabel, onYes, onNo, head = '取り消せない', note, children, tone = 'danger', yellow = false }: {
   id: string; label: string; verdict: string; lines?: string[]; safeLabel: string; dangerLabel: string; onYes: () => void; onNo: () => void;
   head?: string; note?: string; children?: ReactNode; tone?: 'danger' | 'plain';
+  /** true のとき、黄色の「👉 次はここ」を、安全な「やめる」のボタンに置く（確認の箱が開いている間は、画面のほかに黄色が無い。迷ったら『やめる』） */
+  yellow?: boolean;
 }) {
   const safeRef = useRef<HTMLButtonElement | null>(null);
   const noRef = useRef(onNo);
@@ -105,7 +115,9 @@ export function DangerConfirm({ id, label, verdict, lines = [], safeLabel, dange
     {children}
     <p className="mb-0 mt-2 font-bold">{note ?? '下のボタンを押すまで、何も変わりません。'}</p>
     <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
-      <button ref={safeRef} type="button" onClick={onNo} className="tos-safe-btn inline-flex w-full items-center justify-center text-center text-lg touch-manipulation sm:w-auto sm:min-w-[14rem]">{safeLabel}</button>
+      <NextSlot active={yellow} label={safeLabel} tight className="w-full sm:w-auto">
+        <button ref={safeRef} type="button" onClick={onNo} className="tos-safe-btn inline-flex w-full items-center justify-center text-center text-lg touch-manipulation sm:w-auto sm:min-w-[14rem]">{safeLabel}</button>
+      </NextSlot>
       <button type="button" onClick={onYes} className="tos-danger-btn inline-flex w-full items-center justify-center text-center text-lg touch-manipulation [overflow-wrap:anywhere] sm:w-auto">{dangerLabel}</button>
     </div>
   </div>;

@@ -10,7 +10,8 @@ import { readFile } from 'node:fs/promises';
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4421';
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base)) throw new Error('This test must run against a local preview.');
-const browser = await chromium.launch({ headless: true, channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' });
+const EXE = process.env.TOS_CHROME_PATH || '';
+const browser = await chromium.launch({ headless: true, ...(EXE ? { executablePath: EXE } : { channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' }) });
 let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 const PASSWORD = 'fictional-test-password';
@@ -130,12 +131,16 @@ try {
   await openBackup();
   await page.locator('input[accept=".enc"]').setInputFiles({ name: 'x.enc', mimeType: 'application/octet-stream', buffer: encrypted });
   await status('先に、パスワードを入れてください。').waitFor();
-  check(true, 'Restoring with an empty password asks for the password first');
+  check((await status('先に、パスワードを入れてください。').count()) >= 1, 'Restoring with an empty password asks for the password first');
   await page.locator('#backup-password').fill(PASSWORD);
+  // この画面が「空で、一度も保存していない」なら、別の大会のコピーでも、そのまま入れられる（別のパソコンに移ったとき）。ここは、すでに保存した画面で、断られることを確かめる
+  await page.getByLabel('大会名', { exact: true }).fill('別の大会B');
+  await page.getByRole('button', { name: '保存する', exact: true }).first().click();
+  await stateLine().getByText('保存済み').waitFor();
   await page.locator('input[accept=".enc"]').setInputFiles({ name: 'x.enc', mimeType: 'application/octet-stream', buffer: encrypted });
   await status('いまの画面は別の大会なので、何も変えていません').waitFor();
-  check(await page.getByLabel('大会名', { exact: true }).inputValue() === '', 'A copy of another event does not overwrite this event');
-  await page.getByRole('button', { name: 'この大会として開く', exact: true }).click();
+  check(await page.getByLabel('大会名', { exact: true }).inputValue() === '別の大会B', 'A copy of another event does not overwrite this event');
+  await page.getByRole('button', { name: '大会を開く（そのあと、もう一度ファイルを選ぶ）', exact: true }).click();
   await page.waitForURL(/event=safety-a/);
   await stateLine().waitFor();
 
@@ -199,7 +204,7 @@ try {
   /* ───── 続きから: 保存してある大会が出る ───── */
   await page.goto(base + '/private/');
   await page.getByRole('link', { name: /続きから：/ }).first().waitFor();
-  check(true, 'Arriving without an event number lists the saved events');
+  check((await page.getByRole('link', { name: /続きから：/ }).count()) >= 1, 'Arriving without an event number lists the saved events');
   check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No horizontal overflow at 1280px');
 
   check(!errors.length, 'No browser runtime exceptions: ' + errors.join(', '));
@@ -213,7 +218,7 @@ try {
   await small.goto(base + '/private/?event=safety-phone');
   await small.locator('#save-state').waitFor();
   check(await small.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No horizontal overflow at 390px');
-  check((await small.getByText('次にやる：').first().innerText()).includes('次にやる：'), 'The next step is spelled out at 390px');
+  check(/👉 次はここ：\s*\S{4,}/.test(await small.getByText('👉 次はここ：').first().innerText()), 'The next step is spelled out at 390px (the label is followed by words that name the step)');
   await phone.close();
   console.log('Private v3 safety checks passed: ' + checks + '. Local only, fake data.');
 } finally { await browser.close(); }

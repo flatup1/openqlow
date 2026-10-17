@@ -126,7 +126,8 @@ test('musicState / musicLabel: 4つの状態と、大会で入場曲なし', () 
   assert.equal(musicState(undefined, true), 'empty');
   assert.equal(musicState(fighter('a', { musicUrl: 'https://youtu.be/abc' }), false), 'off');
   assert.equal(musicLabel('link'), '♪ 曲を開く');
-  assert.equal(musicLabel('none'), '⚠ 入場曲なし（曲を用意）');
+  // r2-57: 「入場曲なし」は2つの意味で使わない。選手ごと =「この選手は入場曲なし（曲を用意）」/ 大会ぜんたい =「この大会は入場曲なし」
+  assert.equal(musicLabel('none'), '⚠ この選手は入場曲なし（曲を用意）');
   assert.equal(musicLabel('broken'), '⚠ 曲のリンクを確認');
   assert.notEqual(musicLabel('none'), musicLabel('broken'));
   assert.equal(musicLabel('off'), '');
@@ -290,7 +291,7 @@ test('moveNotice: 動かした直後の言葉と、もどす／すすむボタ�
   assert.deepEqual(moveNotice('next', 6, 7), { text: '第7試合 → 第8試合に進みました', undoLabel: '第7試合にもどす' });
   assert.deepEqual(moveNotice('prev', 6, 5), { text: '第6試合にもどりました', undoLabel: '第7試合にすすむ' });
   assert.equal(moveNotice('list', 3, 5).undoLabel, '第4試合にもどす');
-  assert.match(moveNotice('list', 3, 5).text, /^第6試合に変えました。まちがえたら右のボタン/);
+  assert.match(moveNotice('list', 3, 5).text, /^第6試合に変えました。まちがえたら「第4試合にもどす」を押してください/);
   for (const via of ['next', 'list'] as const) assert.match(moveNotice(via, 1, 2).undoLabel, /^第\d+試合にもどす$/);
 });
 
@@ -332,4 +333,43 @@ test('buildRow: 赤と青が同じ選手・契約未入力の印', () => {
   assert.equal(same.noContract, true);
   assert.equal(buildRow(bout(0, { redId: '', blueId: '' }), 0, byId, true, 0).sameFighter, false);
   assert.equal(buildRow(bout(0, { redId: 'r', blueId: 'x', className: 'ライト' }), 0, byId, true, 0).noContract, false);
+});
+
+test('buildRow: クラスは選手に入っているときだけ出る。ちがうクラス同士のときだけ classMix', () => {
+  const plain = new Map([fighter('r'), fighter('u')].map((f) => [f.id, f]));
+  const none = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, plain, true, 0);
+  assert.equal(none.red.fighterClass, '');
+  assert.equal(none.blue.fighterClass, '');
+  assert.equal(none.classMix, false);
+  assert.equal(none.openLabel, 'この試合を開く 第1試合 赤コーナー 架空r 対 青コーナー 架空u');
+  const mixed = new Map([fighter('r', { fighterClass: ' Aクラス ' }), fighter('u', { fighterClass: 'Bクラス' })].map((f) => [f.id, f]));
+  const row = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, mixed, true, 0);
+  assert.equal(row.red.fighterClass, 'Aクラス');
+  assert.equal(row.blue.fighterClass, 'Bクラス');
+  assert.equal(row.classMix, true);
+  const same = new Map([fighter('r', { fighterClass: 'Ａクラス' }), fighter('u', { fighterClass: 'Aクラス' })].map((f) => [f.id, f]));
+  assert.equal(buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, same, true, 0).classMix, false);
+  const oneSide = new Map([fighter('r', { fighterClass: 'Aクラス' }), fighter('u')].map((f) => [f.id, f]));
+  const half = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, oneSide, true, 0);
+  assert.equal(half.classMix, false);
+  assert.equal(half.red.fighterClass, 'Aクラス');
+  const ghost = buildRow(bout(0, { redId: 'r', blueId: 'ghost' }), 0, oneSide, true, 0);
+  assert.equal(ghost.blue.fighterClass, '');
+  assert.equal(ghost.classMix, false);
+});
+
+test('buildRow: クラスは新しい画面の他の判定（同じ選手・契約未入力）を変えない', () => {
+  const mixed = new Map([fighter('r', { fighterClass: 'Aクラス' }), fighter('u', { fighterClass: 'Bクラス' })].map((f) => [f.id, f]));
+  const row = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, mixed, true, 0);
+  assert.equal(row.sameFighter, false);
+  assert.equal(row.noContract, false);
+  // 同じ選手を赤と青に入れても、クラスは「ちがう」にならない（同じ選手の赤い言葉だけが出る）
+  const twice = buildRow(bout(0, { redId: 'r', blueId: 'r' }), 0, mixed, true, 0);
+  assert.equal(twice.sameFighter, true);
+  assert.equal(twice.classMix, false);
+  // 古い保存データ（fighterClass がない選手）でも、落ちずに ''
+  const old = new Map([fighter('r'), fighter('u')].map((f) => { const copy: Partial<LocalFighter> = { ...f }; delete copy.fighterClass; return [f.id, copy as LocalFighter]; }));
+  const oldRow = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, old, true, 0);
+  assert.equal(oldRow.red.fighterClass, '');
+  assert.equal(oldRow.classMix, false);
 });

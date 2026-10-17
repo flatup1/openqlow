@@ -28,6 +28,8 @@ export function readNumber(raw: string, integer = false): NumberRead {
   if (!text) return { ok: true, value: '', fixed: false, from };
   text = text.replace(/^約/, '').replace(UNIT, '').replace(/(\d)[,、](?=\d)/g, '$1.').replace(/\.$/, '');
   if (integer) text = text.replace(/^(\d+)\.0+$/, '$1');
+  // 年齢のように、整数だけの欄に小数（15.5）は読めない（赤で知らせる）
+  if (integer && text.includes('.')) return { ok: false };
   text = text.replace(/^0+(?=\d)/, '');
   if (!/^\d+(?:\.\d+)?$/.test(text) || text.length > 10) return { ok: false };
   return { ok: true, value: text, fixed: text !== from, from };
@@ -72,7 +74,10 @@ const validDay = (y: number, m: number, d: number): boolean => {
  */
 export function readDate(raw: string): DateRead {
   const from = raw.trim();
-  const text = squash(raw);
+  // ポスターの日づけをそのまま貼ると「2027年10月3日（日）」になる。うしろの曜日は読み捨てる（Googleのシートも同じ）
+  const squashed = squash(raw);
+  const weekday = squashed.match(/^(.*\d日?)(?:\([日月火水木金土](?:曜日?)?\)|[日月火水木金土]曜日?)$/);
+  const text = weekday ? weekday[1] : squashed;
   if (!text) return { kind: 'empty' };
   if (/令和|平成|昭和|^[rhs]\d/i.test(text)) return { kind: 'bad', reason: '令和などは使えません。西暦で入れます。例：2027年10月3日' };
   const full = text.match(/^(\d{4})[年/.-](\d{1,2})[月/.-](\d{1,2})日?$/) ?? text.match(/^(\d{4})(\d{2})(\d{2})$/);
@@ -100,7 +105,7 @@ export function foldKana(value: string): string {
 
 /* ───────── 入場曲のリンク ───────── */
 
-const MUSIC_HOST = /^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//;
+const MUSIC_HOST = /^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//i;
 export function checkMusic(raw: string): { value: string; fixed: boolean; problem: string | null } {
   const from = raw.trim();
   const value = squash(raw);
@@ -108,7 +113,7 @@ export function checkMusic(raw: string): { value: string; fixed: boolean; proble
   if (!value) return { value: '', fixed: false, problem: null };
   if (value.length > 500) return { value, fixed, problem: '入場曲のリンク：長すぎます（500文字まで）。曲の「共有」からコピーし直す' };
   if (/spotify/i.test(value)) return { value, fixed, problem: '入場曲のリンク：Spotify は使えません。Apple Music か YouTube で同じ曲を探す' };
-  if (!MUSIC_HOST.test(value)) return { value, fixed, problem: '入場曲のリンク：Apple Music か YouTube の https:// から始まるリンクだけ使えます' };
+  if (!MUSIC_HOST.test(value)) return { value, fixed, problem: '入場曲のリンク：Apple Music か YouTube のリンクだけ使えます' };
   return { value, fixed, problem: null };
 }
 
@@ -155,10 +160,16 @@ export function checkFighter(input: LocalFighter, config: EntryFormConfig, mode:
     // 最後の門は今までと同じ検査。上で拾えなかったまちがいがあっても、ここで止まる
     if (!problems.length) {
       const left = entryErrors(out, true, config);
-      if (left.length) problems.push({ key: 'name', text: left[0].replace(/。$/, '') });
+      if (left.length) problems.push({ key: fieldOfEntryError(left[0]), text: left[0].replace(/。$/, '') });
     }
   }
   return { fighter: out, problems, fixes };
+}
+
+/** 最後の門（entryErrors）の文が、どの欄のことかを文の頭で見分ける。見分けられないときだけ名前の欄 */
+export function fieldOfEntryError(text: string): FieldKey {
+  const heads: Array<[string, FieldKey]> = [['ジム名', 'gym'], ['選手名', 'name'], ['身長', 'height'], ['体重', 'weight'], ['戦績', 'record'], ['学年', 'grade'], ['年齢', 'age'], ['試合への意気込み', 'comment'], ['入場曲', 'musicUrl']];
+  return heads.find(([word]) => text.startsWith(word))?.[1] ?? 'name';
 }
 
 /** 「体重 52 → 53」のような、直した所の短い言い方（最大2つ） */

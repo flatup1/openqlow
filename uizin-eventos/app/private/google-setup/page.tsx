@@ -33,6 +33,7 @@ export default function GoogleSetup() {
   const [draftRequest, setDraftRequest] = useState<GoogleConnectionRequest | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [askClear, setAskClear] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -77,6 +78,7 @@ export default function GoogleSetup() {
   },[code,setupKey,eventId,email,policy,request,endpoint]);
   const applyLink=(mode:'test'|'live')=>'/apply/'+publicEntryHash({endpoint:connection?.endpoint||'',protocol:'2',entryKey:mode==='test'?connection?.testKey||'':connection?.entryKey||'',mode,eventId,title,organizer,date,venue,venueUrl,deadline,contact,...entryConfig});
   const testReady=Boolean(googleConnectionFresh(connection,now)&&connection?.endpoint===endpoint.trim());
+  const step1Ready=Boolean(programTemplate&&accountChecked&&setupKey&&deadlineIso(deadline)&&title.trim()&&title!=='大会名未設定'&&/^\S+@\S+\.\S+$/.test(email));
   const canShare=Boolean(googleConnectionFresh(connection,now)&&connection?.endpoint===endpoint.trim()&&connection?.testComplete&&connection.accepting&&organizer.trim()&&deadlineIso(date)&&venue.trim()&&deadlineIso(deadline)&&Date.parse(deadlineIso(deadline)+'T23:59:59+09:00')>=now&&deadlineIso(deadline)<=deadlineIso(date)&&contact.trim());
   const copyProgram = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email)) return setMessage('主催者本人のGoogleメールアドレスを入力してください。');
@@ -99,13 +101,14 @@ export default function GoogleSetup() {
     catch {setMessage('コピーを許可して、もう一度押してください。');}
   };
 
-  if (!ready) return <main className="p-8">準備しています…</main>;
+  if (!ready) return <main data-tos-loading="1" className="p-8">準備しています…</main>;
   return <main className="min-h-screen bg-indigo-50 px-4 py-8 text-slate-950">
 <div className="mx-auto max-w-2xl">
     <header className="rounded-3xl bg-white p-6 text-center shadow-sm">
 <p className="text-5xl">🥊☁️</p>
 <h1 className="mt-3 text-3xl font-black">Google受付をつなぐ</h1>
-<p className="mt-3 text-lg font-bold text-slate-700">今、黄色になっている所だけ行います。終わったら「できた」を押してください。</p>
+<p className="mt-3 text-lg font-bold text-slate-700">いま出ている手順（「1 / 5」など）だけ行います。終わったら、その手順のボタンを押してください。</p>
+<div role="note" className="tos-caution mt-3 text-left"><p><span className="tos-caution-title"><span aria-hidden="true" className="tos-icon">⚠</span>気をつけて：</span>この方法では、クラス分け（Aクラス・Bクラス）は使えません。クラスを使う大会は、「選手の受付をつくる」の画面からやり直します。</p></div>
 <p className="mt-4 rounded-xl bg-emerald-50 p-3 font-bold text-emerald-900">選手情報と写真は、主催者本人のGoogleだけに保存します。</p>
 <p className="mt-3 rounded-xl bg-rose-50 p-3 font-bold text-rose-900">会長ごとに、この設定を最初から行います。他の会長が作った受付URLは使い回しません。</p>
 </header>
@@ -124,7 +127,8 @@ export default function GoogleSetup() {
 <label className="mt-4 block font-black">申込締切<input type="date" className={field} value={deadlineIso(deadline)} onChange={(e)=>setDeadline(e.target.value)}/></label>
 <label className="mt-4 flex items-start gap-3 rounded-xl bg-amber-50 p-4 font-bold">
 <input type="checkbox" className="mt-1 h-6 w-6 shrink-0" checked={accountChecked} onChange={(e)=>setAccountChecked(e.target.checked)}/>主催者本人のGoogleになっています</label>
-<button disabled={!programTemplate||!accountChecked||!setupKey||!deadlineIso(deadline)||!title.trim()||title==='大会名未設定'||!/^\S+@\S+\.\S+$/.test(email)} onClick={()=>void copyProgram()} className="mt-4 w-full rounded-2xl bg-emerald-700 p-5 text-xl font-black text-white disabled:bg-slate-300">確認できた → プログラムをコピー</button>
+<button disabled={!step1Ready} onClick={()=>void copyProgram()} aria-describedby="copy-program-why" className={'mt-4 w-full rounded-2xl p-5 text-xl font-black '+(step1Ready?'bg-emerald-700 text-white':'tos-locked')}>確認できた → プログラムをコピー</button>
+{step1Ready?null:<p id="copy-program-why" className="tos-locked-reason mt-2"><span aria-hidden="true" className="tos-icon">🔒</span>まだ押せません：メールアドレス・大会名・申込締切を入れて、「主催者本人のGoogleになっています」にチェックを入れてから押します</p>}
 </section>:null}
 
     {step===2?<section className="rounded-3xl border-4 border-amber-300 bg-white p-6 shadow">
@@ -192,7 +196,8 @@ export default function GoogleSetup() {
   setCode('');setRequest(draftRequest);setConnection(null);setMessage('Googleの白い欄をコピーし、ブラウザ左上の「←」でこの画面へ戻ってください。途中の設定は保存しています。');
 }}>
 <input type="hidden" name="action" value="verifyConnection"/><input type="hidden" name="protocol" value="2"/><input type="hidden" name="payload" value={draftRequest?.payload||''}/><input type="hidden" name="signature" value={draftRequest?.signature||''}/>
-<button type="submit" disabled={!draftRequest} className="mt-3 w-full rounded-2xl bg-indigo-700 p-5 text-xl font-black text-white disabled:bg-slate-300">Googleの接続を確かめる</button>
+<button type="submit" disabled={!draftRequest} aria-describedby="verify-why" className={'mt-3 w-full rounded-2xl p-5 text-xl font-black '+(draftRequest?'bg-indigo-700 text-white':'tos-locked')}>Googleの接続を確かめる</button>
+{draftRequest?null:<p id="verify-why" className="tos-locked-reason mt-2"><span aria-hidden="true" className="tos-icon">🔒</span>まだ押せません：「Googleの受付URL」に、/exec で終わるURLを貼ってから押します</p>}
 </form>
 <label className="mt-4 block font-black">Googleの接続確認コード<textarea className={field+' h-32 text-sm'} value={code} onChange={(e)=>setCode(e.target.value.trim())} placeholder="TOS2.から始まるコード"/></label>
 <p className="mt-2 text-sm font-bold text-slate-700">確認コードは15分以内に貼ります。15分で受付URLが使えなくなるわけではありません。時間が過ぎたら紫のボタンで確認し直すだけです。</p>
@@ -211,12 +216,26 @@ export default function GoogleSetup() {
 {connection?.deploymentVerified&&!googleConnectionFresh(connection,now)?<p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 font-bold text-rose-900">確認から時間が過ぎました。上の紫色のボタンで、今の受付状態を確認し直してください。</p>:null}
 <p className="mt-4 rounded-xl bg-blue-50 p-4 font-bold text-blue-950">{testReady&&connection?.testComplete&&connection.accepting?'✓ テスト申込・写真・受付開始を確認できました。':'公開受付・申込表・写真がそろうまで、選手用URLは作れません。'}</p>
 <details className="mt-4 rounded-xl border p-4"><summary className="cursor-pointer font-black">テストの名簿と写真を、大会画面でも確かめる</summary><ol className="mt-3 space-y-3 font-bold"><li>① Google画面で <code>exportTestTournament</code> を選び「実行」▶を押す</li><li>② 実行ログの「OSへ取り込むファイル」を開き、ZIPをダウンロードする</li><li>③ 大会準備画面で本番とは別の「テスト専用の大会」を作り、このZIPを選ぶ</li></ol><p className="mt-3 text-sm">最後のテスト申込1件だけを使います。本番の名簿へ追加したり、本番受付を開始したりする必要はありません。</p></details>
-<button disabled={!canShare} onClick={()=>void copyEntryLink()} className="mt-4 w-full rounded-2xl bg-emerald-700 p-5 text-xl font-black text-white disabled:bg-slate-300">完成：選手へ渡すURLをコピー</button>
+<button disabled={!canShare} onClick={()=>void copyEntryLink()} aria-describedby="share-why" className={'mt-4 w-full rounded-2xl p-5 text-xl font-black '+(canShare?'bg-emerald-700 text-white':'tos-locked')}>完成：選手へ渡すURLをコピー</button>
+{canShare?null:<p id="share-why" className="tos-locked-reason mt-2"><span aria-hidden="true" className="tos-icon">🔒</span>まだ押せません：上の接続確認とテスト申込、開催日・会場・主催者名・問い合わせ先がそろってから押します</p>}
 {!canShare&&connection?.accepting?<p className="mt-3 font-bold text-rose-800">開催日・会場・主催者名・問い合わせ先を確認してください。締切は開催日以前で、まだ過ぎていない日付にします。接続確認の時間が過ぎた場合も、上の紫色のボタンで確認し直します。</p>:null}
 <details className="mt-4 rounded-xl border p-4"><summary className="cursor-pointer font-black">申込が届いたら、大会画面へ入れる</summary><ol className="mt-3 space-y-3 font-bold"><li>① Google画面で <code>exportTournament</code> を選び「実行」▶を押す</li><li>② 実行ログの「OSへ取り込むファイル」のリンクを開く</li><li>③ Googleドライブで「ダウンロード」を押す</li><li>④ 大会準備画面の「返ってきた提出ファイルを選ぶ」で、そのZIPを選ぶ</li><li>⑤ 名前・写真・身長・体重を確認し、赤・青を選んで保存する</li></ol><p className="mt-3 text-sm">連絡先はZIPに入れません。名簿と写真は、このパソコンだけへ取り込みます。テスト申込は本番に混ぜません。</p><a href={'/private/?event='+encodeURIComponent(eventId)} className="mt-4 block rounded-xl bg-indigo-700 p-3 text-center font-bold text-white">大会準備画面へ戻る</a></details>
 <button onClick={()=>setStep(4)} className="mt-3 w-full p-3 font-bold text-slate-600">← 前へ戻る</button>
 </section>:null}
 <details className="mt-5 rounded-2xl bg-white p-5 shadow-sm"><summary className="cursor-pointer text-lg font-black">次の日・次の大会でも使えますか？</summary><div className="mt-3 space-y-3 leading-relaxed"><p>同じ大会・同じ会長の受付は、普通は毎回つなぎ直す必要はありません。申込締切を過ぎると、新しい申し込みは止まります。</p><p>別の大会では、大会準備画面で別の管理番号を使い、その大会の名前・締切・Google受付を用意します。前の大会の名簿や写真はそのまま残します。</p><p>Googleの制限や仕様変更、パソコンの故障があるため、永久に動くとは約束できません。募集を始める前に架空の1件で試し、大会準備画面で名簿と写真の予備ファイルを保存してください。</p><p>この設定は今使っているブラウザに残ります。ブラウザのデータを消したり別のパソコンへ移ったりすると、設定の復元・再確認が必要です。Googleにある申込表と写真まで自動で消えるわけではありません。</p></div></details>
+  <section aria-labelledby="kept-title" className="mt-5 rounded-2xl bg-white p-5 shadow-sm">
+    <h2 id="kept-title" className="text-lg font-black">このパソコンに残るもの</h2>
+    <p className="mt-2 leading-relaxed">この画面は、途中の設定を、このパソコンのブラウザの中にだけ残します。ほかへは送りません。残るのは、大会名・日にち・会場・主催者名・問い合わせ先・主催者本人のメールアドレス・受付URL・つなぐための確認用の鍵です。選手の名前や写真は残しません。</p>
+    {askClear
+      ? <div role="alertdialog" aria-labelledby="clear-title" className="tos-confirm mt-3 space-y-3 font-medium">
+        <p id="clear-title" className="tos-danger"><span aria-hidden="true" className="tos-icon">✕</span>取り消せない：この大会の「Google受付をつなぐ」の途中の設定が、このパソコンから消えます。すでに作ったGoogleの受付は、そのまま使えます。</p>
+        <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+          <button type="button" autoFocus onClick={()=>setAskClear(false)} className="tos-safe-btn w-full rounded-2xl p-4 text-xl font-black">やめる（何も消さない）</button>
+          <button type="button" onClick={()=>{try{localStorage.removeItem('tournament-google-setup:'+eventId);sessionStorage.removeItem('tournament-google-setup:'+eventId);}catch{/* 消せなくても、ほかには影響しない */}location.href='/private/?event='+encodeURIComponent(eventId);}} className="tos-danger-btn w-full rounded-2xl p-4 text-lg font-black">この設定を消す</button>
+        </div>
+      </div>
+      : <button type="button" onClick={()=>setAskClear(true)} className="mt-3 w-full rounded-2xl border-2 border-slate-500 bg-white p-4 text-lg font-black text-slate-900">このパソコンの設定を消す</button>}
+  </section>
   </div>
 </main>;
 }

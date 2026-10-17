@@ -14,7 +14,7 @@
  *
  * Run (server started and stopped inside ONE shell command):
  *   (python3 -m http.server 4510 -d out-private-pages --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > /tmp/mp.pid; sleep 1;
- *    TOS_PLAYWRIGHT_MODULE=/tmp/claude-0/pwshim.mjs TOS_TEST_BASE=http://127.0.0.1:4510 TOS_CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
+ *    TOS_PLAYWRIGHT_MODULE=playwright TOS_TEST_BASE=http://127.0.0.1:4510 TOS_CHROME_PATH=/path/to/chrome \
  *    node --experimental-strip-types scripts/test-private-mistake-proof.mjs; rc=$?; kill $(cat /tmp/mp.pid); exit $rc)
  * Env: TOS_TEST_BASE (default http://127.0.0.1:4510), TOS_ONLY=SETUP,PRIVATE,LIVE,APPLY (screens) or scenario ids,
  *      TOS_CHROME_PATH, TOS_MISTAKE_OUT (folder for cases.json + screenshots; default: <tmp>/tos-mistake-proof), TOS_DEBUG=1.
@@ -282,8 +282,9 @@ const COLOUR = () => {
 /** Check the colour language of the CURRENT state. expectMarker: number of yellow markers (default 1; 0 for a state with nothing left to do). */
 async function colourAudit(page, label, { markers = 1, markerText = null, skipDisabled = false } = {}) {
   const c = await page.evaluate(COLOUR);
-  if (markers === 'max1') check(c.markers.length <= 1, label + ': at most one yellow 次はここ marker (saw ' + c.markers.length + ': ' + short(c.markers.map((m) => m.text).join(' | '), 200) + ')', true);
-  else check(c.markers.length === markers, label + ': exactly ' + markers + ' yellow 次はここ marker (saw ' + c.markers.length + ': ' + short(c.markers.map((m) => m.text).join(' | '), 200) + ')', true);
+  // 「多くても1つ」のゆるい確かめは使わない。状態ごとに、本当の数（1つ。次にやることが無い状態だけ 0）を、数字で渡す。
+  assert.ok(Number.isInteger(markers) && markers >= 0 && markers <= 1, 'colourAudit: markers must be 0 or 1 (got ' + markers + ')');
+  check(c.markers.length === markers, label + ': exactly ' + markers + ' yellow 次はここ marker (saw ' + c.markers.length + ': ' + short(c.markers.map((m) => m.text).join(' | '), 200) + ')', true);
   for (const m of c.markers) {
     check(m.icon && m.words, label + ': the marker has the 👉 icon and the same words 「次はここ」 on every screen (' + short(m.text, 80) + ')', true);
     check(m.yellow, label + ': the marker is yellow-filled (badge ' + m.badgeBg + ' frame ' + m.frame + ')', true);
@@ -450,6 +451,8 @@ scenario('SETUP-A', 'SETUP', 'out of order, locked buttons, repeated clicks', as
   await mistake({ id: 'S05', screen: '/private/setup/', vp: V, op: '「まちがえた → やり直す（✓ を消す）」を押す', what: '✓を付けまちがえたので消す', risk: 'P2', guard: '消すと黄色が作業1にもどり、ほかの✓は消えない' }, page, async () => {
     const undo = page.getByRole('button', { name: /まちがえた → やり直す/ });
     check((await undo.count()) >= 1, 'S05: an undo button exists on a done task');
+    // The page ignores an undo press within 0.45 s of a tick (double-press guard, see S04). A person who made a mistake presses later, so wait past it.
+    await settle(600);
     await undo.first().click(); await settle(300);
     check((await ticksNow(page, id)) === 0, 'S05: the tick is removed');
     check(/作業1/.test((await markerOf(page))[0] || ''), 'S05: the marker is back on 作業1');
@@ -653,7 +656,7 @@ scenario('SETUP-E', 'SETUP', 'step 3: giving the URL to fighters', async (vp) =>
     const got = await page.evaluate(() => navigator.clipboard.readText());
     check(got.startsWith(base + '/apply/#') && !/entryKey|setupKey|@/.test(got), 'T02: a clean public URL was copied');
     check(/コピーしました|✓.*コピー/.test(await text(page)), 'T02: a green copied line is shown');
-    await colourAudit(page, 'step3 after copy ' + V, { markers: 'max1' });
+    await colourAudit(page, 'step3 after copy ' + V, { markers: 0 }); // コピーが終わった：このページでやることは、もう無い（緑の「コピーしました」だけ）
     return 'copied ' + short(got, 50);
   });
   await mistake({ id: 'T03', screen: '/private/setup/', vp: V, op: '受付を止めたあとで画面を見る', what: '先生が「③ 受付を停止」を押したのに、古いURLをまた配る', risk: 'P1', guard: '停止を見つけたら「受付は止まっています」と赤で言い、コピーを押せなくする' }, page, async () => {
@@ -794,7 +797,7 @@ scenario('SETUP-G', 'SETUP', 'no template link, clipboard button, everything on 
   await mistake({ id: 'S13', screen: '/private/setup/', vp: V, op: '作業1：「ひな形のコピーを作る」', what: 'ひな形のリンクが用意されていない（ジムの担当者が公開し忘れた）', risk: 'P1', guard: '赤で「いまは作業できません。ジムの担当者に連絡」。先へ進むボタンは灰色＋理由。黄色は「担当者に連絡」を指す' }, page, async () => {
     const reds = await redTexts(page);
     check(reds.some((t) => /作業できません|担当者/.test(t)), 'S13: red message tells the student to ask the gym staff (' + short(reds.join(' | '), 120) + ')');
-    await colourAudit(page, 'no template ' + V, { markers: (await markerOf(page)).length <= 1 ? (await markerOf(page)).length : 1 });
+    await colourAudit(page, 'no template ' + V, { markers: 0 }); // ひな形のリンクが無い：この画面でできる作業は無い。赤い文で「担当者に連絡」と言う
     const go = page.getByRole('button', { name: /「準備できました」と出た/ });
     check(await isLocked(go), 'S13: the go-on button is locked');
     const ticked = tickBtn(page);
@@ -1163,7 +1166,7 @@ scenario('PRIVATE-C', 'PRIVATE', 'making the match cards wrongly', async (vp) =>
   await mistake({ id: 'C02', screen: SCR, vp: V, op: '赤・青コーナーの選手を選ぶ', what: '赤と同じ選手を青にも選ぼうとする', risk: 'P1', guard: '「もう片方に選択中」で選べなくなる。選べないわけを書く' }, page, async () => {
     await page.locator('#bout-0-red').selectOption('F01');
     const dis = await page.locator('#bout-0-blue option[value="F01"]').evaluate((o) => ({ disabled: o.disabled, text: o.textContent }));
-    check(dis.disabled && /もう片方|選択中/.test(dis.text), 'C02: the same fighter cannot be chosen in the other corner and the option says why (' + short(dis.text, 50) + ')');
+    check(dis.disabled && /もう片方|選択中|コーナーで選んでいます/.test(dis.text), 'C02: the same fighter cannot be chosen in the other corner and the option says why (' + short(dis.text, 50) + ')');
     await page.locator('#bout-0-blue').evaluate((s) => { s.value = 'F01'; s.dispatchEvent(new Event('change', { bubbles: true })); }); await settle(300);
     const v = await page.evaluate(() => [document.querySelector('#bout-0-red').value, document.querySelector('#bout-0-blue').value]);
     if (v[0] === 'F01' && v[1] === 'F01') {
@@ -1186,9 +1189,9 @@ scenario('PRIVATE-C', 'PRIVATE', 'making the match cards wrongly', async (vp) =>
     check(/青コーナーの選手を選んでください/.test(await text(page)) && reds.some((t) => /直すところ/.test(t)), 'C03: under the red 直すところ it says 青コーナーの選手を選んでください (' + short(reds.join(' | '), 120) + ')');
     return 'locked; ' + short((await text(page)).split('\n').find((l) => /青コーナーの選手を選んでください/.test(l)) || '', 100);
   });
-  await mistake({ id: 'C04', screen: SCR, vp: V, op: '赤青を入替', what: '押したあと、もう一度押す／わざと押す', risk: 'P3', guard: '2回押すと元にもどる。選手が消えない' }, page, async () => {
+  await mistake({ id: 'C04', screen: SCR, vp: V, op: '赤と青を入れかえる', what: '押したあと、もう一度押す／わざと押す', risk: 'P3', guard: '2回押すと元にもどる。選手が消えない' }, page, async () => {
     await page.locator('#bout-0-blue').selectOption('F02'); await settle(200);
-    const sw = page.getByRole('button', { name: '赤青を入替' }).first();
+    const sw = page.getByRole('button', { name: '赤と青を入れかえる' }).first();
     await sw.click(); await settle(200);
     check((await page.locator('#bout-0-red').inputValue()) === 'F02' && (await page.locator('#bout-0-blue').inputValue()) === 'F01', 'C04: swap works');
     await sw.dblclick(); await settle(200);
@@ -1369,7 +1372,7 @@ scenario('PRIVATE-E', 'PRIVATE', 'backup password, restore wrong things', async 
       const cautions = await page.evaluate(() => [...document.querySelectorAll('.tos-caution')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.innerText.replace(/\s+/g, ' ')));
       const shown = cid === 'E15' ? [...reds, ...cautions] : reds; // a backup of ANOTHER event changes nothing: a yellow caution with a button is fine
       check(shown.some((x) => re.test(x)), cid + ': the reason is in a red (or, for another event, yellow) line (' + short(shown.join(' | '), 120) + ')');
-      check(shown.some((x) => re.test(x) && saysNext(x.replace(/^✕\s*/, ''))) || cid === 'E15' && await page.getByRole('button', { name: 'この大会として開く' }).count() === 1, cid + ': it says what to do next');
+      check(shown.some((x) => re.test(x) && saysNext(x.replace(/^✕\s*/, ''))) || cid === 'E15' && await page.getByRole('button', { name: '大会を開く（そのあと、もう一度ファイルを選ぶ）' }).count() === 1, cid + ': it says what to do next');
       check((await val(page, '#field-title')) === 'いまのデータ' && (await val(page, '#field-venue')) === '未保存の会場' && JSON.stringify(await idbGet(page, id)) === before, cid + ': screen, typed text and stored data are untouched');
       check(!(await askBox(page).count()), cid + ': no overwrite question for a refused file');
       return short(reds.join(' | '), 140);
@@ -1465,7 +1468,7 @@ scenario('PRIVATE-F', 'PRIVATE', 'adding or fixing one fighter, photos, danger b
     const bt = await box.innerText();
     check(/架空赤選手/.test(bt) && /第1試合/.test(bt), 'M12: the box names the fighter and the bout that loses a corner (' + short(bt, 120) + ')');
     check(await box.locator('.tos-danger').count() >= 1, 'M12: the loss is written in red');
-    await colourAudit(page, 'private delete-fighter box ' + V, { markers: 'max1' });
+    await colourAudit(page, 'private delete-fighter box ' + V, { markers: 1, markerText: /やめる/ }); // 確認の箱が開いている：赤い箱が主役。黄色は、安全な「やめる」に1つだけ（迷ったら「やめる」）
     check(await page.evaluate(() => /^やめる/.test(document.activeElement?.innerText.trim() || '')), 'M12: focus is on やめる (not the dangerous button)');
     const danger = box.getByRole('button', { name: /消す/ });
     check(/消す|もどせません/.test(await danger.innerText()), 'M12: the red button names what happens (' + short(await danger.innerText(), 30) + ')');
@@ -1525,10 +1528,10 @@ scenario('PRIVATE-G', 'PRIVATE', 'new event, other pages, the colour language at
     check(page.url() === urlNow || (await idbGet(page, id)) !== null, 'N01: the current event was not destroyed');
     return 'no box; url now ' + short(page.url(), 80);
   });
-  await mistake({ id: 'N02', screen: SCR, vp: V, op: '「申し込みページをつくる画面へ →」', what: '保存していない内容があるのに、別の画面へのリンクを押す', risk: 'P1', guard: '保存していない内容があるときは、画面を離れる前に「このページを離れますか」が出る' }, page, async () => {
+  await mistake({ id: 'N02', screen: SCR, vp: V, op: '「選手の受付をつくる画面へ →」', what: '保存していない内容があるのに、別の画面へのリンクを押す', risk: 'P1', guard: '保存していない内容があるときは、画面を離れる前に「このページを離れますか」が出る' }, page, async () => {
     await page.locator('#field-venue').fill('未保存の会場2'); await settle(200);
     page.__dlg.log.length = 0; page.__dlg.mode = 'dismiss';
-    await page.getByRole('link', { name: /申し込みページをつくる画面へ/ }).first().click().catch(() => {}); await settle(800);
+    await page.getByRole('link', { name: /選手の受付をつくる画面へ/ }).first().click().catch(() => {}); await settle(800);
     const left = /\/private\/setup\//.test(page.url());
     check(!left ? true : page.__dlg.log.some((d) => d.type === 'beforeunload') || (await idbGet(page, id)).venue === '未保存の会場2', 'N02: it asked first, or the venue was kept');
     check((await val(page, '#field-venue').catch(() => '未保存の会場2')) === '未保存の会場2' || left, 'N02: the typed venue is still there when staying');
@@ -1540,7 +1543,7 @@ scenario('PRIVATE-G', 'PRIVATE', 'new event, other pages, the colour language at
     await colourAudit(p2, 'finished event ' + V);
     await p2.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true; }));
     await settle(300);
-    await colourAudit(p2, 'finished event, folds open ' + V, { markers: (await markerOf(p2)).length === 0 ? 0 : 1 });
+    await colourAudit(p2, 'finished event, folds open ' + V, { markers: 1 });
     const c = await p2.evaluate(() => [...document.querySelectorAll('button')].filter((b) => /^消す|この試合を消す|消す \S/.test(b.innerText.trim()) && b.getBoundingClientRect().width > 0).map((b) => { const s = getComputedStyle(b); return { t: (b.getAttribute('aria-label') || b.innerText).replace(/\s+/g, ' ').slice(0, 30), color: s.color, border: s.borderTopColor, focused: document.activeElement === b }; }));
     for (const d of c) {
       check(!d.focused, 'N03: the danger button "' + d.t + '" is not focused by default', true);
@@ -1624,7 +1627,7 @@ scenario('LIVE-A', 'LIVE', 'tapping the wrong thing during the matches', async (
     check((await curNo(page)) !== '4', 'L01: it never runs past the last bout');
     return 'now 第' + (await curNo(page)) + '試合';
   });
-  await mistake({ id: 'L02', screen: LSCR, vp: V, op: '「← 前の試合」「次の試合 →」', what: '最後の試合で「次の試合」を押す／最初の試合で「前の試合」を押す', risk: 'P1', guard: '押せない方は灰色＋「🔒 いちばん最後です」。黄色は「一覧」に移る' }, page, async () => {
+  await mistake({ id: 'L02', screen: LSCR, vp: V, op: '「← 前の試合」「次の試合 →」', what: '最後の試合で「次の試合」を押す／最初の試合で「前の試合」を押す', risk: 'P1', guard: '押せない方は灰色＋「🔒 いちばん最後です」。押すものが無いので黄色は出さず、理由を言葉で書く' }, page, async () => {
     await settle(1100);
     if ((await curNo(page)) !== '3') { for (let i = 0; i < 3 && (await curNo(page)) !== '3'; i++) { await settle(1100); await nextLive(page).click({ force: true }).catch(() => {}); await settle(700); } }
     check((await curNo(page)) === '3', 'L02: on the last bout');
@@ -1633,8 +1636,8 @@ scenario('LIVE-A', 'LIVE', 'tapping the wrong thing during the matches', async (
     await nextLive(page).click({ force: true }).catch(() => {}); await settle(400);
     check((await curNo(page)) === '3' && (await storedBout(page, id)) === 2, 'L02: pressing it changes nothing');
     const m = await markerOf(page);
-    check(m.length === 1 && /一覧/.test(m[0]), 'L02: the one yellow marker moves to 一覧 (' + short(m[0] || 'none', 50) + ')', true);
-    await colourAudit(page, 'live last bout ' + V);
+    check(m.length === 0 && /最後|進める試合は、もうありません/.test(await text(page)), 'L02: the last bout has nothing left to press, so there is no yellow marker (it would ping-pong between 一覧 and 1試合ずつ), and the page says why (' + short(m[0] || 'none', 50) + ')', true);
+    await colourAudit(page, 'live last bout ' + V, { markers: 0 });
     return 'locked; marker: ' + short(m[0] || 'none', 60);
   });
   await mistake({ id: 'L03', screen: LSCR, vp: V, op: '「元にもどす」', what: 'まちがえて進めたので、もどす', risk: 'P1', guard: '「元にもどす」が大きく出る。押すと前の試合に戻り、保存される' }, page, async () => {
@@ -1668,7 +1671,7 @@ scenario('LIVE-B', 'LIVE', 'the list view and the other screen', async (vp) => {
     check((await storedBout(page, id)) === 0, 'L05: opening the list changes nothing');
     const m = await markerOf(page);
     check(m.length === 1, 'L05: the list screen has exactly one yellow 次はここ marker (saw ' + m.length + ')', true);
-    await colourAudit(page, 'live list ' + V, { markers: m.length });
+    await colourAudit(page, 'live list ' + V, { markers: 1 });
     return 'markers on the list: ' + m.length;
   });
   await mistake({ id: 'L06', screen: LSCR, vp: V, op: '一覧の「この試合を開く」', what: '行を押したあと、すぐもう一度押す（2回目が次の画面の「次の試合」に当たる）', risk: 'P1', guard: '開いた直後は少しの間、押しを受けない。1試合だけ動く' }, page, async () => {
@@ -1745,9 +1748,11 @@ scenario('LIVE-C', 'LIVE', 'missing, broken or unsaveable data', async (vp) => {
       check(!/NaN|undefined|\[object|Cannot read/.test(t) && t.trim().length > 20, cid + ': the screen is not blank or broken (' + short(t, 80) + ')');
       if (re) check(re.test(t), cid + ': it says what is wrong (' + short(t, 140) + ')');
       if (cid === 'L13' || cid === 'L14') { check(reds.length >= 1, cid + ': a red message is shown (' + short(reds.join(' | '), 100) + ')'); check(await p.getByRole('link', { name: /準備画面へ戻る/ }).count() >= 1, cid + ': a link back to the prep screen is offered'); }
-      check(m.length <= 1, cid + ': at most one yellow marker (' + m.length + ')', true);
+      // L15 (a ONE-match event) has nothing left to press: no 前/次 buttons and no list to open, so there is no 👉 at all (polish-live P2 / r1-45). Every other state has exactly one.
+      const wantMarkers = cid === 'L15' ? 0 : 1;
+      check(m.length === wantMarkers, cid + ': exactly ' + wantMarkers + ' yellow marker (' + m.length + ')', true);
       check(await storedBout(p, value.eventId) === value.currentBout || cid === 'L12', cid + ': nothing was rewritten just by looking');
-      await colourAudit(p, cid + ' ' + V, { markers: m.length });
+      await colourAudit(p, cid + ' ' + V, { markers: wantMarkers });
       const note = short(t.split('\n').slice(0, 8).join(' / '), 150);
       await snap(p);
       await p.close();
@@ -2194,7 +2199,7 @@ scenario('APPLY-E', 'APPLY', 'wrong, old or closed links', async (vp) => {
       check(ctx.__posts.length === 0 && await sendBtn(page).count() === 0, cid + ': nothing can be sent');
       const dis = await page.evaluate(() => [...document.querySelectorAll('button')].filter((b) => /確認/.test(b.innerText) && b.getBoundingClientRect().width > 0).map((b) => b.disabled || b.getAttribute('aria-disabled') === 'true'));
       check(dis.every(Boolean), cid + ': the check button is locked (' + dis.join(',') + ')');
-      await colourAudit(page, 'apply bad link ' + cid + ' ' + V, { markers: (await markerOf(page)).length <= 1 ? (await markerOf(page)).length : 1 });
+      await colourAudit(page, 'apply bad link ' + cid + ' ' + V, { markers: 0 }); // 使えないリンク：入力欄が出ない。赤い文と「主催者に聞く」だけ
       const note = short(errs.concat(al).join(' | ') || t.slice(0, 120), 130);
       await snap(page);
       await page.close();
@@ -2208,8 +2213,8 @@ scenario('APPLY-E', 'APPLY', 'wrong, old or closed links', async (vp) => {
     check(errs.length + al.length >= 1 || /気をつけて/.test(t), 'K06: red or yellow message shown');
     check(/0200000000|02-0000-0000|電話/.test(t), 'K06: the contact phone is offered');
     const m = await markerOf(page);
-    check(m.length <= 1, 'K06: at most one yellow marker (' + m.length + ')');
-    await colourAudit(page, 'apply deadline passed ' + V, { markers: m.length });
+    check(m.length === 1, 'K06: exactly one yellow marker (' + m.length + ')');
+    await colourAudit(page, 'apply deadline passed ' + V, { markers: 1 });
     await snap(page);
     await page.close();
     return short(errs.concat(al).join(' | ') || t.slice(0, 100), 100);

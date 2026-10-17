@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4421';
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base)) throw new Error('This test must run against a local preview.');
-const browser = await chromium.launch({ headless: true, channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' });
+const EXE = process.env.TOS_CHROME_PATH || '';
+const browser = await chromium.launch({ headless: true, ...(EXE ? { executablePath: EXE } : { channel: process.env.TOS_BROWSER_CHANNEL || 'chrome' }) });
 let checks = 0;
 const check = (value, message) => { assert.ok(value, message); checks++; };
 const PASSWORD = 'fictional-test-password';
@@ -146,6 +147,8 @@ try {
 
     /* 8. スマホ: キーボードが出ている間も、小さな「保存」を1回押せば保存される */
     if (mobile) {
+      // r2-35: 確認の箱に答えた直後の0.7秒は、画面全体を見えない板が覆う（ダブルクリックの2回目を捨てるため）。ロボットは人より速いので、板が消えるまで待つ
+      await page.waitForFunction(() => !document.querySelector('[data-tos-shield]'), null, { timeout: 4000 });
       await page.evaluate(() => { const vv = window.visualViewport; Object.defineProperty(vv, 'height', { configurable: true, get: () => 400 }); vv.dispatchEvent(new Event('resize')); });
       await page.locator('#field-venue').focus();
       await page.getByLabel('会場', { exact: true }).fill('架空体育館');

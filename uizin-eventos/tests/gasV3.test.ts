@@ -8,7 +8,7 @@ test('v3: シートを開くと「設定」タブができ、空のまま「最�
   assert.equal(h.settingsSheet(), null);
   h.call('onOpen');
   assert.ok(h.settingsSheet(), '設定タブが自動でできる');
-  assert.deepEqual(h.rows('設定').slice(1).map((r) => r[0]), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み']);
+  assert.deepEqual(h.rows('設定').slice(1).map((r) => r[0]), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み', 'クラス分け', '上のクラスの名前', '上のクラスの条件', '上のクラスのルール', '下のクラスの名前', '下のクラスの条件', '下のクラスのルール', '上のクラスにする勝ち数']);
   assert.ok(!h.rows('設定').flat().includes('大会ID'), '大会IDは会長が入れない');
   assert.throws(() => h.call('setupTournament'), /大会名、開催日、会場、主催者名、問い合わせ先、申込締切/);
   assert.equal(h.props.get('eventId'), undefined, '足りないあいだは何も作らない');
@@ -137,9 +137,9 @@ test('v3: 同じ申込番号の再送は1件のまま、大会IDが違えば拒�
   const h = harness(); h.ready();
   const p = h.params('test'); const a = h.call('saveEntry_', p), b = h.call('saveEntry_', p);
   assert.equal(a, b); assert.equal(h.rows('テスト申込').length, 3);
-  assert.throws(() => h.call('saveEntry_', h.params('test', { eventId: 'other-cup' })), /受付URL/);
+  assert.throws(() => h.call('saveEntry_', h.params('test', { eventId: 'other-cup' })), /申し込みリンク/);
   h.call('saveEntry_', h.params('test', { protocol: '2' }));
-  assert.throws(() => h.call('saveEntry_', h.params('test', { protocol: '9' })), /受付URL/);
+  assert.throws(() => h.call('saveEntry_', h.params('test', { protocol: '9' })), /申し込みリンク/);
 });
 
 test('v3: 申込表・写真フォルダが公開共有・直接共有・削除済みなら受付を止める', () => {
@@ -147,7 +147,8 @@ test('v3: 申込表・写真フォルダが公開共有・直接共有・削除�
   const folder = h.resources.get(h.props.get('photoFolderId')!)!;
   folder.sharing = 'ANYONE'; assert.throws(() => h.call('saveEntry_', h.params()), /共有/);
   folder.sharing = 'PRIVATE'; folder.viewers = [{ getEmail: () => 'x@example.com' }]; assert.throws(() => h.call('saveEntry_', h.params()), /共有/);
-  folder.viewers = []; folder.trashed = true; assert.throws(() => h.call('saveEntry_', h.params()), /共有/);
+  // ゴミ箱に入っているときは、共有の話にしない。ゴミ箱から戻す道を言う（r2-62）
+  folder.viewers = []; folder.trashed = true; assert.throws(() => h.call('saveEntry_', h.params()), /ゴミ箱/);
 });
 
 test('v3: 数式になる文字は無害化し、写真が壊れていれば保存しない', () => {
@@ -168,7 +169,8 @@ test('v3: 公開用の設定（デプロイの初期値）は「自分で実行�
   assert.equal(manifest.webapp.executeAs, 'USER_DEPLOYING');
   assert.equal(manifest.webapp.access, 'ANYONE_ANONYMOUS');
   assert.equal(manifest.timeZone, 'Asia/Tokyo');
-  assert.equal(manifest.oauthScopes, undefined, '権限は自動判定に任せ、余計な権限を足さない');
+  // 権限は「最初の1回」でまとめて聞かれるよう、使うサービスから決めて書く（余計な権限は足さない）。実際のGoogleでの確認は人の手で1回行う
+  assert.deepEqual([...manifest.oauthScopes].sort(), ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/script.container.ui', 'https://www.googleapis.com/auth/script.scriptapp', 'https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/userinfo.email']);
 });
 
 test('v3: 入場曲の「あり／なし」は、最初に必ず選ぶ（空のままでは進めない・初期値は入れない）', () => {

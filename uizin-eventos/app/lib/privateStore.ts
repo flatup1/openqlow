@@ -22,7 +22,7 @@ export async function readPrivateEvent(eventId: string): Promise<LocalTournament
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(eventId);
     request.onsuccess = () => {
-      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、暗号化バックアップを確認してください。'));
+      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、「コピーのファイル」を確認してください。'));
       else resolve((request.result as LocalTournament | undefined) ?? null);
     };
     request.onerror = () => reject(request.error);
@@ -163,4 +163,23 @@ export async function listPrivateEvents(): Promise<PrivateEventSummary[]> {
     transaction.oncomplete = () => { db.close(); resolve(found.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10)); };
     transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('保存してある大会を読めませんでした。')); };
   });
+}
+
+/**
+ * この大会を、このパソコンの保存場所から消す（ほかの大会は消さない）。取り消せない。
+ * 画面は、消す前に「コピーのファイル」があるか確かめてから、これを呼ぶ。
+ */
+export async function deletePrivateEvent(eventId: string): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, 'readwrite');
+    transaction.objectStore(STORE).delete(eventId);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('消せませんでした。')); };
+  });
+  if ('BroadcastChannel' in window) {
+    const channel = new BroadcastChannel(channelName(eventId));
+    channel.postMessage({ type: 'changed' });
+    channel.close();
+  }
 }

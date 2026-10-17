@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
 /*
   試合当日の画面（/private/live/）の「色と言葉の約束」の部品。通信はしません。
@@ -39,8 +39,8 @@ export function Caution({ children, title = '気をつけて', className = '', i
 }
 
 /** 赤い「✕ まちがい／失敗」。まちがいの『すぐ下』に置く。文は『何がまちがいか』と『どうするか』 */
-export function ErrorLine({ id, children, role, className = '' }: { id?: string; children: ReactNode; role?: 'alert' | 'status'; className?: string }) {
-  return <p id={id} role={role} className={cx('tos-error m-0 text-[17px]', className)}><span aria-hidden="true">✕ </span>{children}</p>;
+export function ErrorLine({ id, children, role, className = '', mark = '✕ ' }: { id?: string; children: ReactNode; role?: 'alert' | 'status'; className?: string; mark?: string }) {
+  return <p id={id} role={role} className={cx('tos-error m-0 text-[17px] [overflow-wrap:anywhere]', className)}><span aria-hidden="true">{mark}</span>{children}</p>;
 }
 
 /** 緑の「✓ できた」。画面に role="status" は1つだけにしたいので、role は付けない（読み上げが要るものだけ自分で付ける） */
@@ -61,4 +61,9 @@ export function Hint({ children, className = '' }: { children: ReactNode; classN
 /** 入力欄の横の『例：』の行 */
 export function Example({ children, id, className = '' }: { children: ReactNode; id?: string; className?: string }) {
   return <p id={id} className={cx('tos-example m-0', className)} style={BIG}>例：{children}</p>;
+}
+
+/** 「首相撲あり／膝蹴りあり／…」のように「／」で区切った言葉は、「／」のうしろで折り返せるようにする（言葉の途中で切れない）。1試合ずつの画面と一覧で同じ */
+export function WithBreaks({ text }: { text: string }) {
+  return <>{text.split('／').map((part, i) => <Fragment key={i}>{i > 0 ? <>／<wbr /></> : null}{part}</Fragment>)}</>;
 }
