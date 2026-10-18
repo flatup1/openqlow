@@ -85,4 +85,82 @@ for (const dangerous of [/systemctl restart/, /npm run deploy/, /rm -rf/, /git p
 assert.match(script, /git fetch/, "取り直しは fetch で行う");
 assert.doesNotMatch(executable, /^set -e\b/m, "途中で止まらず最後まで全部見る");
 
+// 301/302 を「ページが無い」と誤報しないこと。
+// 本番の /webos/ が 301 を返したとき、追いかけずに落第にして
+// 「XServer に index.html があるか確かめろ」と間違った案内を出した。
+// 転送は「別の住所へ案内されている」だけなので、最後まで追って着いた先で判定する。
+assert.match(script, /curl -s -o \/dev\/null -L/, "転送を追いかけて最後の答えを見る");
+assert.match(script, /url_effective/, "着いた先のURLを読む");
+assert.match(script, /\^3\[0-9\]\[0-9\]\$/, "3xx を転送として扱う");
+assert.match(script, /へ転送されています/, "どこへ転送されたかを表示する");
+// 中身の読み出しも転送後のURLから行う（転送前から読むと空になる）
+assert.match(script, /curl -s -L -m 15 "\$\{WEBOS_TARGET\}"/, "版の比較は転送先の中身で行う");
+
+// 「ページが古い」の原因を2つに切り分けること。
+// 2026-10-02、ファイルは全部上がっていたのに .htaccess の RewriteRule が
+// /webos/ を古い webos.html へ向けていた。検査は「上げ直せ」としか言えず、
+// すでに上げ終えた人に、やり直す必要のない作業をさせるところだった。
+// index.html を直接開いて新しければ、届いている＝振り分けの問題と分かる。
+assert.match(script, /index\.html" 2>\/dev\/null/, "index.htmlを直接開いて切り分ける");
+assert.match(script, /振り分けられています/, "振り分けの問題だと名指しする");
+assert.match(script, /\.htaccess/, "直す場所を案内する");
+assert.match(script, /バックアップ/, ".htaccessの編集前にバックアップを促す");
+assert.match(script, /8ファイル全部/, "上げ直す場合は全部だと伝える");
+
+// AIKA と openQLOW を混同しないこと（AGENTS.md の決まり）。
+//
+//   「AIKAは守りの顧客対応。openQLOWは攻めの営業・経営支援。混同しない。」
+//
+// この検査は openqlow-webhook を見ている。これはJIN専用のLINE窓口で、
+// お客さま対応は AIKA（別サーバー・別リポジトリ）の担当。
+// 以前ここには「LINEの自動応答（お客さま対応）」と書いてあり、止まったときに
+// 「これはお客さまに影響します」と出していた。事実と違ううえ、反映作業の
+// リスクを実際より重く見せ、オーナーの判断を誤らせる表示だった。
+{
+  // openqlow-webhook を見ている箇所（2番）を切り出して検査する。
+  const section = script.slice(
+    script.indexOf("--- 2."),
+    script.indexOf("--- 3."),
+  );
+  assert.ok(section.length > 0, "2番の節が読み取れる");
+  assert.match(section, /JIN専用/, "openQLOW側はJIN専用だと明記する");
+  assert.match(section, /AIKA/, "お客さま対応はAIKA側だと案内する");
+
+  // 画面に出る行だけを見る。コメントには「以前こう書いてあった」という
+  // 直した経緯が引用されており、それを禁止語として拾ってしまう。
+  const spoken = section
+    .split("\n")
+    .filter(line => !/^\s*#/.test(line))
+    .join("\n");
+  assert.doesNotMatch(
+    spoken,
+    /お客さまに影響します|お客さまへの返信は止まっていません/,
+    "openQLOWの停止を「お客さまへの影響」と言わない（それはAIKAの担当）",
+  );
+}
+
+// 印が読めないことを「一度も反映できていない」と言い換えないこと。
+//
+// 2026-10-02、同期の --delete が deployed-version.txt を消し、そのあとビルドが
+// 失敗して書き直されなかった。本番は前の版で動き続けていたのに、この検査は
+//   「本番に deployed-version.txt がありません＝一度も新しいコードを送れていません」
+// と出した。印の有無は「何が動いているか」を知る手がかりが無いという話で、
+// 「送れていない」は別の主張。確かめていないことを断定してはいけない。
+assert.match(
+  script,
+  /印が読めません/,
+  "印が無いときは「読めない」と言う",
+);
+assert.doesNotMatch(
+  script
+    .split("\n")
+    .filter(line => !/^\s*#/.test(line))
+    .join("\n"),
+  /一度も新しいコードを送れていません/,
+  "印が無いことを「一度も送れていない」と断定しない",
+);
+
+// 3番（/journey）は AIKA VPS。こちらはお客さま側の経路なので、担当を明記する。
+assert.match(script, /AIKA VPS/, "受け口が別サーバーだと明記する");
+
 console.log("check-prod tests passed");

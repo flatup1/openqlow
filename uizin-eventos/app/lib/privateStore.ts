@@ -22,7 +22,7 @@ export async function readPrivateEvent(eventId: string): Promise<LocalTournament
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(eventId);
     request.onsuccess = () => {
-      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、暗号化バックアップを確認してください。'));
+      if (request.result && !isLocalTournament(request.result)) reject(new Error('保存データを読めません。データは消さず、「コピーのファイル」を確認してください。'));
       else resolve((request.result as LocalTournament | undefined) ?? null);
     };
     request.onerror = () => reject(request.error);
@@ -138,4 +138,48 @@ export async function photoToDataUrl(file: File): Promise<string> {
   const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
   if (!dataUrl.startsWith('data:image/jpeg;base64,') || dataUrl.length > 1_800_100) throw new Error('写真を小さくできませんでした。別の写真を選んでください。');
   return dataUrl;
+}
+
+export type PrivateEventSummary = { eventId: string; title: string; date: string; updatedAt: number; fighters: number; bouts: number };
+
+/**
+ * このパソコンに保存してある大会の一覧（新しい順、10件まで）。読むだけで、何も書かない。
+ * 写真は持たず、人数と試合数だけに潰す。
+ */
+export async function listPrivateEvents(): Promise<PrivateEventSummary[]> {
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const found: PrivateEventSummary[] = [];
+    const transaction = db.transaction(STORE, 'readonly');
+    const request = transaction.objectStore(STORE).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const value: unknown = cursor.value;
+      if (isLocalTournament(value)) found.push({ eventId: value.eventId, title: value.title, date: value.date, updatedAt: value.updatedAt, fighters: value.fighters.length, bouts: value.bouts.length });
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => { db.close(); resolve(found.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10)); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('保存してある大会を読めませんでした。')); };
+  });
+}
+
+/**
+ * この大会を、このパソコンの保存場所から消す（ほかの大会は消さない）。取り消せない。
+ * 画面は、消す前に「コピーのファイル」があるか確かめてから、これを呼ぶ。
+ */
+export async function deletePrivateEvent(eventId: string): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, 'readwrite');
+    transaction.objectStore(STORE).delete(eventId);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('消せませんでした。')); };
+  });
+  if ('BroadcastChannel' in window) {
+    const channel = new BroadcastChannel(channelName(eventId));
+    channel.postMessage({ type: 'changed' });
+    channel.close();
+  }
 }

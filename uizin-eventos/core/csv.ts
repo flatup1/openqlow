@@ -3,7 +3,27 @@
  * Google スプレッドシートの「CSVで書き出し」をそのまま読むために使う。
  */
 
-export function parseCsv(text: string): string[][] {
+/**
+ * 文字の向きの印・幅ゼロの空白・BOM など、見えない文字（コピーや貼り付けで入る）。
+ * 見出し・クラス名・名前の比べ合いの前に取り除く（U+200C・200D は、絵文字や一部の文字に使うので、名前の取り込みでは残す版も用意する）。
+ */
+export const INVISIBLE_RE = /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
+/** 名前・ジム名の取り込み用（結合に使う U+200C・U+200D は残す） */
+export const INVISIBLE_KEEP_JOINERS_RE = /[\u00AD\u061C\u180E\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
+export const stripInvisibleChars = (value: string): string => String(value ?? '').replace(INVISIBLE_RE, '');
+
+/** 「"」が閉じないまま終わった CSV（取り込みの検査で使う。画面は「ファイルがこわれています」と言う） */
+export class CsvQuoteError extends Error {
+  constructor() { super('csv-open-quote'); this.name = 'CsvQuoteError'; }
+}
+
+/**
+ * CSV を行と欄にする。
+ * - 「"」は、欄の最初にあるときだけ、引用の始まり（5"6 や 12" のような、欄の途中の「"」はただの文字）
+ * - 行の終わりは、CRLF・LF・CR だけ（古い Mac の Excel の CSV は CR だけ）
+ * - strict: 引用が閉じないまま終わったら CsvQuoteError（あとの行が全部1つの欄に飲みこまれて、黙って消えるのを防ぐ）
+ */
+export function parseCsv(text: string, opts: { strict?: boolean } = {}): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -26,7 +46,9 @@ export function parseCsv(text: string): string[][] {
       }
       continue;
     }
-    if (ch === '"') {
+    // 欄のはじめ（空白だけのあとも）の「"」だけが、引用の始まり
+    if (ch === '"' && field.trim() === '') {
+      field = '';
       inQuotes = true;
       continue;
     }
@@ -35,8 +57,8 @@ export function parseCsv(text: string): string[][] {
       field = '';
       continue;
     }
-    if (ch === '\r') continue;
-    if (ch === '\n') {
+    if (ch === '\r' && src[i + 1] === '\n') continue; // CRLF は LF のところで1回だけ区切る
+    if (ch === '\n' || ch === '\r') {
       row.push(field);
       rows.push(row);
       row = [];
@@ -45,6 +67,7 @@ export function parseCsv(text: string): string[][] {
     }
     field += ch;
   }
+  if (inQuotes && opts.strict) throw new CsvQuoteError();
   if (field.length > 0 || row.length > 0) {
     row.push(field);
     rows.push(row);
@@ -52,12 +75,16 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-/** 見出しを正規化する（大文字小文字・空白・全角空白・BOMの揺れを吸収） */
+/**
+ * 見出しを正規化する（大文字小文字・空白・全角空白・BOMの揺れ、全角と半角のちがい、うしろの（単位）を吸収）。
+ * 例：「体重（kg）」「体重(kg)」「ＮＡＭＥ」「クラス（A/B）」→ 体重・体重・name・クラス
+ */
 export function normalizeKey(key: string): string {
-  return key
-    .replace(/\uFEFF/g, '')
+  return stripInvisibleChars(key)
+    .normalize('NFKC')
     .trim()
     .toLowerCase()
+    .replace(/\s*\([^()]*\)\s*$/, '')
     .replace(/[\s\u3000]+/g, '_');
 }
 
@@ -65,10 +92,19 @@ export type Row = Record<string, string>;
 
 /** 1行目を見出しとして、行を辞書に変換する。空行は捨てる */
 export function toRows(text: string): Row[] {
-  const raw = parseCsv(text);
-  if (raw.length === 0) return [];
+  return toRowsIndexed(text).rows.map((item) => item.row);
+}
+
+/**
+ * toRows に、見出しの元の文字と、各行の行番号（ファイルの上から数えて何行目か。見出しが1行目）を足したもの。
+ * 同じ名前に直る見出しが2つあるときは、中身が入っているほうを使う。
+ */
+export function toRowsIndexed(text: string, opts: { strict?: boolean } = {}): { headers: string[]; rows: Array<{ row: Row; line: number }> } {
+  const raw = parseCsv(text, opts);
+  if (raw.length === 0) return { headers: [], rows: [] };
+  const headers = raw[0].map((cell) => stripInvisibleChars(cell).trim());
   const header = raw[0].map(normalizeKey);
-  const out: Row[] = [];
+  const out: Array<{ row: Row; line: number }> = [];
   for (let i = 1; i < raw.length; i++) {
     const cells = raw[i];
     const isEmpty = cells.every((c) => c.trim() === '');
@@ -77,11 +113,13 @@ export function toRows(text: string): Row[] {
     for (let c = 0; c < header.length; c++) {
       const key = header[c];
       if (!key) continue;
-      row[key] = (cells[c] ?? '').trim();
+      const value = (cells[c] ?? '').trim();
+      if (key in row && row[key] !== '' && value === '') continue;
+      row[key] = value;
     }
-    out.push(row);
+    out.push({ row, line: i + 1 });
   }
-  return out;
+  return { headers, rows: out };
 }
 
 /** 別名のどれかを拾う。見つからなければ '' */

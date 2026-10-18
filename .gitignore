@@ -85,3 +85,6 @@ tools/uizin-clipper/**/card*.yml
 tools/uizin-clipper/.venv/
 __pycache__/
 *.pyc
+
+# 手元のビルド用の一時フォルダ（コミットしない）
+next-stale-cache*/

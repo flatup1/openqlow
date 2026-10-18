@@ -4,7 +4,7 @@
 > 作業を始める前に必ず読み、自分の担当外には触らないでください。
 > オーナーJINがハブとなり、両AIが書いた内容を見て差配します。
 
-最終更新: 2026-08-29
+最終更新: 2026-10-12
 
 ---
 
@@ -54,7 +54,7 @@
 | `openqlow/.codex/` | Codex | open | 2026-07-18 |
 | `openqlow/scripts/*ai-os*` | Codex | open | 2026-07-18 |
 | `openqlow/tools/uizin-clipper/` | Claude | open | 2026-08-07 |
-| `openqlow/uizin-eventos/` | Claude Code（実装） | v1.0 実装済み・JIN承認待ち（未マージ） | 2026-09-08 |
+| `openqlow/uizin-eventos/` | Claude Code（実装） | Tournament OS v3（ブランチ `claude/tournament-os-class-ab`）：作成ずみ・ローカル検証ずみ・下書きPR #173（公開前、JINの承認待ち）。本物のGoogle・実機スマホ・LINEでの確認はまだ。v1.0（2026-09-08）は過去の状態 | 2026-10-12 |
 | `openqlow/docs/` | 共有 | open | - |
 | `openqlow/docs/superpowers/specs/` | 共有 | open | 2026-06-12 |
 | `flatup-ai-os/src/data/` | Claude | open | 2026-06-06 |
@@ -77,7 +77,8 @@
 
 ## 2. 現在のロック（作業中）
 
-なし
+- `openqlow/uizin-eventos/`（Tournament OS v3、ブランチ `claude/tournament-os-class-ab`）：Claude Code が、A／Bクラス区分と画面の仕上げの「点検→直す」を回している（2026-10-12〜）。この間、ほかのAIはこのフォルダに触らない。終わったら、この行を消して、上の表を更新する。
+- 全部の確認は `uizin-eventos/` で `bash scripts/verify-private-all.sh`（1つのコマンド）。公開（Cloudflare）は、JINの承認のあと。pushはJINの許可ずみ（下書きPR #173）。
 
 ### Phase 4 の現在状態（Claude Code 記入 / 2026-08-29）
 

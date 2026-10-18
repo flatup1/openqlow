@@ -1,5 +1,8 @@
 # 最初に読む1枚 — UIZIN EventOS 引き継ぎ
 
+> ## 次の大会（会長が自分で受付をつくる版）を作る人へ
+> このファイルは、旧クラウド連携版（2026年9月23日の UIZIN）の引き継ぎです。次の大会の手順は、[README.md](README.md) の「現在の汎用版」と、[docs/EASY_SETUP_GUIDE.md](docs/EASY_SETUP_GUIDE.md) の「いまの手順」を使います。入り口は `/private/setup/?event=大会ID`（3つの手順）です。Aクラス・Bクラスに分けるときは [docs/クラス区分_設定の入れ方.md](docs/クラス区分_設定の入れ方.md)。 全部の確認は `npm run verify:all`（[docs/TOURNAMENT_OS_公開とCodex連携の決まり.md](docs/TOURNAMENT_OS_公開とCodex連携の決まり.md) の4）。
+
 > ## 📄 引き継ぎ書の最新版は [docs/HANDOFF_2026-09-20.md](docs/HANDOFF_2026-09-20.md) です。
 > **人に渡すならこの1枚。** 2026-09-20 に実測した数字・残作業・当日の逃げ道が入っています。
 > この START_HERE.md の下のほうにある数字（赤16件・テスト102件など）は**過去の値**です。

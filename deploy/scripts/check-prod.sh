@@ -3,7 +3,7 @@
 #
 # Mac で `npm run check` と打つだけで、「本当にできてる？」に答えを出す。
 #   1. GitHub の main と、openQLOW VPS で動いているコードが同じか
-#   2. LINE の自動応答（openQLOW webhook）が動いているか
+#   2. openQLOW のLINE窓口（openqlow-webhook）が動いているか（← JIN専用。お客さま対応ではない）
 #   3. 引き継ぎコードの受け口 /journey が生きているか（← AIKA VPS。別サーバー）
 #   4. WebOS のページ（flatupnarita.jp/webos/。← XServer。別サーバー）が公開されているか
 #
@@ -92,8 +92,13 @@ else
       TODO+=("ssh -i ${SSH_KEY} ${SSH_USER}@${SSH_HOST} が通るか確かめる")
       ;;
     none)
-      ng "本番に deployed-version.txt がありません＝一度も新しいコードを送れていません"
-      TODO+=("npm run deploy を実行する")
+      # 「印が無い」から「一度も送れていない」は言えない。
+      # 2026-10-02、印はあったのに同期の --delete で消され、そのあとビルドが
+      # 失敗して書き直されなかった。実際には前の版が動き続けていたのに、
+      # この検査は「一度も送れていません」と嘘を出した。
+      # わからないことは、わからないと言う。
+      ng "本番のバージョンの印が読めません（いま何のコードで動いているか不明）"
+      TODO+=("npm run deploy を実行して印を置き直す（止まっているとは限らない。2番の窓口が動いていれば前の版で動いている）")
       ;;
     "$ORIGIN_SHA")
       ok "本番 ${LIVE_VERSION} ＝ GitHubのmainと同じ"
@@ -105,16 +110,25 @@ else
   esac
 fi
 
-# ---- 2. LINE の自動応答 ------------------------------------------------
+# ---- 2. openQLOW の LINE 窓口 ------------------------------------------
 echo ""
-echo "--- 2. LINEの自動応答（お客さま対応） ---"
+echo "--- 2. openQLOW のLINE窓口（JIN専用・お客さま対応ではない） ---"
+# AGENTS.md の決まり:
+#   「AIKAは守りの顧客対応。openQLOWは攻めの営業・経営支援。混同しない。」
+#
+# ここで見ている openqlow-webhook は JIN専用のLINEに繋がっている。
+# お客さま対応は AIKA（別サーバー・別リポジトリ）の担当で、ここではない。
+#
+# 以前この行には「LINEの自動応答（お客さま対応）」と書いてあり、
+# 止まったときに「これはお客さまに影響します」と出していた。
+# 事実と違ううえ、反映作業のリスクを実際より重く見せ、判断を誤らせる表示だった。
 if [[ "$PUBLIC_ONLY" -eq 1 ]]; then
   warn "--public のため、確認していません"
 elif ssh -i "${SSH_KEY}" -o ConnectTimeout=10 "${SSH_USER}@${SSH_HOST}" \
      "systemctl is-active --quiet ${SERVICE}" 2>/dev/null; then
-  ok "${SERVICE} は動いています（お客さまへの返信は止まっていません）"
+  ok "${SERVICE} は動いています（JINのLINE窓口。お客さま対応はAIKA側）"
 else
-  ng "${SERVICE} が止まっています。これはお客さまに影響します"
+  ng "${SERVICE} が止まっています（JIN専用のLINE窓口。お客さまへの返信はAIKA側なので影響しません）"
   TODO+=("ssh -i ${SSH_KEY} ${SSH_USER}@${SSH_HOST} 'journalctl -u ${SERVICE} -n 30 --no-pager' でログを見る")
 fi
 
@@ -149,10 +163,29 @@ esac
 # ---- 4. WebOS のページ -------------------------------------------------
 echo ""
 echo "--- 4. WebOSのページ ---"
+# 301/302 は「ページが無い」ではなく「別の住所へ案内されている」。
+# 追いかけずに落第にすると、動いているページを「XServerにindex.htmlがあるか確かめろ」と
+# 誤って案内してしまう（実際にそう誤報した）。最後まで追いかけて、着いた先で判定する。
+WEBOS_TARGET="${WEBOS_URL}"
 WEBOS_CODE="$(http_code "${WEBOS_URL}")"
+if [[ "$WEBOS_CODE" =~ ^3[0-9][0-9]$ ]]; then
+  WEBOS_FOLLOWED="$(curl -s -o /dev/null -L -m 15 \
+    -w '%{http_code} %{url_effective}' "${WEBOS_URL}" 2>/dev/null)"
+  WEBOS_FINAL_CODE="${WEBOS_FOLLOWED%% *}"
+  WEBOS_FINAL_URL="${WEBOS_FOLLOWED#* }"
+  [[ "$WEBOS_FINAL_CODE" =~ ^[0-9]{3}$ ]] || WEBOS_FINAL_CODE="000"
+  echo "   （${WEBOS_CODE} で ${WEBOS_FINAL_URL} へ転送されています）"
+  WEBOS_CODE="$WEBOS_FINAL_CODE"
+  [[ -n "$WEBOS_FINAL_URL" ]] && WEBOS_TARGET="$WEBOS_FINAL_URL"
+fi
+
 if [[ "$WEBOS_CODE" == "200" ]]; then
-  ok "${WEBOS_URL} は公開されています"
-  WEBOS_HTML="$(curl -s -m 10 "${WEBOS_URL}" 2>/dev/null || echo "")"
+  if [[ "$WEBOS_TARGET" != "$WEBOS_URL" ]]; then
+    ok "${WEBOS_URL} は公開されています（転送先 ${WEBOS_TARGET} で表示）"
+  else
+    ok "${WEBOS_URL} は公開されています"
+  fi
+  WEBOS_HTML="$(curl -s -L -m 15 "${WEBOS_TARGET}" 2>/dev/null || echo "")"
   LOCAL_V="$(grep -o 'styles\.css?v=[0-9]*' flatup-webos/app/index.html 2>/dev/null | head -1)"
   # 版の目印が読めないときに黙って飛ばさない。
   # 飛ばすと、公開中のページが古いままでも「✅ 公開されています」で終わる
@@ -162,12 +195,27 @@ if [[ "$WEBOS_CODE" == "200" ]]; then
     TODO+=("flatup-webos/app/index.html の styles.css?v=… の書き方を確認する")
   elif [[ -z "$WEBOS_HTML" ]]; then
     warn "公開中のページの中身を読めず、新旧を比べていません"
-    TODO+=("${WEBOS_URL} をブラウザで開いて表示されるか確かめる")
+    TODO+=("${WEBOS_TARGET} をブラウザで開いて表示されるか確かめる")
   elif [[ "$WEBOS_HTML" == *"$LOCAL_V"* ]]; then
     ok "アップロード済みのページは手元と同じ版です（${LOCAL_V}）"
   else
-    ng "公開中のページが古いです（手元は ${LOCAL_V}）"
-    TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す")
+    # 「古い」の原因は2通りある。どちらかで次の一手がまるで変わる。
+    #   (a) ファイルを上げていない
+    #   (b) ファイルは上がっているが、/webos/ が別のページへ振り分けられている
+    # 2026-10-02 に (b) が実際に起きた。.htaccess の
+    #   RewriteRule ^webos/?$ webos.html [L]
+    # が、新しい webos/index.html ではなく古い webos.html を出していた。
+    # このとき検査は「上げ直せ」としか言えず、すでに上げてある人を悩ませた。
+    # index.html を直接開いて新しければ、ファイルは届いている＝振り分けの問題。
+    DIRECT_HTML="$(curl -s -L -m 15 "${WEBOS_TARGET%/}/index.html" 2>/dev/null || echo "")"
+    if [[ -n "$DIRECT_HTML" && "$DIRECT_HTML" == *"$LOCAL_V"* ]]; then
+      ng "ファイルは新しいのに、${WEBOS_URL} が古いページへ振り分けられています"
+      echo "   （${WEBOS_TARGET%/}/index.html を直接開くと新しい ${LOCAL_V} が出ます）"
+      TODO+=(".htaccess の RewriteRule が ^webos/?\$ を webos/index.html へ向けているか確認する（編集前にバックアップを取り、直したらトップページも開いて確かめる）")
+    else
+      ng "公開中のページが古いです（手元は ${LOCAL_V}）"
+      TODO+=("flatup-webos/app/ の中身を XServer の public_html/webos/ へ上げ直す（8ファイル全部・js/ も）")
+    fi
   fi
 elif [[ "$WEBOS_CODE" == "000" ]]; then
   # ページもjourneyも両方つながらないなら、本番ではなく手元の回線の問題。
