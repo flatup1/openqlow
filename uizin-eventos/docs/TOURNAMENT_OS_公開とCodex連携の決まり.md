@@ -21,7 +21,7 @@ npm run deploy:private
 - 公開先は、プログラムの中で `tournament-os-v3` に固定してあります。
 - ひな形のコピー用リンクは、`~/template-link.backup.json`（Macだけにある控え）から入れます。無ければ、**公開しません。**（作り直すとリンクが消える事故を防ぐため）
 - **このコマンドは、事前に、全部の検証が合格したコミットでだけ使います。** 検証したあとで中身が変わっていると、画面に「⚠ 検証していない」と出て、`yes-unverified` と打たないと進みません（4を見る）。
-- ③の画面に、公開する `.gs` の **build**（プログラムの版の番号。いまは `3.20261010.5`）が出ます。コピー元のシート（ひな形）の Apps Script の上から2行目と**同じ番号**か見くらべてから、`yes` と打ちます。ちがうと、配った先のシートに、クラスの行が入りません（手順：[クラス区分_設定の入れ方.md](クラス区分_設定の入れ方.md) の「ひな形シートを新しくする」）。
+- ③の画面に、公開する `.gs` の **build**（プログラムの版の番号。いまは `3.20261019.6`）が出ます。コピー元のシート（ひな形）の Apps Script の上から2行目と**同じ番号**か見くらべてから、`yes` と打ちます。ちがうと、配った先のシートに、クラスの行が入りません（手順：[クラス区分_設定の入れ方.md](クラス区分_設定の入れ方.md) の「ひな形シートを新しくする」）。
 
 ## 3. 壊れないための自動チェック（`scripts/check-private-build.mjs`）
 
@@ -70,6 +70,7 @@ npm run verify:all -- --fast   （いちばん長い mistake-proof（およそ16
 - `scripts/test-private-live-list.mjs`（当日の一覧）
 - `scripts/test-private-mistake-proof.mjs`（まちがえやすい操作を、1つずつ試す）
 - `scripts/test-class-ab.mjs`（A／Bクラス）
+- `scripts/test-weight-class.mjs`（階級分け：区分→階級・赤い注意・ロゴ）
 - `scripts/test-bout-flow.mjs`（黄色の「次はここ」だけで、対戦カードを3つ作る）
 - `scripts/test-polish-private.mjs`（準備の画面の仕上げ：ZIP・戻す・失敗の帯・取り込み・クラス）
 - `scripts/test-polish-apply.mjs`（申し込みページの仕上げ）
