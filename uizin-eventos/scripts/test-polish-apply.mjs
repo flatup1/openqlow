@@ -869,6 +869,37 @@ await scenario('P27', 'default form: only the minimal fields; 学年・年齢・
   await ctx.close();
 });
 
+/* ───────────────────────── P28 the top band: big date, ENTRY OPEN / CLOSED / TEST, no sideways scroll, text never under the stripes ───────────────────────── */
+await scenario('P28', 'top band: date numerals, ENTRY OPEN / ENTRY CLOSED / TEST, 17px+, no sideways scroll at 320', [SMALL, PHONE, DESKTOP], async (vp) => {
+  const read = async (cfg) => {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor(cfg));
+    const info = await page.evaluate(() => {
+      const hero = document.querySelector('[data-tos-hero]');
+      const arts = [...hero.querySelectorAll('[aria-hidden="true"]')];
+      const small = [...hero.querySelectorAll('*')].filter((e) => e.children.length === 0 && (e.textContent || '').trim() && getComputedStyle(e).fontSize && parseFloat(getComputedStyle(e).fontSize) < 17 && e.getBoundingClientRect().width > 0).map((e) => e.textContent.trim().slice(0, 20));
+      const stripe = hero.firstElementChild.getBoundingClientRect();
+      const h1 = hero.querySelector('h1').getBoundingClientRect(), pill = hero.querySelector('p').getBoundingClientRect();
+      return { text: hero.innerText.replace(/\s+/g, ' '), artCount: arts.length, small, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, heroRight: Math.round(hero.getBoundingClientRect().right), h1Over: h1.right > stripe.left && h1.top < stripe.bottom, pillOver: pill.right > stripe.left && pill.top < stripe.bottom };
+    });
+    await ctx.close();
+    return info;
+  };
+  const open = await read({ date: '2026年12月20日' });
+  check(/12\.20/.test(open.text) && /ENTRY OPEN/.test(open.text) && /申し込み受付中/.test(open.text), 'P28 open: the big 12.20, ENTRY OPEN and the plain-words 申し込み受付中 are all there (' + short(open.text, 120) + ')');
+  check(open.sw === open.cw, 'P28 open: no sideways scroll (' + open.sw + ' vs ' + open.cw + ')');
+  check(open.small.length === 0, 'P28 open: nothing in the band is under 17px (' + open.small.join(',') + ')');
+  check(!open.h1Over && !open.pillOver, 'P28 open: the title and the status pill never sit under the stripes');
+  const closed = await read({ date: '2026年12月20日', deadline: '2020-01-01' });
+  check(/ENTRY CLOSED/.test(closed.text) && !/ENTRY OPEN/.test(closed.text) && /締切を過ぎています/.test(closed.text), 'P28 after the deadline: ENTRY CLOSED and the plain words 締切を過ぎています (' + short(closed.text, 120) + ')');
+  const test = await read({ date: '2026年12月20日', mode: 'test' });
+  check(/\bTEST\b/.test(test.text) && !/ENTRY OPEN/.test(test.text) && /テスト用画面（本番ではありません）/.test(test.text), 'P28 test mode: TEST and the plain words, never ENTRY OPEN');
+  const noDate = await read({ date: '' });
+  check(!/\d+\.\d+/.test(noDate.text.replace(/\s/g, '').replace(/約3分/, '')) && /ENTRY OPEN/.test(noDate.text), 'P28 no date: no big numerals, ENTRY OPEN stays');
+  const long = await read({ title: '千葉県キックボクシング協会アマチュア大会と、とてもとても長い大会の名前がつづきます'.repeat(2), date: '2026年12月20日' });
+  check(long.sw === long.cw && !long.h1Over, 'P28 a very long title wraps inside the band: no sideways scroll, not under the stripes');
+});
+
 /* ───────────────────────── done ───────────────────────── */
 await settle(100);
 for (const e of externals) failures.push('[' + e.scenario + '] EXTERNAL request attempted: ' + e.method + ' ' + e.url);

@@ -909,11 +909,23 @@ export default function PublicApply() {
   const showRow = (value: string) => endpointReady || Boolean(value);
 
   return <main className="tos-apply min-h-screen bg-slate-50 px-4 py-4 text-lg font-medium leading-relaxed text-slate-950 [color-scheme:light] sm:py-10"><div className="mx-auto w-full max-w-3xl tos-apply-wrap overflow-x-clip">
-    <header className="rounded-3xl bg-slate-900 p-4 text-white sm:p-8">
-      <div className="flex items-center justify-between gap-3">{statusLabel ? <p className={'rounded-full px-3 py-1 text-[1.0625rem] font-bold ' + (isTest || deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white/15')}>{isTest || deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}{statusLabel}</p> : <span />}<p aria-hidden="true" className="text-3xl">🥊</p></div>
-      {config.logo
-        ? <div className="mt-3 flex items-center gap-3 sm:gap-4"><CkaLogo size={64} className="bg-white" /><h1 className="min-w-0 flex-1 text-2xl font-black leading-tight [overflow-wrap:anywhere] [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1></div>
-        : <h1 className="mt-3 text-2xl font-black leading-tight [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1>}
+    <header data-tos-hero="1" className="relative overflow-hidden rounded-3xl bg-[#07090d] p-4 text-white sm:p-8" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1.6px)', backgroundSize: '8px 8px' }}>
+      {/* かざり（読むものではない）：右上の、ななめの帯。せまい画面では、ボタンの行の高さまで。文字の上には、かさならない */}
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-12 w-16 overflow-hidden sm:h-44 sm:w-28">
+        <span className="absolute -top-6 right-6 block h-[260%] w-3 sm:right-14 sm:h-[180%] sm:w-7" style={{ background: 'linear-gradient(180deg,#f97316,#ec4899)', transform: 'skewX(-24deg)' }} />
+        <span className="absolute -top-6 right-2 block h-[260%] w-1.5 sm:right-6 sm:h-[180%] sm:w-3" style={{ background: '#f97316', transform: 'skewX(-24deg)' }} />
+      </div>
+      <div className="relative z-10">
+      <div className="sm:pr-28">
+        <div className="flex items-center justify-between gap-3 pr-12 sm:pr-0">{statusLabel ? <p className={'rounded-full px-3 py-1 text-[1.0625rem] font-bold ' + (isTest || deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white/15')}>{isTest || deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}{statusLabel}</p> : <span />}</div>
+        {config.logo
+          ? <div className="mt-3 flex items-center gap-3 sm:gap-4"><CkaLogo size={64} className="bg-white" /><h1 className="min-w-0 flex-1 text-2xl font-black leading-tight [overflow-wrap:anywhere] [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1></div>
+          : <h1 className="mt-3 text-2xl font-black leading-tight [overflow-wrap:anywhere] [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1>}
+        {dateInfo || statusLabel ? <div aria-hidden="true" className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-1">
+          {dateInfo ? <p className="whitespace-nowrap pr-3 font-black italic leading-none tracking-tight text-[clamp(2.75rem,14vw,4rem)] sm:text-[6rem]" style={{ color: '#f97316', background: 'linear-gradient(135deg,#fb923c 0%,#f97316 45%,#ec4899 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{dateInfo.m}.{dateInfo.d}</p> : null}
+          {statusLabel ? <p className="flex items-center gap-3 pb-1 text-2xl font-black italic tracking-wide sm:text-3xl"><span className="block h-8 w-1.5 shrink-0 bg-[#f97316]" />{isTest ? 'TEST' : deadlinePassed ? 'ENTRY CLOSED' : 'ENTRY OPEN'}</p> : null}
+        </div> : null}
+      </div>
       <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">{config.organizer ? '主催：' + config.organizer : '選手のみなさん、申し込みを待っています'}</p>
       {endpointReady ? <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">約3分で終わります</p> : null}
       {endpointReady || config.date || config.venue || config.deadline ? <dl className="mt-3 divide-y divide-white/20 rounded-2xl bg-white/10 px-3">
@@ -921,6 +933,7 @@ export default function PublicApply() {
         {showRow(config.venue) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">会場</dt><dd className="min-w-0 text-lg font-bold">{isVenueUrl(config.venueUrl) ? <a href={config.venueUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center underline underline-offset-4">{config.venue || '地図を開く'} ↗</a> : config.venue || '未定'}</dd></div> : null}
         {showRow(config.deadline) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">締切</dt><dd className="min-w-0 text-lg font-bold">{deadlineText ? <span className={'inline-block rounded-2xl px-3 py-0.5 ' + (deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white text-slate-950')}>{deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}<span aria-hidden="true" className="tos-icon">⏰</span>申し込みは{deadlineText}</span> : '未定'}</dd></div> : null}
       </dl> : null}
+      </div>
     </header>
 
     {!endpointReady ? <div className="mt-4"><ErrorLine alert big><span>このページでは申し込めません</span><span className="mt-2 block text-[1.0625rem]">理由：リンクが古いか、途中で切れています</span><span className="mt-1 block text-[1.0625rem]">やること：主催者に「新しいリンクをください」と言う</span></ErrorLine>
