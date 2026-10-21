@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { A3_MM, DEFAULT_SHOW, PER_PAGE, ROW_GAP_MM, buildSheet, clampPerPage, columnsOf, fitCenter, fitNameMm, fitSide, fitTitleMm, sideHeightMm, textWidthEm, pageCount, paginate, pagesIfTarget, parseSheetOptions, parseSheetPrefs, perPageForPages, perPageLimit, rangeText, resolvePerPage, rowsOf, sheetBouts, sheetMetrics, sheetNotes, sheetSide, suggestPerPage, type SheetBout } from '../core/boutSheet.ts';
+import { A3_MM, DEFAULT_SHOW, PER_PAGE, ROW_GAP_MM, buildSheet, clampPerPage, columnsOf, charEm, fitCenter, fitNameMm, fitSide, fitText, fitTitleMm, sideHeightMm, textWidthEm, wrapLines, pageCount, paginate, pagesIfTarget, parseSheetOptions, parseSheetPrefs, perPageForPages, perPageLimit, rangeText, resolvePerPage, rowsOf, sheetBouts, sheetMetrics, sheetNotes, sheetSide, suggestPerPage, type SheetBout } from '../core/boutSheet.ts';
 import { emptyTournament, isLocalTournament, mergeFighters, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
 import { mergeKeepExisting, restoreConfirmText, sameExceptProgress } from '../app/private/logic.ts';
 import { buildRow, nowModel, summarizeMusic } from '../app/private/live/listLogic.ts';
@@ -110,8 +110,26 @@ test('印刷の前の確かめごと：未定・欠場・名前なし・同じ�
   assert.deepEqual(notes.absent, [3]);
   assert.deepEqual(notes.noName, [4]);
   assert.deepEqual(notes.same, [5]);
-  assert.deepEqual(notes.twice.sort(), ['架空b3', '架空r1', '架空r5'].sort());
+  assert.deepEqual(notes.twice.sort(), ['架空b3', '架空r1'].sort(), '2つ以上の「試合」に入っている人だけ。1つの試合の赤と青の両方にいる人（第5試合の r5）は、「同じ人」で言い、ここには入れない');
   assert.equal(notes.noPhoto, 1, '欠場の人の写真なしは、数えない');
+  // 青の側も同じに調べる（赤の側だけ調べて、青の側を見のがさない）
+  const blue = tournament(4);
+  blue.bouts[0] = bout('m1', 'r1', '');
+  blue.fighters[3] = fighter('b2', { absent: true });
+  blue.fighters[5] = fighter('b3', { name: '  ' });
+  const bn = sheetNotes(blue);
+  assert.deepEqual([bn.empty, bn.absent, bn.noName], [[1], [2], [3]], '青の側の「未定」「欠場」「名前なし」も、同じに見つける');
+});
+
+test('ページ分けは、変な1ページの試合数でも止まらない（数でないときは1として扱う）', () => {
+  const bouts = sheetBouts(tournament(5), DEFAULT_SHOW);
+  for (const bad of [NaN, Infinity, -Infinity, undefined as unknown as number, 0, -3]) {
+    const pages = paginate(bouts, bad);
+    assert.equal(pages.length, 5, String(bad) + '：1試合ずつ5ページ');
+    assert.ok(pages.every((page) => page.total === 5), String(bad) + '：全ページ数は5（0ページにならない）');
+    assert.equal(pageCount(5, bad), 5);
+  }
+  assert.equal(pageCount(0, NaN), 0);
 });
 
 test('buildSheet：大会名（空なら名前未設定）・ロゴ・ページ。向きを横にすると、1ページの下限が変わる', () => {
@@ -188,11 +206,72 @@ test('氏名の大きさ：まず1行に入れる（上限の75%以上なら）�
   assert.equal(fitSide({ state: 'ok', name: 'アレクサンダー', gym: '', tag: '' }, sheetMetrics(8, 'portrait', true), true).nameLines, 1);
 });
 
-test('文字の幅の見つもり：全角は1、半角の英数字は0.58', () => {
+test('文字の幅の見つもり：全角は1。半角の英字は太字の実際の幅より広く見る（大文字は広い）。幅があいまいな記号・絵文字は広いほうで見る', () => {
   assert.equal(textWidthEm('山田太郎'), 4);
-  assert.ok(Math.abs(textWidthEm('FLATUP') - 6 * 0.58) < 1e-9);
-  assert.ok(Math.abs(textWidthEm('A山') - 1.58) < 1e-9);
   assert.equal(textWidthEm(''), 0);
+  assert.ok(Math.abs(textWidthEm('A山') - (0.74 + 1)) < 1e-9);
+  // 本物のブラウザで測った幅（太字、em）。見つもりは、これより狭くならない（狭いと、はみ出して「…」で切れる）
+  const measured: Record<string, number> = { 'JOHN SMITH': 6.17, 'TARO YAMADA': 7.33, 'TAKESHI YAMADA': 8.89, 'ALEXANDER SMITH': 9.61 };
+  for (const [text, real] of Object.entries(measured)) assert.ok(textWidthEm(text) >= real, text + '：見つもり ' + textWidthEm(text).toFixed(2) + ' は、実際の ' + real + ' 以上');
+  assert.ok(charEm('W') > charEm('i') * 2 && charEm('A') > charEm('a'), '大文字は小文字より広く、W は i よりずっと広い');
+  for (const mark of ['★', '☆', '①', '→', '※', '😀']) assert.ok(charEm(mark) >= 1, mark + '：幅があいまいな記号・絵文字は、1em以上で見る');
+});
+
+test('折り返しの数え方：かな・漢字は1字ずつ、英数字は単語ごと。1行に入る字数は、字の幅で決まる（字数÷2ではない）', () => {
+  // 幅 77.3mm・13.3mm の字：1行に5字（77.3÷(13.3×1.04)=5.59）。11字は3行（10字なら2行）
+  assert.equal(wrapLines('あ'.repeat(10), 13.3, 77.3), 2);
+  assert.equal(wrapLines('あ'.repeat(11), 13.3, 77.3), 3, '11字は、2行に入らない（最後の1字が3行目に落ちる）');
+  assert.equal(wrapLines('', 10, 50), 0);
+  assert.equal(wrapLines('   ', 10, 50), 0);
+  assert.equal(wrapLines('JOHN SMITH', 10, 200), 1);
+  // 英数字は、単語ごと折り返す。入りきらない1単語は、字の途中で折り返す
+  assert.equal(wrapLines('AAAA BBBB', 10, 35), 2, '単語のあいだで折り返す');
+  assert.ok(wrapLines('W'.repeat(40), 10, 100) >= 4, '長い単語は、字の途中で折り返す');
+  // 本物のブラウザで測った結果（文字 15mm・幅 77.3mm、太字）：1行に入らない長い単語は、前の単語のあとで折り返してから、字の途中で折り返す。3行になる
+  assert.equal(wrapLines('DAIKI NAKAMURA', 15, 77.3), 3, 'DAIKI | NAKAM | URA');
+  assert.equal(wrapLines('Yuki Matsumoto', 15, 77.3), 3);
+  assert.equal(wrapLines('JOHN SMITH', 15, 77.3), 2);
+  // 小さい字ほど、行は増えない（大きさについて単調）
+  for (const text of ['ミハイル・ゴルバチョフ', 'MAXIMILIAN WEBER', 'フラットアップキックボクシングジム千葉道場']) {
+    let before = Infinity;
+    for (let size = 3; size <= 14; size += 0.1) { const n = wrapLines(text, size, 80); assert.ok(n >= (Number.isFinite(before) ? 0 : 0)); before = n; }
+    assert.ok(wrapLines(text, 3, 80) <= wrapLines(text, 14, 80), text + '：小さいほうが、行が少ない');
+  }
+});
+
+test('fitText：入る、いちばん大きい大きさ。最小でも入らないときだけ cut', () => {
+  const fit = fitText('山田太郎', 90, 12, 3, 1);
+  assert.deepEqual(fit, { size: 12, lines: 1, cut: false });
+  const tight = fitText('あ'.repeat(12), 60, 12, 3, 1);
+  assert.equal(tight.cut, false);
+  assert.ok(tight.size < 12 && wrapLines('あ'.repeat(12), tight.size, 60) === 1 && wrapLines('あ'.repeat(12), tight.size + 0.1, 60) > 1, '1行に入る、ぎりぎり大きい大きさ（' + tight.size + '）');
+  assert.equal(fitText('あ'.repeat(30), 60, 12, 3, 1).cut, true, '1行に入る大きさが、最小（3mm）より小さいときは cut');
+  const impossible = fitText('あ'.repeat(200), 60, 12, 3, 1);
+  assert.equal(impossible.cut, true); assert.equal(impossible.size, 3);
+  assert.deepEqual(fitText('', 60, 12, 3, 2), { size: 12, lines: 0, cut: false });
+});
+
+test('名前・ジム・札は、よくある長さなら切れない：奇数の字数の名前（9〜19字）・ローマ字の大文字・19〜22字のジム名を、初期設定の縦・横、写真あり／なしで', () => {
+  const names = ['ミハイル・ゴルバチョフ', 'アレクサンダー・スミス', '田中太郎左衛門次郎', 'JOHN SMITH', 'TARO YAMADA', 'MAXIMILIAN WEBER', 'DAIKI NAKAMURA', 'Yuki Matsumoto', '山田 太郎', '佐藤 花子'];
+  const gyms = ['ゴールデングローブキックボクシングジム', 'フラットアップキックボクシングジム千葉道場', 'FLATUP KICKBOXING GYM', '千葉キックボクシングジム'];
+  const cases: string[] = [];
+  for (const orientation of ['portrait', 'landscape'] as const) {
+    for (const perPage of orientation === 'portrait' ? [1, 4, 8, 12] : [2, 8, 16]) {
+      for (const withPhoto of [true, false]) {
+        const m = sheetMetrics(perPage, orientation, withPhoto);
+        for (const name of names) for (const gym of gyms) {
+          const fit = fitSide({ state: 'ok', name, gym, tag: 'Bクラス　中学生男子・37kg以下' }, m, withPhoto);
+          if (fit.cut.name || fit.cut.gym || fit.cut.tag) cases.push(orientation + ' ' + perPage + ' photo=' + withPhoto + ' ' + name + ' / ' + gym + ' cut=' + JSON.stringify(fit.cut));
+          // 独立した確かめ：全角だけの名前は、1行に入る字数 = floor(幅÷(大きさ×1.04))。行数は、そこから数える
+          if (/^[぀-ヿ一-鿿・]+$/.test(name) && !fit.cut.name) {
+            const per = Math.floor(fit.textW / (fit.name * 1.04));
+            assert.ok(Math.ceil(Array.from(name).length / per) <= fit.nameLines, '字数から数えた行数が、決めた行数に収まる：' + name + ' ' + orientation + ' ' + perPage);
+          }
+        }
+      }
+    }
+  }
+  assert.deepEqual(cases.filter((line) => /^(portrait (1|4|8|12)|landscape (2|8)) /.test(line)), [], 'ふつうの配置（縦12まで・横8まで）では、よくある長さの文字は切れない。切れた組み合わせ：' + cases.slice(0, 4).join(' | '));
 });
 
 test('文字が枠に入る（選手の側）：どの向き・どの試合数・写真あり/なしでも、長い氏名・ジム・札・欠場を入れて、見つもりの高さが枠の高さ以内。行数は2以内', () => {

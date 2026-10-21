@@ -36,7 +36,7 @@ export function clampPerPage(value: unknown, orientation: SheetOrientation): num
 
 /** 全部で何ページか。試合が 0 のときは 0 ページ */
 export function pageCount(total: number, perPage: number): number {
-  const per = Math.max(1, Math.floor(perPage));
+  const per = Number.isFinite(perPage) ? Math.max(1, Math.floor(perPage)) : 1;
   return total <= 0 ? 0 : Math.ceil(total / per);
 }
 
@@ -125,7 +125,7 @@ export function sheetBouts(data: Pick<LocalTournament, 'fighters' | 'bouts'>, sh
 
 /** ページに分ける。1試合は、必ず 1 ページの中に入る（ページをまたがない）。試合が 0 のときは、ページなし */
 export function paginate(bouts: SheetBout[], perPage: number): SheetPage[] {
-  const per = Math.max(1, Math.floor(perPage));
+  const per = Number.isFinite(perPage) ? Math.max(1, Math.floor(perPage)) : 1;
   const total = pageCount(bouts.length, per);
   const pages: SheetPage[] = [];
   for (let at = 0; at < bouts.length; at += per) {
@@ -163,7 +163,8 @@ export function sheetNotes(data: Pick<LocalTournament, 'fighters' | 'bouts'>): S
     if (red?.absent === true || blue?.absent === true) notes.absent.push(number);
     if ((red && !red.name.trim()) || (blue && !blue.name.trim())) notes.noName.push(number);
     if (red && blue && red.id === blue.id) notes.same.push(number);
-    for (const fighter of [red, blue]) {
+    // 1つの試合の中で赤と青の両方にいる人は、「同じ人」で言う。「2つ以上の試合」には数えない
+    for (const fighter of new Set([red, blue])) {
       if (!fighter) continue;
       seen.set(fighter.id, (seen.get(fighter.id) ?? 0) + 1);
       if (!fighter.photoDataUrl && fighter.absent !== true && !photoCounted.has(fighter.id)) { photoCounted.add(fighter.id); notes.noPhoto++; }
@@ -270,24 +271,106 @@ export function sheetMetrics(perPage: number, orientation: SheetOrientation, wit
   };
 }
 
-/** 文字の幅の見つもり（em）。全角は 1、半角の英数字・記号は 0.58 */
+/* ───────────── 文字の幅・折り返しの見つもり ───────────── */
+
+/** 全角の幅で見る文字（かな・漢字・全角・幅があいまいな記号 ※ ★ ① → など、三点リーダー）。ふつうの句読点・引用符（U+2010〜2027）は、半角の幅 */
+const isWide = (code: number): boolean => code >= 0x2030 || code === 0x2025 || code === 0x2026;
+
+/**
+ * 1文字の幅の見つもり（em）。かな・漢字・全角は 1。半角の英字は、太い字（氏名は太字）の実際の幅に近い値（大文字は広く、i・l は狭く）。
+ * 幅があいまいな記号（★ ① → など）と絵文字は、広いほうで見る。
+ */
+export function charEm(ch: string): number {
+  const code = ch.codePointAt(0) ?? 0;
+  if (code >= 0x1f000 || (code >= 0x2600 && code <= 0x27bf)) return 1.3;
+  if (isWide(code)) return 1;
+  if (ch === ' ') return 0.3;
+  if (code >= 0x30 && code <= 0x39) return 0.6;
+  if (ch === 'W' || ch === 'M') return 0.96;
+  if (ch === 'I') return 0.36;
+  if (code >= 0x41 && code <= 0x5a) return 0.74;
+  if (ch === 'm' || ch === 'w') return 0.88;
+  if (ch === 'i' || ch === 'j' || ch === 'l') return 0.3;
+  if (ch === 'f' || ch === 'r' || ch === 't') return 0.38;
+  if (code >= 0x61 && code <= 0x7a) return 0.58;
+  if ('-.,\'’:;!|()'.includes(ch)) return 0.36;
+  return 0.62;
+}
+
+/** 文字の幅の見つもり（em） */
 export function textWidthEm(text: string): number {
   let sum = 0;
-  for (const ch of Array.from(text)) sum += (ch.codePointAt(0) ?? 0) > 0x2e7f ? 1 : 0.58;
+  for (const ch of Array.from(text)) sum += charEm(ch);
   return sum;
 }
 
+/** 実際のフォントは、見つもりより少し広いことがある。そのぶんの余裕 */
+const TEXT_SAFETY = 1.04;
+/** 英数字のつながり（単語）か。単語は、空白のところで折り返す。かな・漢字・全角は、どこでも折り返せる */
+const isWordChar = (ch: string): boolean => ch !== ' ' && !isWide(ch.codePointAt(0) ?? 0);
+
 /**
- * 氏名の文字の大きさ（mm）。textW = 氏名の場所の幅（mm）。
- * まず「1行に入る大きさ」を考える。それが上限の75%以上なら、1行にする（4〜5文字の名前の、最後の1文字だけが次の行に落ちる、を防ぐ）。
- * それより小さくなるときだけ、2行にする（2行に入る大きさ。下限 3.2mm）。
+ * 何行になるか。ブラウザの折り返しをまねる：かな・漢字は1字ずつ、英数字は単語ごと（長すぎる単語は字の途中で）折り返す。
+ * sizeMm = 文字の大きさ（mm）、widthMm = 文字を入れる場所の幅（mm）。文字がないときは 0 行。
  */
+export function wrapLines(text: string, sizeMm: number, widthMm: number): number {
+  const chars = Array.from(text.replace(/\s+/g, ' ').trim());
+  if (chars.length === 0) return 0;
+  const line = Math.max(0.5, widthMm / (Math.max(0.1, sizeMm) * TEXT_SAFETY));
+  let lines = 1, x = 0;
+  for (let i = 0; i < chars.length;) {
+    const ch = chars[i];
+    if (isWordChar(ch)) {
+      let j = i, w = 0;
+      while (j < chars.length && isWordChar(chars[j])) { w += charEm(chars[j]); j++; }
+      if (x + w <= line + 1e-9) x += w;
+      else if (w <= line) { lines++; x = w; }
+      else { // 1行に入らない長い単語：ブラウザは、まず前の単語のあとで折り返して（次の行の先頭にして）、それでも入らない分を、字の途中で折り返す
+        if (x > 0) { lines++; x = 0; }
+        for (let k = i; k < j; k++) { const c = charEm(chars[k]); if (x + c > line + 1e-9) { lines++; x = c; } else x += c; }
+      }
+      i = j;
+    } else if (ch === ' ') {
+      x += charEm(ch); if (x > line) { lines++; x = 0; } // 行の終わりの空白は、次の行に回さない
+      i++;
+    } else {
+      const c = charEm(ch);
+      if (x + c > line + 1e-9) { lines++; x = c; } else x += c;
+      i++;
+    }
+  }
+  return lines;
+}
+
+/**
+ * 文字を、maxLines 行までに収める、いちばん大きい大きさ（mm）にする（maxMm から minMm のあいだ。0.1mm きざみ、切りさげ）。
+ * minMm でも入らないときは、cut = true（枠で切れる。画面で知らせる）。文字がないときは 0 行。
+ */
+export function fitText(text: string, widthMm: number, maxMm: number, minMm: number, maxLines: number): { size: number; lines: number; cut: boolean } {
+  const top = Math.floor(maxMm * 10 + 1e-9), bottom = Math.min(top, Math.ceil(minMm * 10 - 1e-9));
+  if (!text.trim()) return { size: top / 10, lines: 0, cut: false };
+  if (wrapLines(text, bottom / 10, widthMm) > maxLines) return { size: bottom / 10, lines: maxLines, cut: true };
+  let low = bottom, high = top; // low は入る大きさ。大きいほど行が増える（単調）ので、二分探索
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (wrapLines(text, mid / 10, widthMm) <= maxLines) low = mid; else high = mid - 1;
+  }
+  return { size: low / 10, lines: wrapLines(text, low / 10, widthMm), cut: false };
+}
+
+/**
+ * 氏名の文字の大きさと行数。まず「1行に入る大きさ」を考える。それが上限の75%以上なら、1行にする（4〜5文字の名前の、最後の1文字だけが次の行に落ちる、を防ぐ）。
+ * それより小さくなるときだけ、2行にする（2行に入る大きさ。下限 3.2mm）。textW = 氏名の場所の幅（mm）。
+ */
+export function fitNameText(name: string, textW: number, maxMm: number): { size: number; lines: number; cut: boolean } {
+  const one = fitText(name, textW, maxMm, 3.2, 1);
+  if (!one.cut && one.size >= maxMm * 0.75) return one;
+  return fitText(name, textW, maxMm, 3.2, 2);
+}
+
+/** 氏名の文字の大きさ（mm）だけ。fitNameText の大きさ */
 export function fitNameMm(name: string, maxMm: number, textW: number): number {
-  const em = Math.max(1, textWidthEm(name));
-  const oneLine = textW / (em * 1.02);
-  if (oneLine >= maxMm * 0.75) return floor1(Math.min(maxMm, oneLine));
-  const twoLines = (textW * 2) / (em * 1.05);
-  return floor1(clampMm(Math.min(maxMm, twoLines), 3.2, maxMm));
+  return fitNameText(name, textW, maxMm).size;
 }
 
 /** 1人ぶんの文字の高さの見つもり（mm）。「▲ 赤」の行（欠場の札は、この行に並べる）＋氏名＋所属ジム＋札。欠場の選手は、札（クラス・区分・階級）を出さない */
@@ -301,10 +384,9 @@ export function sideHeightMm(state: SheetSide['state'], f: Pick<SideFit, 'corner
  * 1行で5mm以上に入るなら1行（上限8mm）。それより小さくなるときは2行（上限6.8mm。見出しの高さに2行が入る大きさ）。
  */
 export function fitTitleMm(title: string, textW: number): { size: number; lines: 1 | 2 } {
-  const em = Math.max(1, textWidthEm(title));
-  const one = textW / (em * 1.02);
-  if (one >= 5) return { size: floor1(Math.min(8, one)), lines: 1 };
-  return { size: floor1(clampMm(Math.min(6.8, (textW * 2) / (em * 1.05)), 3.2, 6.8)), lines: 2 };
+  const one = fitText(title, textW, 8, 5, 1);
+  if (!one.cut) return { size: one.size, lines: 1 };
+  return { size: fitText(title, textW, 6.8, 3.2, 2).size, lines: 2 };
 }
 
 export type CenterFit = {
@@ -326,11 +408,11 @@ export function fitCenter(bout: Pick<SheetBout, 'number' | 'classLine' | 'rule'>
   const budget = m.cellH - 2.4 - 2;
   const digits = String(bout.number).length;
   // 行の数。3行をこえるときは、入らない（Infinity）。切って見せることはしない（文字は、ぜんぶ載るか、省くか）
-  const lines = (text: string, size: number): number => !text ? 0 : (() => { const n = Math.max(1, Math.ceil((textWidthEm(text) * size * 1.02) / textW - 1e-9)); return n > 3 ? Infinity : n; })();
+  const lines = (text: string, size: number): number => { if (!text) return 0; const n = wrapLines(text, size, textW); return n > 3 ? Infinity : n; };
   const attempt = (compact: boolean, withClass: boolean, withRule: boolean): CenterFit | null => {
     const classText = withClass ? bout.classLine : '', ruleText = withRule ? bout.rule : '';
-    // 番号の大きさ：積むときは枠の高さで決まる（3けたは小さめ）。1行のときは、枠の幅に入る大きさ（上限9mm）
-    let no = compact ? clampMm(Math.min(9, textW / ((1.1 + 0.58 * digits) * 1.02)), 6, 9) : (digits > 2 ? Math.max(7, m.no * 0.72) : m.no);
+    // 番号の大きさ：積むときは枠の高さで決まる（3けたは小さめ）。1行（第N試合）のときは、枠の幅に入る大きさ（上限9mm。「第」「試合」は番号の55%）
+    let no = compact ? clampMm(Math.min(9, textW / ((1.65 + 0.6 * digits) * TEXT_SAFETY)), 6, 9) : (digits > 2 ? Math.max(7, m.no * 0.72) : m.no);
     const noMin = compact ? 6 : 7; // 番号は、読めることがいちばん大事。これより小さくするくらいなら、ほかの文字を省く
     let word = compact ? Math.max(2.6, no * 0.55) : m.tag, cs = m.tag, rs = m.rule;
     const head = (): number => compact ? no * 1.15 : word * 1.1 * 2 + no;
@@ -357,29 +439,33 @@ export function pagesIfTarget(total: number, target: number, orientation: SheetO
   return pageCount(total, perPageForPages(total, target, orientation));
 }
 
-export type SideFit = { name: number; gym: number; tag: number; corner: number; nameLines: number; gymLines: number; tagLines: number; textW: number };
+export type SideFit = {
+  name: number; gym: number; tag: number; corner: number; nameLines: number; gymLines: number; tagLines: number; textW: number;
+  /** 最小の大きさ・行数でも入らず、枠で切れる文字（…と出る）。印刷の前に、画面で知らせる */
+  cut: { name: boolean; gym: boolean; tag: boolean };
+};
 
 /**
  * 1人ぶんの文字（氏名・所属ジム・クラス/階級の札）が、枠の高さに入るように、大きさと行数を決める。
- * 入らないときは、ぜんぶの文字を少しずつ小さくする（下限あり）。それでも入らないときは、行数をへらす（あふれるより、1行に切るほうがよい）。
- * 「入る」の判定は、行の数 × 文字の大きさ × 行の高さ の見つもり（ブラウザでの実際の高さとも、画面テストで確かめる）。
+ * 折り返しは wrapLines でまねて数える（1行に入る文字数が、字の幅で決まることも見る）。氏名は、まず1行、だめなら小さく、それでも長ければ2行。
+ * 高さに入らないときは、ぜんぶの文字を少しずつ小さくする（下限あり）。それでも入らないときは、行数をへらす（あふれるより、1行に切るほうがよい）。
+ * 最小の大きさでも入らない文字は、cut = true で返す（画面で「切れる」と知らせる）。
  */
 export function fitSide(side: Pick<SheetSide, 'name' | 'gym' | 'tag' | 'state'>, m: SheetMetrics, withPhoto: boolean): SideFit {
   const textW = Math.max(20, m.sideW - (withPhoto ? m.photoW + 9 : 7));
   const budget = m.cellH - 2.4;
   const name = side.state === 'empty' ? '未定' : side.name;
-  const tag = side.state === 'absent' ? '' : side.tag;
-  let fn = Math.min(m.name, fitNameMm(name, m.name, textW)), fg = m.gym, ft = m.tag;
-  const lines = (text: string, size: number, cap: number): number => !text ? 0 : Math.min(cap, Math.max(1, Math.ceil((textWidthEm(text) * size * 1.02) / textW - 1e-9)));
-  const used = (nl: number, gl: number, tl: number): number => sideHeightMm(side.state, { corner: ft, name: fn, gym: fg, tag: ft, nameLines: nl, gymLines: gl, tagLines: tl });
-  let nameCap = 2, gymCap = 2, tagCap = 2;
-  for (let step = 0; step < 30; step++) {
-    const nl = lines(name, fn, nameCap), gl = lines(side.gym, fg, gymCap), tl = lines(tag, ft, tagCap);
-    if (used(nl, gl, tl) <= budget) return { name: floor1(fn), gym: floor1(fg), tag: floor1(ft), corner: floor1(ft), nameLines: nl, gymLines: gl, tagLines: tl, textW };
-    const atMin = fn <= 3.4 && fg <= 2.6 && ft <= 2.4;
-    if (!atMin) { fn = Math.max(3.4, fn * 0.93); fg = Math.max(2.6, fg * 0.93); ft = Math.max(2.4, ft * 0.93); }
-    else if (tagCap > 1 || gymCap > 1 || nameCap > 1) { tagCap = 1; gymCap = 1; nameCap = 1; }
-    else break;
-  }
-  return { name: floor1(fn), gym: floor1(fg), tag: floor1(ft), corner: floor1(ft), nameLines: 1, gymLines: side.gym ? 1 : 0, tagLines: tag ? 1 : 0, textW };
+  const tagText = side.state === 'absent' ? '' : side.tag;
+  const build = (scale: number, cap: number): { fit: SideFit; high: number } => {
+    const nameMax = Math.max(3.4, m.name * scale);
+    const nm = cap === 1 ? fitText(name, textW, nameMax, 3.2, 1) : fitNameText(name, textW, nameMax);
+    const gm = fitText(side.gym, textW, Math.max(2.6, m.gym * scale), 2.6, cap);
+    const tg = fitText(tagText, textW, Math.max(2.4, m.tag * scale), 2.4, cap);
+    const fit: SideFit = { name: nm.size, gym: gm.size, tag: tg.size, corner: floor1(Math.max(2.4, m.tag * scale)), nameLines: Math.max(1, nm.lines), gymLines: gm.lines, tagLines: tg.lines, textW, cut: { name: nm.cut, gym: gm.cut, tag: tg.cut } };
+    return { fit, high: sideHeightMm(side.state, fit) };
+  };
+  let scale = 1, cur = build(scale, 2);
+  for (let step = 0; step < 30 && cur.high > budget; step++) { scale *= 0.93; cur = build(scale, 2); }
+  if (cur.high > budget) cur = build(scale, 1);
+  return cur.fit;
 }

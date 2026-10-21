@@ -5,12 +5,13 @@ import { COLUMN_GAP_MM, HEADER_MM, ROW_GAP_MM, buildSheet, clampPerPage, fitCent
 import type { LocalTournament } from '../../../core/privateTournament.ts';
 import { CkaLogo } from '../../components/CkaLogo.tsx';
 import { readPrivateEvent, watchPrivateEvent } from '../../lib/privateStore.ts';
+import { isTitleReal } from '../logic.ts';
 import { makeThumb } from '../../lib/thumb.ts';
 import { Caution, ErrorLine, Hint, LockReason, NextSlot, OkLine, cx } from '../live/liveMarks.tsx';
 
 /*
   A3 対戦一覧表（掲示用）。主催者が決めた対戦カードを、見やすい一覧表にして印刷（PDF）する。組み合わせは、ここでは決めない・変えない。
-  読むだけの画面：保存してある大会から作る（書き込みはしない）。順番・相手・欠場は、準備の画面で直して「保存する」→ ここにもどると、自動で入れかわる。
+  読むだけの画面：保存してある大会から作る（保存データには書き込まない。覚えるのは、このブラウザの設定だけ）。順番・相手・欠場は、準備の画面で直して「保存する」→ この画面を開いたままなら自動で、閉じたなら「A3の対戦一覧表をつくる」をもう一度押すと、入れかわる。
   載せるのは core/boutSheet.ts が通した項目だけ（氏名・所属ジム・小さな顔写真・クラス/区分/階級・試合番号・ルール）。電話・生年月日・健康・同意の記録は、載らない。
   印刷は、ブラウザの印刷の画面（送り先を「PDFに保存」にするとPDF）。用紙の大きさ（A3・縦／横）は、このページから指定する。
 */
@@ -71,20 +72,22 @@ function Bout({ bout, m, show, thumbs }: { bout: SheetBout; m: SheetMetrics; sho
 }
 
 /** 印刷の前に確かめてもらうこと。止めない（印刷はできる）。上から、直したほうがよい順 */
-function Checks({ notes, total, ready, pending, showPhoto }: { notes: SheetNotes; total: number; ready: boolean; pending: number; showPhoto: boolean }) {
+function Checks({ notes, total, ready, pending, showPhoto, titleReal, cutBouts, fighterCount }: { notes: SheetNotes; total: number; ready: boolean; pending: number; showPhoto: boolean; titleReal: boolean; cutBouts: number[]; fighterCount: number }) {
   const problems: string[] = [];
+  if (!titleReal) problems.push('大会の名前がまだ入っていません。一覧表の各ページの上に「大会名未設定」と出ます。');
   if (notes.empty.length) problems.push(numbersText(notes.empty) + 'は、選手がまだ決まっていません。一覧表には「未定」と出ます。');
   if (notes.same.length) problems.push(numbersText(notes.same) + 'は、赤と青が同じ選手です。');
   if (notes.noName.length) problems.push(numbersText(notes.noName) + 'に、名前が入っていない選手がいます。「名前未入力」と出ます。');
   if (notes.absent.length) problems.push(numbersText(notes.absent) + 'に、欠場の選手がいます。一覧表には「欠場」と出ます。');
   if (notes.twice.length) problems.push('2つ以上の試合に入っている選手がいます：' + notes.twice.slice(0, 5).join('、') + (notes.twice.length > 5 ? ' ほか' + (notes.twice.length - 5) + '人' : '') + '。');
   return <div className="sheet-noprint mt-4 space-y-2" data-sheet-checks="1">
-    {total > 0 && problems.length === 0 ? (ready
+    {total > 0 && problems.length === 0 && cutBouts.length === 0 ? (ready
       ? <OkLine>どの試合も、赤と青が決まっています。そのまま印刷できます。</OkLine>
       : <Hint>どの試合も、赤と青が決まっています。写真をととのえ終わると、印刷できます（あと{pending}人）。</Hint>) : null}
     {problems.map((text) => <Caution key={text} title="印刷の前に確かめてください">{text}</Caution>)}
-    {problems.length ? <Hint>直すときは、準備の画面で直して「保存する」を押します。この画面は、自動で入れかわります。準備の画面には、上の「この画面を閉じる」でもどります。</Hint> : null}
-    {showPhoto && notes.noPhoto > 0 ? <Hint>写真がない選手が{notes.noPhoto}人います。その人は、名前などの文字だけで出ます。</Hint> : null}
+    {cutBouts.length > 0 ? <Caution title="印刷の前に確かめてください" id="sheet-cut-note">{numbersText(cutBouts.slice(0, 5))}{cutBouts.length > 5 ? ' ほか' + (cutBouts.length - 5) + '試合' : ''}は、名前・所属ジム・クラスの文字が長くて、紙の上で一部が「…」と切れます。1ページの試合数をへらすと、文字が大きくなって入ることがあります。それでも切れるときは、準備の画面で、書き方（名前・所属ジム）を確かめます。</Caution> : null}
+    {problems.length || cutBouts.length ? <Hint>直すときは、上の「この画面を閉じる」で準備の画面にもどり、直して「保存する」を押します。そのあと、準備の画面の「A3の対戦一覧表をつくる」を、もう一度押します。</Hint> : null}
+    {showPhoto && notes.noPhoto > 0 ? <Hint>写真がない選手が{notes.noPhoto}人います。その人は、名前の横が灰色の四角になります。{notes.noPhoto >= fighterCount ? '全員いないときは、「小さな顔写真」のチェックを外すと、文字だけになります。' : ''}</Hint> : null}
   </div>;
 }
 
@@ -159,6 +162,18 @@ export default function BoutSheet() {
   const limit = perPageLimit(orientation);
   const model = useMemo(() => data ? buildSheet(data, { perPage, orientation, show }) : null, [data, perPage, orientation, show]);
   const m = useMemo(() => sheetMetrics(perPage, orientation, show.photo), [perPage, orientation, show.photo]);
+  // 印刷の前に知らせること：まん中の列に入らず省いた文字（ルール・契約体重など）／紙の上で切れる、名前・所属ジム・クラスの文字
+  const warn = useMemo(() => {
+    const cut: number[] = [], rule: number[] = [], classLine: number[] = [];
+    if (!model) return { cut, rule, classLine };
+    for (const page of model.pages) for (const b of page.bouts) {
+      const c = fitCenter(b, m);
+      if (c.droppedRule) rule.push(b.number);
+      if (c.droppedClass) classLine.push(b.number);
+      for (const side of [b.red, b.blue]) { const f = fitSide(side, m, show.photo); if (f.cut.name || f.cut.gym || f.cut.tag) { cut.push(b.number); break; } }
+    }
+    return { cut, rule, classLine };
+  }, [model, m, show.photo]);
 
   // 写真を、一覧表に載せる小さい大きさにする。できるまで、印刷のボタンは待つ（作れなかった写真は、元の写真のまま。止まらない）
   const wanted = useMemo(() => {
@@ -208,7 +223,7 @@ export default function BoutSheet() {
   };
 
   const shell = 'tos-read min-h-screen bg-slate-100 p-4 text-slate-950 sm:p-6';
-  const backLink = <a href={back} className={cx(idle, 'no-underline')}>準備の画面へもどる</a>;
+  const backLink = <a href={back} onClick={leave} className={cx(idle, 'no-underline')}>準備の画面へもどる</a>;
   if (!loaded) return <main data-tos-loading="1" className={shell}><div className="mx-auto max-w-xl rounded-2xl bg-white p-6">
     <h1 className="text-xl font-bold">このパソコンのデータを読んでいます…</h1>
     {mounted ? <Caution title="そのまま待つ" className="mt-3">⏳ 画面が出るまで、3秒ほどかかります。</Caution> : null}
@@ -216,13 +231,24 @@ export default function BoutSheet() {
   if (!data || !model) return <main className={shell}><div className="mx-auto max-w-xl rounded-2xl bg-white p-6">
     <h1 className="mb-3 text-xl font-black">対戦一覧表（A3）</h1>
     {readFailed
-      ? <ErrorLine role="alert">保存データを読めません（データは消えていません）。プライベートウィンドウでは使えません。ふつうのウィンドウで開き直してください</ErrorLine>
-      : <><ErrorLine role="alert">この大会は、このブラウザにありません</ErrorLine><p className="mt-3">この大会を作ったパソコンの、同じブラウザで開いてください。</p></>}
-    <NextSlot active label="準備の画面へもどる" className="mt-4">{backLink}</NextSlot>
+      ? <>
+          <ErrorLine role="alert">保存データを読めません（データは消えていません）</ErrorLine>
+          <p className="mt-3 font-bold">① プライベートウィンドウでは使えません。ふつうのウィンドウで開き直してください</p>
+          <p className="mt-1 font-bold">② それでもだめなときは、下の「準備の画面へもどる」を押します。準備の画面で「コピーのファイルから戻す」を使います</p>
+        </>
+      : <>
+          <ErrorLine role="alert">この大会は、このブラウザにありません</ErrorLine>
+          <p className="mt-3">この大会は、別のパソコンかブラウザで作りましたか？ 作ったパソコンの、同じブラウザで開いてください。</p>
+        </>}
+    <NextSlot active label={readFailed ? '①をしてもだめなとき：準備の画面へ' : '準備の画面へもどる'} className="mt-4">{backLink}</NextSlot>
+    {readFailed ? <div className="mt-4"><button type="button" onClick={() => location.reload()} className={idle}>もう一度ひらく</button><Hint className="mt-1">ふつうのウィンドウで開いても読めないとき、もう一度ためします</Hint></div> : null}
+    <Hint className="mt-3">別のパソコンで使うときは、準備の画面の「コピーのファイル」から戻します</Hint>
   </div></main>;
 
   const hasBouts = model.totalBouts > 0;
   const ready = hasBouts && pending === 0;
+  // 試合に入っている選手の人数（同じ人は1人）。「写真がない人が全員」かを調べるのに使う
+  const fighterCount = new Set(data.bouts.flatMap((b) => [b.redId, b.blueId]).filter((id) => data.fighters.some((f) => f.id === id && f.absent !== true))).size;
   const setCount = (value: number) => { setDraft(null); setPrefs((old) => ({ ...old, count: clampPerPage(value, old.orientation), pages: null })); };
   const setPages = (value: 3 | 4) => { setDraft(null); setPrefs((old) => ({ ...old, count: null, pages: value })); };
   const setAuto = () => { setDraft(null); setPrefs((old) => ({ ...old, count: null, pages: null })); };
@@ -230,28 +256,35 @@ export default function BoutSheet() {
   const toggle = (key: keyof SheetShow) => setPrefs((old) => ({ ...old, show: { ...old.show, [key]: !old.show[key] } }));
   const atMin = perPage <= limit.min, atMax = perPage >= limit.max;
   const isAuto = prefs.count === null && prefs.pages === null;
+  const nothingDecided = hasBouts && model.notes.empty.length === total;
+  // 打っている途中の数が、使える範囲の外のとき
+  const typed = draft !== null && draft !== '' ? Number(draft) : null;
+  const typedOut = typed !== null && Number.isFinite(typed) && (typed > limit.max || typed < limit.min);
+  const commitDraft = () => { const n = Number(draft); if (draft !== null && draft !== '' && Number.isFinite(n)) setCount(Math.round(n)); setDraft(null); };
   // 「A3を3枚／4枚にする」は、いまの試合数と上限で、その枚数にできるときだけ押せる
   const target = (n: 3 | 4) => ({ can: pagesIfTarget(total, n, orientation) === n, got: pagesIfTarget(total, n, orientation), other: pagesIfTarget(total, n, orientation === 'portrait' ? 'landscape' : 'portrait') });
   const t3 = target(3), t4 = target(4);
+  const lockText = (n: 3 | 4, t: ReturnType<typeof target>): string => (prefs.pages === n ? '前に選んだ「A3を' + n + '枚にする」は、いまはできません。' : '「A3を' + n + '枚にする」は押せません。') + whyNot(n, t);
   const whyNot = (n: 3 | 4, t: ReturnType<typeof target>): string => '全' + total + '試合は、' + orientationWord(orientation) + 'では、A3を' + n + '枚にできません（' + t.got + '枚になります）。' + (t.other === n ? orientationWord(orientation === 'portrait' ? 'landscape' : 'portrait') + 'にすると' + n + '枚になります。' : '');
   const title = fitTitleMm(model.title, m.pageW - 20 - 66 - (model.logo ? HEADER_MM - 2 : 0));
-  // 1ページに詰めすぎて、まん中の列に入らなかった文字（省いた）を、印刷の前に知らせる
-  const dropped = { rule: [] as number[], classLine: [] as number[] };
-  for (const page of model.pages) for (const b of page.bouts) { const c = fitCenter(b, m); if (c.droppedRule) dropped.rule.push(b.number); if (c.droppedClass) dropped.classLine.push(b.number); }
+  // 紙の枚数をへらす方法の案内（本当にへるときだけ「横」をすすめる。上限にぶつかっていないときは、＋か自動）
+  const landPages = pageCount(total, resolvePerPage({ ...prefs, orientation: 'landscape' }, total));
+  const reduceHint = pages <= 4 ? '' : orientation === 'portrait' && landPages < pages ? '紙を減らしたいときは、「横」にすると、' + landPages + '枚になります。' : atMax ? '1ページに載せられる数の上限のため、これ以上は減りません。' : '紙を減らしたいときは、1ページの試合数をふやす（＋）か、「自動」を押します。';
 
   return <main className={shell}>
     <div className="mx-auto max-w-5xl">
       <div className="sheet-noprint">
         <h1 className="text-2xl font-black [overflow-wrap:anywhere]">対戦一覧表（A3）</h1>
         <p className="mt-1 text-lg font-bold [overflow-wrap:anywhere]">{model.title}</p>
-        <Hint className="mt-2">保存した対戦カードから、掲示用の一覧表を作ります。組み合わせは、ここでは変えません。順番・相手・欠場を直すときは、準備の画面で直して「保存する」を押し、ここにもどります。</Hint>
+        <Hint className="mt-2">保存した対戦カードから、掲示用の一覧表を作ります。組み合わせは、ここでは変えません。このままでよければ、下の「印刷する」を押します。順番・相手・欠場を直すときは、上の「この画面を閉じる」で準備の画面にもどり、直して「保存する」を押し、もう一度「A3の対戦一覧表をつくる」を押します。</Hint>
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-[17px] font-bold text-slate-800">
+          <span id="sheet-saved-at">保存した時刻：{data.updatedAt ? clockText(data.updatedAt) : '（不明）'}</span>
           <span id="sheet-read-at">最後に読み込んだ時刻：{readAt ? clockText(readAt) : ''}</span>
           <button type="button" id="sheet-reload" onClick={reload} className={idle}>最新の内容を読み込む</button>
           <a href={back} id="sheet-back" onClick={leave} className={cx(idle, 'no-underline')}>この画面を閉じる（準備の画面にもどる）</a>
         </p>
         {reloadNote ? <div className="mt-2" id="sheet-reload-note">{reloadNote.ok
-          ? <OkLine>最新の内容を読み込みました（{clockText(reloadNote.at)}）。</OkLine>
+          ? <OkLine role="status">最新の内容を読み込みました（{clockText(reloadNote.at)}）。</OkLine>
           : <ErrorLine role="alert">読み込めませんでした。いま出ているのは、前に読み込んだ内容です。もう一度おしてください。</ErrorLine>}</div> : null}
 
         {hasBouts ? <section aria-label="一覧表の設定" className="mt-4 space-y-4 rounded-2xl bg-white p-4">
@@ -265,7 +298,7 @@ export default function BoutSheet() {
           <div>
             <h2 className="text-lg font-black">1ページに載せる試合の数</h2>
             <div role="group" aria-label="1ページに載せる試合の数" className="mt-2 flex flex-wrap items-center gap-3">
-              <button type="button" id="sheet-less" aria-label="1ページの試合数を1つへらす" aria-disabled={atMin || undefined} onClick={() => { if (!atMin) setCount(perPage - 1); }} className={atMin ? locked : idle}>－</button>
+              <button type="button" id="sheet-less" aria-label="1ページの試合数を1つへらす" aria-disabled={atMin || undefined} aria-describedby={atMin ? 'sheet-limit-notes' : undefined} onClick={() => { if (!atMin) setCount(perPage - 1); }} className={atMin ? locked : idle}>－</button>
               <label className="flex items-center gap-2 text-[17px] font-bold">試合数<input id="sheet-per-page" type="number" inputMode="numeric" min={limit.min} max={limit.max} value={draft ?? String(perPage)}
                 onChange={(e) => {
                   const text = e.target.value;
@@ -274,23 +307,25 @@ export default function BoutSheet() {
                   // 打っている途中（空・範囲の外）は、数を変えない。範囲の中の整数になったら、すぐ反映する
                   if (text !== '' && Number.isInteger(n) && n >= limit.min && n <= limit.max) setPrefs((old) => ({ ...old, count: n, pages: null }));
                 }}
-                onBlur={() => { const n = Number(draft); if (draft !== null && draft !== '' && Number.isFinite(n)) setCount(Math.round(n)); setDraft(null); }}
+                onBlur={commitDraft}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitDraft(); } }}
+                aria-describedby="sheet-limit-notes"
                 className="min-h-[48px] w-24 rounded-xl border-2 border-slate-500 bg-white px-3 text-center text-[17px] font-bold" /></label>
-              <button type="button" id="sheet-more" aria-label="1ページの試合数を1つふやす" aria-disabled={atMax || undefined} onClick={() => { if (!atMax) setCount(perPage + 1); }} className={atMax ? locked : idle}>＋</button>
-              <button type="button" id="sheet-pages-3" aria-pressed={prefs.pages === 3} aria-disabled={!t3.can || undefined} onClick={() => { if (t3.can) setPages(3); }} className={!t3.can ? locked : prefs.pages === 3 ? pressed : idle}>{prefs.pages === 3 ? <span aria-hidden="true">✓ </span> : null}A3を3枚にする</button>
-              <button type="button" id="sheet-pages-4" aria-pressed={prefs.pages === 4} aria-disabled={!t4.can || undefined} onClick={() => { if (t4.can) setPages(4); }} className={!t4.can ? locked : prefs.pages === 4 ? pressed : idle}>{prefs.pages === 4 ? <span aria-hidden="true">✓ </span> : null}A3を4枚にする</button>
-              <button type="button" id="sheet-auto" aria-pressed={isAuto} onClick={setAuto} className={isAuto ? pressed : idle}>{isAuto ? <span aria-hidden="true">✓ </span> : null}自動</button>
+              <button type="button" id="sheet-more" aria-label="1ページの試合数を1つふやす" aria-disabled={atMax || undefined} aria-describedby={atMax ? 'sheet-limit-notes' : undefined} onClick={() => { if (!atMax) setCount(perPage + 1); }} className={atMax ? locked : idle}>＋</button>
+              <button type="button" id="sheet-pages-3" aria-pressed={prefs.pages === 3 && t3.can} aria-disabled={!t3.can || undefined} aria-describedby={!t3.can ? 'sheet-limit-notes' : undefined} onClick={() => { if (t3.can) setPages(3); }} className={!t3.can ? locked : prefs.pages === 3 ? pressed : idle}>{prefs.pages === 3 && t3.can ? <span aria-hidden="true">✓ </span> : null}A3を3枚にする</button>
+              <button type="button" id="sheet-pages-4" aria-pressed={prefs.pages === 4 && t4.can} aria-disabled={!t4.can || undefined} aria-describedby={!t4.can ? 'sheet-limit-notes' : undefined} onClick={() => { if (t4.can) setPages(4); }} className={!t4.can ? locked : prefs.pages === 4 ? pressed : idle}>{prefs.pages === 4 && t4.can ? <span aria-hidden="true">✓ </span> : null}A3を4枚にする</button>
+              <button type="button" id="sheet-auto" aria-pressed={isAuto} onClick={setAuto} className={isAuto ? pressed : idle}>{isAuto ? <span aria-hidden="true">✓ </span> : null}自動（A3が4枚くらい）</button>
             </div>
             <p id="sheet-count-note" className="mt-2 text-[17px] font-bold" role="status">全{total}試合 → A3 {pages}枚（1ページ {perPage} 試合）</p>
             <div className="mt-1 space-y-1" id="sheet-limit-notes">
+              {typedOut ? <LockReason>{typed! > limit.max ? limit.max + '試合までです。' : limit.min + '試合からです。'}Enter（またはほかの所を押す）と、{typed! > limit.max ? limit.max : limit.min}試合になります。</LockReason> : null}
               {atMin ? <LockReason>これ以上へらせません（{orientationWord(orientation)}は1ページ {limit.min} 試合から）。</LockReason> : null}
               {atMax ? <LockReason>これ以上ふやせません（{orientationWord(orientation)}は1ページ {limit.max} 試合まで）。</LockReason> : null}
-              {!t3.can ? <LockReason>「A3を3枚にする」は押せません。{whyNot(3, t3)}</LockReason> : null}
-              {!t4.can ? <LockReason>「A3を4枚にする」は押せません。{whyNot(4, t4)}</LockReason> : null}
-              {dropped.rule.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(dropped.rule.slice(0, 5))}{dropped.rule.length > 5 ? ' ほか' + (dropped.rule.length - 5) + '試合' : ''}の「ルール」の文字は、入りきらないので載りません。載せたいときは、1ページの試合数をへらします。</Caution> : null}
-              {dropped.classLine.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(dropped.classLine.slice(0, 5))}{dropped.classLine.length > 5 ? ' ほか' + (dropped.classLine.length - 5) + '試合' : ''}のまん中の列の文字（契約体重など）は、入りきらないので載りません。選手のそばの「クラス・区分・階級」は載ります。</Caution> : null}
-              {pages > 4 && orientation === 'portrait' ? <Hint>A3が{pages}枚になります。紙を減らしたいときは、「横」にすると、1ページに{PAGE_LAND_MAX}試合まで載せられます。</Hint> : null}
-              {pages > 4 && orientation === 'landscape' ? <Hint>A3が{pages}枚になります。1ページに載せられる数の上限のため、これ以上は減りません。</Hint> : null}
+              {!t3.can ? <LockReason>{lockText(3, t3)}</LockReason> : null}
+              {!t4.can ? <LockReason>{lockText(4, t4)}</LockReason> : null}
+              {warn.rule.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(warn.rule.slice(0, 5))}{warn.rule.length > 5 ? ' ほか' + (warn.rule.length - 5) + '試合' : ''}の「ルール」の文字は、入りきらないので載りません。載せたいときは、1ページの試合数をへらします。</Caution> : null}
+              {warn.classLine.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(warn.classLine.slice(0, 5))}{warn.classLine.length > 5 ? ' ほか' + (warn.classLine.length - 5) + '試合' : ''}のまん中の列の文字（契約体重など）は、入りきらないので載りません。選手のそばの「クラス・区分・階級」は載ります。</Caution> : null}
+              {reduceHint ? <Hint>A3が{pages}枚になります。{reduceHint}</Hint> : null}
             </div>
           </div>
           <div>
@@ -304,14 +339,17 @@ export default function BoutSheet() {
           </div>
         </section> : null}
 
-        <Checks notes={model.notes} total={total} ready={ready} pending={pending} showPhoto={show.photo} />
+        <Checks notes={model.notes} total={total} ready={ready} pending={pending} showPhoto={show.photo} titleReal={isTitleReal(model.title)} cutBouts={warn.cut} fighterCount={fighterCount} />
 
         <div className="mt-4">
           {hasBouts
-            ? <NextSlot active={ready} label="印刷の画面を開く" className="max-w-xl">
-                <button type="button" id="sheet-print" aria-disabled={!ready || undefined} onClick={() => { if (ready) print(); }} className={cx(button, 'w-full border-slate-900 bg-slate-900 text-white', !ready && 'tos-locked')}>印刷する（PDFにもできます）</button>
-                {!ready ? <LockReason>写真を、一覧表の大きさにととのえています（あと{pending}人）。少し待ちます。</LockReason> : null}
-              </NextSlot>
+            ? <>
+                {nothingDecided ? <NextSlot active label="選手を決める（準備の画面へ）" className="mb-3 max-w-xl">{backLink}</NextSlot> : null}
+                <NextSlot active={ready && !nothingDecided} label="印刷の画面を開く" className="max-w-xl">
+                  <button type="button" id="sheet-print" aria-disabled={!ready || undefined} aria-describedby={!ready ? 'sheet-print-reason' : undefined} onClick={() => { if (ready) print(); }} className={cx(button, 'w-full border-slate-900 bg-slate-900 text-white', !ready && 'tos-locked')}>印刷する（PDFにもできます）</button>
+                  {!ready ? <LockReason id="sheet-print-reason">写真を、一覧表の大きさにととのえています（あと{pending}人）。少し待ちます。</LockReason> : null}
+                </NextSlot>
+              </>
             : <>
                 <Caution title="対戦カードがありません">準備の画面で対戦カードを作って「保存する」を押してから、ここにもどります。</Caution>
                 <NextSlot active label="準備の画面へもどる" className="mt-3 max-w-xl">{backLink}</NextSlot>

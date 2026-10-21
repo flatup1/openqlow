@@ -625,6 +625,108 @@ scenario('O', 'the way back: the button closes the tab when the prep screen open
   await ctx.close();
 });
 
+scenario('P', 'review fixes: all-undecided points the yellow at the prep screen; an unreal title is warned; saved time is shown; Enter commits a typed number; a saved but impossible 3枚 shows no ✓; honest paper hints; read failure screen', async () => {
+  // (1) every bout undecided
+  const ctx = await newCtx(DESKTOP);
+  await seed(ctx, T('sh-p1', { fighters: [], bouts: [B('m1', '', ''), B('m2', '', ''), B('m3', '', '')] }));
+  const p1 = await openSheet(ctx, 'sh-p1');
+  const y1 = await markers(p1);
+  check(y1.length === 1 && /選手を決める（準備の画面へ）/.test(y1[0]), 'P all bouts undecided: the one yellow 👉 says to go to the prep screen (' + short(y1.join('|'), 90) + ')');
+  check((await p1.locator('#sheet-print').getAttribute('aria-disabled')) === null, 'P printing is still allowed (only the guidance changed)');
+  await p1.close();
+  // (2) unreal title, saved time
+  await seed(ctx, { ...tournament('sh-p2', 3, { photo: 'none' }), title: '大会名未設定' });
+  const p2 = await openSheet(ctx, 'sh-p2');
+  const t2 = await bodyText(p2);
+  check(/大会の名前がまだ入っていません/.test(t2) && (await p2.locator('.sheet-noprint .tos-ok').count()) === 0, 'P an unreal title is warned and the green 「そのまま印刷できます」 is not shown');
+  check(/保存した時刻：\d\d:\d\d:\d\d/.test(await p2.locator('#sheet-saved-at').innerText()), 'P the saved time (not only the read time) is shown');
+  check(/この画面を閉じる/.test(t2) && /もう一度「A3の対戦一覧表をつくる」を押します/.test(t2), 'P the way back is one route: close, fix and save on the prep screen, press 「A3の対戦一覧表をつくる」 again');
+  await p2.close();
+  // (3) Enter commits a typed number; out-of-range typing is explained
+  await seed(ctx, tournament('sh-p3', 24, { photo: 'none' }));
+  const p3 = await openSheet(ctx, 'sh-p3');
+  const box = p3.locator('#sheet-per-page');
+  await box.fill('15'); await settle(150);
+  check(/14試合までです。Enter（またはほかの所を押す）と、14試合になります/.test(await p3.locator('#sheet-limit-notes').innerText()), 'P a typed number above the limit is explained at once');
+  await box.press('Enter'); await settle(200);
+  check((await box.inputValue()) === '14' && /1ページ 14 試合/.test(await p3.locator('#sheet-count-note').innerText()), 'P Enter commits the number (clamped to 14) and the preview follows');
+  check((await box.getAttribute('aria-describedby')) === 'sheet-limit-notes', 'P the number box points at the notes with aria-describedby');
+  // saved 3枚 that cannot be honoured
+  await p3.evaluate(() => localStorage.setItem('tos-sheet:sh-p3', JSON.stringify({ orientation: 'portrait', pages: 3 })));
+  await seed(ctx, tournament('sh-p3', 2, { photo: 'none' }));
+  await p3.evaluate(() => localStorage.setItem('tos-sheet:sh-p3', JSON.stringify({ orientation: 'portrait', pages: 3 })));
+  await p3.reload(); await p3.locator('#sheet-per-page').waitFor(); await settle(300);
+  check((await p3.locator('#sheet-pages-3').getAttribute('aria-pressed')) === 'false' && !/✓/.test(await p3.locator('#sheet-pages-3').innerText()), 'P a saved 3枚 that cannot be honoured is shown WITHOUT ✓ and not pressed');
+  check(/前に選んだ「A3を3枚にする」は、いまはできません/.test(await p3.locator('#sheet-limit-notes').innerText()), 'P the note says the earlier choice is no longer possible');
+  check((await p3.locator('#sheet-pages-3').getAttribute('aria-describedby')) === 'sheet-limit-notes', 'P a locked 3枚 button points at its reason (aria-describedby)');
+  await p3.close();
+  // (4) honest paper hints: 70 bouts landscape, auto: not at the limit -> no 「上限のため」
+  await seed(ctx, tournament('sh-p4', 70, { photo: 'none' }));
+  const p4 = await openSheet(ctx, 'sh-p4');
+  await p4.getByRole('button', { name: /横/ }).click(); await settle(250);
+  const notes4 = await p4.locator('#sheet-limit-notes').innerText();
+  check(!/上限のため、これ以上は減りません/.test(notes4), 'P landscape 16 per page is not at the limit (24): the screen does not claim a limit (' + short(notes4, 140) + ')');
+  check(/「自動」を押します|ふやす（＋）/.test(notes4), 'P it points at the real remedy (＋ or 自動)');
+  await p4.close();
+  await ctx.close();
+  // (5) read failure: IndexedDB throws
+  const ctx2 = await newCtx(DESKTOP);
+  await ctx2.addInitScript(() => { try { indexedDB.open = () => { throw new Error('blocked'); }; } catch { /* ignore */ } });
+  const p5 = await ctx2.newPage();
+  await p5.goto(base + '/private/sheet/?event=sh-p5');
+  await p5.waitForFunction(() => !document.body.innerText.includes('このパソコンのデータを読んでいます'), null, { timeout: 15000 });
+  const t5 = await bodyText(p5);
+  check(/保存データを読めません（データは消えていません）/.test(t5) && /① プライベートウィンドウでは使えません/.test(t5) && /② それでもだめなときは/.test(t5), 'P read failure: the same ①②  guidance as the live screen');
+  check(await p5.getByRole('button', { name: 'もう一度ひらく', exact: true }).count() === 1, 'P read failure: a 「もう一度ひらく」 button');
+  const y5 = await markers(p5);
+  check(y5.length === 1 && /①をしてもだめなとき：準備の画面へ/.test(y5[0]), 'P read failure: exactly one yellow, worded so it does not contradict ① (' + short(y5.join('|'), 90) + ')');
+  await ctx2.close();
+});
+
+scenario('Q', 'text that is cut: usual long names / romaji / gyms fit at the default settings; extreme ones are warned in words before printing; no sideways scroll at 320px with a long Latin name', async () => {
+  const ctx = await newCtx(DESKTOP);
+  const names = ['ミハイル・ゴルバチョフ', 'アレクサンダー・スミス', '田中太郎左衛門次郎', 'JOHN SMITH', 'TARO YAMADA', 'MAXIMILIAN WEBER', 'DAIKI NAKAMURA', 'Yuki Matsumoto'];
+  const gyms = ['ゴールデングローブキックボクシングジム', 'フラットアップキックボクシングジム千葉道場', 'FLATUP KICKBOXING GYM', '千葉キックボクシングジム'];
+  const data = tournament('sh-q', 8, { photo: 'half' });
+  data.fighters = data.fighters.map((f, i) => ({ ...f, name: names[i % names.length], gym: gyms[i % gyms.length], fighterClass: 'Bクラス', division: '中学生男子', weightClass: '37kg以下' }));
+  await seed(ctx, data);
+  for (const [label, prefs] of [['portrait 4', { orientation: 'portrait', perPage: 4 }], ['portrait 8', { orientation: 'portrait', perPage: 8 }], ['landscape 8', { orientation: 'landscape', perPage: 8 }]]) {
+    const boot = await ctx.newPage(); await boot.goto(base + '/private/setup/?event=seed-boot');
+    await boot.evaluate((v) => localStorage.setItem('tos-sheet:sh-q', JSON.stringify({ ...v, show: { photo: true, gym: true, classLine: true, rule: false } })), prefs); await boot.close();
+    const p = await openSheet(ctx, 'sh-q');
+    await photosReady(p);
+    const cut = await p.evaluate(() => {
+      const bad = [];
+      for (const b of document.querySelectorAll('.sheet-bout')) for (const e of b.querySelectorAll('.sheet-name, .sheet-gym, .sheet-tag')) {
+        if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) bad.push(b.getAttribute('data-sheet-bout') + ':' + e.className.replace('sheet-', '') + ':' + e.innerText.slice(0, 14));
+      }
+      return bad;
+    });
+    check(cut.length === 0, 'Q ' + label + ': usual long names / romaji / long gyms are shown in full, nothing cut (' + short(cut.join(' | '), 200) + ')');
+    check((await p.locator('#sheet-cut-note').count()) === 0, 'Q ' + label + ': no 「切れます」 warning when nothing is cut');
+    await p.close();
+  }
+  // an extreme name: it is cut on paper, and the screen says so
+  const extreme = tournament('sh-q2', 3, { photo: 'none' });
+  extreme.fighters[0] = { ...extreme.fighters[0], name: 'あ'.repeat(90) };
+  await seed(ctx, extreme);
+  const e = await openSheet(ctx, 'sh-q2');
+  check(/第1試合は、名前・所属ジム・クラスの文字が長くて、紙の上で一部が「…」と切れます/.test(await e.locator('#sheet-cut-note').innerText()), 'Q an extreme name is warned in words with the bout number before printing');
+  check((await e.locator('.sheet-noprint .tos-ok').count()) === 0, 'Q no green ✓ while something is cut');
+  await e.close();
+  // 320px: a long Latin name in two bouts must not make the page scroll sideways (the 2-bouts warning carries the name)
+  const small = await newCtx(SMALL);
+  const wide = tournament('sh-q3', 2, { photo: 'none' });
+  wide.fighters[0] = { ...wide.fighters[0], name: 'Wolfeschlegelsteinhausenbergerdorff-Wolfeschlegelsteinhausenbergerdorff' };
+  wide.bouts[1] = B('m2', 'r1', 'b2');
+  await seed(small, wide);
+  const s3 = await openSheet(small, 'sh-q3');
+  const sw = await s3.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  check(sw.sw <= sw.cw, 'Q 320px: no sideways scroll with a very long Latin name in the 「2つ以上の試合」 warning (' + sw.sw + ' vs ' + sw.cw + ')');
+  await small.close();
+  await ctx.close();
+});
+
 /* ───────────────────────── runner ───────────────────────── */
 await makePhotos();
 for (const s of scenarios) {
