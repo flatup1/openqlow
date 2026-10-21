@@ -40,6 +40,7 @@ need(pages.some((p) => p.startsWith('private/')), '準備の画面（/private/�
 need(pages.some((p) => p.startsWith('apply/')), '選手の申込画面（/apply/）がありません。');
 need(pages.some((p) => p.startsWith('private/setup/')), '設定の画面（/private/setup/）がありません。');
 need(pages.some((p) => p.startsWith('private/live/')), '試合当日の画面（/private/live/）がありません。');
+need(pages.some((p) => p.startsWith('private/sheet/')), '対戦一覧表の画面（/private/sheet/）がありません。');
 
 // 1b. 古い「別の方法で受付をつくる」画面（private/google-setup）は、公開してはいけない。
 //     この画面は、主催者のメールアドレスと合言葉（setupKey）を、ブラウザに残すため。使える道は /private/setup/（v3）だけ。
@@ -103,7 +104,7 @@ if (existsSync(join(dir, '_headers'))) {
   }
   const GOOGLE = ['https://script.google.com', 'https://script.googleusercontent.com'];
   const SAFE_TOKENS = ["'self'", "'none'", 'data:', 'blob:', "'unsafe-inline'", ...GOOGLE];
-  const REQUIRED_PATHS = ['/private/', '/private/entry/*', '/private/live/*', '/private/setup/*', '/apply/*'];
+  const REQUIRED_PATHS = ['/private/', '/private/entry/*', '/private/live/*', '/private/sheet/*', '/private/setup/*', '/apply/*'];
   for (const path of REQUIRED_PATHS) {
     const block = blocks.get(path);
     if (!block) { problems.push('_headers に ' + path + ' の設定がありません。'); continue; }

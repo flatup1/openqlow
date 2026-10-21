@@ -46,7 +46,7 @@ function MusicChip({ corner }: { corner: CornerModel }) {
 
 function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: boolean }) {
   const look = LOOK[corner.side];
-  const label = corner.label + ' ' + corner.name + (corner.gym ? ' ' + corner.gym : '') + (corner.fighterClass ? ' ' + corner.fighterClass : '') + (corner.weightTag ? ' ' + corner.weightTag : '');
+  const label = corner.label + ' ' + corner.name + (corner.absent ? ' 欠場' : '') + (corner.gym ? ' ' + corner.gym : '') + (corner.fighterClass ? ' ' + corner.fighterClass : '') + (corner.weightTag ? ' ' + corner.weightTag : '');
   return <div role="group" aria-label={label} className={'min-w-0 overflow-hidden rounded-xl border-[3px] bg-white ' + look.border}>
     <p className={'live-corner-band px-3 py-0.5 text-2xl font-black leading-snug min-[1600px]:text-[32px] ' + look.band}><span aria-hidden="true">{look.mark} </span>{corner.label}</p>
     <div className="p-2">
@@ -64,6 +64,7 @@ function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: b
       </div>
       {!corner.present ? <ErrorLine className="mt-1.5">選手が選ばれていません。準備画面で選んでください</ErrorLine> : null}
       {corner.noName ? <ErrorLine className="mt-1.5">名前が入っていません。準備画面で入れてください</ErrorLine> : null}
+      {corner.absent ? <ErrorLine className="mt-1.5">欠場です。この試合は行えません。準備画面で相手や試合を直してください</ErrorLine> : null}
       {musicEnabled && corner.music !== 'empty' ? <div className="live-list-noprint mt-1.5"><MusicChip corner={corner} /></div> : null}
       {musicEnabled && corner.music === 'broken' ? <ErrorLine className="live-list-noprint mt-1.5">曲のリンクが使えません。Apple Music か YouTube の https:// だけ使えます。準備画面で直してください</ErrorLine> : null}
     </div>

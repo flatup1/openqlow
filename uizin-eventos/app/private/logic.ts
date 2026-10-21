@@ -74,7 +74,7 @@ export function sameExceptProgress(a: LocalTournament, b: LocalTournament): bool
   if (a.fighters.length !== b.fighters.length || a.bouts.length !== b.bouts.length) return false;
   const fighterKeys = ['id', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl', 'photoDataUrl'] as const;
   for (let i = 0; i < a.fighters.length; i++) for (const key of fighterKeys) if (a.fighters[i][key] !== b.fighters[i][key]) return false;
-  for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].fighterClass ?? '') !== (b.fighters[i].fighterClass ?? '')) return false;
+  for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].fighterClass ?? '') !== (b.fighters[i].fighterClass ?? '') || (a.fighters[i].absent === true) !== (b.fighters[i].absent === true)) return false;
   for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].division ?? '') !== (b.fighters[i].division ?? '') || (a.fighters[i].weightClass ?? '') !== (b.fighters[i].weightClass ?? '')) return false;
   const boutKeys = ['id', 'redId', 'blueId', 'className', 'rule'] as const;
   for (let i = 0; i < a.bouts.length; i++) for (const key of boutKeys) if (a.bouts[i][key] !== b.bouts[i][key]) return false;
@@ -399,6 +399,8 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
     const next = incomingById.get(fighter.id);
     if (!next) return fighter;
     const out: LocalFighter = { ...next, photoDataUrl: next.photoDataUrl || fighter.photoDataUrl };
+    // 欠場は、名簿の書きかえで消さない（名簿のファイルには、欠場の列が無い）
+    if (fighter.absent) out.absent = true;
     // クラスの列が無いファイル・空のクラスで、前のクラスを消さない（親が選んだ値）
     const keep = (fighter.fighterClass ?? '').trim();
     if (!(next.fighterClass ?? '').trim() && keep && !hasClassColumn) out.fighterClass = fighter.fighterClass;
@@ -767,6 +769,9 @@ function restoreParts(a: { restored: LocalTournament; current: LocalTournament; 
   // 区分・階級も同じ。人数が減るなら、はっきり言う。階級分けの設定やロゴの設定が消えるときも言う
   const w2 = a.current.fighters.filter(hasWeightTag).length, w = a.restored.fighters.filter(hasWeightTag).length;
   if (w < w2) warn.push('⚠ 減ります：区分・階級が入っている選手が' + w2 + '人から' + w + '人になります。');
+  // 欠場にした選手の印も、数のくらべには出ない。消えるなら、はっきり言う
+  const x2 = a.current.fighters.filter((f) => f.absent === true).length, x = a.restored.fighters.filter((f) => f.absent === true).length;
+  if (x < x2) warn.push('⚠ 減ります：欠場にしている選手が' + x2 + '人から' + x + '人になります。');
   if (a.current.entryConfig?.weights && !a.restored.entryConfig?.weights) warn.push('⚠ 消えます：階級分けの設定（区分と階級の表）。選手の区分・階級を選ぶ欄が出なくなります。');
   if (a.current.entryConfig?.logo && !a.restored.entryConfig?.logo) warn.push('⚠ 消えます：ロゴの設定。申込ページと当日の画面に、ロゴが出なくなります。');
   const title = isTitleReal(a.restored.title) ? a.restored.title : '名前なし';

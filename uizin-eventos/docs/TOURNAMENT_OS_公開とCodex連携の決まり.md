@@ -71,6 +71,7 @@ npm run verify:all -- --fast   （いちばん長い mistake-proof（およそ16
 - `scripts/test-private-mistake-proof.mjs`（まちがえやすい操作を、1つずつ試す）
 - `scripts/test-class-ab.mjs`（A／Bクラス）
 - `scripts/test-weight-class.mjs`（階級分け：区分→階級・赤い注意・ロゴ）
+- `scripts/test-bout-sheet.mjs`（A3対戦一覧表：プレビュー・ページ分け・本物のPDF・個人情報が出ない・欠場・写真なし・並べ替えのあとの出しなおし）
 - `scripts/test-bout-flow.mjs`（黄色の「次はここ」だけで、対戦カードを3つ作る）
 - `scripts/test-polish-private.mjs`（準備の画面の仕上げ：ZIP・戻す・失敗の帯・取り込み・クラス）
 - `scripts/test-polish-apply.mjs`（申し込みページの仕上げ）

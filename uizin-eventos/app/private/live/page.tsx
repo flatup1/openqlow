@@ -22,7 +22,7 @@ const SIDE = {
   blue: { label: '青コーナー', mark: '■', border: 'border-blue-700', band: 'bg-blue-700' },
 } as const;
 
-type FighterProblem = 'missing' | 'same' | null;
+type FighterProblem = 'missing' | 'same' | 'absent' | null;
 
 /* 区分・階級の札や、区分・階級がちがう注意が出るぶんだけ、写真の高さの上限を低くして、画面から はみ出さないようにする（0 = ふだん / 1 = 区分・階級の札がある / 2 = さらに、赤い注意も出ている / 3 = クラスがちがう赤い注意と、2つ重なっている）。
    2人とも同じ値を使うので、名前の高さはそろう。72px より小さくはしない（低い画面は globals.css の .live-photo が決める） */
@@ -51,6 +51,7 @@ function FighterCard({ side, fighter, musicEnabled, commentShown, problem, crowd
       {noName ? <ErrorLine className="mt-2">名前が入っていません。準備画面で入れてください</ErrorLine> : null}
       {problem === 'missing' ? <ErrorLine className="mt-2">選手が選ばれていません。準備画面で選んでください</ErrorLine> : null}
       {problem === 'same' ? <ErrorLine className="mt-2">まちがい：赤と青が同じ選手です。準備画面で直してください</ErrorLine> : null}
+      {problem === 'absent' ? <ErrorLine className="mt-2">欠場です。この試合は行えません。準備画面で相手や試合を直してください</ErrorLine> : null}
       {commentShown ? <div className="mt-2 rounded-xl border border-slate-300 bg-slate-50 p-3"><b>意気込み</b><p className="mt-1 [overflow-wrap:anywhere]">{fighter?.comment || '未入力'}</p></div> : null}
       {musicUrl ? <div className="mt-2">
         <a href={musicUrl} target="_blank" rel="noreferrer" onClick={()=>setPlaying(true)} className="live-list-focus flex min-h-[56px] flex-wrap items-center justify-center gap-x-2 rounded-xl border-4 border-slate-700 bg-white p-3 text-center text-xl font-black text-slate-950 min-[1600px]:text-[26px]">{playing ? '▶ 曲の画面を開きました' : '▶ 入場曲を開く'}<span className="text-[17px] font-bold text-slate-700 min-[1600px]:text-[22px]">{playing ? MUSIC_NEW_TAB : MUSIC_NEW_TAB + 'で曲の画面が開きます'}</span></a>
@@ -340,7 +341,7 @@ export default function PrivateLive() {
   const ruleText=bout?.rule.trim()??'';
   const sameFighter=!!bout&&!!bout.redId&&bout.redId===bout.blueId;
   const samePerson=!!bout&&isSamePerson(red,blue);
-  const problemOf=(fighter:LocalFighter|undefined):FighterProblem=>!fighter?'missing':sameFighter?'same':null;
+  const problemOf=(fighter:LocalFighter|undefined):FighterProblem=>!fighter?'missing':sameFighter?'same':fighter.absent===true?'absent':null;
   const prevLocked=saving||isFirst, nextLocked=saving||isLast;
   const hideSwitcher=!list&&oneBout;
   // キーを押しっぱなしにすると、0.5秒あとから同じキーが何度も届く。ボタンの上では、その連打を捨てる（押しっぱなしで、何試合も進まないように）
