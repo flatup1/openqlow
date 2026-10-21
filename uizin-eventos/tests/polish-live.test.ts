@@ -183,7 +183,7 @@ test('r1-176: classMixMessage は、クラスがちがうときだけ。初期�
   assert.equal(classMixMessage(a, F('c'), DEFAULT_CLASS_SETTINGS), null);
   const m = classMixMessage(a, b, DEFAULT_CLASS_SETTINGS)!;
   assert.equal(m.headline, 'クラスがちがいます：赤はAクラス、青はBクラスです。ルールがちがうので、ふつうは同じクラスの人と戦います。');
-  assert.deepEqual(m.rules, ['Aクラスのルール：首相撲あり／膝蹴りあり／蹴り足キャッチ', 'Bクラスのルール：パンチとキックのみ']);
+  assert.deepEqual(m.rules, ['Aクラスのルール：首相撲5秒／蹴り足キャッチはワンアタック／ワンマッチは顔面への膝蹴り禁止', 'Bクラスのルール：首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし']);
 });
 
 test('r1-176: 設定が無い（名前が初期とちがう）ときは、名前だけ。ルールの行は出さない', () => {
@@ -200,8 +200,12 @@ test('r1-176: classLegend は「Aクラス＝3勝以上　Bクラス＝2勝以�
   assert.equal(classLegend({ ...DEFAULT_CLASS_SETTINGS, enabled: false }), '');
 });
 
-test('r1-176: shortRule は「（」の前まで。長い説明を、注意の文に入れない', () => {
-  assert.equal(shortRule(DEFAULT_CLASS_SETTINGS.upper.rule), '首相撲あり／膝蹴りあり／蹴り足キャッチ');
+test('r1-176: shortRule は（かっこの説明）だけ取る。かっこの外の言葉は、あとのものも残す。長い説明を、注意の文に入れない', () => {
+  assert.equal(shortRule(DEFAULT_CLASS_SETTINGS.upper.rule), '首相撲5秒／蹴り足キャッチはワンアタック／ワンマッチは顔面への膝蹴り禁止', '（かっこの説明）だけ取る。かっこのあとの言葉（顔面への膝蹴り禁止）は残す');
+  assert.equal(shortRule('首相撲あり（5秒）／膝蹴りあり'), '首相撲あり／膝蹴りあり');
+  assert.equal(shortRule('Ａ（説明1）／Ｂ（説明2）／Ｃ'), 'Ａ／Ｂ／Ｃ', '2つのかっこの間の言葉を、食べない（長くのびる取りかたにしない）');
+  assert.equal(shortRule('首相撲あり　　／　　膝蹴りあり'), '首相撲あり ／ 膝蹴りあり', '空白は1つに');
+  assert.equal(shortRule('あ'.repeat(45)).length, 45, '41〜60文字は、そのまま'); assert.equal(shortRule('い'.repeat(80)).length, 60, '60文字まで'); assert.equal(shortRule('首相撲あり（説明が閉じていない'), '首相撲あり');
   assert.equal(shortRule('パンチとキックのみ'), 'パンチとキックのみ');
   assert.equal(shortRule('（だけ）'), '（だけ）');
 });
@@ -514,4 +518,11 @@ test('r2-123: 入場曲を使うかの初期値は、準備画面と当日の画
   assert.match(livePage(), /liveMusicOn\(data\)/);
   assert.match(listView(), /liveMusicOn\(data\)/);
   assert.ok(!/entryConfig\?\.music \?\? true/.test(livePage() + listView()), '「?? true」は、もう使わない');
+});
+
+test('意気込み「なし」の大会：当日の画面は、赤も青も、liveCommentShown で決める（箱を出すかどうか）。どちらかの配線がはずれると、「未入力」が戻る', () => {
+  const page = read('app/private/live/page.tsx');
+  assert.match(page, /commentShown=\{liveCommentShown\(data, ?red\)\}/, '赤コーナー');
+  assert.match(page, /commentShown=\{liveCommentShown\(data, ?blue\)\}/, '青コーナー');
+  assert.equal((page.match(/liveCommentShown\(/g) ?? []).length, 2, '呼ぶのは赤と青の2か所だけ');
 });

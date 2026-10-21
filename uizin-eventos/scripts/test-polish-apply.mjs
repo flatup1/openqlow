@@ -839,6 +839,36 @@ await scenario('P26', 'focus is not lost after removing a bout / a fighter or sa
   await ctx.close();
 });
 
+/* ───────────────────────── P27 the sheet's own default: 学年・年齢・意気込み are 必須; nothing else is asked ───────────────────────── */
+await scenario('P27', 'default form: only the minimal fields; 学年・年齢・意気込み required; three red lines; one 👉; the POST carries all three', [PHONE, DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({ grade: 'required', age: 'required', comment: 'required' }));
+  const labels = await page.evaluate(() => [...document.querySelectorAll('label, legend')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean));
+  const want = ['ジム名 必須', '選手名 必須', '身長（cm）必須', '体重（kg）必須', '戦績 必須', '学年 必須', '年齢 必須', '意気込み 必須', '連絡先のお名前 必須'];
+  for (const w of want) check(labels.some((l) => l.startsWith(w.replace(/ 必須$/, ''))), 'the minimal field is asked: ' + w + ' (' + short(labels.join(' | '), 400) + ')');
+  for (const w of ['学年 必須', '年齢 必須', '意気込み 必須']) check((await page.getByLabel(w, { exact: true }).count()) === 1, 'the three fields are marked 必須: ' + w);
+  check((await page.locator('#f-division, #f-weightClass, #f-fighterClass, #f-musicUrl').count()) === 0, 'no 区分 / 階級 / クラス / 入場曲 field when the sheet did not turn them on');
+  const text = await bodyText(page);
+  check(!/書かなくてもOK（任意）/.test(text), 'no 「書かなくてもOK（任意）」 block when nothing is optional');
+  check(/入力 0\/13/.test(text), 'the counter starts at 入力 0/13 (6 info + 3 required + 4 contact; no class, no music) (' + short((text.match(/入力 \d+\/\d+/) || ['none'])[0], 40) + ')');
+  // fill everything except the three: the review button must show three red lines naming them, and exactly one yellow 👉
+  await fillAll(page);
+  await reviewBtn(page).click(); await settle(400);
+  const reds = (await redLines(page)).join(' | ');
+  for (const n of ['学年', '年齢', '意気込み']) check(new RegExp(n).test(reds), 'a red line names ' + n + ' when it is empty (' + short(reds, 300) + ')');
+  check((await nextMarks(page)).length === 1, 'exactly one 👉 次はここ (' + short((await nextMarks(page)).join(' | '), 200) + ')');
+  await page.getByLabel('学年 必須', { exact: true }).fill('中3');
+  await page.getByLabel('年齢 必須', { exact: true }).fill('15');
+  await page.getByLabel('意気込み 必須', { exact: true }).fill('全力でがんばります');
+  await reviewBtn(page).click(); await settle(500);
+  const review = await bodyText(page);
+  check(/中3/.test(review) && /15/.test(review) && /全力でがんばります/.test(review), 'the review screen shows 学年・年齢・意気込み');
+  await sendBtn(page).click(); await settle(900);
+  const post = ctx.__posts[0];
+  check(Boolean(post) && post.get('grade') === '中3' && post.get('age') === '15' && post.get('comment') === '全力でがんばります', 'the POST carries grade / age / comment (' + (post ? short([...post.entries()].filter(([k]) => ['grade', 'age', 'comment'].includes(k)).join(';'), 160) : 'no POST') + ')');
+  await ctx.close();
+});
+
 /* ───────────────────────── done ───────────────────────── */
 await settle(100);
 for (const e of externals) failures.push('[' + e.scenario + '] EXTERNAL request attempted: ' + e.method + ' ' + e.url);

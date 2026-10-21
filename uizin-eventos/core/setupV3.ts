@@ -1,12 +1,16 @@
 import { isAppsScriptUrl, publicEntryHash, type PublicEntryConfig } from './publicEntry.ts';
 import { parseClassSettings, type ClassSettings } from './classRules.ts';
+import { isDefaultWeightSettings, parseWeightSettings, weightSettingsToParam, type WeightSettings } from './weightClass.ts';
 import { formatDateInput } from './dateInput.ts';
 import type { EntryFieldMode } from './entryPackage.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
-export const EXPECTED_RECEPTION_BUILD = '3.20261010.5';
-/** クラス分けが入る前の版（3.20261004.4）も、そのまま使える。 */
-export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', EXPECTED_RECEPTION_BUILD] as const;
+export const EXPECTED_RECEPTION_BUILD = '3.20261019.6';
+/** クラス分けが入る前の版（3.20261004.4）・階級分けが入る前の版（3.20261010.5）も、そのまま使える（その分の機能が無いだけ）。 */
+export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', '3.20261010.5', EXPECTED_RECEPTION_BUILD] as const;
+
+/** このシートの受付（Googleのコード）は、階級分け・ロゴに対応した版か。古い版のシートでは、設定タブに階級分けの行を足しても、選手には出ない */
+export const supportsWeightClasses = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && ping.build === EXPECTED_RECEPTION_BUILD;
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;
@@ -16,6 +20,12 @@ export type Ping = {
   classMode?: boolean; classes?: ClassSettings;
   /** 「設定」タブに、クラスの行が無い（古い版のコピー）ときだけ false が来る。ふつうは来ない */
   classRows?: boolean;
+  /** 階級分け（区分→階級）。「設定」タブの「階級分け」が「あり」のときだけ weightMode が true で来る。weights は、区分ごとの階級の一覧 */
+  weightMode?: boolean; weights?: WeightSettings;
+  /** 「設定」タブに、階級分けの行が無い（古い版のコピー）ときだけ false が来る */
+  weightRows?: boolean;
+  /** 「設定」タブの「ロゴ」が「あり」のときだけ true で来る */
+  logo?: boolean;
   /** 見出しが変わったときだけ来る：直すタブの名前・マス・あるべき見出し（申込の中身・メールは来ない） */
   errorTab?: string; errorCell?: string; errorExpected?: string;
   /** 見出しの問題の種類：列が足された（その列を消す）／1行目が消えた（上に1行入れる）。どちらでもなければ、見出しの文字がちがう */
@@ -45,6 +55,9 @@ export function parsePing(value: unknown): Ping {
     music: flag('music'), grade: mode('grade'), age: mode('age'), comment: mode('comment'), error: text('error', 40),
     classMode: flag('classMode'), classes: v.classMode === true ? parseClassSettings(v.classes) : undefined,
     classRows: v.classRows === false ? false : undefined,
+    weightMode: flag('weightMode'), weights: v.weightMode === true ? parseWeightSettings(v.weights) : undefined,
+    weightRows: v.weightRows === false ? false : undefined,
+    logo: v.logo === true ? true : undefined,
     errorTab: text('errorTab', 60), errorCell: text('errorCell', 6), errorExpected: text('errorExpected', 60),
     errorInserted: v.errorInserted === true ? true : undefined, errorRowGone: v.errorRowGone === true ? true : undefined,
     closedBy: v.closedBy === 'deadline' || v.closedBy === 'stopped' ? v.closedBy : undefined,
@@ -99,10 +112,13 @@ export function entryConfigFromPing(ping: Ping, endpoint: string, mode: 'test' |
   const need = [ping.eventId, ping.title, ping.date, ping.venue, ping.organizer, ping.contact, ping.deadline];
   if (!isAppsScriptUrl(endpoint) || need.some((v) => !v)) throw new Error('シートの「設定」タブが、まだ全部入っていません。');
   if (ping.classMode && !ping.classes) throw sheetFixError('クラス分けが「あり」ですが、クラスの内容を読めませんでした。「設定」タブのクラスの欄（B13〜B20）を確かめてください。');
+  if (ping.weightMode && !ping.weights) throw sheetFixError('階級分けが「あり」ですが、区分と階級の表を読めませんでした。「設定」タブの「階級：…」の行を確かめてください（階級は、-37、-40、+60、無差別 のように書きます）。');
   const config: PublicEntryConfig = {
     endpoint: endpoint.trim(), protocol: '3', mode, eventId: ping.eventId!, title: ping.title!, organizer: ping.organizer!, date: formatDateInput(ping.date!), venue: ping.venue!, venueUrl: ping.venueUrl || '',
     deadline: ping.deadline!, contact: ping.contact!, music: ping.music === true, grade: ping.grade || 'optional', age: ping.age || 'optional', comment: ping.comment || 'optional',
     ...(ping.classes ? { classes: ping.classes } : {}),
+    ...(ping.weights ? { weights: ping.weights } : {}),
+    ...(ping.logo ? { logo: true } : {}),
   };
   if (publicEntryHash(config).length > 4500) throw sheetFixError(longestFieldMessage(ping));
   return config;
@@ -118,8 +134,13 @@ function longestFieldMessage(ping: Ping): string {
     ['大会名', 'B2', ping.title || ''], ['会場', 'B4', ping.venue || ''], ['会場の地図URL', 'B5', ping.venueUrl || ''], ['主催者名', 'B6', ping.organizer || ''], ['問い合わせ先', 'B7', ping.contact || ''],
     ['上のクラスの条件', 'B15', ping.classes?.upper.condition || ''], ['上のクラスのルール', 'B16', ping.classes?.upper.rule || ''], ['下のクラスの条件', 'B18', ping.classes?.lower.condition || ''], ['下のクラスのルール', 'B19', ping.classes?.lower.rule || ''],
   ];
-  const top = parts.reduce((a, b) => (b[2].length > a[2].length ? b : a));
+  // リンクの中では、日本語の1文字が9文字ぶんになる。長さは、リンクに入る形（encodeURIComponent）で比べる
+  const size = (value: string): number => encodeURIComponent(value).length;
+  const top = parts.reduce((a, b) => (size(b[2]) > size(a[2]) ? b : a));
   const classy = top[0].includes('クラス');
+  // 階級の表（区分と階級）が長いときは、表のほうを言う。はじめの表と同じなら、リンクに何も足さないので、数えない
+  const weightSize = ping.weights && !isDefaultWeightSettings(ping.weights) ? size(weightSettingsToParam(ping.weights)) : 0;
+  if (weightSize > size(top[2])) return '階級の表（区分と階級）が長すぎて、選手に渡すURLに入りません。「設定」タブの「階級：…」の行を、減らすか短くしてください。';
   return (classy ? 'クラスの' : '') + '文が長すぎて、選手に渡すURLに入りません。「' + top[0] + '」（セル ' + top[1] + '）を短くしてください。';
 }
 
@@ -181,14 +202,16 @@ export const WRITE_MARK = '「✎ ここに書く」';
 export const CELL: Record<string, string> = { 大会名: 'B2', 開催日: 'B3', 会場: 'B4', 会場の地図URL: 'B5', 主催者名: 'B6', 問い合わせ先: 'B7', 申込締切: 'B8', 入場曲: 'B9', 学年: 'B10', 年齢: 'B11', 意気込み: 'B12' };
 /** クラス分けの8行（12行目のあとに足した行。.gs の SETTING_ROWS の最後の8つと同じ順番）。古いコピーには、この行がない */
 export const CLASS_CELL: Record<string, string> = { クラス分け: 'B13', 上のクラスの名前: 'B14', 上のクラスの条件: 'B15', 上のクラスのルール: 'B16', 下のクラスの名前: 'B17', 下のクラスの条件: 'B18', 下のクラスのルール: 'B19', 上のクラスにする勝ち数: 'B20' };
+/** 階級分けとロゴの行（クラスの8行のあとに足した行）。区分の行（「階級：…」）は、主催者が増やしたり消したりできる（消すと、下の行の番号が1つずつ上がる）ので、番号を持たせない。区分の行は、いちばん下にまとめてある */
+export const WEIGHT_CELL: Record<string, string> = { 階級分け: 'B21', ロゴ: 'B22' };
 export const HOW: Record<string, string> = {
   大会名: '例：第3回 青空ジム大会 のように入れる', 開催日: '2027年10月3日 のように入れる', 会場: '例：○○体育館 のように入れる', 主催者名: '例：○○ジム のように入れる',
   問い合わせ先: '電話番号か、LINEのURLを入れる', 申込締切: '2027年9月20日 のように入れる（開催日と同じか、その前の日）', 入場曲: '▼から「あり」か「なし」を選ぶ',
 };
-const ALL_KEYS = [...Object.keys(CELL), ...Object.keys(CLASS_CELL)].sort((a, b) => b.length - a.length);
+const ALL_KEYS = [...Object.keys(CELL), ...Object.keys(CLASS_CELL), ...Object.keys(WEIGHT_CELL)].sort((a, b) => b.length - a.length);
 /** 欄の名前から、セルの番号を引く。名前がそのまま合うものを先に、なければ「いちばん長い名前で始まるもの」（「会場」より「会場の地図URL」が先） */
 export function cellOf(name: string): { key: string; cell: string } | undefined {
-  const all: Record<string, string> = { ...CELL, ...CLASS_CELL };
+  const all: Record<string, string> = { ...CELL, ...CLASS_CELL, ...WEIGHT_CELL };
   if (all[name]) return { key: name, cell: all[name] };
   const key = ALL_KEYS.find((k) => name.startsWith(k));
   return key ? { key, cell: all[key] } : undefined;
@@ -198,15 +221,20 @@ export function cellOf(name: string): { key: string; cell: string } | undefined 
 export function settingLines(message: string): { google: string; fixes: string[] }[] {
   const body = message.replace(/^シートの「設定」タブを直してください。/, '');
   // 申込ページに入れられない理由（クラスの内容・文が長すぎる）は、1つの文のまま出す
-  if (/^クラス|長すぎて、選手に渡すURLに入りません/.test(body)) return [{ google: body, fixes: [body] }];
+  if (/^クラス|^階級分け|長すぎて、選手に渡すURLに入りません/.test(body)) return [{ google: body, fixes: [body] }];
   return (body || message).split('。').filter(Boolean).map((item) => {
     const miss = item.match(/次の欄を入れてください：(.+)$/);
     if (miss) {
       return { google: item, fixes: miss[1].split('、').map((n) => { const hit = cellOf(n); return hit ? hit.key + '（' + hit.cell + '）：書いてありません。' + (CLASS_CELL[hit.key] ? '右どなり（C列）の例を見て書く' : HOW[hit.key] || WRITE_MARK + 'の行に書く') : n + '：書いてありません'; }) };
     }
     // クラス分けの欄（B13〜B20）。Googleの文のうしろに、直すセルの番号を足す
-    const classCells = Array.from(item.matchAll(/「(.+?)」/g)).map((m) => CLASS_CELL[m[1]]).filter(Boolean);
-    if (classCells.length) return { google: item, fixes: [item + '（セル ' + classCells.join('・') + '）'] };
+    const classCells = Array.from(new Set(Array.from(item.matchAll(/「(.+?)」/g)).map((m) => CLASS_CELL[m[1]] || WEIGHT_CELL[m[1]]).filter(Boolean)));
+    // 区分の行（「階級：…」）は、主催者が消したり足したりするので、セルの番号は言わない。A列の名前で探す
+    // 「階級：…」の行（名前のない言い方）の文は、特定の行ではないので、「A列がその名前の行」とは言わない
+    const divisionRow = /「階級：.+?」/.test(item) && !/「階級：…」の行/.test(item);
+    if (classCells.length) return { google: item, fixes: [item + '（セル ' + classCells.join('・') + (divisionRow ? '。区分の行は、A列がその名前の行のB列' : '') + '）'] };
+    if (divisionRow) return { google: item, fixes: [item + '（「設定」タブの、A列がその名前の行のB列）'] };
+    if (/「階級：…」の行は12こまで/.test(item)) return { google: item, fixes: [item + '（使わない区分の行を消します）'] };
     const k = (item.match(/「(.+?)」/) || [])[1];
     const hit = k ? cellOf(k) : undefined;
     if (!hit) return { google: item, fixes: [item] };

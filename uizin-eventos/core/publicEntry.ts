@@ -1,5 +1,6 @@
 import type { EntryFieldMode } from './entryPackage.ts';
 import { CLASS_LIMITS, DEFAULT_CLASS_SETTINGS, parseClassSettings, type ClassSettings } from './classRules.ts';
+import { DEFAULT_WEIGHT_SETTINGS, isDefaultWeightSettings, weightSettingsToParam, weightsFromParam, type WeightSettings } from './weightClass.ts';
 
 export type PublicEntryConfig = {
   endpoint: string;
@@ -20,6 +21,10 @@ export type PublicEntryConfig = {
   mode?: 'test' | 'live';
   /** クラス分けをするときだけ入る（しないときは項目ごと無い）。 */
   classes?: ClassSettings;
+  /** 階級分け（区分→階級）をするときだけ入る。 */
+  weights?: WeightSettings;
+  /** ロゴを出すときだけ true（出さないときは項目ごと無い）。 */
+  logo?: boolean;
 };
 
 export const EMPTY_PUBLIC_ENTRY_CONFIG: PublicEntryConfig = {
@@ -46,17 +51,19 @@ export function isVenueUrl(value: string): boolean {
 export const LINK_END_KEY = 'end';
 
 const CLASS_KEYS = ['cls', 'cuN', 'cuC', 'cuR', 'clN', 'clC', 'clR', 'cw'] as const;
+/** 階級分けの項目。wc＝あり／wd＝表（初期の表と同じときは付けない）。logo は、ふつうの項目と同じ扱い */
+const WEIGHT_KEYS = ['wc', 'wd'] as const;
 
 /**
  * 申し込みページのリンク（# のあと）を作る。並べる順番に意味がある：
- * ふつうの項目 → クラスの項目 → protocol → mode → end=1。
+ * ふつうの項目 → クラスの項目 → 階級の項目 → protocol → mode → end=1。
  * 切れたリンクは、後ろから先に無くなる。だから「mode」か「end」が欠ければ、切れたと分かる。
  */
 export function publicEntryHash(config: PublicEntryConfig): string {
   const params = new URLSearchParams();
   const put = (key: string, value: unknown) => params.set(key, typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value));
   for (const [key, value] of Object.entries(config)) {
-    if (key === 'classes' || key === 'protocol' || key === 'mode') continue;
+    if (key === 'classes' || key === 'weights' || key === 'logo' || key === 'protocol' || key === 'mode') continue;
     put(key, value);
   }
   if (config.classes?.enabled) {
@@ -67,6 +74,11 @@ export function publicEntryHash(config: PublicEntryConfig): string {
     putText('clN', c.lower.name, d.lower.name); putText('clC', c.lower.condition, d.lower.condition); putText('clR', c.lower.rule, d.lower.rule);
     if (c.upperMinWins !== d.upperMinWins) params.set('cw', String(c.upperMinWins));
   }
+  if (config.weights?.enabled) {
+    params.set('wc', 'on');
+    if (!isDefaultWeightSettings(config.weights)) params.set('wd', weightSettingsToParam(config.weights));
+  }
+  if (config.logo) params.set('logo', 'on');
   if (config.protocol !== undefined) put('protocol', config.protocol);
   if (config.mode !== undefined) put('mode', config.mode);
   params.set(LINK_END_KEY, '1');
@@ -78,6 +90,7 @@ export function publicEntryHash(config: PublicEntryConfig): string {
  * - 昔のリンク（目印 end も クラスも無い）は、そのまま使える。
  * - クラスの項目があるリンクは、最後の end=1 が無ければ、切れている。
  * - cls=on なのに、クラスの文が読めないときも、切れている（同じ名前など）。
+ * - 階級の項目（wc・wd）があるリンクも、同じ。wc=on なのに、表が読めないときも、切れている。
  */
 export function publicEntryLinkCut(hash: string): boolean {
   try {
@@ -86,13 +99,22 @@ export function publicEntryLinkCut(hash: string): boolean {
     const music = params.get('music'), comment = params.get('comment');
     if (!params.has('eventId') || !params.has('title') || !params.has('contact') || (music !== 'on' && music !== 'off') || (comment !== 'off' && comment !== 'optional' && comment !== 'required')) return true;
     if (params.has('mode') && !['test', 'live'].includes(params.get('mode') || '')) return true;
-    const hasClassKey = CLASS_KEYS.some((key) => params.has(key));
+    const hasClassKey = CLASS_KEYS.some((key) => params.has(key)) || WEIGHT_KEYS.some((key) => params.has(key)) || params.has('logo');
     if (params.has(LINK_END_KEY) && params.get(LINK_END_KEY) !== '1') return true;
     if (hasClassKey) {
       if (params.get(LINK_END_KEY) !== '1') return true;
-      const cls = params.get('cls');
-      if (cls !== 'on' && cls !== 'off') return true;
-      if (cls === 'on' && !publicEntryConfig(hash).classes) return true;
+      if (params.has('wd') && params.get('wc') !== 'on') return true;
+      // クラスの項目と階級の項目のどちらか一方だけがあるリンクも、ここまで来る。cls は、クラスの項目があるときだけ見る
+      if (CLASS_KEYS.some((key) => params.has(key))) {
+        const cls = params.get('cls');
+        if (cls !== 'on' && cls !== 'off') return true;
+        if (cls === 'on' && !publicEntryConfig(hash).classes) return true;
+      }
+      if (params.has('wc')) {
+        const wc = params.get('wc');
+        if (wc !== 'on' && wc !== 'off') return true;
+        if (wc === 'on' && !publicEntryConfig(hash).weights) return true;
+      }
     }
     return false;
   } catch {
@@ -118,6 +140,8 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
       upperMinWins: /^\d{1,2}$/.test(wins) && Number(wins) >= 1 ? Number(wins) : d.upperMinWins,
     });
   }
+  let weights: WeightSettings | undefined;
+  if (params.get('wc') === 'on') weights = params.has('wd') ? weightsFromParam(params.get('wd')) : DEFAULT_WEIGHT_SETTINGS;
   return {
     endpoint: params.get('endpoint')?.trim() ?? '',
     eventId: params.get('eventId')?.trim() || 'my-tournament',
@@ -130,5 +154,7 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
     // mode は「test」か「live」だけ。途中で切れた「te」などを live と読むと、練習の申し込みが本番に入ってしまう
     ...(params.get('mode') === 'test' || params.get('mode') === 'live' ? { mode: params.get('mode') as 'test' | 'live' } : {}),
     ...(classes ? { classes } : {}),
+    ...(weights ? { weights } : {}),
+    ...(params.get('logo') === 'on' ? { logo: true } : {}),
   };
 }

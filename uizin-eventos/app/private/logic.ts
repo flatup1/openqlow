@@ -4,6 +4,7 @@ import { contractWeight, gymKey, sameFighterKey, type LocalBout, type LocalFight
 import { classNameKey, classState, cleanClassLabel, DEFAULT_CLASS_SETTINGS, normalizeClass, normalizeClassLoose, type ClassSettings } from '../../core/classRules.ts';
 import { dateDigits, formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { classesFromParam, DEFAULT_ENTRY_CONFIG, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
+import { boutWeightWarning, cleanDivisionName, cleanWeightText, divisionKey, findDivision, normalizeDivisionLoose, normalizeWeightClass, normalizeWeightClassLoose, WEIGHT_LIMITS, weightSettingsToParam, weightsFromParam, type WeightSettings } from '../../core/weightClass.ts';
 import { isValidEventId } from './eventId.ts';
 import { checkMusic, checkNumber, FIELD_LABEL, type FieldKey } from './normalize.ts';
 
@@ -74,6 +75,7 @@ export function sameExceptProgress(a: LocalTournament, b: LocalTournament): bool
   const fighterKeys = ['id', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl', 'photoDataUrl'] as const;
   for (let i = 0; i < a.fighters.length; i++) for (const key of fighterKeys) if (a.fighters[i][key] !== b.fighters[i][key]) return false;
   for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].fighterClass ?? '') !== (b.fighters[i].fighterClass ?? '')) return false;
+  for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].division ?? '') !== (b.fighters[i].division ?? '') || (a.fighters[i].weightClass ?? '') !== (b.fighters[i].weightClass ?? '')) return false;
   const boutKeys = ['id', 'redId', 'blueId', 'className', 'rule'] as const;
   for (let i = 0; i < a.bouts.length; i++) for (const key of boutKeys) if (a.bouts[i][key] !== b.bouts[i][key]) return false;
   return true;
@@ -328,6 +330,8 @@ export type MergeKeepResult = {
   photosFilled: number;
   /** クラスが空だった人に、ファイルのクラスを足した数（親が申し込みで選んだ値なので、黙って足してよい） */
   classesFilled: number;
+  /** 区分・階級が空だった人に、ファイルの区分・階級を足した人数（クラスと同じ。親が申し込みで選んだ値なので、黙って足してよい） */
+  weightsFilled: number;
   /** merged が今の名簿と変わるか（変わらなければ、画面を「未保存」にしない） */
   changed: boolean;
   /** 管理番号はちがうが、名前とジムが前からいる人と同じ人（管理番号の空欄で行がずれたときに起こる）。既定では足さない */
@@ -343,9 +347,12 @@ export { sameFighterKey };
  * 前からいる人は黙って変えない。新しい人だけ足す。
  * クラスだけは別あつかい：前のクラスが空なら、ファイルのクラスを足す（classesFilled）。
  * ファイルに「クラス」の列が無い（hasClassColumn=false）ときは、クラスを比べず、前のクラスを消さない。
+ * 区分・階級もクラスと同じ（足した人数は weightsFilled。列が無い hasDivisionColumn / hasWeightClassColumn=false のときは、比べず、消さない）。
+ * 区分がちがう（前の区分のまま）ときは、階級だけをファイルから足さない（別の区分の階級が混ざらないように。ちがいとして出す）。
  */
-export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighter[], opts: { hasClassColumn?: boolean } = {}): MergeKeepResult {
+export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighter[], opts: { hasClassColumn?: boolean; hasDivisionColumn?: boolean; hasWeightClassColumn?: boolean } = {}): MergeKeepResult {
   const hasClassColumn = opts.hasClassColumn !== false;
+  const hasDivisionColumn = opts.hasDivisionColumn !== false, hasWeightClassColumn = opts.hasWeightClassColumn !== false;
   if (new Set(incoming.map((fighter) => fighter.id)).size !== incoming.length) throw new Error('同じ管理番号が2つあります。元の名簿は変えていません。');
   const byId = new Map(current.map((fighter) => [fighter.id, fighter]));
   const incomingById = new Map(incoming.map((fighter) => [fighter.id, fighter]));
@@ -356,7 +363,7 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
   const lookalikeIds = new Set(lookalike.map((fighter) => fighter.id));
   const added = fresh.filter((fighter) => !lookalikeIds.has(fighter.id));
   const differs: FighterDiff[] = [];
-  let same = 0, photosFilled = 0, classesFilled = 0;
+  let same = 0, photosFilled = 0, classesFilled = 0, weightsFilled = 0;
   const merged = current.map((fighter) => {
     const next = incomingById.get(fighter.id);
     if (!next) return fighter;
@@ -367,11 +374,24 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
       if (!mine && theirs) fillClass = true;
       else if (!sameClassName(mine, theirs)) fields.push({ label: 'クラス', from: mine, to: theirs });
     }
+    const mineD = (fighter.division ?? '').trim(), theirsD = (next.division ?? '').trim();
+    const mineW = (fighter.weightClass ?? '').trim(), theirsW = (next.weightClass ?? '').trim();
+    let fillD = false, fillW = false;
+    if (hasDivisionColumn) {
+      if (!mineD && theirsD) fillD = true;
+      else if (!sameWeightText(mineD, theirsD)) fields.push({ label: '区分', from: mineD, to: theirsD });
+    }
+    if (hasWeightClassColumn) {
+      const sameDivision = !theirsD || sameWeightText(fillD ? theirsD : mineD, theirsD);
+      if (!mineW && theirsW && sameDivision) fillW = true;
+      else if (!sameWeightText(mineW, theirsW)) fields.push({ label: '階級', from: mineW, to: theirsW });
+    }
     if (next.photoDataUrl && fighter.photoDataUrl && next.photoDataUrl !== fighter.photoDataUrl) fields.push({ label: '写真', from: 'あり', to: '別の写真' });
     if (fields.length) differs.push({ name: fighter.name || '名前なし', fields }); else same++;
     let out = fighter;
     if (!fighter.photoDataUrl && next.photoDataUrl) { photosFilled++; out = { ...out, photoDataUrl: next.photoDataUrl }; }
     if (fillClass) { classesFilled++; out = { ...out, fighterClass: theirs }; }
+    if (fillD || fillW) { weightsFilled++; out = { ...out, ...(fillD ? { division: theirsD } : {}), ...(fillW ? { weightClass: theirsW } : {}) }; }
     return out;
   });
   const all = merged.concat(added);
@@ -382,13 +402,16 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
     // クラスの列が無いファイル・空のクラスで、前のクラスを消さない（親が選んだ値）
     const keep = (fighter.fighterClass ?? '').trim();
     if (!(next.fighterClass ?? '').trim() && keep && !hasClassColumn) out.fighterClass = fighter.fighterClass;
+    // 区分・階級の列が無いファイルでも、前の区分・階級を消さない
+    if (!(next.division ?? '').trim() && (fighter.division ?? '').trim() && !hasDivisionColumn) out.division = fighter.division;
+    if (!(next.weightClass ?? '').trim() && (fighter.weightClass ?? '').trim() && !hasWeightClassColumn) out.weightClass = fighter.weightClass;
     return out;
   }).concat(added);
-  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0, lookalike };
+  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, weightsFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0 || weightsFilled > 0, lookalike };
 }
 
 /** 書きかえで「何が変わるか」を見せる順番。このアプリで大事なもの（クラス・体重・戦績・名前）が先 */
-const OVERWRITE_ORDER = ['クラス', '体重', '戦績', '名前', 'ジム名', '身長', '年齢', '学年', '意気込み', '入場曲', '写真'];
+const OVERWRITE_ORDER = ['クラス', '区分', '階級', '体重', '戦績', '名前', 'ジム名', '身長', '年齢', '学年', '意気込み', '入場曲', '写真'];
 const orderOf = (label: string): number => { const at = OVERWRITE_ORDER.indexOf(label); return at < 0 ? OVERWRITE_ORDER.length : at; };
 
 /**
@@ -398,9 +421,12 @@ const orderOf = (label: string): number => { const at = OVERWRITE_ORDER.indexOf(
  */
 function overwriteParts(differs: FighterDiff[]): { verdict: string; examples: string[] } {
   const classLines = differs.flatMap((item) => item.fields.filter((field) => field.label === 'クラス').map((field) => 'クラス ' + (field.from || '（空）') + '→' + (field.to || '（空）') + '：' + item.name));
+  // 区分・階級も、クラスと同じ。人ごとに1行（「区分 中学生女子→中学生男子：名前」）。クラスの次に出す
+  const weightLines = differs.flatMap((item) => item.fields.filter((field) => field.label === '区分' || field.label === '階級').map((field) => field.label + ' ' + (field.from || '（空）') + '→' + (field.to || '（空）') + '：' + item.name));
+  const own = (label: string): boolean => label === 'クラス' || label === '区分' || label === '階級';
   const people = differs.map((item) => {
-    const changed = item.fields.filter((field) => field.label !== 'クラス' && field.from !== '').sort((a, b) => orderOf(a.label) - orderOf(b.label));
-    const fills = item.fields.filter((field) => field.label !== 'クラス' && field.from === '');
+    const changed = item.fields.filter((field) => !own(field.label) && field.from !== '').sort((a, b) => orderOf(a.label) - orderOf(b.label));
+    const fills = item.fields.filter((field) => !own(field.label) && field.from === '');
     return { name: item.name, changed, fills };
   }).filter((item) => item.changed.length > 0 || item.fills.length > 0);
   const personLine = (item: (typeof people)[number]): string => {
@@ -412,7 +438,7 @@ function overwriteParts(differs: FighterDiff[]): { verdict: string; examples: st
   const shownPeople = people.slice(0, 3).map(personLine);
   return {
     verdict: '次の' + differs.length + '人を、ファイルの内容に書きかえます（手で直した所も戻ります）：',
-    examples: [...classLines.slice(0, 5), ...(classLines.length > 5 ? ['クラスが変わる人は、ほか' + (classLines.length - 5) + '人'] : []), ...shownPeople, ...(people.length > 3 ? ['ほか' + (people.length - 3) + '人'] : [])],
+    examples: [...classLines.slice(0, 5), ...(classLines.length > 5 ? ['クラスが変わる人は、ほか' + (classLines.length - 5) + '人'] : []), ...weightLines.slice(0, 5), ...(weightLines.length > 5 ? ['区分・階級が変わる所は、ほか' + (weightLines.length - 5) + 'か所'] : []), ...shownPeople, ...(people.length > 3 ? ['ほか' + (people.length - 3) + '人'] : [])],
   };
 }
 
@@ -498,6 +524,117 @@ export function describeClassChange(before: LocalFighter, after: LocalFighter): 
   return 'クラス ' + ((before.fighterClass ?? '').trim() || '（空）') + ' → ' + ((after.fighterClass ?? '').trim() || '（空）');
 }
 
+/* ───────── 区分・階級（階級分けをする大会だけ）。個人情報ではない。無いときは、項目ごと無い（今までの形のまま） ───────── */
+
+/** 同じ区分・階級の文字か（全角・半角、大文字・小文字、空白のちがいは同じ） */
+export const sameWeightText = (a: string, b: string): boolean => divisionKey(a) === divisionKey(b);
+
+/** 区分・階級の文字を整える（制御文字を取り、前後の空白を取り、40文字まで）。空なら項目ごと無くす */
+export function tidyWeight(fighter: LocalFighter): LocalFighter {
+  const next: LocalFighter = { ...fighter };
+  delete next.division;
+  delete next.weightClass;
+  const division = cleanDivisionName(fighter.division ?? '').slice(0, WEIGHT_LIMITS.label), weightClass = cleanWeightText(fighter.weightClass ?? '');
+  if (division) next.division = division;
+  if (weightClass) next.weightClass = weightClass;
+  return next;
+}
+
+/** 区分か階級が変わったか（空の文字と、項目が無いのは同じ） */
+export const weightChanged = (a: LocalFighter, b: LocalFighter): boolean => (a.division ?? '').trim() !== (b.division ?? '').trim() || (a.weightClass ?? '').trim() !== (b.weightClass ?? '').trim();
+
+/** 「区分 （空） → 中学生男子、階級 （空） → 37kg以下」のような、直した所の短い言い方（変わっていなければ空） */
+export function describeWeightChange(before: LocalFighter, after: LocalFighter): string {
+  const parts: string[] = [];
+  for (const [key, label] of [['division', '区分'], ['weightClass', '階級']] as const) {
+    const from = (before[key] ?? '').trim(), to = (after[key] ?? '').trim();
+    if (from !== to) parts.push(label + ' ' + (from || '（空）') + ' → ' + (to || '（空）'));
+  }
+  return parts.join('、');
+}
+
+/** 区分か階級が入っている人か */
+export const hasWeightTag = (fighter: LocalFighter): boolean => (fighter.division ?? '').trim() !== '' || (fighter.weightClass ?? '').trim() !== '';
+
+/**
+ * 区分・階級の入れかたで、気をつけたいこと（無ければ null）。保存は止めない。設定（受付の「階級分け」）が無いときは、いつも null。
+ * blank-all＝どちらも空 / blank-division＝階級だけ入っている / blank-class＝階級を選ぶ区分なのに階級が空 /
+ * unknown-division＝設定にない区分 / unknown-class＝その区分の階級にない / extra-class＝階級のない区分（小学生以下など）なのに階級が入っている
+ */
+export type WeightIssueKind = 'blank-all' | 'blank-division' | 'blank-class' | 'unknown-division' | 'unknown-class' | 'extra-class';
+export function weightIssue(fighter: Pick<LocalFighter, 'division' | 'weightClass'> | undefined, settings: WeightSettings | null | undefined): WeightIssueKind | null {
+  if (!settings || !settings.enabled) return null;
+  const division = cleanDivisionName(fighter?.division ?? ''), weightClass = cleanWeightText(fighter?.weightClass ?? '');
+  if (!division && !weightClass) return 'blank-all';
+  if (!division) return 'blank-division';
+  const found = findDivision(division, settings);
+  if (!found) return 'unknown-division';
+  if (!found.classes.length) return weightClass ? 'extra-class' : null;
+  if (!weightClass) return 'blank-class';
+  return normalizeWeightClass(found.name, weightClass, settings) ? null : 'unknown-class';
+}
+
+/** weightIssue のやさしい一文（黄色の箱に入れる。入れなくても保存できる） */
+export function weightIssueText(kind: WeightIssueKind, fighter: Pick<LocalFighter, 'division' | 'weightClass'> | undefined): string {
+  const division = cleanDivisionName(fighter?.division ?? '').slice(0, 12), weightClass = cleanWeightText(fighter?.weightClass ?? '').slice(0, 12);
+  switch (kind) {
+    case 'blank-all': return '区分・階級が入っていません。なくても保存できますが、区分・階級がちがう組かどうか、確かめられません。';
+    case 'blank-division': return '区分が入っていません。なくても保存できますが、区分がちがう組かどうか、確かめられません。';
+    case 'blank-class': return '階級が入っていません。なくても保存できますが、階級がちがう組かどうか、確かめられません。';
+    case 'unknown-division': return '区分「' + division + '」は、設定にある区分ではありません。このままでも保存できます。';
+    case 'unknown-class': return '階級「' + weightClass + '」は、この区分の階級にありません。このままでも保存できます。';
+    default: return 'この区分には階級がありません。入っている階級「' + weightClass + '」は、「えらばない」にすると消えます。';
+  }
+}
+
+/** 階級分けをする大会で、区分・階級が入っていない人（blank）と、設定にない人（unknown）。設定が無い大会は、いつも空。名前の無い行は数えない */
+export function weightChoiceTrouble(fighters: LocalFighter[], settings: WeightSettings | null | undefined): { blank: LocalFighter[]; unknown: LocalFighter[] } {
+  if (!settings || !settings.enabled) return { blank: [], unknown: [] };
+  const blank: LocalFighter[] = [], unknown: LocalFighter[] = [];
+  for (const fighter of fighters) {
+    if (!fighter.name.trim()) continue;
+    const kind = weightIssue(fighter, settings);
+    if (kind === 'blank-all' || kind === 'blank-division' || kind === 'blank-class') blank.push(fighter);
+    else if (kind) unknown.push(fighter);
+  }
+  return { blank, unknown };
+}
+
+/** 赤と青で区分か階級がちがう試合か（どちらかが空なら、ちがうと言わない。core の boutWeightWarning と同じ決め方） */
+export const weightMixAt = (bout: LocalBout, byId: Map<string, LocalFighter>): boolean => boutWeightWarning(byId.get(bout.redId), byId.get(bout.blueId)) !== '';
+
+/** 区分・階級がちがう試合の番号（0から）。止めない注意なので、数えて知らせるだけ */
+export function weightMixIndexes(bouts: LocalBout[], fighters: LocalFighter[]): number[] {
+  const byId = new Map(fighters.map((fighter) => [fighter.id, fighter]));
+  const found: number[] = [];
+  bouts.forEach((bout, index) => { if (weightMixAt(bout, byId)) found.push(index); });
+  return found;
+}
+
+/** 「区分・階級がちがう組が2つあります（第1・第3試合）。…」。おすすめの組み合わせのあとの、赤い注意の文 */
+export function weightMixText(indexes: number[]): string {
+  return '区分・階級がちがう組が' + indexes.length + 'つあります（' + indexes.map((i) => '第' + (i + 1)).join('・') + '試合）。ふつうは同じ区分・階級の人どうしで組みます。';
+}
+
+/** ファイルを読み込んだあとの知らせ：区分・階級の列が無いファイルでは、今の区分・階級はそのまま。今の名簿に入っていない列のことは言わない */
+export function weightColumnNote(current: LocalFighter[], hasDivisionColumn: boolean, hasWeightClassColumn: boolean): string {
+  const lost = [
+    !hasDivisionColumn && current.some((fighter) => (fighter.division ?? '').trim()) ? '区分' : '',
+    !hasWeightClassColumn && current.some((fighter) => (fighter.weightClass ?? '').trim()) ? '階級' : '',
+  ].filter(Boolean).join('・');
+  return lost ? 'このファイルには' + lost + 'の列が無いので、今の' + lost + 'はそのままです。' : '';
+}
+
+/**
+ * 公開した申込ページ（シート）の設定と、いまの大会の設定が同じか。クラス・階級分け・ロゴまで見る。
+ * 項目の並びはそろえて比べる（保存したときと、リンクから読んだときで、並びがちがっても同じと見る）。
+ */
+export function entryConfigKey(config: EntryFormConfig | undefined): string {
+  const c = config ?? DEFAULT_ENTRY_CONFIG;
+  return JSON.stringify({ music: c.music, grade: c.grade, age: c.age, comment: c.comment, classes: config?.classes ?? null, weights: config?.weights ? weightSettingsToParam(config.weights) : null, logo: !!config?.logo });
+}
+export const sameEntryConfig = (a: EntryFormConfig | undefined, b: EntryFormConfig | undefined): boolean => entryConfigKey(a) === entryConfigKey(b);
+
 /* ───────── ファイルから取り込んだ人の整え（手で入れるときと同じ約束：全角の数字・単位・入場曲の空白を直す） ───────── */
 
 export type ImportNormalized = {
@@ -512,7 +649,7 @@ export type ImportNormalized = {
   unreadable: Array<{ id: string; name: string; field: FieldKey; from: string }>;
 };
 
-export function normalizeImported(fighters: LocalFighter[], classes?: ClassSettings): ImportNormalized {
+export function normalizeImported(fighters: LocalFighter[], classes?: ClassSettings, weights?: WeightSettings): ImportNormalized {
   let fixed = 0;
   const people = new Set<string>();
   const examples: string[] = [];
@@ -536,6 +673,20 @@ export function normalizeImported(fighters: LocalFighter[], classes?: ClassSetti
     if (cls) {
       const tidy2 = normalizeClassLoose(cls, classes ?? DEFAULT_CLASS_SETTINGS);
       if (tidy2 !== fighter.fighterClass) { next.fighterClass = tidy2; fixed++; people.add(fighter.id); if (examples.length < 3) examples.push('クラス ' + cls.slice(0, 12) + ' → ' + tidy2.slice(0, 12)); }
+    }
+    // 区分・階級：設定（受付の「階級分け」）の名前にそろえる（書き方のちがい：-37／37kg以下／37kg級、「・」の有る無し）。設定にない名前は、そのまま持つ（消さない）。40文字まで
+    const division = (fighter.division ?? '').trim(), weightClass = (fighter.weightClass ?? '').trim();
+    if (division || weightClass) {
+      const nextDivision = division ? normalizeDivisionLoose(division, weights).slice(0, WEIGHT_LIMITS.label) : '';
+      const nextClass = weightClass ? normalizeWeightClassLoose(nextDivision || division, weightClass, weights) : '';
+      const change = (key: 'division' | 'weightClass', label: string, from: string, to: string) => {
+        if (to === (fighter[key] ?? '')) return;
+        if (to) next[key] = to; else delete next[key];
+        fixed++; people.add(fighter.id);
+        if (examples.length < 3) examples.push(label + ' ' + from.slice(0, 12) + ' → ' + (to.slice(0, 12) || '（空）'));
+      };
+      if (division) change('division', '区分', division, nextDivision);
+      if (weightClass) change('weightClass', '階級', weightClass, nextClass);
     }
     return next;
   });
@@ -613,6 +764,11 @@ function restoreParts(a: { restored: LocalTournament; current: LocalTournament; 
   const c2 = a.current.fighters.filter((f) => (f.fighterClass ?? '').trim() !== '').length, c = a.restored.fighters.filter((f) => (f.fighterClass ?? '').trim() !== '').length;
   if (c < c2) warn.push('⚠ 減ります：クラスが入っている選手が' + c2 + '人から' + c + '人になります。');
   if (a.current.entryConfig?.classes && !a.restored.entryConfig?.classes) warn.push('⚠ 消えます：クラスの設定（条件とルール）。選手のクラスを選ぶ欄が出なくなります。');
+  // 区分・階級も同じ。人数が減るなら、はっきり言う。階級分けの設定やロゴの設定が消えるときも言う
+  const w2 = a.current.fighters.filter(hasWeightTag).length, w = a.restored.fighters.filter(hasWeightTag).length;
+  if (w < w2) warn.push('⚠ 減ります：区分・階級が入っている選手が' + w2 + '人から' + w + '人になります。');
+  if (a.current.entryConfig?.weights && !a.restored.entryConfig?.weights) warn.push('⚠ 消えます：階級分けの設定（区分と階級の表）。選手の区分・階級を選ぶ欄が出なくなります。');
+  if (a.current.entryConfig?.logo && !a.restored.entryConfig?.logo) warn.push('⚠ 消えます：ロゴの設定。申込ページと当日の画面に、ロゴが出なくなります。');
   const title = isTitleReal(a.restored.title) ? a.restored.title : '名前なし';
   const empty = n2 === 0 && m2 === 0 && !a.everSaved && !a.dirty;
   // 1行目は結論。「何が消えるか」を先に言う
@@ -665,7 +821,7 @@ export function backupFileName(eventId: string, date: string): string {
 
 const MODES: EntryFieldMode[] = ['off', 'optional', 'required'];
 
-/** #m=on|off  #g/#a/#c=off|optional|required  #cs=クラス設定。決まった言葉以外は無視。1つも使えなければ null */
+/** #m=on|off  #g/#a/#c=off|optional|required  #cs=クラス設定  #ws=階級分けの表  #logo=on。決まった言葉以外は無視。1つも使えなければ null */
 export function entryConfigFromHash(hash: string): EntryFormConfig | null {
   const given = new URLSearchParams(hash.replace(/^#/, ''));
   const config: EntryFormConfig = { ...DEFAULT_ENTRY_CONFIG };
@@ -679,6 +835,10 @@ export function entryConfigFromHash(hash: string): EntryFormConfig | null {
   // cs=クラス設定（受付の画面が、シートの「設定」タブから読み取ったもの。形が正しいときだけ使う）
   const classes = classesFromParam(given.get('cs'));
   if (classes) { config.classes = classes; used = true; }
+  // ws=階級分け（区分→階級）の表、logo=on ロゴを出す（どちらも、形が正しいときだけ使う。無い・読めないときは、項目ごと無い）
+  const weights = weightsFromParam(given.get('ws'));
+  if (weights) { config.weights = weights; used = true; }
+  if (given.get('logo') === 'on') { config.logo = true; used = true; }
   return used ? config : null;
 }
 

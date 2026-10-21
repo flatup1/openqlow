@@ -485,7 +485,7 @@ scenario('P14', 'prep screen: A-vs-B bout card says which rules differ and what 
   await p.locator('#bout-0').waitFor({ timeout: 15000 });
   const card = await p.locator('#bout-0').innerText();
   check(/クラスがちがいます：赤はAクラス、青はBクラスです。ルールがちがうので、ふつうは同じクラスの人と戦います/.test(card), `the card names both classes (${short(card, 160)})`);
-  check(/Aクラスのルール：首相撲あり／膝蹴りあり／蹴り足キャッチ/.test(card) && /Bクラスのルール：パンチとキックのみ/.test(card), 'it shows which rules differ (one line per class)');
+  check(/Aクラスのルール：首相撲5秒／蹴り足キャッチはワンアタック/.test(card) && /Bクラスのルール：首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし/.test(card), 'it shows which rules differ (one line per class)');
   check(/ふつうは同じクラスの人と戦います/.test(card), 'it says what is usual: fight inside the same class');
   check(/このまま戦ってもかまいません。そのときは、主催者のあなたが、どちらのルールにするか決めて、「ルール」の欄に書きます/.test(card), 'it says the organiser may still pair them and must write the agreed rule in the 「ルール」 field');
   check((await p.locator('#bout-0').getByRole('button', { name: 'ルールを書く欄をひらく' }).count()) === 1, 'a button 「ルールを書く欄をひらく」 opens that (closed) field');
@@ -1000,6 +1000,24 @@ scenario('R123', 'r2-123: no entryConfig -> the match-day screens treat music as
   const l = await openLive(ctx, id, { list: true });
   const lt = await l.evaluate(() => document.body.innerText);
   check(!/入場曲がまだの選手|曲がない試合だけ見る/.test(lt) && /この大会は入場曲なし/.test(lt), 'list: no 「入場曲がまだの選手」 and no filter button');
+  await ctx.close();
+});
+
+/* R130: 意気込み = 「なし」の大会。書いた人がいなければ「意気込み」の箱を出さない（「未入力」と出さない）。書いた人の箱は、いつもどおり出る。「任意」では、空でも箱が出る */
+scenario('R130', 'comment mode なし: the empty 意気込み box is not shown, the filled one is; 任意 still shows 未入力', async () => {
+  const id = 'pl-r130', idOpt = 'pl-r130-opt';
+  const OFF = { music: false, grade: 'off', age: 'off', comment: 'off' };
+  const OPT = { music: false, grade: 'optional', age: 'optional', comment: 'optional' };
+  const fighters = [F('R0', { name: '架空赤', comment: 'ぜったい勝ちます' }), F('B0', { name: '架空青', comment: '' })];
+  const ctx = await newCtx({ width: 1280, height: 720 });
+  await seed(ctx, T(id, { fighters, bouts: [B('b0', 'R0', 'B0')], entryConfig: OFF }));
+  await seed(ctx, T(idOpt, { fighters, bouts: [B('b0', 'R0', 'B0')], entryConfig: OPT }));
+  const count = (text, word) => (text.match(new RegExp(word, 'g')) || []).length;
+  const single = await (await openLive(ctx, id)).evaluate(() => document.body.innerText);
+  check(/ぜったい勝ちます/.test(single), 'single / なし: the filled 意気込み is shown');
+  check(count(single, '意気込み') === 1 && !/未入力/.test(single), 'single (1 bout) / なし: only the filled corner has a 意気込み box; no 「未入力」 (意気込み x' + count(single, '意気込み') + ')');
+  const opt = await (await openLive(ctx, idOpt)).evaluate(() => document.body.innerText);
+  check(count(opt, '意気込み') === 2 && /未入力/.test(opt), 'single / 任意: both corners have a 意気込み box, and the empty one says 未入力 (意気込み x' + count(opt, '意気込み') + ')');
   await ctx.close();
 });
 

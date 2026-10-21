@@ -367,13 +367,13 @@ test('r2-23 importFighters: 「体重（kg）」「体重(kg)」「身長(cm)」
   assert.equal(old.fighters[0].id, 'F1'); assert.equal(old.fighters[0].record, '初試合'); assert.deepEqual(old.unreadHeaders, []); assert.equal(old.hasClassColumn, false);
 });
 
-test('r2-136 「class」「区分」は、中身が Aクラス／Bクラスのときだけクラスの列。体重の区分・男子女子の区分は、クラスにしない', () => {
+test('r2-136 「class」「区分」は、中身が Aクラス／Bクラスのときだけクラスの列。体重の区分・男子女子の区分は、クラスにしない（「区分」は、区分の列として読む）', () => {
   const weight = importFighters('選手名,ジム名,区分\nA,G,ライト級\nB,G,60kg');
-  assert.equal(weight.hasClassColumn, false); assert.equal(weight.fighters[0].fighterClass, undefined); assert.deepEqual(weight.unreadHeaders, ['区分']);
+  assert.equal(weight.hasClassColumn, false); assert.equal(weight.fighters[0].fighterClass, undefined); assert.deepEqual(weight.unreadHeaders, []); assert.equal(weight.hasDivisionColumn, true); assert.deepEqual(weight.fighters.map((f) => f.division), ['ライト級', '60kg']);
   const sex = importFighters('選手名,ジム名,class\nA,G,男子\nB,G,女子');
   assert.equal(sex.fighters.every((f) => f.fighterClass === undefined), true);
   const ok = importFighters('選手名,ジム名,区分\nA,G,Aクラス\nB,G,B');
-  assert.equal(ok.hasClassColumn, true); assert.equal(ok.fighters[0].fighterClass, 'Aクラス'); assert.deepEqual(ok.unreadHeaders, []);
+  assert.equal(ok.hasClassColumn, true); assert.equal(ok.fighters[0].fighterClass, 'Aクラス'); assert.deepEqual(ok.unreadHeaders, []); assert.equal(ok.hasDivisionColumn, false); assert.equal(ok.fighters[0].division, undefined);
   assert.equal(importFighters('選手名,ジム名,クラス区分\nA,G,Aクラス').fighters[0].fighterClass, 'Aクラス', 'このアプリが書く／はっきりクラスとわかる見出しは、そのまま');
 });
 

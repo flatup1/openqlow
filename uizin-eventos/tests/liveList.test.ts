@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { LocalBout, LocalFighter } from '../core/privateTournament.ts';
 import {
-  EMPTY_LIST_MESSAGE, MISSING_FIGHTER, NO_CONTRACT, buildPageRows, buildRow, clampPage, musicLabel, musicState, nowModel, pageButtonText, pageCount, pageJumpList, pageLabel, pageOfBout, pageRange, pageRangeText, pagerState,
+  EMPTY_LIST_MESSAGE, MISSING_FIGHTER, liveCommentShown, weightMixText, NO_CONTRACT, buildPageRows, buildRow, clampPage, musicLabel, musicState, nowModel, pageButtonText, pageCount, pageJumpList, pageLabel, pageOfBout, pageRange, pageRangeText, pagerState,
   parseBoutNumber, parseViewParam, summarizeMusic, totalLabel, withViewParam,
   boutNumberProblem, filterNote, isRepeatPress, jumpDoneText, moveNotice, nextHint, openWarning, saveFailNotice, undoSecondsLeft,
 } from '../app/private/live/listLogic.ts';
@@ -372,4 +372,36 @@ test('buildRow: クラスは新しい画面の他の判定（同じ選手・契�
   const oldRow = buildRow(bout(0, { redId: 'r', blueId: 'u' }), 0, old, true, 0);
   assert.equal(oldRow.red.fighterClass, '');
   assert.equal(oldRow.classMix, false);
+});
+
+test('buildRow: 区分・階級の札と、ちがうときの注意（同じ・ちがう・どちらかが空）', () => {
+  const mk = (id: string, over: Partial<LocalFighter>): LocalFighter => ({ id, gym: 'G' + id, name: '選手' + id, grade: '', age: '', height: '170', weight: '60', record: '', comment: '', musicUrl: '', photoDataUrl: '', ...over });
+  const byId = new Map([
+    mk('a', { division: '中学生男子', weightClass: '37kg以下' }), mk('b', { division: '中学生男子', weightClass: '37kg以下' }), mk('c', { division: '中学生男子', weightClass: '40kg以下' }),
+    mk('d', { division: '中学生女子', weightClass: '37kg以下' }), mk('e', {}), mk('f', { division: '小学生以下' }),
+  ].map((f) => [f.id, f] as const));
+  const row = (r: string, b: string) => buildRow(bout(0, { redId: r, blueId: b }), 0, byId, false, 0);
+  assert.equal(row('a', 'b').weightWarning, ''); assert.equal(row('a', 'b').red.weightTag, '中学生男子・37kg以下'); assert.equal(row('a', 'b').blue.weightTag, '中学生男子・37kg以下');
+  assert.equal(row('a', 'c').weightWarning, '階級がちがいます（赤：37kg以下／青：40kg以下）。ふつうは、同じ階級の人どうしで戦います。');
+  assert.equal(row('a', 'd').weightWarning, '区分がちがいます（赤：中学生男子／青：中学生女子）。ふつうは、同じ区分の人どうしで戦います。');
+  assert.equal(row('a', 'e').weightWarning, '', 'どちらかが空：注意しない'); assert.equal(row('a', 'e').blue.weightTag, '');
+  assert.equal(row('f', 'f').weightWarning, ''); assert.equal(row('f', 'f').red.weightTag, '小学生以下');
+  assert.equal(row('a', 'ghost').weightWarning, ''); assert.equal(row('a', 'ghost').blue.weightTag, '');
+});
+
+test('weightMixText: 1試合ずつの画面は「このまま進められます」まで。一覧は短く。ちがわないときは空', () => {
+  const w = '階級がちがいます（赤：37kg以下／青：40kg以下）。ふつうは、同じ階級の人どうしで戦います。';
+  assert.equal(weightMixText(''), ''); assert.equal(weightMixText('', true), '');
+  assert.equal(weightMixText(w), w + '準備画面で組み合わせを確かめてください。試合は、このまま進められます。');
+  assert.equal(weightMixText(w, true), w + '準備画面で確かめてください。');
+});
+
+test('liveCommentShown: 意気込みを聞かない大会（なし）は、箱を出さない。聞く・設定なしは出す。書いてある人は、聞かない大会でも出す', () => {
+  assert.equal(liveCommentShown({ entryConfig: { comment: 'off' } }, { comment: '' }), false);
+  assert.equal(liveCommentShown({ entryConfig: { comment: 'off' } }, undefined), false);
+  assert.equal(liveCommentShown({ entryConfig: { comment: 'off' } }, { comment: '  ' }), false);
+  assert.equal(liveCommentShown({ entryConfig: { comment: 'off' } }, { comment: 'がんばります' }), true, '取り込みや手入力で書いてある人の分は、出す');
+  for (const mode of ['required', 'optional']) assert.equal(liveCommentShown({ entryConfig: { comment: mode } }, { comment: '' }), true, mode);
+  assert.equal(liveCommentShown({}, { comment: '' }), true, '設定が無い大会は、これまでどおり出す（未入力と出る）');
+  assert.equal(liveCommentShown({ entryConfig: null }, undefined), true);
 });

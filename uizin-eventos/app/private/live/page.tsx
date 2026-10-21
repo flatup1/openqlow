@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { boutClassWarning } from '../../../core/classRules.ts';
 import { contractWeight, safeMusicUrl, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
+import { boutWeightWarning, weightTag } from '../../../core/weightClass.ts';
+import { CkaLogo } from '../../components/CkaLogo.tsx';
 import { PrivateSaveConflict, readPrivateEvent, watchPrivateEvent, writePrivateEvent } from '../../lib/privateStore.ts';
 import ListView, { EmptyBouts } from './ListView.tsx';
 import { Caution, ErrorLine, Hint, NextSlot, WithBreaks, cx } from './liveMarks.tsx';
-import { MUSIC_NEW_TAB, NO_TITLE, OFFLINE_NOTE, PREP_LINK_NOTE, REOPEN_NOTE, displayName, isHeldKeyRepeat, isRepeatPress, isSamePerson, liveMusicOn, moveNotice, musicLabel, musicState, nextHint, parseViewParam, saveFailNotice, undoSecondsLeft, withViewParam, type LiveView, type MoveVia } from './listLogic.ts';
+import { MUSIC_NEW_TAB, NO_TITLE, OFFLINE_NOTE, PREP_LINK_NOTE, REOPEN_NOTE, displayName, isHeldKeyRepeat, isRepeatPress, isSamePerson, liveCommentShown, liveMusicOn, moveNotice, musicLabel, musicState, nextHint, parseViewParam, saveFailNotice, undoSecondsLeft, weightMixText, withViewParam, type LiveView, type MoveVia } from './listLogic.ts';
 
 /*
   試合当日の画面。色と言葉の約束（黄=次はここ / 薄い黄=気をつけて / 赤=まちがい・失敗 / 緑=できた / 灰の点線=今は押せない）は app/globals.css の .tos-*。
@@ -22,7 +24,11 @@ const SIDE = {
 
 type FighterProblem = 'missing' | 'same' | null;
 
-function FighterCard({ side, fighter, musicEnabled, problem }: { side: 'red'|'blue'; fighter: LocalFighter | undefined; musicEnabled: boolean; problem: FighterProblem }) {
+/* 区分・階級の札や、区分・階級がちがう注意が出るぶんだけ、写真の高さの上限を低くして、画面から はみ出さないようにする（0 = ふだん / 1 = 区分・階級の札がある / 2 = さらに、赤い注意も出ている / 3 = クラスがちがう赤い注意と、2つ重なっている）。
+   2人とも同じ値を使うので、名前の高さはそろう。72px より小さくはしない（低い画面は globals.css の .live-photo が決める） */
+const PHOTO_MAX = ['', ' max-h-[max(72px,calc(100vh-800px))]', ' max-h-[max(72px,calc(100vh-880px))]', ' max-h-[max(72px,calc(100vh-960px))]'] as const;
+
+function FighterCard({ side, fighter, musicEnabled, commentShown, problem, crowd = 0 }: { side: 'red'|'blue'; fighter: LocalFighter | undefined; musicEnabled: boolean; commentShown: boolean; problem: FighterProblem; crowd?: 0 | 1 | 2 | 3 }) {
   const [playing, setPlaying] = useState(false);
   const musicUrl = musicEnabled ? safeMusicUrl(fighter?.musicUrl ?? '') : '';
   const music = musicState(fighter, musicEnabled);
@@ -30,12 +36,13 @@ function FighterCard({ side, fighter, musicEnabled, problem }: { side: 'red'|'bl
   const look = SIDE[side];
   const hasPhoto = !!fighter?.photoDataUrl;
   const className = fighter?.fighterClass?.trim() ?? '';
+  const weightText = weightTag(fighter);
   const noName = !!fighter && !fighter.name.trim();
   return <article className={'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-3xl border-4 bg-white text-[17px] min-[1600px]:text-[22px] ' + look.border}>
-    {/* クラスは、色のついた帯の中に書く。上にあるので、前・次の帯や写真の下に隠れない */}
-    <p className={'live-band live-corner-band flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-1 text-center text-2xl font-black text-white min-[1600px]:text-[32px] ' + look.band}><span><span aria-hidden="true">{look.mark} </span>{look.label}</span>{className ? <span className="inline-block min-w-0 max-w-full rounded-full border-[3px] border-slate-800 bg-white px-4 text-2xl font-black leading-tight text-slate-950 min-[1600px]:text-[32px] [overflow-wrap:anywhere]">{className}</span> : null}</p>
+    {/* クラスは、色のついた帯の中に書く（区分・階級の札も同じ帯。長いときは、帯の中で折り返す）。上にあるので、前・次の帯や写真の下に隠れない */}
+    <p className={'live-band live-corner-band flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-1 text-center text-2xl font-black text-white min-[1600px]:text-[32px] ' + look.band}><span><span aria-hidden="true">{look.mark} </span>{look.label}</span>{className ? <span className="inline-block min-w-0 max-w-full rounded-full border-[3px] border-slate-800 bg-white px-4 text-2xl font-black leading-tight text-slate-950 min-[1600px]:text-[32px] [overflow-wrap:anywhere]">{className}</span> : null}{weightText ? <span data-weight-tag={side} className="inline-block min-w-0 max-w-full rounded-[14px] border-[3px] border-slate-800 bg-white px-4 text-2xl font-black leading-tight text-slate-950 min-[1600px]:text-[32px] [overflow-wrap:anywhere]">{weightText}</span> : null}</p>
     {/* 写真の高さは、画面の高さに合わせて決める（高い画面では大きく、低い画面では名前の場所をあける）。写真がある人もない人も同じ高さ（2人の名前が、同じ高さにならぶ） */}
-    <div className="live-photo relative h-[clamp(72px,calc(100vh-760px),420px)] shrink-0 bg-slate-100">
+    <div className={'live-photo relative h-[clamp(72px,calc(100vh-760px),420px)] shrink-0 bg-slate-100'+PHOTO_MAX[crowd]}>
       {hasPhoto ? <img src={fighter?.photoDataUrl} alt="" className="absolute inset-0 h-full w-full object-contain" /> : <div className="grid h-full place-items-center text-slate-600">👤 写真なし</div>}
     </div>
     <div className="p-3">
@@ -44,7 +51,7 @@ function FighterCard({ side, fighter, musicEnabled, problem }: { side: 'red'|'bl
       {noName ? <ErrorLine className="mt-2">名前が入っていません。準備画面で入れてください</ErrorLine> : null}
       {problem === 'missing' ? <ErrorLine className="mt-2">選手が選ばれていません。準備画面で選んでください</ErrorLine> : null}
       {problem === 'same' ? <ErrorLine className="mt-2">まちがい：赤と青が同じ選手です。準備画面で直してください</ErrorLine> : null}
-      <div className="mt-2 rounded-xl border border-slate-300 bg-slate-50 p-3"><b>意気込み</b><p className="mt-1 [overflow-wrap:anywhere]">{fighter?.comment || '未入力'}</p></div>
+      {commentShown ? <div className="mt-2 rounded-xl border border-slate-300 bg-slate-50 p-3"><b>意気込み</b><p className="mt-1 [overflow-wrap:anywhere]">{fighter?.comment || '未入力'}</p></div> : null}
       {musicUrl ? <div className="mt-2">
         <a href={musicUrl} target="_blank" rel="noreferrer" onClick={()=>setPlaying(true)} className="live-list-focus flex min-h-[56px] flex-wrap items-center justify-center gap-x-2 rounded-xl border-4 border-slate-700 bg-white p-3 text-center text-xl font-black text-slate-950 min-[1600px]:text-[26px]">{playing ? '▶ 曲の画面を開きました' : '▶ 入場曲を開く'}<span className="text-[17px] font-bold text-slate-700 min-[1600px]:text-[22px]">{playing ? MUSIC_NEW_TAB : MUSIC_NEW_TAB + 'で曲の画面が開きます'}</span></a>
         {playing ? <Caution className="mt-2">別のタブで開きました。曲は自分で再生ボタンを押します。試合の画面にもどるには、タブを切りかえます。</Caution> : null}
@@ -224,6 +231,12 @@ export default function PrivateLive() {
   const musicEnabled=liveMusicOn(data);
   // 赤と青のクラスがちがう（どちらも入っていて、ちがう）とき。知らせるだけで、試合を進めるのは止めない
   const classMix=!!bout&&boutClassWarning(red,blue)!=='';
+  // 赤と青の区分・階級がちがう（どちらも入っていて、ちがう）とき。クラスのちがいと同じで、知らせるだけ。試合を進めるのは止めない
+  const weightWarn=bout?boutWeightWarning(red,blue):'';
+  // 区分・階級の札（帯の中）や赤い注意が出るぶん、写真を低くする（2人同じ値。画面から はみ出さない。クラスのちがいの注意と重なるときは、もう少し低く）
+  const crowd:0|1|2|3=weightWarn?(classMix?3:2):(weightTag(red)||weightTag(blue))?1:0;
+  // 「ロゴ」が「あり」の大会だけ、大会名の行にロゴを出す（出さないときは、今までと同じ）
+  const title=<h1 className="live-title text-xl font-black [overflow-wrap:anywhere]">{data.title.trim()||NO_TITLE}</h1>;
   const last=data.bouts.length-1;
   const isFirst=data.currentBout===0, isLast=data.currentBout>=last;
   // 保存できたら true。1試合ずつの画面と一覧の画面で、同じ保存・同じ守りを使う
@@ -332,10 +345,11 @@ export default function PrivateLive() {
   const hideSwitcher=!list&&oneBout;
   // キーを押しっぱなしにすると、0.5秒あとから同じキーが何度も届く。ボタンの上では、その連打を捨てる（押しっぱなしで、何試合も進まないように）
   const dropHeldKey=(event:KeyboardEvent<HTMLElement>)=>{if(isHeldKeyRepeat(event)&&(event.target as HTMLElement).closest('button'))event.preventDefault();};
-  return <main onKeyDown={dropHeldKey} style={listToast&&toastH?{paddingBottom:toastH}:undefined} className={'live-page flex flex-col bg-slate-100 p-3 text-slate-950'+(settling?' pointer-events-none':'')}><div className="live-top"><header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl bg-white px-5 py-1.5 shadow-sm"><h1 className="live-title text-xl font-black [overflow-wrap:anywhere]">{data.title.trim()||NO_TITLE}</h1><b ref={boutLabel} tabIndex={-1} className="live-list-focus flex flex-wrap items-baseline gap-x-3 rounded-lg px-1">{bout?<><span className="text-[40px] font-black leading-tight">{'第'+(data.currentBout+1)+'試合'}</span><span className="text-xl font-bold text-slate-700">{'全'+data.bouts.length+'試合'}</span></>:<span className="text-xl">全0試合</span>}</b>{savedBadge}</header>{hideSwitcher?null:switcher}</div>
+  return <main onKeyDown={dropHeldKey} style={listToast&&toastH?{paddingBottom:toastH}:undefined} className={'live-page flex flex-col bg-slate-100 p-3 text-slate-950'+(settling?' pointer-events-none':'')}><div className="live-top"><header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl bg-white px-5 py-1.5 shadow-sm">{data.entryConfig?.logo?<div className="flex min-w-0 items-center gap-3"><CkaLogo size={40}/>{title}</div>:title}<b ref={boutLabel} tabIndex={-1} className="live-list-focus flex flex-wrap items-baseline gap-x-3 rounded-lg px-1">{bout?<><span className="text-[40px] font-black leading-tight">{'第'+(data.currentBout+1)+'試合'}</span><span className="text-xl font-bold text-slate-700">{'全'+data.bouts.length+'試合'}</span></>:<span className="text-xl">全0試合</span>}</b>{savedBadge}</header>{hideSwitcher?null:switcher}</div>
     {online?null:<Caution title="ネットがつながっていません" className="live-list-noprint mt-2">{OFFLINE_NOTE}</Caution>}
     {list?<>{noticeBox}{remoteBox}</>:<>{undoBox}{remoteBox}</>}
     {!list&&classMix?<ErrorLine role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">{'クラスがちがう試合です（赤：'+(red?.fighterClass??'').trim()+'／青：'+(blue?.fighterClass??'').trim()+'）。ルールがちがうので、準備画面で組み合わせを確かめてください。試合は、このまま進められます。'}</ErrorLine>:null}
+    {!list&&weightWarn?<ErrorLine id="live-weight-warning" role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">{weightMixText(weightWarn)}</ErrorLine>:null}
     {!list&&samePerson?<ErrorLine role="status" mark="⚠ " className="live-mix live-list-noprint mt-2">同じ人かもしれません：赤と青が、同じ名前・同じジムです。準備画面で確かめてください。試合は、このまま進められます。</ErrorLine>:null}
     {list
       ? <ListView data={data} eventId={eventId} saving={saving} onOpen={openFromList} onWantSingle={setListWantsSingle} pressedIndex={savingRow} retryIndex={notice?.kind==='save'&&notice.via==='list'&&notice.index!==undefined?notice.index:null}/>
@@ -344,9 +358,9 @@ export default function PrivateLive() {
             {/* ルールは、2人の上に、大きな字で。クラスで決まる大事なことなので、遠くからでも読めるように */}
             {ruleText?<p className="live-rule mt-2 rounded-2xl border-4 border-slate-700 bg-white px-4 py-1 text-center text-xl font-black leading-snug text-slate-950 [overflow-wrap:anywhere] md:text-[1.75rem]"><span className="mr-2 text-[17px] font-bold text-slate-700">ルール</span><WithBreaks text={ruleText}/></p>:null}
             <section className="live-sec mt-2 grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_minmax(0,1fr)]">
-              <FighterCard side="red" fighter={red} musicEnabled={musicEnabled} problem={problemOf(red)}/>
+              <FighterCard side="red" fighter={red} musicEnabled={musicEnabled} commentShown={liveCommentShown(data,red)} problem={problemOf(red)} crowd={crowd}/>
               <div className="grid min-w-0 place-items-center rounded-2xl bg-white p-3 text-center"><div className="min-w-0 max-w-full"><p className="text-2xl font-black leading-none text-slate-600">VS</p><p className="mt-3 text-[clamp(1.75rem,3.5vw,2.75rem)] font-black leading-tight [overflow-wrap:anywhere]">{contract?<><span className="whitespace-nowrap">{contract.replace(/契約$/,'')}</span><wbr/><span className="whitespace-nowrap">契約</span></>:contractText}</p>{contract?<p className="mt-1 text-[17px] font-bold text-slate-700">（決めた体重）</p>:!bout.className?<ErrorLine className="mt-2 text-left">体重が入っていません（準備画面で入れてください）</ErrorLine>:null}</div></div>
-              <FighterCard side="blue" fighter={blue} musicEnabled={musicEnabled} problem={problemOf(blue)}/>
+              <FighterCard side="blue" fighter={blue} musicEnabled={musicEnabled} commentShown={liveCommentShown(data,blue)} problem={problemOf(blue)} crowd={crowd}/>
             </section>
             {oneBout
               ? <div className="live-bottom mt-3 grid gap-2"><Hint className="text-center">この大会は1試合だけです</Hint>{prepLink('justify-center text-center')}</div>

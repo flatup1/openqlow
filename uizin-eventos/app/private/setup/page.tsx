@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, settingLines, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, settingLines, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
 import { isAppsScriptUrl, publicEntryHash } from '../../../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../../../core/classRules.ts';
+import { weightSettingsToParam } from '../../../core/weightClass.ts';
 import { formatDateInput } from '../../../core/dateInput.ts';
 import { readPrivateEvent } from '../../lib/privateStore.ts';
 import { isPastDate, isTitleReal } from '../logic.ts';
@@ -25,6 +26,8 @@ const SHEET_WINDOW = 'Googleのシートは新しいタブで開きます。こ�
 const VIEW_WINDOW = '新しいタブが開きます。見終わったら、ブラウザの上に並ぶタブの中の「' + PAGE_NAME + '」を押してもどります。';
 /** 作業1が終わったら、次の画面へ進むボタンの名前（見出しの文と、ボタンの文を同じ言葉にする） */
 const GO2_NAME = '「準備できました」と出た → 次へ';
+/** クラス分けが入る前の、いちばん古い版か（ACCEPTED_RECEPTION_BUILDS の先頭）。階級分けが入る前の版は、クラスは使える */
+const lacksClasses = (build: string): boolean => build === ACCEPTED_RECEPTION_BUILDS[0];
 const COPY_STEPS = 'パソコン：上の四角をクリックして、Ctrl を押しながら A（全部えらぶ）、つづけて Ctrl を押しながら C（コピー）。Macは Ctrl のかわりに ⌘（コマンド）キー。スマホ：四角を長く押して「コピー」。';
 const CARD_LABELS = ['作業1：Googleでコピーを作る', '作業2：「設定」タブに書く（B列の7つの行）', '作業3：メニュー「① 最初の設定」を押す', '作業4：「準備できました」と出るのを確かめる'];
 const OP_LABELS = ['操作1：Apps Scriptを開く', '操作2：「新しいデプロイ」を押す', '操作3：URLの「コピー」を押す'];
@@ -453,6 +456,8 @@ export default function SetupV3() {
     ? { stage: 'bad-settings', ok: false, message: 'シートの「設定」タブを直してください。' + configProblem }
     : baseDiagnosis;
   const classes = ping?.classMode ? ping.classes : undefined;
+  /** 階級分け（区分→階級）の表。「設定」タブの「階級分け」が「あり」で、読めたときだけ */
+  const weights = ping?.weightMode ? ping.weights : undefined;
   /** シートから読み取った6つの項目。空のものは、次へ進めない */
   // 手順3：締切や開催日が過ぎていたら、受付は終わっている。古いGoogleの版は「受付中」のまま答えてくるので、画面でも日にちを見る
   const closedLate = step === 3 && !!settingsDiagnosis && (settingsDiagnosis.stage === 'ready' || settingsDiagnosis.stage === 'need-open') && (deadlinePast || datePast);
@@ -548,8 +553,22 @@ export default function SetupV3() {
       window.setTimeout(() => { const box = key === 'line' ? lineBoxRef.current : liveBoxRef.current; box?.focus(); box?.select(); }, 0);
     }
   };
+  /** ひな形の文を、同じ画面のファイルから読む（外へは出ない） */
+  const loadTemplate = async (path: string): Promise<string> => { const r = await fetch(path); if (!r.ok) throw new Error(); return r.text(); };
   const fetchTemplate = async (key: string, path: string) => {
-    try { const r = await fetch(path); if (!r.ok) throw new Error(); await copy(key, await r.text()); } catch { setCopied(''); setCopyFailed(key); }
+    // Safariは、押した直後にしかコピーさせない。読み込みを待ってからだと、「コピーできていません」になる。
+    // 読み込み中の文を、先にクリップボードへ約束しておく（ClipboardItem に Promise を渡す）。使えない環境は、これまでのやり方
+    const Item = (window as unknown as { ClipboardItem?: new (items: Record<string, Promise<Blob>>) => ClipboardItem }).ClipboardItem;
+    if (Item && typeof navigator.clipboard?.write === 'function') {
+      window.clearTimeout(copyTimer.current);
+      try {
+        await navigator.clipboard.write([new Item({ 'text/plain': loadTemplate(path).then((text) => new Blob([text], { type: 'text/plain' })) })]);
+        setCopyFailed(''); setCopied(key); setCopiedAt(hhmm());
+        copyTimer.current = window.setTimeout(() => setCopied(''), 5000);
+        return;
+      } catch { /* 使えない・断られたときは、これまでのやり方で、もう一度 */ }
+    }
+    try { await copy(key, await loadTemplate(path)); } catch { setCopied(''); setCopyFailed(key); }
   };
   const download = () => {
     // URLがまだ無いのに書き出すと、読み込めない空のファイルができる。緑の「書き出しました」を出さない
@@ -625,6 +644,9 @@ export default function SetupV3() {
     if (ping.comment) h.set('c', ping.comment);
     // クラス分けがあるときは、その内容（名前・条件・ルール）も渡す。試合の準備の画面で、2つのクラスを選べるようにするため
     if (ping.classMode && ping.classes) h.set('cs', JSON.stringify(ping.classes));
+    // 階級分け（区分→階級の表）とロゴも渡す。試合の準備の画面で、区分・階級を選べるようにし、当日の画面にロゴを出すため
+    if (ping.weightMode && ping.weights) h.set('ws', weightSettingsToParam(ping.weights));
+    if (ping.logo) h.set('logo', 'on');
     return '#' + h.toString();
   })();
   const toRoster = '/private/?event=' + encodeURIComponent(eventId) + rosterHash;
@@ -896,15 +918,35 @@ export default function SetupV3() {
   const sheetRows: ReadonlyArray<readonly [string, string, string, string]> = [
     ['大会名', 'B2', 'write', '第3回 青空ジム大会'], ['開催日', 'B3', 'write', '2027年10月3日'], ['会場', 'B4', 'write', '○○体育館'], ['会場の地図URL', 'B5', 'skip', '書かなくてOK（空のままでいい）'],
     ['主催者名', 'B6', 'write', '○○ジム'], ['問い合わせ先', 'B7', 'write', '03-0000-0000'], ['申込締切', 'B8', 'write', '2027年9月20日'], ['入場曲', 'B9', 'write', 'あり か なし を▼から選ぶ'],
-    ['学年', 'B10', 'skip', '書かなくてOK（最初から入っています）'], ['年齢', 'B11', 'skip', '書かなくてOK（最初から入っています）'], ['意気込み', 'B12', 'skip', '書かなくてOK（最初から入っています）'],
+    ['学年', 'B10', 'skip', '書かなくてOK（はじめから「必須」が入っています）'], ['年齢', 'B11', 'skip', '書かなくてOK（はじめから「必須」が入っています）'], ['意気込み', 'B12', 'skip', '書かなくてOK（はじめから「必須」が入っています）'],
     ['クラス分け', 'B13', 'skip', '分けるときだけ「あり」（はじめは「なし」）'],
     ['（この下）', '', 'more', 'クラスの行が7つ続きます（B14〜B20）。はじめから入っています'],
+    ['階級分け', 'B21', 'skip', '分けるときだけ「あり」（はじめは「なし」）'],
+    ['ロゴ', 'B22', 'skip', '出すときだけ「あり」（はじめは「なし」）'],
+    ['（この下）', '', 'more', '区分の行が7つ（B23〜B29）続きます。はじめから入っています'],
   ];
   /** クラスが使えないGoogle側のとき（古いコピー・古い版）に出す黄色の注意。クラスを使わない大会には、関係ない */
   const classCaution = !ping ? null
     : ping.classRows === false ? <Caution className="mt-3" lead="このシートには、クラス分けの行がありません。"><p>クラスを使うときは、新しいひな形をもう一度コピーします（手順1）。クラスを使わないときは、このままで大丈夫です。</p></Caution>
-    : ping.build !== EXPECTED_RECEPTION_BUILD && stage !== 'old-build' ? <Caution className="mt-3" lead="このGoogleの版は、クラス分けに対応していません。"><p>クラスを使う大会は、ひな形をもう一度コピーするか、Apps Scriptで「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。クラスを使わないときは、このままで大丈夫です。</p></Caution>
+    // 階級分けが入る前の版は、クラスは使える。クラスの注意を出すのは、クラス分けが入る前の版だけ（階級分けの注意は、下の weightCaution）
+    : !lacksClasses(ping.build) ? null
+    : ping.build !== EXPECTED_RECEPTION_BUILD && stage !== 'old-build' ? <Caution className="mt-3" lead="このGoogleの版は、クラス分けに対応していません。"><p>クラスを使う大会は、ひな形をもう一度コピーするか、Apps Scriptで「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。クラスを使わないときは、このままで大丈夫です。</p><p>階級分けとロゴも、新しい版のシートで使えるようになります。</p></Caution>
     : null;
+  /** 階級分け・ロゴが使えないGoogle側のとき（古いコピー・古い版）に出す黄色の注意。使わない大会には、関係ない。止めない */
+  const weightCaution = !ping ? null
+    : ping.weightRows === false ? <Caution className="mt-3" lead="このシートには、階級分け・ロゴの行がありません。"><p>階級分け（体重で分けたグループ）やロゴを使うときは、新しいひな形をもう一度コピーします（手順1）。使わないときは、このままで大丈夫です。</p></Caution>
+    : !supportsWeightClasses(ping) && stage !== 'old-build' ? <Caution className="mt-3" lead="このシートは古い版で、階級分け・ロゴに対応していません。"><p>階級分け（体重で分けたグループ）やロゴを使う大会は、新しいひな形をもう一度コピーします（手順1）。いま使っているシートをそのまま使うときは、ジムの担当者が、そのシートの Apps Script のプログラムを新しい版に入れかえて、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。使わないときは、このままで大丈夫です。</p></Caution>
+    : null;
+  /** 読み取り欄の「階級分け」「ロゴ」の言葉。クラス分けの行と同じ作り（✓ できた／✕ 直す／⚠ このシートでは使えない／なし） */
+  const weightRowText = weights && !configProblem ? '✓ あり（' + weights.divisions.length + '区分）。申し込みページに出ます'
+    : ping?.weightMode && !ping.weights ? '✕ あり（でも、区分と階級の表を申し込みページに入れられません。シートの「設定」タブの「階級：…」の行を直して、「もう一度確かめる」を押します）'
+    : ping?.weightMode ? '✕ あり（でも、ほかの直しがあるので、まだ申し込みページに入れられません。上の「✕」の文のとおりに直します）'
+    : ping?.weightRows === false ? '⚠ このシートには、階級分けの行がありません'
+    : ping && !supportsWeightClasses(ping) ? '⚠ このシートは古い版で、階級分けに対応していません'
+    : 'なし（階級は分けません）';
+  const logoRowText = ping?.logo ? (configProblem ? 'あり（上の「✕」の文のとおりに直すと、申し込みページと当日の画面に出ます）' : '✓ あり（申し込みページと当日の画面に出ます）')
+    : ping?.weightRows === false || (ping && !supportsWeightClasses(ping)) ? '⚠ このシートでは、ロゴを使えません'
+    : 'なし（ロゴは出しません）';
   const musicText = ping?.music === true ? 'あり' : ping?.music === false ? 'なし' : '（シートにありません）';
   const modeText = (v?: string) => (v === 'required' ? '必ず書く' : v === 'off' ? '聞かない' : '書いても、書かなくてもOK');
 
@@ -1095,10 +1137,10 @@ export default function SetupV3() {
             <li>下の絵と同じ行の、右の列（B列）に書きます。C列に{WRITE_MARK}と書いてある7つの行です。</li>
           </ol>
           <p className="font-bold">この絵は見本です。B列の、{WRITE_MARK}と書いてある7つの行に書きます。</p>
-          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある7つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
+          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある7つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。階級分けとロゴの行も、そのあとに入っています。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
             <p aria-hidden="true" className="tos-pic-tag bg-slate-100 px-3 py-1">📷 Googleのシートの絵（ここには書けません）</p>
             <div aria-hidden="true" className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-400 bg-slate-100 font-bold"><div className="px-3 py-1">項目（A列）</div><div className="border-l-2 border-slate-400 px-3 py-1">値（B列）</div></div>
-            {sheetRows.map(([k, cell, kind, v]) => <div aria-hidden="true" key={k} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-300">
+            {sheetRows.map(([k, cell, kind, v], i) => <div aria-hidden="true" key={k + i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-300">
               <div className="bg-slate-100 px-3 py-2 font-bold">{k}</div>
               <div className={'border-l-2 border-slate-400 px-3 py-2 ' + (kind === 'write' ? 'tos-pic-yellow' : 'tos-pic-grey')}>{kind === 'write' ? <><span className="font-bold">✎ 書く（{cell}）</span><br />例）{v}</> : v}</div>
             </div>)}
@@ -1109,6 +1151,8 @@ export default function SetupV3() {
           <p>この大会でAクラス・Bクラスに分けるときだけ、表の下のほうの「クラス分け」（B13）を「あり」にします。はじめは「なし」です。クラスの名前・条件・ルールは、はじめから入っています。直したいときだけ書き換えます。</p>
           <Example>{DEFAULT_CLASS_SETTINGS.upper.name}：{DEFAULT_CLASS_SETTINGS.upper.condition.split('（')[0]}・{DEFAULT_CLASS_SETTINGS.upper.rule}。{DEFAULT_CLASS_SETTINGS.lower.name}：{DEFAULT_CLASS_SETTINGS.lower.condition.split('（')[0]}（初出場もここ）・{DEFAULT_CLASS_SETTINGS.lower.rule}。</Example>
           <p className="text-[17px] text-slate-700">（クラスの行は、新しいひな形をコピーしたときだけあります。古いコピーにはありません。そのときは、クラスなしで受け付けます）</p>
+          <p id="weights-howto">選手に区分と階級（階級＝体重で分けたグループ）を選んでもらうときだけ、「階級分け」を「あり」にします。申し込みページと当日の画面にロゴを出すときだけ、「ロゴ」を「あり」にします。どちらも、はじめは「なし」です。区分と階級の表は、はじめから入っています。直したいときだけ書き換えます。</p>
+          <p className="text-[17px] text-slate-700">（階級分け・ロゴの行も、新しいひな形をコピーしたときだけあります。古いコピーにはありません。そのときは、階級分け・ロゴなしで受け付けます）</p>
           <p>まちがえたり、書き忘れたりしても大丈夫です。次の画面で「ここを直してください」と教えます。</p>
         </StepCard>
 
@@ -1216,8 +1260,11 @@ export default function SetupV3() {
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">年齢</dt><dd className="break-words text-lg font-bold">{modeText(ping.age)}</dd></div>
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">意気込み</dt><dd className="break-words text-lg font-bold">{modeText(ping.comment)}</dd></div>
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">クラス分け</dt><dd className="break-words text-lg font-bold">{classes && !configProblem ? '✓ あり（' + classes.upper.name + '／' + classes.lower.name + '）。申し込みページに出ます' : ping.classMode ? '✕ あり（でも、クラスの内容を申し込みページに入れられません。シートの「設定」タブのクラスの欄を直して、「もう一度確かめる」を押します）' : ping.classRows === false ? '⚠ このシートには、クラスの行がありません' : 'なし（クラスは分けません）'}</dd></div>
+            <div id="read-weights" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">階級分け</dt><dd className="break-words text-lg font-bold">{weightRowText}</dd></div>
+            <div id="read-logo" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">ロゴ</dt><dd className="break-words text-lg font-bold">{logoRowText}</dd></div>
           </dl>
-          {classCaution}
+          {/* いちばん古い版のシートは、クラスも階級分けも使えない。直し方は同じ（ひな形をコピーし直す）なので、黄色は1つだけ */}
+          {classCaution ?? weightCaution}
           <p className="mt-3">違っていたら、シートの「設定」タブを直して、「もう一度確かめる」を押します。</p>
         </section> : null}
 
@@ -1286,7 +1333,9 @@ export default function SetupV3() {
         <section aria-labelledby="made-url" className="space-y-3 rounded-2xl border-2 border-slate-300 bg-white p-4">
           <h3 id="made-url" className="text-xl font-bold">選手に渡すURL</h3>
           {classes && !configProblem ? <OkLine>クラス分け：あり（{classes.upper.name}／{classes.lower.name}）。申し込みページに出ます。</OkLine> : null}
-          {classCaution}
+          {weights && !configProblem ? <OkLine>階級分け：あり（{weights.divisions.length}区分）。申し込みページに出ます。</OkLine> : null}
+          {ping?.logo && !configProblem ? <OkLine>ロゴ：あり。申し込みページと当日の画面に出ます。</OkLine> : null}
+          {classCaution ?? weightCaution}
           {urlReady ? <>
             {staleCopy ? <ErrorLine>先に送ったURLは古い内容です。新しいURLを送り直します。</ErrorLine> : null}
             {copyFailed === 'live' ? <ErrorLine>コピーできていません。</ErrorLine> : null}

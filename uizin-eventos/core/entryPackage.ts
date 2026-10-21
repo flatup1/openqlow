@@ -1,4 +1,5 @@
 import { normalizeClass, parseClassSettings, type ClassSettings } from './classRules.ts';
+import { weightChoiceError, weightSettingsToParam, weightsFromParam, type WeightSettings } from './weightClass.ts';
 
 export type EntryFighter = {
   id: string;
@@ -13,10 +14,13 @@ export type EntryFighter = {
   musicUrl: string;
   /** クラス（例：Aクラス）。クラスを使う大会だけ。個人情報ではない */
   fighterClass?: string;
+  /** 区分（例：中学生男子）と階級（例：37kg以下）。階級分けをする大会だけ。個人情報ではない */
+  division?: string;
+  weightClass?: string;
 };
 
 export type EntryFieldMode = 'off' | 'optional' | 'required';
-export type EntryFormConfig = { music: boolean; grade: EntryFieldMode; age: EntryFieldMode; comment: EntryFieldMode; /** クラスを使う大会の設定（シートの「設定」タブと同じ）。無いときは、クラスの欄を出さない */ classes?: ClassSettings };
+export type EntryFormConfig = { music: boolean; grade: EntryFieldMode; age: EntryFieldMode; comment: EntryFieldMode; /** クラスを使う大会の設定（シートの「設定」タブと同じ）。無いときは、クラスの欄を出さない */ classes?: ClassSettings; /** 階級分け（区分→階級）をする大会の設定。無いときは、区分・階級の欄を出さない */ weights?: WeightSettings; /** 申込ページと当日の画面に、ロゴを出す（シートの「設定」タブの「ロゴ」が「あり」） */ logo?: boolean };
 export const DEFAULT_ENTRY_CONFIG: EntryFormConfig = { music: false, grade: 'optional', age: 'optional', comment: 'optional' };
 
 export function entryConfigFromSearch(search: string): EntryFormConfig {
@@ -28,6 +32,9 @@ export function entryConfigFromSearch(search: string): EntryFormConfig {
   const config: EntryFormConfig = { music: params.get('music') === 'on', grade: mode('grade', 'optional'), age: mode('age', 'optional'), comment: mode('comment', 'optional') };
   const classes = classesFromParam(params.get('cs'));
   if (classes) config.classes = classes;
+  const weights = weightsFromParam(params.get('ws'));
+  if (weights) config.weights = weights;
+  if (params.get('logo') === 'on') config.logo = true;
   return config;
 }
 
@@ -40,6 +47,8 @@ export function classesFromParam(value: string | null | undefined): ClassSetting
 export function entryConfigSearch(config: EntryFormConfig): string {
   const params = new URLSearchParams({ music: config.music ? 'on' : 'off', grade: config.grade, age: config.age, comment: config.comment });
   if (config.classes) params.set('cs', JSON.stringify(config.classes));
+  if (config.weights) params.set('ws', weightSettingsToParam(config.weights));
+  if (config.logo) params.set('logo', 'on');
   return params.toString();
 }
 
@@ -84,6 +93,8 @@ export const ENTRY_HEADERS = [
 
 /** クラスを使う大会のときは、いちばん右に「クラス」の列を足す（古い形のファイルは今までどおり10列） */
 export const ENTRY_HEADERS_WITH_CLASS = [...ENTRY_HEADERS, 'クラス'] as const;
+/** 階級分けをする大会のときは、「クラス」のあとに「区分」「階級」の列を足す（クラスを使わない大会でも、「クラス」の列は空で付ける。列の順番を、Googleのシートと同じにするため） */
+export const ENTRY_HEADERS_WITH_WEIGHT = [...ENTRY_HEADERS_WITH_CLASS, '区分', '階級'] as const;
 
 function safeCell(value: string): string {
   const text = value.replace(/\r\n?/g, '\n').trim();
@@ -94,13 +105,14 @@ function csvCell(value: string): string {
   return `"${safeCell(value).replaceAll('"', '""')}"`;
 }
 
-export function entryCsv(fighters: EntryFighter[], withClass = false): string {
+export function entryCsv(fighters: EntryFighter[], withClass = false, withWeight = false): string {
   const rows = fighters.map((fighter) => [
     fighter.id, fighter.gym, fighter.name, fighter.grade, fighter.age,
     fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl,
-    ...(withClass ? [fighter.fighterClass ?? ''] : []),
+    ...(withClass || withWeight ? [fighter.fighterClass ?? ''] : []),
+    ...(withWeight ? [fighter.division ?? '', fighter.weightClass ?? ''] : []),
   ]);
-  return '\uFEFF' + [withClass ? ENTRY_HEADERS_WITH_CLASS : ENTRY_HEADERS, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(',')).join('\r\n') + '\r\n';
+  return '\uFEFF' + [withWeight ? ENTRY_HEADERS_WITH_WEIGHT : withClass ? ENTRY_HEADERS_WITH_CLASS : ENTRY_HEADERS, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(',')).join('\r\n') + '\r\n';
 }
 
 /** 「１７０」「65kg」「170 cm」を数にする。数字の形でなければ NaN（0x10・1e5 は数にしない）。全角の数字も読む */
@@ -142,4 +154,10 @@ export function entryClassError(fighter: EntryFighter, config: EntryFormConfig):
   if (!(fighter.fighterClass ?? '').trim()) return 'クラスを選んでください（' + names + '）。';
   if (!normalizeClass(fighter.fighterClass ?? '', config.classes)) return 'クラスは' + names + 'から選んでください。';
   return '';
+}
+
+/** 他のジム用の入力画面で、区分と階級を選ばせるときの検査。階級分けをしない大会は、何も言わない */
+export function entryWeightError(fighter: EntryFighter, config: EntryFormConfig): string {
+  if (!config.weights) return '';
+  return weightChoiceError(fighter.division ?? '', fighter.weightClass ?? '', config.weights);
 }

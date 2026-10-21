@@ -12,8 +12,8 @@ export type ClassSettings = { enabled: boolean; upper: ClassSide; lower: ClassSi
 /** Googleのシート「設定」タブの初期値と同じ（テストで一致を確認する）。 */
 export const DEFAULT_CLASS_SETTINGS: ClassSettings = {
   enabled: true,
-  upper: { name: 'Aクラス', condition: '3勝以上（例：3勝0敗、4勝、5勝2敗）', rule: '首相撲あり／膝蹴りあり／蹴り足キャッチ（ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）' },
-  lower: { name: 'Bクラス', condition: 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', rule: 'パンチとキックのみ' },
+  upper: { name: 'Aクラス', condition: '3勝以上（3勝以下でも、会長・指導者の許可があればAクラスに出られます）', rule: '首相撲5秒／蹴り足キャッチはワンアタック（キャッチ後に1回だけ攻撃できる）／ワンマッチは顔面への膝蹴り禁止' },
+  lower: { name: 'Bクラス', condition: 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', rule: '首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし' },
   upperMinWins: 3,
 };
 
@@ -221,10 +221,11 @@ export function boutClassWarning(red?: LocalFighter, blue?: LocalFighter): strin
   return 'クラスがちがいます（赤：' + r + '／青：' + b + '）。ルールがちがうので、組み合わせを確かめてください。';
 }
 
-/** ルールの長い文から、先頭の短い言い方だけを取る（「（」の前まで。80文字の説明を、注意の文に入れないため）。 */
+/** ルールの長い文から、（かっこの説明）だけを取りのぞく（80文字の説明を、注意の文に入れないため）。かっこの外の言葉は、後ろのものも残す。かっこが閉じていないときは、「（」の前まで。 */
 export function shortRule(rule: string): string {
-  const head = String(rule ?? '').split('（')[0].trim();
-  return (head || String(rule ?? '').trim()).slice(0, 40);
+  const full = String(rule ?? '').trim();
+  const head = full.replace(/（[^）]*）/g, '').split('（')[0].replace(/\s+/g, ' ').trim();
+  return (head || full).slice(0, 60);
 }
 
 /**
