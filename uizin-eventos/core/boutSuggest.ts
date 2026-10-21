@@ -1,5 +1,6 @@
 import { gymKey, type LocalBout, type LocalFighter, type LocalTournament } from './privateTournament.ts';
 import { classNameKey } from './classRules.ts';
+import { divisionKey } from './weightClass.ts';
 
 /*
  * Pure helpers for building bout cards. No I/O, no Date, no random.
@@ -44,11 +45,15 @@ function sameGym(a: LocalFighter, b: LocalFighter): boolean {
 /** How far (kg) a same-class partner may be before the class stops mattering. Same as the weight-gap caution. */
 export const CLASS_PREFER_GAP_KG = 5;
 
-const classOf = (c: Candidate): string => classNameKey(c.fighter.fighterClass ?? '');
+/** 同じ組にしたい印：クラス（A／B）・区分・階級を、順に並べたもの。どれも無い人は ''（組み方を変えない） */
+const classOf = (c: Candidate): string => {
+  const parts = [classNameKey(c.fighter.fighterClass ?? ''), divisionKey(c.fighter.division ?? ''), divisionKey(c.fighter.weightClass ?? '')];
+  return parts.some(Boolean) ? parts.join('|') : '';
+};
 
 /**
  * Pair neighbours in an already sorted list. Same gym: use the next different-gym fighter instead.
- * Class (A/B) is a PREFERENCE, never a split: when the nearest partner is of the other class, a same-class partner
+ * Class (A/B), division and weight class are a PREFERENCE, never a split: when the nearest partner is of the other class, a same-class partner
  * within CLASS_PREFER_GAP_KG is taken instead. Fighters without a class never change the pairing.
  */
 function pairNeighbours(list: Candidate[]): [Candidate, Candidate][] {

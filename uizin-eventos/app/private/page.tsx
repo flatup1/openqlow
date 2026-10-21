@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { boutWarnings, emptyTournament, gymKey, HARD_TEXT_LIMIT, importFighters, validateTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../../core/privateTournament.ts';
 import { suggestBouts } from '../../core/boutSuggest.ts';
 import { boutClassWarning, classLegend, DEFAULT_CLASS_SETTINGS } from '../../core/classRules.ts';
+import { weightTag } from '../../core/weightClass.ts';
 import { formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { bytesToArrayBuffer, decryptBackup, deletePrivateEvent, encryptBackup, listPrivateEvents, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, watchPrivateEvent, writePrivateEvent, type PrivateEventSummary } from '../lib/privateStore.ts';
 import { newEventId, normalizeEventId } from './eventId.ts';
 import {
   backupFileName, backupIsFresh, boutProblems, classTrouble, openLockReason, classChanged, classChoices, classifyRestoreError, classifySaveError, clockText, contractKg, decodeCsvBytes, decryptWithRetry, dropBlankBouts, entryConfigFromHash, eventListName, FALLBACK_ERROR,
-  describeClassChange, effectiveClassSettings, fromEventIdFromHash, gapLevel, heightWeightSwapped, importErrorParts, ImportProblem, importProblemKind, importKind, isBlankBout, isHalfBout, isPastDate, isTitleReal, looksLikeBackup, mergeKeepExisting, nextAction, normalizeImported, oldCopyText, overwriteBoxText,
-  photoErrorText, pickMarker, restoreBoxText, restoreLastRemoved, RESTORE_TEXT, sameExceptProgress, sameFighterExists, sameKey, saveErrorText, saveLine, saveReasonShort, saveReasonText, shortProblem, tidyClass, tooLong, useOtherBoxText, weightGap, weightMissing, weightUnreadable,
+  describeClassChange, describeWeightChange, effectiveClassSettings, fromEventIdFromHash, gapLevel, heightWeightSwapped, importErrorParts, ImportProblem, importProblemKind, importKind, isBlankBout, isHalfBout, isPastDate, isTitleReal, looksLikeBackup, mergeKeepExisting, nextAction, normalizeImported, oldCopyText, overwriteBoxText,
+  photoErrorText, pickMarker, restoreBoxText, restoreLastRemoved, RESTORE_TEXT, sameEntryConfig, sameExceptProgress, sameFighterExists, sameKey, saveErrorText, saveLine, saveReasonShort, saveReasonText, shortProblem, tidyClass, tidyWeight, tooLong, useOtherBoxText, weightChanged, weightChoiceTrouble, weightColumnNote, weightGap, weightMissing, weightMixAt, weightMixText, weightUnreadable,
   classNamesOf, excelCellText, isPhotoName, isRosterCsvName, isZipJunk, pickZipRoster, TEXT_LIMITS, zipEntryName,
   type FighterDiff, type Follow, type ImportFileKind, type NextKey, type RemovedBout, type SaveErrorKind, type SaveState,
 } from './logic.ts';
@@ -192,7 +193,7 @@ function PrivateAdmin() {
   const [copyState, setCopyState] = useState<'ok' | 'fail' | null>(null);
   const [conflict, setConflict] = useState(false);
   const [suggested, setSuggested] = useState<Set<string>>(() => new Set());
-  const [suggestNote, setSuggestNote] = useState<{ kind: 'warn' | 'ok'; text: string; ids: string[]; wide: number[]; noPartner: string; classMix?: number[] } | null>(null);
+  const [suggestNote, setSuggestNote] = useState<{ kind: 'warn' | 'ok'; text: string; ids: string[]; wide: number[]; noPartner: string; classMix?: number[]; weightMix?: number[] } | null>(null);
   const [ruleCopiedId, setRuleCopiedId] = useState('');
   const [fieldFocused, setFieldFocused] = useState(false);
   const [viewportShrunk, setViewportShrunk] = useState(false);
@@ -286,7 +287,7 @@ function PrivateAdmin() {
   const keyboardUp = fieldFocused && viewportShrunk;
   // 「この選手を追加」を押す前の入力と、直している途中の入力。保存の対象には、まだ入っていない
   const manualDirty = !isBlankFighterFormLocal(manual);
-  const editDirty = editingId !== null && (() => { const original = data.fighters.find((fighter) => fighter.id === editingId); return !!original && (EDIT_KEYS.some((k) => original[k] !== draft[k]) || classChanged(original, draft)); })();
+  const editDirty = editingId !== null && (() => { const original = data.fighters.find((fighter) => fighter.id === editingId); return !!original && (EDIT_KEYS.some((k) => original[k] !== draft[k]) || classChanged(original, draft) || weightChanged(original, draft)); })();
   const pendingInput = ready && !loadError && (manualDirty || editDirty);
   pendingInputRef.current = pendingInput;
   const line = saveLine({ conflict, saveState, dirty, everSaved, savedClock: clockText(data.updatedAt), pending: pendingInput });
@@ -382,8 +383,9 @@ function PrivateAdmin() {
         if (v && !value.venue.trim()) patch.venue = v;
         // 保存ずみの大会：シートの設定が、いま保存してある設定とちがうときは、だまって捨てない。黄色の注意で聞く（r2-126）
         if (saved) {
-          const fromSheet = entryConfigFromHash(hash), same = (a?: EntryFormConfig) => JSON.stringify({ ...(a ?? DEFAULT_ENTRY_CONFIG), classes: a?.classes ?? null });
-          if (fromSheet && same(fromSheet) !== same(value.entryConfig)) sheetNew = fromSheet;
+          const fromSheet = entryConfigFromHash(hash);
+          // クラス分け・階級分け・ロゴまで見て、ちがうときだけ聞く（sameEntryConfig）
+          if (fromSheet && !sameEntryConfig(fromSheet, value.entryConfig)) sheetNew = fromSheet;
         }
         if (!saved && value.entryConfig === undefined) {
           const google = entryConfigFromHash(hash);
@@ -617,13 +619,13 @@ function PrivateAdmin() {
   const onAck = useCallback((key: string) => setAcks((old) => new Set([...old, key])), []);
   const onFocusSide = useCallback((index: number, side: 'red' | 'blue') => { setTarget('bout-' + index + '-' + side); pendingJump.current = { id: 'bout-' + index + '-' + side }; setJumpTick((n) => n + 1); }, []);
   /** この人の「直す」欄を開いて、その欄へ移る（直している途中の人がいれば、先にそちらを終えてもらう） */
-  const editFighter = useCallback((id: string, key: FieldKey | 'fighterClass' = 'weight') => {
+  const editFighter = useCallback((id: string, key: FieldKey | 'fighterClass' | 'division' = 'weight') => {
     const person = dataRef.current.fighters.find((fighter) => fighter.id === id);
     if (!person) return;
     const open = editingRef.current;
     if (open && open !== id) {
       const original = dataRef.current.fighters.find((fighter) => fighter.id === open);
-      if (original && (EDIT_KEYS.some((k) => original[k] !== draftRef.current[k]) || classChanged(original, draftRef.current))) { setOtherEditErr(id); return; }
+      if (original && (EDIT_KEYS.some((k) => original[k] !== draftRef.current[k]) || classChanged(original, draftRef.current) || weightChanged(original, draftRef.current))) { setOtherEditErr(id); return; }
     }
     setOtherEditErr(null); setEditNote(null); setEditFixes({});
     setDraft({ ...person }); setEditingId(id); setListPref(true); setQuery('');
@@ -802,7 +804,7 @@ function PrivateAdmin() {
       if (result.blockedHeaders.length) { blocked = result.blockedHeaders; throw new ImportProblem('blocked'); }
       if(!result.fighters.length)throw new ImportProblem('empty');
       // 手で入れるときと同じ約束で、数字（全角・単位）・入場曲の空白・クラスの書き方を自動で直す。直せないものは、赤で知らせる
-      const tidied = normalizeImported(result.fighters, data.entryConfig?.classes);
+      const tidied = normalizeImported(result.fighters, data.entryConfig?.classes, data.entryConfig?.weights);
       const fighters = await Promise.all(tidied.fighters.map(async (fighter) => {
         const photoEntry = Object.entries(photos).find(([name]) => name.replace(/^photos\//, '').replace(/\.[^.]+$/, '') === fighter.id);
         if (!photoEntry) return fighter;
@@ -813,10 +815,11 @@ function PrivateAdmin() {
       }));
       // 前からいる人は黙って変えない。新しい人だけ足す。内容がちがう人は、押したときだけ書きかえる
       const current = dataRef.current.fighters;
-      const merge = mergeKeepExisting(current, fighters, { hasClassColumn: result.hasClassColumn });
+      const weightCols = { hasDivisionColumn: result.hasDivisionColumn, hasWeightClassColumn: result.hasWeightClassColumn };
+      const merge = mergeKeepExisting(current, fighters, { hasClassColumn: result.hasClassColumn, ...weightCols });
       setData((old) => {
         if (old.fighters === current) return merge.changed ? { ...old, fighters: merge.merged } : old;
-        try { return { ...old, fighters: mergeKeepExisting(old.fighters, fighters).merged }; } catch { return old; }
+        try { return { ...old, fighters: mergeKeepExisting(old.fighters, fighters, weightCols).merged }; } catch { return old; }
       });
       const same = merge.lookalike.length;
       const already = fighters.length - merge.added - same;
@@ -830,6 +833,8 @@ function PrivateAdmin() {
         if (merge.photosFilled > 0) text += '写真がなかった' + merge.photosFilled + '人には、写真を足しました。';
         if (merge.classesFilled > 0) text += 'クラスが空だった' + merge.classesFilled + '人に、クラスを足しました。';
         if (!result.hasClassColumn && current.some((fighter) => (fighter.fighterClass ?? '').trim())) text += 'このファイルにはクラスの列が無いので、今のクラスはそのままです。';
+        if (merge.weightsFilled > 0) text += '区分・階級が空だった' + merge.weightsFilled + '人に、区分・階級を足しました。';
+        text += weightColumnNote(current, result.hasDivisionColumn, result.hasWeightClassColumn);
       }
       // 前の大会の名簿が残っているかもしれないとき: 今の名簿に同じ管理番号の人が1人もいなくて、新しい人が足された
       const stale = current.length > 0 && already === 0 && same === 0 && merge.added > 0;
@@ -930,7 +935,7 @@ function PrivateAdmin() {
     }
     setManualProblems({});
     // クラスは、整えて入れる（空なら項目ごと無い）
-    const cleaned = tidyClass(result.fighter);
+    const cleaned = tidyWeight(tidyClass(result.fighter));
     if (sameFighterExists(dataRef.current.fighters, cleaned)) { setManualDup(cleaned); setManualNote(''); return; }
     addFighterNow(cleaned);
   };
@@ -956,9 +961,9 @@ function PrivateAdmin() {
     if (!original) return;
     const result = checkFighter(draft, entryConfig, 'edit');
     if (result.problems.length) { focusSoon('edit-' + editingId + '-' + result.problems[0].key); return; }
-    const next: LocalFighter = tidyClass({ ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl });
+    const next: LocalFighter = tidyWeight(tidyClass({ ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl }));
     setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === editingId ? next : item) }));
-    setEditNote({ id: editingId, text: [describeChange(original, next), describeClassChange(original, next)].filter(Boolean).join('、') });
+    setEditNote({ id: editingId, text: [describeChange(original, next), describeClassChange(original, next), describeWeightChange(original, next)].filter(Boolean).join('、') });
     setEditingId(null); setEditFixes({}); setOtherEditErr(null);
     focusSoon('edit-note-' + original.id, 'edit-btn-' + original.id);
   };
@@ -1032,7 +1037,9 @@ function PrivateAdmin() {
     const wide = added.map((bout, i) => ({ index: data.bouts.length + i, gap: gapOf(bout) })).filter((item) => (item.gap ?? 0) >= 5).map((item) => item.index);
     // 赤と青のクラスがちがう案（ルールがちがう）。止めないが、知らせる
     const classMix = added.map((bout, i) => (classMixAt(bout) ? data.bouts.length + i : -1)).filter((index) => index >= 0);
-    setSuggestNote({ kind: 'ok', ids: added.map((bout: LocalBout) => bout.id), wide, classMix, noPartner, text: 'おすすめの組み合わせを' + added.length + 'つ、いちばん下に足しました。' + (left > 0 ? 'のこり' + left + '人は、組む相手がいなかったので、まだ入っていません。' : '') });
+    // 赤と青の区分か階級がちがう案も、同じように知らせる
+    const weightMix = added.map((bout, i) => (weightMixAt(bout, byId) ? data.bouts.length + i : -1)).filter((index) => index >= 0);
+    setSuggestNote({ kind: 'ok', ids: added.map((bout: LocalBout) => bout.id), wide, classMix, weightMix, noPartner, text: 'おすすめの組み合わせを' + added.length + 'つ、いちばん下に足しました。' + (left > 0 ? 'のこり' + left + '人は、組む相手がいなかったので、まだ入っていません。' : '') });
     setFollow({ kind: 'review', n: 0 });
     pendingJump.current = { id: 'bout-' + data.bouts.length };
   };
@@ -1230,6 +1237,11 @@ function PrivateAdmin() {
   // クラスを使う大会か：受付でクラスを決めた、または名簿にクラスの人がいる。使うのに、クラスが入っていない人・決めたクラスにない人は、黄色で知らせる
   const classesOn = !!data.entryConfig?.classes?.enabled || rosterHasClass;
   const classIssues = classTrouble(data.fighters, classSettings, classesOn);
+  // 階級分け（区分→階級）：受付（シートの「設定」タブ）で決めた表があるときだけ、区分・階級を選ぶ欄と、入れかたの知らせを出す。無い大会は、今までどおり
+  const weights = data.entryConfig?.weights;
+  const weightIssues = weightChoiceTrouble(data.fighters, weights);
+  // シートの設定を入れる前の知らせで言う「クラス分け」「階級分け」「ロゴ」（階級分け・ロゴは、シートにあるときだけ言う）
+  const sheetExtra = ['クラス分け', sheetCfg?.weights ? '階級分け' : '', sheetCfg?.logo ? 'ロゴ' : ''].filter(Boolean).join('・');
   const dateOk = isCompleteDate(data.date);
   // 大会名を打っている途中（欄にカーソルがあり、まだ1文字）は、「名前が入った」にしない。黄色もチェックも、打ち終わる（欄から出る、または2文字になる）まで、欄にとどまる
   const titleHold = titleFocused && titleReal && data.title.trim().length < 2;
@@ -1254,11 +1266,13 @@ function PrivateAdmin() {
   const nowStep = doneList.findIndex((done) => !done);
   // 赤と青のクラスがちがう試合も、「気をつけたいところ」に数える（保存は止めない）
   const classMixAt = (bout: LocalBout): boolean => boutClassWarning(byId.get(bout.redId), byId.get(bout.blueId)) !== '';
-  const warnCount = data.bouts.reduce((sum, bout) => sum + boutWarnings(bout, data.fighters, data.bouts).length + (classMixAt(bout) ? 1 : 0), 0);
+  // 赤と青の区分か階級がちがう試合も、同じように数える（クラスのちがいとは、別の注意なので、別に数える）
+  const weightMix = (bout: LocalBout): boolean => weightMixAt(bout, byId);
+  const warnCount = data.bouts.reduce((sum, bout) => sum + boutWarnings(bout, data.fighters, data.bouts).length + (classMixAt(bout) ? 1 : 0) + (weightMix(bout) ? 1 : 0), 0);
   const fresh = nFighters === 0 && data.bouts.length === 0;
   const emptyStart = fresh && !titleReal;
   const title = titleReal ? data.title : 'まだ名前なし';
-  const firstWarn = data.bouts.findIndex((bout) => boutWarnings(bout, data.fighters, data.bouts).length > 0 || classMixAt(bout));
+  const firstWarn = data.bouts.findIndex((bout) => boutWarnings(bout, data.fighters, data.bouts).length > 0 || classMixAt(bout) || weightMix(bout));
   const datePreview = dateOk ? formatDateInput(data.date) : '';
   const missingW = weightMissing(data.fighters);
   const emptyW = missingW.filter((fighter) => fighter.weight.trim() === '');
@@ -1522,9 +1536,9 @@ function PrivateAdmin() {
         <p className="min-w-0 break-words text-lg font-bold"><span className="block min-[760px]:inline">いま開いている大会：</span><span className="block text-indigo-900 min-[760px]:inline">{title}</span><span className="hidden min-[760px]:inline">　</span><span className="whitespace-nowrap font-medium">選手{nFighters}人・試合{nonBlank === 0 ? 'なし' : nonBlank + 'つ'}</span>　<span className={cls('whitespace-nowrap', lineTone)}>{line.short}</span></p>
       </div>
       {sheetCfg ? <Caution role="status" className="mt-3">
-        <span>シートで決めた「選手に書いてもらうこと」や、クラス分けが、この大会に まだ入っていません。入れないと、クラスの名前や入場曲の欄が、ここに出ません。</span>
+        <span>シートで決めた「選手に書いてもらうこと」や、{sheetExtra}が、この大会に まだ入っていません。入れないと、クラスの名前や入場曲{sheetCfg.weights ? '、区分・階級' : ''}の欄が、ここに出ません。</span>
         <span className="mt-2 flex flex-col gap-3 sm:flex-row">
-          <button type="button" id="apply-sheet-config" onClick={() => { edit('entryConfig', sheetCfg); setSheetCfg(null); setTopNotes((old) => [...old.filter((n) => n.id !== 'google-config'), { id: 'google-config', kind: 'info', text: 'シートで決めた「選手に書いてもらうこと」とクラス分けを入れました。まだ保存していません。' }]); }} className={cls(btn.base, btn.outline)}>シートの設定を入れる</button>
+          <button type="button" id="apply-sheet-config" onClick={() => { edit('entryConfig', sheetCfg); setSheetCfg(null); setTopNotes((old) => [...old.filter((n) => n.id !== 'google-config'), { id: 'google-config', kind: 'info', text: 'シートで決めた「選手に書いてもらうこと」と' + sheetExtra + 'を入れました。まだ保存していません。' }]); }} className={cls(btn.base, btn.outline)}>シートの設定を入れる</button>
           <button type="button" id="skip-sheet-config" onClick={() => setSheetCfg(null)} className={cls(btn.base, btn.outline)}>入れない（このままにする）</button>
         </span>
       </Caution> : null}
@@ -1628,7 +1642,7 @@ function PrivateAdmin() {
 
             <Fold title={<span>選手に書いてもらうこと <Chip tone="slate">申し込みページは変わりません</Chip></span>} className="border-slate-300">
               <p className="tos-danger  font-bold"><span aria-hidden="true">✕ </span>ここを変えても、Googleの申し込みページは変わりません。</p>
-              <p className="mt-2 max-w-[38em] font-medium">いつも書いてもらうもの：名前・ジム名・写真・身長・体重・戦績{entryConfig.classes ? '・クラス（' + entryConfig.classes.upper.name + 'か' + entryConfig.classes.lower.name + '）' : ''}</p>
+              <p className="mt-2 max-w-[38em] font-medium">いつも書いてもらうもの：名前・ジム名・写真・身長・体重・戦績{entryConfig.classes ? '・クラス（' + entryConfig.classes.upper.name + 'か' + entryConfig.classes.lower.name + '）' : ''}{entryConfig.weights ? '・区分と階級（階級＝体重で分けたグループ）' : ''}</p>
               <p className="mt-1 max-w-[38em] text-[17px] font-medium text-slate-800">ここで変えるのは、この画面の「1人ずつ入れる」と、他のジム用の入力画面です。</p>
               <div className="mt-4 space-y-5">
                 <div role="group" aria-labelledby="music-label">
@@ -1758,8 +1772,9 @@ function PrivateAdmin() {
                   {classList.length === 0
                     ? <div className="mb-4"><button type="button" onClick={() => setClassOptIn(true)} className={cls(btn.base, btn.outline, 'w-full sm:w-auto')}>クラスも入れる（{DEFAULT_CLASS_SETTINGS.upper.name}・{DEFAULT_CLASS_SETTINGS.lower.name}）</button></div>
                     : classOptIn && !rosterHasClass ? <OkLine className="mb-4">クラスを入れられます</OkLine> : null}
-                  <FighterFields value={manual} config={entryConfig} prefix="manual" problems={manualProblems} fixes={manualFixes} classOptions={classList} classSettings={classSettings}
+                  <FighterFields value={manual} config={entryConfig} prefix="manual" problems={manualProblems} fixes={manualFixes} classOptions={classList} classSettings={classSettings} weights={weights}
                     onClassChange={(v) => { setManual((old) => ({ ...old, fighterClass: v })); setManualNote(''); setManualDup(null); }}
+                    onWeightChange={(d, w) => { setManual((old) => ({ ...old, division: d, weightClass: w })); setManualNote(''); setManualDup(null); }}
                     onChange={(k, v) => { setManual((old) => ({ ...old, [k]: v })); clearManualKey(k); setManualNote(''); setManualDup(null); }}
                     onBlurField={(k) => fixFieldOf(manual, k, setManual, setManualFixes, (fn) => setManualProblems(fn))} />
                   <button type="button" onClick={addManual} className={cls(btn.base, btn.outlineBig, 'mt-4 w-full sm:w-auto')}>この選手を追加</button>
@@ -1787,6 +1802,9 @@ function PrivateAdmin() {
                   {classIssues.blank.length + classIssues.unknown.length > 0 ? <Caution role="status">
                     クラスが入っていない／読めない人：{classIssues.blank.length + classIssues.unknown.length}人（{[...classIssues.blank, ...classIssues.unknown].slice(0, 3).map((f) => who(f)).join('、')}{classIssues.blank.length + classIssues.unknown.length > 3 ? ' ほか' : ''}）。クラスの入っていない人は、ちがうクラスの試合かどうか、確かめられません。
                     <span className="mt-2 flex"><button type="button" onClick={() => editFighter([...classIssues.blank, ...classIssues.unknown][0].id, 'fighterClass')} className={cls(btn.base, btn.outline)}>その人を直す</button></span></Caution> : null}
+                  {weightIssues.blank.length + weightIssues.unknown.length > 0 ? <Caution id="weight-trouble" role="status">
+                    区分・階級が入っていない／設定にない人：{weightIssues.blank.length + weightIssues.unknown.length}人（{[...weightIssues.blank, ...weightIssues.unknown].slice(0, 3).map((f) => who(f)).join('、')}{weightIssues.blank.length + weightIssues.unknown.length > 3 ? ' ほか' : ''}）。保存はできます。ただし、区分・階級がちがう試合かどうか、確かめられません。
+                    <span className="mt-2 flex"><button type="button" onClick={() => editFighter([...weightIssues.blank, ...weightIssues.unknown][0].id, 'division')} className={cls(btn.base, btn.outline)}>その人を直す</button></span></Caution> : null}
                   {dupGroups.length ? <Caution role="status">
                     <span className="block">同じ名前とジムの人が{dupGroups.length}組います：{dupGroups.slice(0, 3).map(([, list]) => list[0].name + '（' + (list[0].gym || 'ジム名なし') + '・番号 ' + list.map((f) => shorten(f.id, 8)).join(' と ') + '）').join('、')}{dupGroups.length > 3 ? ' ほか' : ''}。同じ人なら、片方を「消す」で消します。</span>
                     <span className="mt-2 flex flex-wrap gap-2">
@@ -1821,14 +1839,16 @@ function PrivateAdmin() {
                         <p className="text-lg font-bold">{fighter.name}</p>
                         <p className="text-[17px] font-medium">{fighter.gym}</p>
                         {fighter.fighterClass ? <p className="mt-1 min-w-0"><Chip tone="slate">クラス：{fighter.fighterClass}</Chip></p> : null}
+                        {weightTag(fighter) ? <p data-weight-chip="1" className="mt-1 min-w-0"><Chip tone="slate">区分・階級：{weightTag(fighter)}</Chip></p> : null}
                         <p className="text-[17px] font-medium">{kgText(fighter.weight)}{fighter.record ? '・' + fighter.record : ''}</p>
                         {!fighter.photoDataUrl ? <p className="mt-1"><Chip tone="slate">写真：あとでOK</Chip></p> : null}
                         {dupIds.has(fighter.id) ? <p className="mt-1"><Chip tone="amber">⚠ 同じ名前の人がいます</Chip></p> : null}
                       </div>
                     </div>
                     {editing ? <div className="mt-3 space-y-3 border-t-2 border-slate-200 pt-3">
-                      <FighterFields value={draft} mode="edit" config={entryConfig} prefix={'edit-' + fighter.id} problems={editProblems} fixes={editFixes} classOptions={classList} classSettings={classSettings} alsoShow={(['grade', 'age', 'comment', 'musicUrl'] as const).filter((k) => String(fighter[k]).trim() !== '')}
+                      <FighterFields value={draft} mode="edit" config={entryConfig} prefix={'edit-' + fighter.id} problems={editProblems} fixes={editFixes} classOptions={classList} classSettings={classSettings} weights={weights} alsoShow={(['grade', 'age', 'comment', 'musicUrl'] as const).filter((k) => String(fighter[k]).trim() !== '')}
                         onClassChange={(v) => setDraft((old) => ({ ...old, fighterClass: v }))}
+                        onWeightChange={(d, w) => setDraft((old) => ({ ...old, division: d, weightClass: w }))}
                         onChange={(k, v) => { setDraft((old) => ({ ...old, [k]: v })); setEditFixes((old) => { if (!old[k]) return old; const next = { ...old }; delete next[k]; return next; }); }}
                         onBlurField={(k) => fixFieldOf(draft, k, setDraft, setEditFixes)} />
                       <div className="flex flex-wrap items-start gap-3">
@@ -1906,7 +1926,7 @@ function PrivateAdmin() {
               {unplaced.length >= 2 ? <div className="min-w-0 space-y-2">
                 <Caution role="note">おすすめは、コンピューターが作った下書き（案）です。使う前に、1つずつ見てください。</Caution>
                 <button type="button" onClick={makeSuggestion} className={cls(btn.base, btn.outlineBig, 'text-balance')}>おすすめの組み合わせを自動で作る</button>
-                <Soft>体重が近い人どうしを、2人ずつ組みます（体重差5kg以内に同じクラスの人がいれば、その人を先に）。まだ試合に入っていない人を、まとめて組みます。</Soft>
+                <Soft>体重が近い人どうしを、2人ずつ組みます（体重差5kg以内に同じクラスの人がいれば、その人を先に）。{unplaced.some((fighter) => weightTag(fighter) !== '') ? '区分・階級が入っている人は、同じ区分・階級の人も先に探します。' : ''}まだ試合に入っていない人を、まとめて組みます。</Soft>
               </div> : null}
             </div>
             {suggestNote ? <div className="space-y-2">
@@ -1915,6 +1935,10 @@ function PrivateAdmin() {
               {suggestNote.classMix?.length ? <div className="space-y-2">
                 <ErrorLine role="status" mark="⚠ ">クラスがちがう組が{suggestNote.classMix.length}つあります（{suggestNote.classMix.map((i) => '第' + (i + 1)).join('・')}試合）。ルールがちがうので、ふつうは同じクラスの人どうしで組みます。</ErrorLine>
                 <button type="button" onClick={() => jump('bout-' + (suggestNote.classMix?.[0] ?? 0))} className={cls(btn.base, btn.outline)}>クラスがちがう試合へ</button>
+              </div> : null}
+              {suggestNote.weightMix?.length ? <div id="suggest-weight-mix" className="space-y-2">
+                <ErrorLine role="status" mark="⚠ ">{weightMixText(suggestNote.weightMix)}</ErrorLine>
+                <button type="button" onClick={() => jump('bout-' + (suggestNote.weightMix?.[0] ?? 0))} className={cls(btn.base, btn.outline)}>区分・階級がちがう試合へ</button>
               </div> : null}
               {suggestNote.wide.length ? <div className="space-y-2">
                 <Caution role="status">体重差が5kg以上の組が{suggestNote.wide.length}つあります（{suggestNote.wide.map((i) => '第' + (i + 1)).join('・')}試合）。少し差があります。心配なときは、選び直します。</Caution>
@@ -1942,10 +1966,10 @@ function PrivateAdmin() {
                   {rosterHasClass && classSettings ? <p className="mt-1 text-[17px] font-medium">{classLegend(classSettings)}</p> : null}
                   <ul className="mt-2 list-none space-y-1 p-0">{data.bouts.map((bout, index) => {
                     const red = byId.get(bout.redId), blue = byId.get(bout.blueId), kg = contractKg(red, blue);
-                    const classMix = classMixAt(bout);
+                    const classMix = classMixAt(bout), wMix = weightMix(bout);
                     return <li key={bout.id}><button type="button" onClick={() => jump('bout-' + index)} className="flex min-h-12 w-full min-w-0 items-center gap-2 rounded-lg border-2 border-slate-300 bg-white px-3 py-1 text-left text-[17px] font-medium break-words">
                       <b className="shrink-0">第{index + 1}試合</b>
-                      <span className="min-w-0 flex-1 break-words">{red?.name ?? '（赤まだ）'} vs {blue?.name ?? '（青まだ）'}{kg ? ' ・' + kg : ''}{classMix ? ' ⚠ クラスがちがいます' : ''}</span>
+                      <span className="min-w-0 flex-1 break-words">{red?.name ?? '（赤まだ）'} vs {blue?.name ?? '（青まだ）'}{kg ? ' ・' + kg : ''}{classMix ? ' ⚠ クラスがちがいます' : ''}{wMix ? ' ⚠ 区分・階級がちがいます' : ''}</span>
                     </button></li>;
                   })}</ul>
                 </div>
@@ -1988,7 +2012,7 @@ function PrivateAdmin() {
               </ul>
             </div> : null}
             {warnCount > 0 ? <Caution><span className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1">気をつけたいところが{warnCount}つあります。保存はできます。ただし、試合の前に、1つずつ確かめてください（体重差が大きい試合・クラスがちがう試合など）。</span>
+              <span className="min-w-0 flex-1">気をつけたいところが{warnCount}つあります。保存はできます。ただし、試合の前に、1つずつ確かめてください（体重差が大きい試合・クラスがちがう試合{data.bouts.some(weightMix) ? '・区分や階級がちがう試合' : ''}など）。</span>
               {firstWarn >= 0 ? <button type="button" onClick={() => jump('bout-' + firstWarn)} className={cls(btn.base, btn.outline)}>見直す：第{firstWarn + 1}試合へ</button> : null}
             </span></Caution> : null}
             {done4 ? <div className="space-y-3 rounded-2xl border-2 border-[#166534] bg-[#f0fdf4] p-4">

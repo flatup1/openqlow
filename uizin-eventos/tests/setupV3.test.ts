@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ACCEPTED_RECEPTION_BUILDS, diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isTemplateCopyLink, parsePing, parsePingText, pingUrl, templateCopyLink } from '../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isTemplateCopyLink, parsePing, parsePingText, pingUrl, settingLines, templateCopyLink } from '../core/setupV3.ts';
 import { publicEntryConfig, publicEntryHash, publicEntryReady } from '../core/publicEntry.ts';
 import { CLASS_LIMITS, DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { harness } from './helpers/gasV3Harness.ts';
@@ -165,14 +165,41 @@ test('クラス分け: 申込ページへ渡す設定にクラスが入り、読
   // 長すぎるURLの文は、いちばん長い欄を名前で言う。ここでは大会名（299字）がいちばん長いので、クラスのせいにしない
   assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: 文が長すぎて、選手に渡すURLに入りません。「大会名」（セル B2）を短くしてください。$/);});
 
-test('クラス分け: 古い版 3.20261004.4 も新しい版も受け付け、知らない版は古いと言う', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261010.5');
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5']);
+test('クラス分け・階級分け: 古い版 3.20261004.4・3.20261010.5 も新しい版も受け付け、知らない版は古いと言う', () => {
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261019.6');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6']);
   assert.equal(diagnose(ping({ build: '3.20261004.4' })).stage, 'need-open');
   assert.equal(diagnose(ping({ build: '3.20261004.4', accepting: true })).stage, 'ready');
   assert.equal(diagnose(ping({ build: '3.20261004.4', ready: false })).stage, 'not-setup');
   assert.equal(diagnose(ping({ build: '3.20261010.5', accepting: true })).stage, 'ready');
-  for (const build of ['3.0.0', '3.20261010.4', '']) assert.equal(diagnose(ping({ build })).stage, 'old-build');
+  assert.equal(diagnose(ping({ build: '3.20261019.6', accepting: true })).stage, 'ready');
+  for (const build of ['3.0.0', '3.20261010.4', '3.20261019.5', '']) assert.equal(diagnose(ping({ build })).stage, 'old-build');
   const old = entryConfigFromPing(ping({ build: '3.20261004.4', accepting: true }), endpoint, 'live');
   assert.equal('classes' in old, false);
+});
+
+test('settingLines：階級分け・ロゴ・区分の行の直し方は、本物のシートの文から作る。区分の行には、セルの番号を言わない（消されて番号がずれる）。同じ番号を2回言わない', () => {
+  const ON = { 階級分け: 'あり' };
+  const cases: [string, (h: ReturnType<typeof harness>) => void, (lines: { google: string; fixes: string[] }[]) => void][] = [
+    ['数字だけ', (h) => h.setSetting('階級：中学生男子', '37、-40'), (lines) => {
+      assert.equal(lines.length, 1); assert.match(lines[0].fixes[0], /「階級：中学生男子」：「37」は、以下なら「-37」、こえるなら「\+37」と書いてください（「設定」タブの、A列がその名前の行のB列）$/);
+      assert.ok(!/セル B2[3-9]/.test(lines[0].fixes[0]), '区分の行の番号は言わない');
+    }],
+    ['区分の行が1つも無い', (h) => { const rows = h.settingsSheet().rows; for (let i = rows.length - 1; i >= 0; i--) if (/^階級：/.test(rows[i][0])) rows.splice(i, 1); }, (lines) => {
+      assert.equal(lines.length, 1); assert.match(lines[0].fixes[0], /（セル B21）$/, '階級分け(B21)の番号は言ってよい。重ねて言わない。名前のない「階級：…」の行を、「A列がその名前の行」とは言わない'); assert.equal((lines[0].fixes[0].match(/B21/g) ?? []).length, 1);
+    }],
+    ['階級分けの値', (h) => h.setSetting('階級分け', 'たぶん'), (lines) => { assert.match(lines[0].fixes[0], /「階級分け」は、あり／なしのどれかにしてください.*セル B21/); }],
+    ['ロゴの値', (h) => h.setSetting('ロゴ', 'はい'), (lines) => { assert.match(lines[0].fixes[0], /「ロゴ」は、あり／なしのどれかにしてください.*セル B22/); }],
+    ['空', (h) => h.setSetting('階級：中学生男子', ''), (lines) => { assert.equal(lines.length, 1, '文の中の「。」で、2つに割れない'); assert.match(lines[0].fixes[0], /空です（階級を書くか、階級を選ばせない区分なら「なし」と書いてください）/); }],
+    ['読めるものが1つも無い', (h) => h.setSetting('階級：中学生男子', '、'), (lines) => { assert.equal(lines.length, 1, '文の中の「。」で、2つに割れない'); assert.match(lines[0].google, /階級が1つも読めません（例：-37、-40、\+60、無差別／階級を選ばせない区分なら「なし」と書きます）/); }],
+    ['区分の行が13こ', (h) => { for (let i = 1; i <= 6; i++) h.settingsSheet().rows.push(['階級：区分' + i, '-40', '']); }, (lines) => { assert.equal(lines.length, 1); assert.match(lines[0].fixes[0], /「階級：…」の行は12こまでです（いま13こ）（使わない区分の行を消します）$/, '名前のない言い方なので、「A列がその名前の行」とは言わない'); }],
+    ['区分の名前が同じ', (h) => h.settingsSheet().rows.push(['階級：中学生男子', '-37', '']), (lines) => { assert.equal(lines.length, 1); assert.match(lines[0].fixes[0], /同じ区分の名前が、2つあります（どちらかの名前を変えるか、1つ消してください）/); }],
+  ];
+  for (const [label, change, check] of cases) {
+    const h = harness(); h.ready(ON); h.call('openEntries'); change(h);
+    const problem = JSON.parse(h.call('doGet', { parameter: { action: 'ping' } }).text).settingsProblem as string;
+    assert.ok(problem, label + '：シートが直す所を言っている');
+    const lines = settingLines('シートの「設定」タブを直してください。' + problem);
+    check(lines);
+  }
 });

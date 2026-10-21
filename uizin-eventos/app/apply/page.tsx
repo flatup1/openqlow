@@ -5,6 +5,8 @@ import { classMismatch, CLASS_NEUTRAL_NOTE, suggestClass, suggestText } from '..
 import { formatDateInput } from '../../core/dateInput.ts';
 import { emailFormOk, entryErrors, lowerLinkHost, MUSIC_URL_FORM, phoneFormOk, stripInvisible, type EntryFighter } from '../../core/entryPackage.ts';
 import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
+import { findDivision, normalizeWeightClass, weightChoiceError, weightClassLabel } from '../../core/weightClass.ts';
+import { CkaLogo } from '../components/CkaLogo.tsx';
 import { photoToDataUrl } from '../lib/privateStore.ts';
 
 /*
@@ -17,7 +19,7 @@ import { photoToDataUrl } from '../lib/privateStore.ts';
   インディゴ塗り tos-main  = ふつうの主ボタン（1つの状態に1つ）
 */
 
-type Key = 'gym' | 'name' | 'height' | 'weight' | 'record' | 'fighterClass' | 'grade' | 'age' | 'comment' | 'musicUrl' | 'photo' | 'contactName' | 'contactPhone' | 'contactEmail' | 'consent';
+type Key = 'gym' | 'name' | 'height' | 'weight' | 'division' | 'weightClass' | 'record' | 'fighterClass' | 'grade' | 'age' | 'comment' | 'musicUrl' | 'photo' | 'contactName' | 'contactPhone' | 'contactEmail' | 'consent';
 type Tone = 'info' | 'ok' | 'warn' | 'error';
 type FieldErrors = Partial<Record<Key, string>>;
 type Flags = Partial<Record<Key, boolean>>;
@@ -35,8 +37,8 @@ const card = 'mt-5 rounded-3xl border-2 border-slate-300 bg-white p-4 sm:p-7';
 const greyBtn = 'min-h-12 rounded-xl border-2 border-slate-500 bg-white px-4 text-[1.0625rem] font-bold text-slate-900';
 const darkBtn = 'min-h-12 rounded-xl border-2 border-slate-900 bg-white px-4 text-[1.0625rem] font-bold text-slate-900';
 
-const SHORT: Record<Key, string> = { gym: 'ジム名', name: '選手名', height: '身長', weight: '体重', record: '戦績', fighterClass: 'クラス', grade: '学年', age: '年齢', comment: '意気込み', musicUrl: '入場曲のリンク', photo: '写真', contactName: 'お名前', contactPhone: '電話番号', contactEmail: 'メールアドレス', consent: '同意のチェック' };
-const NEXT_LABEL: Record<Key, string> = { gym: 'ジム名を入れる', name: '選手名を入れる', height: '身長を入れる', weight: '体重を入れる', record: '戦績を入れる', fighterClass: 'クラスを選ぶ', grade: '学年を入れる', age: '年齢を入れる', comment: '意気込みを入れる', musicUrl: '入場曲のリンクを入れる', photo: 'ここを押して写真をえらぶ', contactName: 'お名前を入れる', contactPhone: '電話番号を入れる', contactEmail: 'メールアドレスを入れる', consent: '最後にここにチェック' };
+const SHORT: Record<Key, string> = { gym: 'ジム名', name: '選手名', height: '身長', weight: '体重', division: '区分', weightClass: '階級', record: '戦績', fighterClass: 'クラス', grade: '学年', age: '年齢', comment: '意気込み', musicUrl: '入場曲のリンク', photo: '写真', contactName: 'お名前', contactPhone: '電話番号', contactEmail: 'メールアドレス', consent: '同意のチェック' };
+const NEXT_LABEL: Record<Key, string> = { gym: 'ジム名を入れる', name: '選手名を入れる', height: '身長を入れる', weight: '体重を入れる', division: '区分を選ぶ', weightClass: '階級を選ぶ', record: '戦績を入れる', fighterClass: 'クラスを選ぶ', grade: '学年を入れる', age: '年齢を入れる', comment: '意気込みを入れる', musicUrl: '入場曲のリンクを入れる', photo: 'ここを押して写真をえらぶ', contactName: 'お名前を入れる', contactPhone: '電話番号を入れる', contactEmail: 'メールアドレスを入れる', consent: '最後にここにチェック' };
 const TEXT_KEYS: Key[] = ['gym', 'name', 'height', 'weight', 'record', 'grade', 'age', 'comment', 'musicUrl', 'contactName', 'contactPhone', 'contactEmail'];
 
 /** 全角→半角にそろえ、見えない文字（向きの印・幅ゼロの空白など）を取る。これを通してから、ほかの決まりで調べる */
@@ -171,7 +173,7 @@ function problemFor(key: Key, nf: EntryFighter, contact: ContactNow, config: Pub
 }
 
 /** まとめて全部の欄を調べる。順番と文言のもとは、これまでの確認と同じ。形のまちがいは、欄ごとに具体的な文で上書きする。 */
-function validate(nf: EntryFighter, hasPhoto: boolean, config: PublicEntryConfig, contact: { name: string; phone: string; email: string; consent: boolean }, ready: boolean, emailOk: string, chosenClass: 'upper' | 'lower' | '' = '') {
+function validate(nf: EntryFighter, hasPhoto: boolean, config: PublicEntryConfig, contact: { name: string; phone: string; email: string; consent: boolean }, ready: boolean, emailOk: string, chosenClass: 'upper' | 'lower' | '' = '', division = '', weightClass = '') {
   const errors: string[] = [];
   const fields: FieldErrors = {};
   const put = (key: Key, text: string) => { if (!fields[key]) fields[key] = text; };
@@ -184,6 +186,11 @@ function validate(nf: EntryFighter, hasPhoto: boolean, config: PublicEntryConfig
   for (const key of TEXT_KEYS) {
     const p = problemFor(key, nf, { name: contact.name, phone: contact.phone, email: contact.email }, config);
     if (p) { if (!fields[key]) errors.push(p.text); fields[key] = p.text; }
+  }
+  // 階級分け（シートの設定が「あり」のときだけ）。区分→階級の順に選ぶ。選んでいないと送れない。階級のない区分（小学生以下など）は、階級を選ばなくてよい
+  if (config.weights) {
+    const picked = weightChoiceError(division, weightClass, config.weights);
+    if (picked) { errors.push(picked); put(picked.startsWith('区分') ? 'division' : 'weightClass', picked); }
   }
   // クラス分け（シートの設定が「あり」のときだけ）。選んでいないと送れない。戦績とちがっても、送れる
   if (config.classes?.enabled && !chosenClass) {
@@ -225,8 +232,8 @@ function OkLine({ id, children, className = '' }: { id?: string; children: React
   return <p id={id} className={'tos-ok text-[1.0625rem] ' + className}><span aria-hidden="true" className="tos-icon">✓</span>{children}</p>;
 }
 /** 灰色の「i」の案内。赤でも黄でもない、ただの説明（黄は「次はここ」と、ほんとうに気をつけることだけ） */
-function Note({ children, className = '', title }: { children: ReactNode; className?: string; title?: string }) {
-  return <div role="note" className={'tos-note text-[1.0625rem] ' + className}><span aria-hidden="true" className="tos-icon">i</span>{title ? <b>{title}：</b> : null}{children}</div>;
+function Note({ children, className = '', title, id, status = false }: { children: ReactNode; className?: string; title?: string; id?: string; status?: boolean }) {
+  return <div id={id} role={status ? 'status' : 'note'} className={'tos-note text-[1.0625rem] ' + className}><span aria-hidden="true" className="tos-icon">i</span>{title ? <b>{title}：</b> : null}{children}</div>;
 }
 function LockReason({ children }: { children: ReactNode }) {
   return <p className="tos-locked-reason mt-2"><span aria-hidden="true" className="tos-icon">🔒</span>{children}</p>;
@@ -312,6 +319,9 @@ export default function PublicApply() {
   const [consent, setConsent] = useState(false);
   /** クラス分け：選んだほう（'upper'＝上のクラス、'lower'＝下のクラス）。シートの設定が「なし」のときは、ずっと空 */
   const [chosenClass, setChosenClass] = useState<'upper' | 'lower' | ''>('');
+  /** 階級分け：選んだ区分（設定にある名前）と階級（保存する形。例：37kg以下）。リンクに階級分けが無いときは、ずっと空 */
+  const [division, setDivision] = useState('');
+  const [weightClass, setWeightClass] = useState('');
   const [message, setMessage] = useState('');
   const [tone, setTone] = useState<Tone>('info');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -478,12 +488,18 @@ export default function PublicApply() {
   const classes = config.classes?.enabled ? config.classes : undefined;
   const classSuggest = useMemo(() => (classes ? suggestClass(fighter.record, classes) : null), [classes, fighter.record]);
   const classMismatchText = useMemo(() => (classes && chosenClass ? classMismatch(fighter.record, classes[chosenClass].name, classes) : ''), [classes, chosenClass, fighter.record]);
-  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '']);
+  // 階級分け（シートの設定が「あり」のときだけ出る）。区分を選ぶと、その区分の階級が出る。階級のない区分（小学生以下など）は、階級の欄を出さない
+  const weights = config.weights?.enabled ? config.weights : undefined;
+  const pickedDivision = weights ? findDivision(division, weights) : undefined;
+  const needClass = !!pickedDivision && pickedDivision.classes.length > 0;
+  const noClass = !!pickedDivision && pickedDivision.classes.length === 0;
+  const classPicked = needClass && !!normalizeWeightClass(division, weightClass, weights);
+  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : [])]);
   const contactNow: ContactNow = { name: cname, phone, email };
-  const hasInput = [fighter.gym, fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl, contactName, contactPhone, contactEmail].some((v) => v.trim()) || Boolean(photo) || consent || Boolean(chosenClass);
+  const hasInput = [fighter.gym, fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl, contactName, contactPhone, contactEmail].some((v) => v.trim()) || Boolean(photo) || consent || Boolean(chosenClass) || Boolean(division);
   hasInputRef.current = hasInput;
   // 確認の画面は、中身が本当に変わったときだけ閉じる（前後の空白を消すだけの自動なおしでは、閉じない）
-  const reviewKey = JSON.stringify([trimAll(fighter.gym), trimAll(fighter.name), trimAll(fighter.grade), nf.age, nf.height, nf.weight, trimAll(fighter.record), trimAll(fighter.comment), nf.musicUrl, trimAll(contactName), phone, email, photo, classes ? chosenClass : '', consent]);
+  const reviewKey = JSON.stringify([trimAll(fighter.gym), trimAll(fighter.name), trimAll(fighter.grade), nf.age, nf.height, nf.weight, trimAll(fighter.record), trimAll(fighter.comment), nf.musicUrl, trimAll(contactName), phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), consent]);
   useEffect(() => {
     if (reviewingRef.current) say('内容を直したので、もう一度「入力内容を確認する →」を押してください。', 'warn');
     setReviewing(false);
@@ -539,6 +555,9 @@ export default function PublicApply() {
     if (tone === 'error' || tone === 'ok') setMessage('');
   };
   const change = (key: keyof EntryFighter, value: string) => { setFighter((old) => ({ ...old, [key]: value })); clearError(key as Key); };
+  /** 区分を変えたら、階級は空に戻す（前の区分の階級は、新しい区分に無いことがある） */
+  const changeDivision = (value: string) => { setDivision(value); setWeightClass(''); clearError('division'); clearError('weightClass'); };
+  const changeWeightClass = (value: string) => { setWeightClass(value); clearError('weightClass'); };
   /** 欄を出た時：前後の空白を消す。数字・電話・メール・曲のリンクは自動で直して、直したことを緑で見せる */
   const leave = (key: Key) => {
     setTouched((old) => ({ ...old, [key]: true }));
@@ -588,7 +607,9 @@ export default function PublicApply() {
     if (boxes[0]) focusField(boxes[0].key);
   };
 
-  const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight], ['record', !!nf.record],
+  const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight],
+    ...(weights ? [['division', !!pickedDivision] as [Key, boolean]] : []), ...(needClass ? [['weightClass', classPicked] as [Key, boolean]] : []),
+    ['record', !!nf.record],
     ...(classes ? [['fighterClass', !!chosenClass] as [Key, boolean]] : []),
     ...(config.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(config.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(config.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
     ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo], ['contactName', !!cname], ['contactPhone', !!phone], ['contactEmail', !!email], ['consent', consent]];
@@ -597,7 +618,7 @@ export default function PublicApply() {
     if (sendingRef.current) return;
     if (photoLoadingRef.current) { setReviewing(false); say('まだ送れません：写真を準備しています。写真が表示されてから押してください。', 'warn'); return; }
     if (confirmed && !reviewing && !resend) return;
-    const { errors, fields } = validate(nf, Boolean(photo), config, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass);
+    const { errors, fields } = validate(nf, Boolean(photo), config, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass, division, weightClass);
     if (errors.length) {
       setReviewing(false);
       setAttempted(true);
@@ -680,6 +701,7 @@ export default function PublicApply() {
   const deadlineUnclear = Boolean(config.deadline) && !deadlineInfo;
 
   const infoItems = [nf.gym, nf.name, nf.height, nf.weight, nf.record, photo,
+    ...(weights ? [pickedDivision?.name ?? ''] : []), ...(needClass ? [classPicked ? weightClass : ''] : []),
     ...(classes ? [chosenClass] : []),
     ...(config.grade === 'required' ? [nf.grade] : []), ...(config.age === 'required' ? [nf.age] : []), ...(config.comment === 'required' ? [nf.comment] : []), ...(config.music ? [nf.musicUrl] : [])].map(Boolean);
   const contactItems = [cname, phone, email, consent ? 'yes' : ''].map(Boolean);
@@ -762,6 +784,28 @@ export default function PublicApply() {
   const requiredExtra = [config.grade === 'required' ? gradeField() : null, config.age === 'required' ? ageField() : null, config.comment === 'required' ? commentField() : null];
   const optionalExtra = [config.grade === 'optional' ? gradeField() : null, config.age === 'optional' ? ageField() : null, config.comment === 'optional' ? commentField() : null].filter(Boolean);
 
+  // 階級分け（シートの設定が「あり」のときだけ出る）。ふつうの「選ぶ欄」を2つ：区分 → 階級。
+  // 区分を選ぶと、その区分の階級だけが出る。階級のない区分（小学生以下など）は、階級の欄のかわりに灰色の説明を出す。選んでいないと送れない（赤い ✕）
+  const divisionField = () => {
+    if (!weights) return null;
+    return <Field key="division" id="f-division" label="区分 必須" hint="出る区分を選んでください。区分によって、選べる階級（体重で分けたグループ）がちがいます。"
+      extra={noClass ? <Note id="f-weightClass-none" status className="mt-2">この区分には階級がありません。体重が近い人どうしで組みます。</Note> : undefined} {...fieldProps('division')}>
+      <select {...ids('division', { hint: true })} aria-required="true" className={look('division')} value={division} autoComplete="off" onChange={(e) => changeDivision(e.target.value)}>
+        <option value="">選んでください</option>
+        {weights.divisions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+      </select>
+    </Field>;
+  };
+  const weightClassField = () => {
+    if (!weights || !pickedDivision || !needClass) return null;
+    return <Field key="weightClass" id="f-weightClass" label="階級 必須" hint="体重に合う階級を選んでください。" {...fieldProps('weightClass')}>
+      <select {...ids('weightClass', { hint: true })} aria-required="true" className={look('weightClass')} value={weightClass} autoComplete="off" onChange={(e) => changeWeightClass(e.target.value)}>
+        <option value="">選んでください</option>
+        {pickedDivision.classes.map((c) => <option key={c} value={c}>{weightClassLabel(c)}</option>)}
+      </select>
+    </Field>;
+  };
+
   // クラス分け（シートの設定が「あり」のときだけ出る）。
   // 大きな2つの選択肢。それぞれの『すぐ下』に、条件とルールを出す。選ぶのは本人。目安（黄）と ちがい（赤）は、見せるだけで、送るのは止めない。
   const classNeutral = Boolean(classes && !classSuggest && nf.record && touched.record);
@@ -818,7 +862,7 @@ export default function PublicApply() {
     photoLoadingRef.current = false;
     goodPhotoRef.current = '';
     setFighter(blank()); setPhoto(''); setPhotoLoading(false); setPhotoError('');
-    setContactName(''); setContactPhone(''); setContactEmail(''); setConsent(false); setChosenClass('');
+    setContactName(''); setContactPhone(''); setContactEmail(''); setConsent(false); setChosenClass(''); setDivision(''); setWeightClass('');
     setFieldErrors({}); setNotes({}); setTouched({}); setEmailOk(''); setAttempted(false);
     setRequestId(''); setConfirmationPending(false); setReviewing(false);
     sentPayloadRef.current = '';
@@ -840,7 +884,7 @@ export default function PublicApply() {
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || ['checkbox', 'radio', 'file', 'button', 'submit'].includes(el.type)) return;
     e.preventDefault();
-    const list = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('input:not([type=file]):not([type=checkbox]):not([type=hidden]), textarea'));
+    const list = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('input:not([type=file]):not([type=checkbox]):not([type=hidden]), textarea, select'));
     const i = list.indexOf(el);
     if (i >= 0 && i < list.length - 1) list[i + 1].focus();
     else submit();
@@ -865,9 +909,23 @@ export default function PublicApply() {
   const showRow = (value: string) => endpointReady || Boolean(value);
 
   return <main className="tos-apply min-h-screen bg-slate-50 px-4 py-4 text-lg font-medium leading-relaxed text-slate-950 [color-scheme:light] sm:py-10"><div className="mx-auto w-full max-w-3xl tos-apply-wrap overflow-x-clip">
-    <header className="rounded-3xl bg-slate-900 p-4 text-white sm:p-8">
-      <div className="flex items-center justify-between gap-3">{statusLabel ? <p className={'rounded-full px-3 py-1 text-[1.0625rem] font-bold ' + (isTest || deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white/15')}>{isTest || deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}{statusLabel}</p> : <span />}<p aria-hidden="true" className="text-3xl">🥊</p></div>
-      <h1 className="mt-3 text-2xl font-black leading-tight [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1>
+    <header data-tos-hero="1" className="relative overflow-hidden rounded-3xl bg-[#07090d] p-4 text-white sm:p-8" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1.6px)', backgroundSize: '8px 8px' }}>
+      {/* かざり（読むものではない）：右上の、ななめの帯。せまい画面では、ボタンの行の高さまで。文字の上には、かさならない */}
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-12 w-16 overflow-hidden sm:h-44 sm:w-28">
+        <span className="absolute -top-6 right-6 block h-[260%] w-3 sm:right-14 sm:h-[180%] sm:w-7" style={{ background: 'linear-gradient(180deg,#f97316,#ec4899)', transform: 'skewX(-24deg)' }} />
+        <span className="absolute -top-6 right-2 block h-[260%] w-1.5 sm:right-6 sm:h-[180%] sm:w-3" style={{ background: '#f97316', transform: 'skewX(-24deg)' }} />
+      </div>
+      <div className="relative z-10">
+      <div className="sm:pr-28">
+        <div className="flex items-center justify-between gap-3 pr-12 sm:pr-0">{statusLabel ? <p className={'rounded-full px-3 py-1 text-[1.0625rem] font-bold ' + (isTest || deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white/15')}>{isTest || deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}{statusLabel}</p> : <span />}</div>
+        {config.logo
+          ? <div className="mt-3 flex items-center gap-3 sm:gap-4"><CkaLogo size={64} className="bg-white" /><h1 className="min-w-0 flex-1 text-2xl font-black leading-tight [overflow-wrap:anywhere] [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1></div>
+          : <h1 className="mt-3 text-2xl font-black leading-tight [overflow-wrap:anywhere] [text-wrap:balance] sm:text-4xl">{config.title || '大会の申し込み'}</h1>}
+        {dateInfo || statusLabel ? <div aria-hidden="true" className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-1">
+          {dateInfo ? <p className="whitespace-nowrap pr-3 font-black italic leading-none tracking-tight text-[clamp(2.75rem,14vw,4rem)] sm:text-[6rem]" style={{ color: '#f97316', background: 'linear-gradient(135deg,#fb923c 0%,#f97316 45%,#ec4899 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{dateInfo.m}.{dateInfo.d}</p> : null}
+          {statusLabel ? <p className="flex items-center gap-3 pb-1 text-2xl font-black italic tracking-wide sm:text-3xl"><span className="block h-8 w-1.5 shrink-0 bg-[#f97316]" />{isTest ? 'TEST' : deadlinePassed ? 'ENTRY CLOSED' : 'ENTRY OPEN'}</p> : null}
+        </div> : null}
+      </div>
       <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">{config.organizer ? '主催：' + config.organizer : '選手のみなさん、申し込みを待っています'}</p>
       {endpointReady ? <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">約3分で終わります</p> : null}
       {endpointReady || config.date || config.venue || config.deadline ? <dl className="mt-3 divide-y divide-white/20 rounded-2xl bg-white/10 px-3">
@@ -875,6 +933,7 @@ export default function PublicApply() {
         {showRow(config.venue) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">会場</dt><dd className="min-w-0 text-lg font-bold">{isVenueUrl(config.venueUrl) ? <a href={config.venueUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center underline underline-offset-4">{config.venue || '地図を開く'} ↗</a> : config.venue || '未定'}</dd></div> : null}
         {showRow(config.deadline) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">締切</dt><dd className="min-w-0 text-lg font-bold">{deadlineText ? <span className={'inline-block rounded-2xl px-3 py-0.5 ' + (deadlinePassed ? 'bg-red-100 text-red-900' : 'bg-white text-slate-950')}>{deadlinePassed ? <span aria-hidden="true" className="tos-icon">✕</span> : null}<span aria-hidden="true" className="tos-icon">⏰</span>申し込みは{deadlineText}</span> : '未定'}</dd></div> : null}
       </dl> : null}
+      </div>
     </header>
 
     {!endpointReady ? <div className="mt-4"><ErrorLine alert big><span>このページでは申し込めません</span><span className="mt-2 block text-[1.0625rem]">理由：リンクが古いか、途中で切れています</span><span className="mt-1 block text-[1.0625rem]">やること：主催者に「新しいリンクをください」と言う</span></ErrorLine>
@@ -903,6 +962,8 @@ export default function PublicApply() {
           {fighterField('name', '選手名 必須', <Note className="mt-2">保護者の名前ではなく、出る人の名前</Note>)}
           {fighterField('height', '身長（cm）必須', undefined, 'decimal')}
           {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}</>, 'decimal')}
+          {divisionField()}
+          {weightClassField()}
           {fighterField('record', '戦績 必須', nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : undefined)}
           {classField()}
           {requiredExtra}
@@ -942,7 +1003,7 @@ export default function PublicApply() {
       </section>
     </fieldset>
     <form ref={formRef} action={endpointReady ? config.endpoint : undefined} method="post" target="_self" className="hidden">
-      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: config.grade === 'off' ? '' : nf.grade, age: config.age === 'off' ? '' : nf.age, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', comment: config.comment === 'off' ? '' : nf.comment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: config.grade === 'off' ? '' : nf.grade, age: config.age === 'off' ? '' : nf.age, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', ...(weights ? { division, weightClass: needClass ? weightClass : '' } : {}), comment: config.comment === 'off' ? '' : nf.comment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
     </form>
     {reviewing ? <section aria-label="送る前の確認" className="my-6 rounded-3xl border-2 border-indigo-700 bg-white p-4 sm:p-6">
       <h2 ref={reviewHeadingRef} tabIndex={-1} className="scroll-mt-24 text-2xl font-black outline-none">送る前の確認</h2>
@@ -952,7 +1013,9 @@ export default function PublicApply() {
       <div className="mt-4 rounded-2xl border-2 border-slate-300 p-3"><dl><dt className="text-[1.0625rem] text-slate-600">大会</dt><dd className="break-words text-lg font-bold">{config.title}</dd></dl></div>
       <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">選手の情報</h3><button type="button" aria-label="選手の情報を直す" onClick={() => fix('gym')} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>
         <dl className="mt-2 grid gap-3">
-          {([['ジム名', nf.gym], ['選手名', nf.name], ['身長', nf.height ? nf.height + ' cm' : ''], ['体重', nf.weight ? nf.weight + ' kg' : ''], ['戦績', nf.record],
+          {([['ジム名', nf.gym], ['選手名', nf.name], ['身長', nf.height ? nf.height + ' cm' : ''], ['体重', nf.weight ? nf.weight + ' kg' : ''],
+            ...(weights ? [['区分', division], ['階級', noClass ? 'なし（体重が近い人どうしで組みます）' : weightClass ? weightClassLabel(weightClass) : '']] : []),
+            ['戦績', nf.record],
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
             ...(config.grade !== 'off' ? [['学年', nf.grade]] : []), ...(config.age !== 'off' ? [['年齢', nf.age]] : []), ...(config.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>

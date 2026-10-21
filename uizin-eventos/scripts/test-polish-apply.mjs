@@ -839,6 +839,67 @@ await scenario('P26', 'focus is not lost after removing a bout / a fighter or sa
   await ctx.close();
 });
 
+/* ───────────────────────── P27 the sheet's own default: 学年・年齢・意気込み are 必須; nothing else is asked ───────────────────────── */
+await scenario('P27', 'default form: only the minimal fields; 学年・年齢・意気込み required; three red lines; one 👉; the POST carries all three', [PHONE, DESKTOP], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor({ grade: 'required', age: 'required', comment: 'required' }));
+  const labels = await page.evaluate(() => [...document.querySelectorAll('label, legend')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean));
+  const want = ['ジム名 必須', '選手名 必須', '身長（cm）必須', '体重（kg）必須', '戦績 必須', '学年 必須', '年齢 必須', '意気込み 必須', '連絡先のお名前 必須'];
+  for (const w of want) check(labels.some((l) => l.startsWith(w.replace(/ 必須$/, ''))), 'the minimal field is asked: ' + w + ' (' + short(labels.join(' | '), 400) + ')');
+  for (const w of ['学年 必須', '年齢 必須', '意気込み 必須']) check((await page.getByLabel(w, { exact: true }).count()) === 1, 'the three fields are marked 必須: ' + w);
+  check((await page.locator('#f-division, #f-weightClass, #f-fighterClass, #f-musicUrl').count()) === 0, 'no 区分 / 階級 / クラス / 入場曲 field when the sheet did not turn them on');
+  const text = await bodyText(page);
+  check(!/書かなくてもOK（任意）/.test(text), 'no 「書かなくてもOK（任意）」 block when nothing is optional');
+  check(/入力 0\/13/.test(text), 'the counter starts at 入力 0/13 (6 info + 3 required + 4 contact; no class, no music) (' + short((text.match(/入力 \d+\/\d+/) || ['none'])[0], 40) + ')');
+  // fill everything except the three: the review button must show three red lines naming them, and exactly one yellow 👉
+  await fillAll(page);
+  await reviewBtn(page).click(); await settle(400);
+  const reds = (await redLines(page)).join(' | ');
+  for (const n of ['学年', '年齢', '意気込み']) check(new RegExp(n).test(reds), 'a red line names ' + n + ' when it is empty (' + short(reds, 300) + ')');
+  check((await nextMarks(page)).length === 1, 'exactly one 👉 次はここ (' + short((await nextMarks(page)).join(' | '), 200) + ')');
+  await page.getByLabel('学年 必須', { exact: true }).fill('中3');
+  await page.getByLabel('年齢 必須', { exact: true }).fill('15');
+  await page.getByLabel('意気込み 必須', { exact: true }).fill('全力でがんばります');
+  await reviewBtn(page).click(); await settle(500);
+  const review = await bodyText(page);
+  check(/中3/.test(review) && /15/.test(review) && /全力でがんばります/.test(review), 'the review screen shows 学年・年齢・意気込み');
+  await sendBtn(page).click(); await settle(900);
+  const post = ctx.__posts[0];
+  check(Boolean(post) && post.get('grade') === '中3' && post.get('age') === '15' && post.get('comment') === '全力でがんばります', 'the POST carries grade / age / comment (' + (post ? short([...post.entries()].filter(([k]) => ['grade', 'age', 'comment'].includes(k)).join(';'), 160) : 'no POST') + ')');
+  await ctx.close();
+});
+
+/* ───────────────────────── P28 the top band: big date, ENTRY OPEN / CLOSED / TEST, no sideways scroll, text never under the stripes ───────────────────────── */
+await scenario('P28', 'top band: date numerals, ENTRY OPEN / ENTRY CLOSED / TEST, 17px+, no sideways scroll at 320', [SMALL, PHONE, DESKTOP], async (vp) => {
+  const read = async (cfg) => {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor(cfg));
+    const info = await page.evaluate(() => {
+      const hero = document.querySelector('[data-tos-hero]');
+      const arts = [...hero.querySelectorAll('[aria-hidden="true"]')];
+      const small = [...hero.querySelectorAll('*')].filter((e) => e.children.length === 0 && (e.textContent || '').trim() && getComputedStyle(e).fontSize && parseFloat(getComputedStyle(e).fontSize) < 17 && e.getBoundingClientRect().width > 0).map((e) => e.textContent.trim().slice(0, 20));
+      const stripe = hero.firstElementChild.getBoundingClientRect();
+      const h1 = hero.querySelector('h1').getBoundingClientRect(), pill = hero.querySelector('p').getBoundingClientRect();
+      return { text: hero.innerText.replace(/\s+/g, ' '), artCount: arts.length, small, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, heroRight: Math.round(hero.getBoundingClientRect().right), h1Over: h1.right > stripe.left && h1.top < stripe.bottom, pillOver: pill.right > stripe.left && pill.top < stripe.bottom };
+    });
+    await ctx.close();
+    return info;
+  };
+  const open = await read({ date: '2026年12月20日' });
+  check(/12\.20/.test(open.text) && /ENTRY OPEN/.test(open.text) && /申し込み受付中/.test(open.text), 'P28 open: the big 12.20, ENTRY OPEN and the plain-words 申し込み受付中 are all there (' + short(open.text, 120) + ')');
+  check(open.sw === open.cw, 'P28 open: no sideways scroll (' + open.sw + ' vs ' + open.cw + ')');
+  check(open.small.length === 0, 'P28 open: nothing in the band is under 17px (' + open.small.join(',') + ')');
+  check(!open.h1Over && !open.pillOver, 'P28 open: the title and the status pill never sit under the stripes');
+  const closed = await read({ date: '2026年12月20日', deadline: '2020-01-01' });
+  check(/ENTRY CLOSED/.test(closed.text) && !/ENTRY OPEN/.test(closed.text) && /締切を過ぎています/.test(closed.text), 'P28 after the deadline: ENTRY CLOSED and the plain words 締切を過ぎています (' + short(closed.text, 120) + ')');
+  const test = await read({ date: '2026年12月20日', mode: 'test' });
+  check(/\bTEST\b/.test(test.text) && !/ENTRY OPEN/.test(test.text) && /テスト用画面（本番ではありません）/.test(test.text), 'P28 test mode: TEST and the plain words, never ENTRY OPEN');
+  const noDate = await read({ date: '' });
+  check(!/\d+\.\d+/.test(noDate.text.replace(/\s/g, '').replace(/約3分/, '')) && /ENTRY OPEN/.test(noDate.text), 'P28 no date: no big numerals, ENTRY OPEN stays');
+  const long = await read({ title: '千葉県キックボクシング協会アマチュア大会と、とてもとても長い大会の名前がつづきます'.repeat(2), date: '2026年12月20日' });
+  check(long.sw === long.cw && !long.h1Over, 'P28 a very long title wraps inside the band: no sideways scroll, not under the stripes');
+});
+
 /* ───────────────────────── done ───────────────────────── */
 await settle(100);
 for (const e of externals) failures.push('[' + e.scenario + '] EXTERNAL request attempted: ' + e.method + ' ' + e.url);

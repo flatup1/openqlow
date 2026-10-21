@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CELL, CLASS_CELL, diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, isOldBrowser, parsePing, settingLines } from '../core/setupV3.ts';
+import { CELL, CLASS_CELL, WEIGHT_CELL, diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, isOldBrowser, parsePing, settingLines } from '../core/setupV3.ts';
 import { importFighters } from '../core/privateTournament.ts';
 import { harness } from './helpers/gasV3Harness.ts';
 
@@ -153,21 +153,22 @@ test('設定タブ: 書く7つのB列に色（#fff2a8）と「✎ ここに書�
   assert.equal(sheet.frozenRows, 1);
   assert.ok(!PAGE_TEXT.includes('黄色'), '画面の文に「黄色」という色の名前を使わない（印の名前で言う）');
   assert.match(PAGE, /C列に\{WRITE_MARK\}と書いてある7つの行/);
-  // 画面のセル番号（B2〜B20）は、シートの行の順番と同じ
-  const cells: Record<string, string> = { ...CELL, ...CLASS_CELL };
-  labels.forEach((label: string, i: number) => assert.equal(cells[label], 'B' + (i + 2), label));
+  // 画面のセル番号（B2〜B29）は、シートの行の順番と同じ
+  const cells: Record<string, string> = { ...CELL, ...CLASS_CELL, ...WEIGHT_CELL };
+  // 番号を持つのは、消されない行まで（区分の行「階級：…」は、主催者が消せるので、番号を持たない）
+  labels.forEach((label: string, i: number) => { if (/^階級：/.test(label)) assert.equal(cells[label], undefined, label + ' は消せる行：番号を持たない'); else assert.equal(cells[label], 'B' + (i + 2), label); });
 });
 
 /* ───────── r1-61：古い設定タブの自己修復と、画面の黄色の注意 ───────── */
 
-test('古い設定タブ: クラスの8行だけ、いちばん下に足す。いまのマスは書き換えない。足りないときだけ ping が知らせる', () => {
+test('古い設定タブ: クラスの8行と、階級分け・ロゴの行だけ、いちばん下に足す。いまのマスは書き換えない。足りないときだけ ping が知らせる', () => {
   const h = harness(); h.call('onOpen');
   const sheet = h.settingsSheet();
   sheet.rows.length = 12; sheet.rows[1][1] = '私の大会';
   h.call('onOpen'); h.call('onOpen');
-  assert.equal(sheet.rows.length, 20, '8行足されて、2回目以降は増えない');
+  assert.equal(sheet.rows.length, 29, '17行（クラス8＋階級分け・区分7・ロゴ）足されて、2回目以降は増えない');
   assert.equal(sheet.rows[1][1], '私の大会');
-  assert.equal(sheet.rows[12][0], 'クラス分け'); assert.equal(sheet.rows[19][0], '上のクラスにする勝ち数');
+  assert.equal(sheet.rows[12][0], 'クラス分け'); assert.equal(sheet.rows[19][0], '上のクラスにする勝ち数'); assert.equal(sheet.rows[20][0], '階級分け'); assert.equal(sheet.rows[21][0], 'ロゴ'); assert.equal(sheet.rows[28][0], '階級：花道・男子（40歳以上）');
   h.fill();
   const old = harness(); old.call('onOpen'); old.fill(); old.call('setupTournament');
   old.settingsSheet().rows.length = 12;
@@ -295,7 +296,7 @@ test('URLの貼りまちがい: Apps Scriptの編集画面のURLは「最後ま�
 /* ───────── r1-72 / 150：保護のアポストロフィ ───────── */
 
 test('保護の「\'」: ZIPの players.csv に付いた守りの「\'」は、取り込みで外れて元の文字に戻る（本物の「\'」は残る）', () => {
-  const h = harness(); h.ready(); h.call('openEntries');
+  const h = harness(); h.ready({ 意気込み: '任意' }); h.call('openEntries');
   h.call('saveEntry_', h.params('live', { name: '-架空太郎', gym: '+架空ジム', record: '-', comment: '' }));
   h.call('saveEntry_', h.params('live', { name: "'ゆうた", gym: '架空ジム', record: '初試合' }));
   h.call('exportTournament');
@@ -333,7 +334,7 @@ test('設定タブの説明と画面の見本は、同じ例を使う（大会�
   assert.match(PAGE, /\['大会名', 'B2', 'write', '第3回 青空ジム大会'\]/, '画面の見本の絵も、同じ大会名の例');
   assert.ok(!hint('入場曲').includes('聞く'), '入場曲：「聞く」と書かない');
   assert.match(hint('入場曲'), /リンクを書いてもらうか/);
-  assert.match(hint('上のクラスのルール'), /ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい/, '例をコピーしても、ワンアタックの説明が消えない');
+  assert.match(hint('上のクラスのルール'), /ワンアタックはキャッチ後に1回だけ|ワンアタック（キャッチ後に1回だけ攻撃できる）/, '例をコピーしても、ワンアタックの説明が消えない');
 });
 
 /* ───────── r1-143：Workspace ───────── */
@@ -633,7 +634,7 @@ test('r2-64: 「設定」タブが空になっても、シートを開く・①�
   const h = harness(); h.call('onOpen');
   h.settingsSheet().rows.length = 0;
   h.call('onOpen');
-  assert.equal(h.settingsSheet().rows.length, 20, '見出し1行＋項目19行');
+  assert.equal(h.settingsSheet().rows.length, 29, '見出し1行＋項目28行');
   assert.deepEqual(h.rows('設定')[1].slice(0, 1), ['大会名']);
   assert.match(code(() => h.call('setupTournament')).message, /次の欄を入れてください/);
   const again = harness(); again.call('onOpen'); again.settingsSheet().rows.length = 0;
@@ -646,7 +647,7 @@ test('r2-64: 「設定」タブが空になっても、シートを開く・①�
 /* ───────── r2-67：lost-reply の再送 ───────── */
 
 test('r2-67: 保存のときの守りの「\'」・改行のちがいがあっても、同じ申込の再送は「変わった」と言われない', () => {
-  const h = harness(); h.ready(); h.call('openEntries');
+  const h = harness(); h.ready({ 意気込み: '任意' }); h.call('openEntries');
   const p = h.params('live', { record: '-', comment: '' , gym: '=ジム' });
   const receipt = h.call('saveEntry_', p);
   assert.equal(h.call('saveEntry_', p), receipt, '同じ内容の再送は、同じ受付番号');

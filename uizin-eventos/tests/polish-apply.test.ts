@@ -246,6 +246,15 @@ test('r2-2: 向きの印・幅ゼロの空白は、取り除く。それだけ�
   assert.ok(errors.includes('ジム名を入力してください。') && errors.includes('選手名を入力してください。'), '見えない文字だけの名前は「入っていない」');
   assert.deepEqual(entryErrors(fighter({ height: '\u200B170', weight: '\u202A60\u202C' }), true), [], '見えない文字つきの数字でも、数として読める');
 });
+test('必須（はじめの設定）：学年・年齢・意気込みが空だと、画面の検査が3つとも、名前を言って止める。見えない文字だけでも空。任意・なしでは止めない', () => {
+  const R = { music: false, grade: 'required', age: 'required', comment: 'required' } as const;
+  const empty = fighter({ grade: '', age: '', comment: '' });
+  assert.deepEqual(entryErrors(empty, true, R), ['学年を入力してください。', '年齢を入力してください。', '試合への意気込みを入力してください。']);
+  assert.deepEqual(entryErrors(fighter({ grade: '\u200B', age: '\u3000', comment: '\u200B\u200B' }), true, R), ['学年を入力してください。', '年齢を入力してください。', '試合への意気込みを入力してください。'], '見えない文字だけの欄は、空と同じ');
+  assert.deepEqual(entryErrors(fighter({ grade: '中3', age: '15', comment: 'がんばります' }), true, R), [], '3つ入れれば通る');
+  assert.deepEqual(entryErrors(fighter({ grade: '中3', age: 'abc', comment: 'がんばります' }), true, R), ['年齢を1〜120歳で入力してください。'], '必須でも、数字でない年齢は形のまちがいを言う');
+  for (const mode of ['optional', 'off'] as const) assert.deepEqual(entryErrors(empty, true, { music: false, grade: mode, age: mode, comment: mode }), [], mode + '：空でも止めない');
+});
 test('r2-2: 申し込みページは、電話・メール・数字・リンクの前に見えない文字を取る', () => {
   const page = read('app/apply/page.tsx');
   assert.match(page, /const nfkc = \(value: string\) => stripInvisible\(value\.normalize\('NFKC'\)\);/);

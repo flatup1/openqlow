@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { LocalTournament } from '../../../core/privateTournament.ts';
 import {
   EMPTY_LIST_MESSAGE, LAST_BOUT_LIST_NOTE, LIST_PAGE_SIZE, MUSIC_NEW_TAB, NO_MUSIC_DONE, NO_MUSIC_EVENT, PREP_LINK_NOTE, REOPEN_NOTE, boutNumberProblem, buildPageRows, clampPage, filterNote, jumpDoneText, liveMusicOn, musicLabel, nowModel, openWarning, pageButtonText, pageCount, pageJumpList, pageLabel, pageOfBout,
-  pagerState, parseBoutNumber, summarizeMusic, totalLabel,
+  pagerState, parseBoutNumber, summarizeMusic, totalLabel, weightMixText,
   type CornerModel, type RowModel,
 } from './listLogic.ts';
 import { Caution, ErrorLine, Hint, NextSlot, WithBreaks, cx } from './liveMarks.tsx';
@@ -46,7 +46,7 @@ function MusicChip({ corner }: { corner: CornerModel }) {
 
 function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: boolean }) {
   const look = LOOK[corner.side];
-  const label = corner.label + ' ' + corner.name + (corner.gym ? ' ' + corner.gym : '') + (corner.fighterClass ? ' ' + corner.fighterClass : '');
+  const label = corner.label + ' ' + corner.name + (corner.gym ? ' ' + corner.gym : '') + (corner.fighterClass ? ' ' + corner.fighterClass : '') + (corner.weightTag ? ' ' + corner.weightTag : '');
   return <div role="group" aria-label={label} className={'min-w-0 overflow-hidden rounded-xl border-[3px] bg-white ' + look.border}>
     <p className={'live-corner-band px-3 py-0.5 text-2xl font-black leading-snug min-[1600px]:text-[32px] ' + look.band}><span aria-hidden="true">{look.mark} </span>{corner.label}</p>
     <div className="p-2">
@@ -55,7 +55,11 @@ function Corner({ corner, musicEnabled }: { corner: CornerModel; musicEnabled: b
         <div className="min-w-0 flex-1">
           <p className={'text-[28px] font-black leading-tight [overflow-wrap:anywhere] ' + (corner.present ? 'text-slate-950' : 'text-slate-600')}>{corner.name}</p>
           {corner.gym ? <p className="text-[17px] font-bold leading-snug text-slate-700 [overflow-wrap:anywhere]">{corner.gym}</p> : null}
-          {corner.fighterClass ? <p className="mt-0.5"><span className="inline-block rounded-full border-2 border-slate-700 bg-white px-3 text-[17px] font-black text-slate-900 [overflow-wrap:anywhere]">{corner.fighterClass}</span></p> : null}
+          {/* クラスと、区分・階級は、同じ見た目の札。2つあっても、はみ出さず、折り返す。紙にも出る */}
+          {corner.fighterClass || corner.weightTag ? <p className="mt-0.5 flex min-w-0 flex-wrap gap-x-2 gap-y-1">
+            {corner.fighterClass ? <span className="inline-block min-w-0 max-w-full rounded-full border-2 border-slate-700 bg-white px-3 text-[17px] font-black text-slate-900 [overflow-wrap:anywhere]">{corner.fighterClass}</span> : null}
+            {corner.weightTag ? <span data-weight-tag={corner.side} className="inline-block min-w-0 max-w-full rounded-[14px] border-2 border-slate-700 bg-white px-3 text-[17px] font-black text-slate-900 [overflow-wrap:anywhere]">{corner.weightTag}</span> : null}
+          </p> : null}
         </div>
       </div>
       {!corner.present ? <ErrorLine className="mt-1.5">選手が選ばれていません。準備画面で選んでください</ErrorLine> : null}
@@ -96,6 +100,7 @@ function Row({ row, musicEnabled, saving, pressed, failed, retry, flash, onOpen 
     {row.rule ? <p className="m-0 text-[18px] font-bold leading-snug text-slate-800 [overflow-wrap:anywhere] md:col-span-3 lg:col-span-4">ルール：<WithBreaks text={row.rule} /></p> : null}
     {/* クラスや「同じ人」の注意は、2人の下に、横いっぱいで出す（まん中の細い列に入れると、1行8文字の細長い箱になる）。紙には出さない */}
     {row.classMix ? <ErrorLine mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">クラスがちがう試合です。ルールがちがうので、準備画面で組み合わせを確かめてください</ErrorLine> : null}
+    {row.weightWarning ? <ErrorLine id={'live-list-weight-warning-' + row.index} mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">{weightMixText(row.weightWarning, true)}</ErrorLine> : null}
     {row.samePerson ? <ErrorLine mark="⚠ " className="live-list-noprint md:col-span-3 lg:col-span-4">同じ人かもしれません：赤と青が、同じ名前・同じジムです。準備画面で確かめてください</ErrorLine> : null}
   </li>;
 }

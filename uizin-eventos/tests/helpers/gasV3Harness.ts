@@ -49,7 +49,7 @@ export function harness(opts: Opts = {}) {
           protect: () => { const prot: any = { warningOnly: false, setDescription() { return prot; }, setWarningOnly(v: boolean) { prot.warningOnly = v; return prot; } }; s.protections.push({ r, c, n, m, prot }); return prot; } };
         return range;
       } };
-    s.validations = validations; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
+    s.validations = validations; s.formats = formats; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
     s.setColumnWidth = (c: number, w: number) => { s.columnWidths.set(c, w); return s; }; s.setFrozenRows = (n: number) => { s.frozenRows = n; return s; };
     book.sheets.set(name, s); return s;
   }
@@ -78,7 +78,7 @@ export function harness(opts: Opts = {}) {
   const GOOD: Record<string, string> = { 大会名: 'テスト大会', 開催日: '2099-12-01', 会場: '体育館', 主催者名: '主催ジム', 問い合わせ先: '0200000000', 申込締切: '2099-11-30', 入場曲: 'なし' };
   const fill = (over: Record<string, string> = {}) => { for (const [k, v] of Object.entries({ ...GOOD, ...over })) setSetting(k, v); };
   const eventId = () => props.get('eventId') || '';
-  const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '', age: '20', height: '170', weight: '65', record: '初試合', comment: '', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
+  const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '中3', age: '20', height: '170', weight: '65', record: '初試合', comment: 'がんばります', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
   // 会長の操作: コピーしたシートを開く（onOpen）→ 「設定」タブに入れる → 「① 最初の設定」
   const ready = (over: Record<string, string> = {}) => { call('onOpen'); fill(over); call('setupTournament'); };
   return { api, props, resources, book, logs, zips, alerts, toasts, dialogs, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };

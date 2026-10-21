@@ -230,7 +230,7 @@ scenario('A', 'apply form: choice, required, suggestion, mismatch, send', async 
       const name = await box.locator('input[value=' + key + ']').getAttribute('aria-labelledby');
       check(!!name, 'A1 ' + side.name + ' radio has an accessible name');
     }
-    check(/ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい/.test(await box.innerText()), 'A1 one-attack is explained in plain words');
+    check(/ワンアタック（キャッチ後に1回だけ攻撃できる）/.test(await box.innerText()), 'A1 one-attack is explained in plain words');
     check(/3勝以上/.test(await box.innerText()) && /2勝以下/.test(await box.innerText()), 'A1 the words 3勝以上 and 2勝以下 are shown');
     check(await noOverflow(page), 'A1 no horizontal overflow (' + (await widest(page)).join('/') + ')');
     check((await nextMarks(page)).length === 1, 'A1 exactly ONE 👉 次はここ at the start (' + (await nextMarks(page)).join(' | ') + ')');

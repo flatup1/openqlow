@@ -1,6 +1,7 @@
 import { boutClassWarning } from '../../../core/classRules.ts';
 import { DEFAULT_ENTRY_CONFIG } from '../../../core/entryPackage.ts';
 import { contractWeight, safeMusicUrl, sameFighterKey, type LocalBout, type LocalFighter, type LocalTournament } from '../../../core/privateTournament.ts';
+import { boutWeightWarning, weightTag } from '../../../core/weightClass.ts';
 
 /** 試合当日の画面の見かた。1試合ずつ（ふだん）か、一覧か。 */
 export type LiveView = 'single' | 'list';
@@ -120,6 +121,14 @@ export function liveMusicOn(data: { entryConfig?: { music: boolean } | null }): 
   return (data.entryConfig ?? DEFAULT_ENTRY_CONFIG).music;
 }
 
+/**
+ * 意気込みの箱を出すか。意気込みを「聞かない」大会（受付の設定が「なし」）では、選手ごとに「未入力」と出さない（聞いていないのに「未入力」は、まちがいのように見える）。
+ * 書いてある人（取り込みや手入力）がいれば、聞かない大会でも、その人の分は出す。設定が無い大会は、これまでどおり出す。
+ */
+export function liveCommentShown(data: { entryConfig?: { comment: string } | null }, fighter: { comment?: string } | undefined): boolean {
+  return (data.entryConfig ?? DEFAULT_ENTRY_CONFIG).comment !== 'off' || !!fighter?.comment?.trim();
+}
+
 /** 入場曲の状態。off=この大会は入場曲なし / empty=選手がいない（何も出さない） */
 export type MusicState = 'off' | 'empty' | 'link' | 'broken' | 'none';
 
@@ -182,6 +191,8 @@ export type CornerModel = {
   gym: string;
   /** クラスの名前（Aクラスなど）。ないときは ''。見せるだけで、色は使わない */
   fighterClass: string;
+  /** 区分・階級（「中学生男子・37kg以下」など）。ないときは ''。クラスと同じで、見せるだけ。色は使わない */
+  weightTag: string;
   photoDataUrl: string;
   music: MusicState;
   musicUrl: string;
@@ -197,6 +208,8 @@ export type RowModel = {
   blue: CornerModel;
   /** 赤と青のクラスがちがう（どちらも入っていて、ちがうとき） */
   classMix: boolean;
+  /** 赤と青の区分・階級がちがうときの注意の文（先頭の ⚠ は画面側で付ける）。ちがわない・どちらかが空のときは '' */
+  weightWarning: string;
   openLabel: string;
   /** 赤と青が同じ選手（まちがい）。選手が選ばれていない（空）ときは false */
   sameFighter: boolean;
@@ -216,10 +229,20 @@ function corner(side: 'red' | 'blue', fighter: LocalFighter | undefined, musicEn
     name: displayName(fighter),
     gym: fighter?.gym.trim() ?? '',
     fighterClass: fighter?.fighterClass?.trim() ?? '',
+    weightTag: weightTag(fighter),
     photoDataUrl: fighter?.photoDataUrl ?? '',
     music: state,
     musicUrl: state === 'link' && fighter ? safeMusicUrl(fighter.musicUrl) : '',
   };
+}
+
+/**
+ * 区分・階級がちがう試合の、赤い注意の文。warning は core の boutWeightWarning の文（ちがわないときは ''。その場合は '' を返す）。
+ * 1試合ずつの画面は、クラスの注意と同じに「試合は、このまま進められます」まで言う。一覧は短く（行ごとに出るので）。
+ */
+export function weightMixText(warning: string, inList = false): string {
+  if (!warning) return '';
+  return warning + (inList ? '準備画面で確かめてください。' : '準備画面で組み合わせを確かめてください。試合は、このまま進められます。');
 }
 
 /** 1つの試合を、画面の1行ぶんのデータにする。契約は1試合ずつの画面と同じ決め方。 */
@@ -240,6 +263,7 @@ export function buildRow(bout: LocalBout, index: number, byId: Map<string, Local
     red: r,
     blue: b,
     classMix: boutClassWarning(red, blue) !== '',
+    weightWarning: boutWeightWarning(red, blue),
     openLabel: 'この試合を開く ' + title + ' 赤コーナー ' + r.name + ' 対 青コーナー ' + b.name,
   };
 }

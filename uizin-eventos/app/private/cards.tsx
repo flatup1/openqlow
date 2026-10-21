@@ -4,7 +4,8 @@ import { Fragment, memo, useState } from 'react';
 import { contractWeight, gymKey, sameFighterKey, type LocalBout, type LocalFighter } from '../../core/privateTournament.ts';
 import type { EntryFormConfig } from '../../core/entryPackage.ts';
 import { boutClassWarning, classKey, classMismatch, classMixMessage, classState, suggestClass, suggestText, type ClassSettings } from '../../core/classRules.ts';
-import { BOUT_TEXT_MAX, gapLevel, isBlankBout, isHalfBout, parseKg, sameClassName, weightGap, weightTrouble, weightTroubleText } from './logic.ts';
+import { boutWeightWarning, cleanDivisionName, cleanWeightText, findDivision, normalizeWeightClass, weightClassLabel, weightTag, type WeightSettings } from '../../core/weightClass.ts';
+import { BOUT_TEXT_MAX, gapLevel, isBlankBout, isHalfBout, parseKg, sameClassName, weightGap, weightIssue, weightIssueText, weightTrouble, weightTroubleText } from './logic.ts';
 import { FIELD_LABEL, shorten, type FieldKey } from './normalize.ts';
 import { Caution, ErrorLine, Example, LockReason, NextSlot, OkLine, Soft } from './marks.tsx';
 import { Badge, btn, Chip, cls, Fold, inputClass } from './parts.tsx';
@@ -26,13 +27,15 @@ const EXAMPLES: Record<FieldKey, string> = {
   record: '初試合なら「初試合」', comment: '全力でがんばります', musicUrl: 'https://music.apple.com/…',
 };
 
-export function FighterFields({ value, onChange, onBlurField, config, prefix, problems, fixes, targetId, classOptions, onClassChange, classSettings, alsoShow, mode = 'add' }: {
+export function FighterFields({ value, onChange, onBlurField, config, prefix, problems, fixes, targetId, classOptions, onClassChange, classSettings, weights, onWeightChange, alsoShow, mode = 'add' }: {
   value: LocalFighter; onChange: (key: FieldKey, next: string) => void; onBlurField?: (key: FieldKey) => void; config: EntryFormConfig; prefix: string;
   problems?: FieldProblems; fixes?: FieldFixes; targetId?: string | null;
   /** 選べるクラスの名前。空か無いときは、クラスの欄を出さない（クラスを使わない大会は、今までどおり） */
   classOptions?: string[]; onClassChange?: (next: string) => void;
   /** クラスの条件とルール（あれば、選ぶ欄のすぐ下に出す）。戦績からの目安も、これで出す */
   classSettings?: ClassSettings | null;
+  /** 階級分け（区分→階級）の設定。あるときだけ、区分・階級の選ぶ欄を出す（無い大会は、今までどおり）。入れなくても保存できる。区分を変えたら、階級は空に戻す */
+  weights?: WeightSettings | null; onWeightChange?: (division: string, weightClass: string) => void;
   /** 設定では出さない欄でも、直す人にすでに入っている欄は出す（出さないと、まちがいを直せない行き止まりになる） */
   alsoShow?: FieldKey[];
   /** add＝「この選手を追加」の入力 / edit＝「この内容で直す」の入力。クラスのちがいの文が、押すボタンの名前を言う */
@@ -78,6 +81,37 @@ export function FighterFields({ value, onChange, onBlurField, config, prefix, pr
       <Example className="mt-1"><code>Bクラス</code>（選べるクラスが1つだけのときに使います）</Example>
     </div> : null}
   </div> : null;
+  // 区分・階級の欄は「戦績」の次（クラスの欄の前）に出す。設定にない値が入っている人も、消さずに選択肢へ足す（全角・半角ちがいは同じ名前）
+  const divCurrent = cleanDivisionName(value.division ?? ''), wcCurrent = cleanWeightText(value.weightClass ?? '');
+  const divSetting = weights ? findDivision(divCurrent, weights) : undefined;
+  const wcList = divSetting?.classes ?? [];
+  const wcHit = divSetting && wcCurrent ? normalizeWeightClass(divSetting.name, wcCurrent, weights) : '';
+  const divId = prefix + '-division', wcId = prefix + '-weightClass';
+  const showWc = wcList.length > 0 || wcCurrent !== '';
+  const wIssue = weights ? weightIssue(value, weights) : null;
+  const weightBlock = weights && onWeightChange ? <div className="min-w-0 sm:col-span-2" data-tos-weights="1">
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline"><label htmlFor={divId} className="text-lg font-bold">区分</label><Badge text="なくてもOK" /></div>
+        <select id={divId} className={cls(inputClass, targetId === divId && 'tos-target')} value={divSetting?.name ?? divCurrent} aria-describedby={divId + '-note'} onChange={(e) => onWeightChange(e.target.value, '')}>
+          <option value="">えらばない</option>
+          {divCurrent && !divSetting ? <option value={divCurrent}>{divCurrent}</option> : null}
+          {weights.divisions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+        </select>
+      </div>
+      {showWc ? <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline"><label htmlFor={wcId} className="text-lg font-bold">階級</label><Badge text="なくてもOK" /></div>
+        <select id={wcId} className={cls(inputClass, targetId === wcId && 'tos-target')} value={wcHit || wcCurrent} aria-describedby={divId + '-note'} onChange={(e) => onWeightChange(value.division ?? '', e.target.value)}>
+          <option value="">えらばない</option>
+          {wcCurrent && !wcHit ? <option value={wcCurrent}>{weightClassLabel(wcCurrent)}</option> : null}
+          {wcList.map((c) => <option key={c} value={c}>{weightClassLabel(c)}</option>)}
+        </select>
+      </div> : null}
+    </div>
+    <Soft id={divId + '-note'} className="mt-1">区分と階級を選びます。階級＝体重で分けたグループです。わからないときは「えらばない」。</Soft>
+    {divSetting && wcList.length === 0 ? <Soft className="mt-1">この区分には階級がありません。体重が近い人どうしで組みます。</Soft> : null}
+    {wIssue ? <Caution className="mt-2" role="status">{weightIssueText(wIssue, value)}</Caution> : null}
+  </div> : null;
   return <div className="grid gap-4 sm:grid-cols-2">{rows.filter((row) => row.show).map((row) => {
     const id = prefix + '-' + row.key, problem = problems?.[row.key], fix = fixes?.[row.key];
     return <Fragment key={row.key}><div className="min-w-0">
@@ -90,7 +124,7 @@ export function FighterFields({ value, onChange, onBlurField, config, prefix, pr
       <Example id={id + '-example'} className="mt-1"><code>{EXAMPLES[row.key]}</code></Example>
       {problem ? <ErrorLine id={id + '-error'} role={null} className="mt-1">{problem}</ErrorLine> : null}
       {!problem && fix ? <OkLine quiet className="mt-1">自動で直しました：{fix}</OkLine> : null}
-    </div>{row.key === 'record' ? classBlock : null}</Fragment>;
+    </div>{row.key === 'record' ? <>{weightBlock}{classBlock}</> : null}</Fragment>;
   })}</div>;
 }
 
@@ -145,12 +179,13 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
     const twin = (labelCount.get(labelKey(f)) ?? 0) > 1 ? `（番号 ${shorten(f.id, 10)}）` : '';
     return <option key={f.id} value={f.id} disabled={f.id === other}>{baseLabel(f) + twin + mark}</option>;
   })}</optgroup>);
-  const profile = (f: LocalFighter | undefined) => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
+  const profile = (f: LocalFighter | undefined, side: 'red' | 'blue') => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
     <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
     <div className="min-w-0 text-[17px] font-medium leading-snug">
       <p className="break-words text-lg font-bold">{f.name}</p>
       <p className="break-words">{kgText(f.weight)}{f.record ? '・' + f.record : ''}</p>
       {f.fighterClass ? <p className="break-words font-bold [overflow-wrap:anywhere]">クラス：{f.fighterClass}</p> : null}
+      {weightTag(f) ? <p data-weight-tag={side} className="break-words font-bold [overflow-wrap:anywhere]">区分・階級：{weightTag(f)}</p> : null}
       <p className="break-words text-slate-700">{[f.age ? f.age + '歳' : '', f.grade].filter(Boolean).join('・')}</p>
     </div>
   </div> : null;
@@ -183,6 +218,8 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
   // 赤と青のクラスがちがうとき（どちらかが空なら出ない）。ルールがちがうので知らせるだけ。保存も、試合当日の画面も、止めない
   const classWarn = boutClassWarning(red, blue);
   const classMix = classMixMessage(red, blue, classSettings);
+  // 赤と青の区分か階級がちがうとき（どちらかが空なら出ない）。クラスのちがいとは別の箱。知らせるだけで、保存も、試合当日の画面も、止めない
+  const weightWarn = boutWeightWarning(red, blue);
   // ルールの文のうしろの（ ）の説明（例：ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）は、注意の文では短くするので、ここで1行ずつ足す
   const mixNotes: string[] = classMix && classSettings && classSettings.enabled
     ? Array.from(new Set([red, blue].map((f) => classKey((f?.fighterClass ?? '').trim(), classSettings)).filter(Boolean))).map((k) => (k === 'upper' ? classSettings.upper : classSettings.lower).rule.match(/（([^）]+)）/)?.[1] ?? '').filter(Boolean)
@@ -209,7 +246,7 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
         </select>
       </NextSlot>
       {!value ? <p id={id + '-hint'} className="mt-1 text-[17px] font-bold text-slate-900">{side === 'red' ? '赤の選手を選んでください' : '青の選手を選んでください'}</p> : null}
-      {profile(f)}
+      {profile(f, side)}
       {missingWeight(f)}
     </div>;
   };
@@ -258,6 +295,11 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
         {reselect(blue, '青を選び直す')}
         <button type="button" aria-describedby={title} aria-expanded={ruleOpen} onClick={() => { setRuleOpen(true); window.setTimeout(() => document.getElementById('bout-' + index + '-rule')?.focus(), 0); }} className={cls(btn.base, btn.outlineBig)}>ルールを書く欄をひらく</button>
       </div>
+    </div> : null}
+    {weightWarn && red && blue ? <div className="mt-3 space-y-2" data-weight-warning="1">
+      <ErrorLine role="status" mark="⚠ " className="[overflow-wrap:anywhere]">{weightWarn}</ErrorLine>
+      <Soft>このまま戦ってもかまいません。違うときは、選び直します。</Soft>
+      <div>{reselect(blue, '青を選び直す')}</div>
     </div> : null}
     {classesOn && !classWarn ? classNotes : null}
     {samePerson && red && blue ? <div className="mt-3 space-y-2">

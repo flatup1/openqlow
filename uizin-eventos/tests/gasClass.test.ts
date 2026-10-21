@@ -5,8 +5,8 @@ import { harness, owner, script } from './helpers/gasV3Harness.ts';
 /** 仕様どおりの8つの初期値。core/classRules.ts の DEFAULT_CLASS_SETTINGS と同じでなければならない。 */
 const SPEC = {
   enabled: true,
-  upper: { name: 'Aクラス', condition: '3勝以上（例：3勝0敗、4勝、5勝2敗）', rule: '首相撲あり／膝蹴りあり／蹴り足キャッチ（ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）' },
-  lower: { name: 'Bクラス', condition: 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', rule: 'パンチとキックのみ' },
+  upper: { name: 'Aクラス', condition: '3勝以上（3勝以下でも、会長・指導者の許可があればAクラスに出られます）', rule: '首相撲5秒／蹴り足キャッチはワンアタック（キャッチ後に1回だけ攻撃できる）／ワンマッチは顔面への膝蹴り禁止' },
+  lower: { name: 'Bクラス', condition: 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', rule: '首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし' },
   upperMinWins: 3,
 };
 let core: any = null;
@@ -18,9 +18,9 @@ const CLASS_LABELS = ['クラス分け', '上のクラスの名前', '上のク�
 const ping = (h: ReturnType<typeof harness>) => JSON.parse(h.call('doGet', { parameter: { action: 'ping' } }).text);
 const csvOf = (h: ReturnType<typeof harness>) => h.zips.at(-1).find((f: any) => f.name === 'players.csv').bytes.toString('utf8').replace(/^﻿/, '');
 const parseCsv = (csv: string) => csv.split('\r\n').map((line) => line.slice(1, -1).split('","'));
-/** 「クラスの欄がまだ無かった頃」の表を作る：見出しの最後の1マスと、各行の最後の1マスを消す。 */
+/** 「クラスの欄がまだ無かった頃」の表を作る：見出しの右はし3マス（クラス・区分・階級）と、各行の右はし3マスを消す。 */
 function makeOld(h: ReturnType<typeof harness>) {
-  for (const [name, width] of [[PRIVATE, 19], [OS, 12], [TEST, 19], [TEST_OS, 12]] as const) for (const row of h.rows(name)) { assert.equal(row.length, width, name); row.length = width - 1; }
+  for (const [name, width] of [[PRIVATE, 21], [OS, 14], [TEST, 21], [TEST_OS, 14]] as const) for (const row of h.rows(name)) { assert.equal(row.length, width, name); row.length = width - 3; }
 }
 
 test('クラス: 初期値の8つは仕様どおり（会長が何も書かなくても、そのまま使える）', () => {
@@ -28,7 +28,7 @@ test('クラス: 初期値の8つは仕様どおり（会長が何も書かな�
   const rows = h.rows('設定');
   const value = (label: string) => rows.find((r) => r[0] === label)![1];
   assert.deepEqual(CLASS_LABELS.map((l) => value(l)), ['なし', SPEC.upper.name, SPEC.upper.condition, SPEC.upper.rule, SPEC.lower.name, SPEC.lower.condition, SPEC.lower.rule, '3']);
-  assert.deepEqual(rows.slice(1).map((r) => r[0]).slice(-8), CLASS_LABELS, '追加は最後だけ。前の11行は動かない');
+  assert.deepEqual(rows.slice(1).map((r) => r[0]).slice(11, 19), CLASS_LABELS, '前の11行は動かない。クラスの8行は、そのまま');
   assert.deepEqual(rows.slice(1, 12).map((r) => r[0]), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み']);
   for (const r of rows.slice(1)) assert.equal(r.length, 3, '項目・値・説明');
   // 各行の説明に、文字数や例が書いてある（会長が迷わない）
@@ -57,8 +57,8 @@ test('クラス: 何もしない（なし）のとき、これまでと同じに
   const body = ping(h);
   assert.equal('classMode' in body, false); assert.equal('classes' in body, false);
   assert.deepEqual(Object.keys(body).sort(), ['accepting', 'age', 'app', 'build', 'comment', 'contact', 'date', 'deadline', 'eventId', 'grade', 'music', 'organizer', 'protocol', 'ready', 'settingsProblem', 'storageProblem', 'testComplete', 'title', 'venue', 'venueUrl']);
-  assert.equal(h.rows(PRIVATE)[0].length, 19); assert.equal(h.rows(PRIVATE)[0][18], 'クラス'); assert.equal(h.rows(PRIVATE)[0][17], 'リクエストID');
-  assert.equal(h.rows(OS)[0].length, 12); assert.equal(h.rows(OS)[0][11], 'クラス'); assert.equal(h.rows(OS)[0][10], '顔写真URL');
+  assert.equal(h.rows(PRIVATE)[0].length, 21); assert.equal(h.rows(PRIVATE)[0][18], 'クラス'); assert.equal(h.rows(PRIVATE)[0][17], 'リクエストID');
+  assert.equal(h.rows(OS)[0].length, 14); assert.equal(h.rows(OS)[0][11], 'クラス'); assert.equal(h.rows(OS)[0][10], '顔写真URL');
   assert.equal(h.rows(TEST)[1][18], ''); assert.equal(h.rows(TEST_OS)[1][11], '');
   assert.equal(h.call('statusInfo_').testComplete, true);
   h.call('exportTestTournament');
@@ -281,8 +281,9 @@ test('クラス: 古い設定タブ（11行だけ）でも動く。クラスの�
     const before = JSON.stringify(h.rows('設定'));
     h.call('setupTournament');
     assert.equal(JSON.stringify(h.rows('設定').slice(0, 12)), before, '古い設定タブの12行は1マスも書き換えない');
-    assert.equal(h.rows('設定').length, 20, 'クラスの8行だけが、いちばん下に足される');
-    assert.deepEqual(h.rows('設定').slice(12).map((r) => r[0]), CLASS_LABELS);
+    assert.equal(h.rows('設定').length, 29, 'クラスの8行と、階級分け・ロゴの9行だけが、いちばん下に足される');
+    assert.deepEqual(h.rows('設定').slice(12, 20).map((r) => r[0]), CLASS_LABELS);
+    assert.deepEqual(h.rows('設定').slice(20).map((r) => r[0]), ['階級分け', 'ロゴ', '階級：小学生以下', '階級：中学生女子', '階級：中学生男子', '階級：高校生・一般女子', '階級：高校生・一般男子', '階級：花道・女子（40歳以上）', '階級：花道・男子（40歳以上）']);
     assert.equal(h.rows('設定').find((r) => r[0] === 'クラス分け')![1], 'なし', '足した行の初期値は「なし」');
   }
 });
@@ -308,16 +309,16 @@ test('クラス: 古い見出しの表（クラス列なし）は、最初のpin
   const protections = [PRIVATE, OS, TEST, TEST_OS].map((n) => h.book.getSheetByName(n).protections.length);
   const info = h.call('statusInfo_');
   assert.equal(info.testComplete, true, '自動テストの確認も通る');
-  for (const [name, width] of [[PRIVATE, 19], [OS, 12], [TEST, 19], [TEST_OS, 12]] as const) {
+  for (const [name, width] of [[PRIVATE, 21], [OS, 14], [TEST, 21], [TEST_OS, 14]] as const) {
     const rows = h.rows(name);
-    assert.equal(rows[0].length, width, name); assert.equal(rows[0][width - 1], 'クラス', name);
-    assert.deepEqual(rows[0].slice(0, width - 1), JSON.parse(before)[[PRIVATE, OS, TEST, TEST_OS].indexOf(name)][0], name + ' の古い見出しはそのまま');
-    for (const row of rows.slice(1)) assert.ok(row.length <= width - 1 || row[width - 1] === '', '古い行にはクラスを足さない: ' + name);
+    assert.equal(rows[0].length, width, name); assert.deepEqual(rows[0].slice(width - 3), ['クラス', '区分', '階級'], name);
+    assert.deepEqual(rows[0].slice(0, width - 3), JSON.parse(before)[[PRIVATE, OS, TEST, TEST_OS].indexOf(name)][0], name + ' の古い見出しはそのまま');
+    for (const row of rows.slice(1)) assert.ok(row.length <= width - 3 || row.slice(width - 3).every((cell: string) => cell === ''), '古い行にはクラス・区分・階級を足さない: ' + name);
   }
   const after = JSON.parse(JSON.stringify([PRIVATE, OS, TEST, TEST_OS].map((n) => h.rows(n))));
   JSON.parse(before).forEach((table: any[][], t: number) => table.forEach((row, r) => row.forEach((cell, c) => assert.equal(after[t][r][c], cell, t + ':' + r + ':' + c))));
   assert.ok(h.book.getSheetByName(PRIVATE).protections.length >= protections[0], '見出しの保護は消えない');
-  assert.deepEqual([PRIVATE, OS, TEST, TEST_OS].map((n) => h.book.getSheetByName(n).protections.length), protections.map((n) => n + 1), '新しい見出しのマスにも警告つき保護');
+  assert.deepEqual([PRIVATE, OS, TEST, TEST_OS].map((n) => h.book.getSheetByName(n).protections.length), protections.map((n) => n + 1), '新しい見出しのマス（右はし3つ）にも警告つき保護');
   // 2回目は何も増えない
   h.call('statusInfo_');
   assert.deepEqual([PRIVATE, OS, TEST, TEST_OS].map((n) => h.book.getSheetByName(n).protections.length), protections.map((n) => n + 1));
@@ -376,9 +377,9 @@ test('クラス: 見出しがほかの形で変えられていたら、直さず
 
 test('クラス: 新しい空のシートは、これまでどおり全部の見出しと保護ができる', () => {
   const h = harness(); h.ready();
-  assert.deepEqual(h.rows(PRIVATE)[0], ['受付番号', '申込日時', '大会ID', '所属ジム', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', '連絡先氏名', '連絡先電話番号', '連絡先メールアドレス', '同意', 'リクエストID', 'クラス']);
-  assert.deepEqual(h.rows(OS)[0], ['管理番号', 'ジム名', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', 'クラス']);
-  for (const n of [PRIVATE, OS, TEST, TEST_OS]) { const p = h.book.getSheetByName(n).protections; assert.equal(p.length, 1); assert.equal(p[0].n, 1); assert.equal(p[0].m, n === PRIVATE || n === TEST ? 19 : 12); }
+  assert.deepEqual(h.rows(PRIVATE)[0], ['受付番号', '申込日時', '大会ID', '所属ジム', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', '連絡先氏名', '連絡先電話番号', '連絡先メールアドレス', '同意', 'リクエストID', 'クラス', '区分', '階級']);
+  assert.deepEqual(h.rows(OS)[0], ['管理番号', 'ジム名', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', 'クラス', '区分', '階級']);
+  for (const n of [PRIVATE, OS, TEST, TEST_OS]) { const p = h.book.getSheetByName(n).protections; assert.equal(p.length, 1); assert.equal(p[0].n, 1); assert.equal(p[0].m, n === PRIVATE || n === TEST ? 21 : 14); }
 });
 
 test('クラス: 名簿ZIPの players.csv は、最後の列が「クラス」。写真と連絡先は今までどおり', () => {
@@ -446,8 +447,8 @@ test('クラス: 古い申込ページ（クラスを送らない）から「あ
 
 test('クラス: 新しい版にすると、古い版で済ませた自動テストはやり直しになる（1回だけ）', () => {
   const h = harness(); h.ready(ON);
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261010\.5';/);
-  assert.equal(ping(h).build, '3.20261010.5');
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261019\.6';/);
+  assert.equal(ping(h).build, '3.20261019.6');
   h.props.set('lastTestBuild', '3.20261004.4');
   assert.equal(h.call('statusInfo_').testComplete, false);
   assert.throws(() => h.call('openEntries'), /先にテスト申込1件/);
@@ -464,7 +465,7 @@ test('クラス: 古い版で作った表（クラス列なし・古い自動テ
   makeOld(h); h.props.set('lastTestBuild', '3.20261004.4'); h.settingsSheet().rows.length = 12;
   h.call('setupTournament');
   const body = ping(h);
-  assert.equal(body.testComplete, true); assert.equal(body.build, '3.20261010.5'); assert.equal('classMode' in body, false);
+  assert.equal(body.testComplete, true); assert.equal(body.build, '3.20261019.6'); assert.equal('classMode' in body, false);
   assert.equal(h.rows(TEST)[0][18], 'クラス'); assert.equal(h.rows(TEST_OS)[0][11], 'クラス');
   assert.equal(h.rows(TEST).at(-1)![18], '');
   h.call('openEntries'); h.call('saveEntry_', h.params('live'));

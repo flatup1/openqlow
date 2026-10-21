@@ -1,5 +1,5 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261010.5';
+const RECEPTION_BUILD = '3.20261019.6';
 const MIN_FREE_BYTES = 200 * 1024 * 1024;
 /** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
@@ -11,17 +11,26 @@ const SETTING_ROWS = [
   ['問い合わせ先', '', '✎ ここに書く。選手に見えます。電話番号か、LINEのURL'],
   ['申込締切', '', '✎ ここに書く。例：2027年9月20日（開催日と同じか、その前の日）'],
   ['入場曲', '', '✎ ここに書く（▼から「あり」か「なし」を選びます）。選手に入場曲のリンクを書いてもらうかどうかを、最初に決めます'],
-  ['学年', '任意', '必須／任意／なし'],
-  ['年齢', '任意', '必須／任意／なし'],
-  ['意気込み', '任意', '必須／任意／なし'],
+  ['学年', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
+  ['年齢', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
+  ['意気込み', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
   ['クラス分け', 'なし', 'あり／なし。Aクラス・Bクラスに分けるときだけ「あり」（▼から選びます）。例：あり'],
   ['上のクラスの名前', 'Aクラス', '選手に見えます。12文字まで。例：Aクラス'],
-  ['上のクラスの条件', '3勝以上（例：3勝0敗、4勝、5勝2敗）', '選手に見えます。60文字まで。例：3勝以上（勝った数だけで決めます。負け・引き分けは数えません）'],
-  ['上のクラスのルール', '首相撲あり／膝蹴りあり／蹴り足キャッチ（ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）', '選手に見えます。80文字まで。例：首相撲あり／膝蹴りあり／蹴り足キャッチ（ワンアタック＝蹴り足をキャッチしたあと、1回だけ攻撃してよい）'],
+  ['上のクラスの条件', '3勝以上（3勝以下でも、会長・指導者の許可があればAクラスに出られます）', '選手に見えます。60文字まで。例：3勝以上（勝った数だけで決めます。負け・引き分けは数えません）'],
+  ['上のクラスのルール', '首相撲5秒／蹴り足キャッチはワンアタック（キャッチ後に1回だけ攻撃できる）／ワンマッチは顔面への膝蹴り禁止', '選手に見えます。80文字まで。例：首相撲5秒／蹴り足キャッチはワンアタック（キャッチ後に1回だけ攻撃できる）'],
   ['下のクラスの名前', 'Bクラス', '選手に見えます。12文字まで。例：Bクラス'],
   ['下のクラスの条件', 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', '選手に見えます。60文字まで。例：アマチュア。2勝以下'],
-  ['下のクラスのルール', 'パンチとキックのみ', '選手に見えます。80文字まで。例：パンチとキックのみ'],
-  ['上のクラスにする勝ち数', '3', '数字（1〜99）。この勝ち数「以上」は上のクラスです。例：3（3勝ちょうどは上のクラス）。変えたら、上と下の「条件」の文も直してください']
+  ['下のクラスのルール', '首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし', '選手に見えます。80文字まで。例：首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし'],
+  ['上のクラスにする勝ち数', '3', '数字（1〜99）。この勝ち数「以上」は上のクラスです。例：3（3勝ちょうどは上のクラス）。変えたら、上と下の「条件」の文も直してください'],
+  ['階級分け', 'なし', 'あり／なし。体重の階級（-37kgなど）を、選手に選んでもらうときだけ「あり」（▼から選びます）。例：あり'],
+  ['ロゴ', 'なし', 'あり／なし。「あり」にすると、申込ページと当日の画面に、千葉県キックボクシング協会（CKA）のロゴが出ます（▼から選びます）。例：あり'],
+  ['階級：小学生以下', 'なし', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  ['階級：中学生女子', '-37、-40、-43、-46、-49、-52、-55、-58', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  ['階級：中学生男子', '-37、-40、-43、-46、-49、-52、-55、-58', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  ['階級：高校生・一般女子', '-40、-43、-46、-50、-53、-56、-59、-62、-65', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  ['階級：高校生・一般男子', '-50、-53、-56、-59、-62、-65、-68、-71、-74、-77、-80、-85、無差別', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  ['階級：花道・女子（40歳以上）', '-40、-45、-50、-55、-60、+60', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  ['階級：花道・男子（40歳以上）', '-55、-60、-65、-70、-75、-80、-85、無差別', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前']
 ];
 const SELFTEST_JPEG = '/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALIAP//Z';
 let SETTINGS_CACHE_ = null;
@@ -29,7 +38,8 @@ let SETTINGS_CACHE_ = null;
 let SETTINGS_REBUILT_ = false;
 /** ① のあと、画面の上に一緒に言うこと（フォルダを作り直した、など） */
 let SETUP_NOTES_ = [];
-function mode_(text) { const v = String(text || '').trim(); return v === '必須' ? 'required' : v === 'なし' ? 'off' : 'optional'; }
+/** 学年・年齢・意気込みの書き方。「必須」「任意」「なし」。マスが空のときは、はじめの決まりの「必須」（うっかり消しても、聞きもれがないように） */
+function mode_(text) { const v = String(text || '').trim(); return v === 'なし' ? 'off' : v === '任意' ? 'optional' : 'required'; }
 function dateIso_(text) {
   const t = String(text || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).trim();
   let y, m, d;
@@ -40,7 +50,7 @@ function dateIso_(text) {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? '' : iso;
 }
 /** 「▼から選ぶ」欄にする項目。選び間違い・入れ間違いを防ぐ。 */
-const DROPDOWNS = [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']]];
+const DROPDOWNS = [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']], ['階級分け', ['なし', 'あり']], ['ロゴ', ['なし', 'あり']]];
 /** 会長が必ず書く7つ（B列）。色と「✎ ここに書く」の印をつける。 */
 const WRITE_LABELS = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切', '入場曲'];
 function applyDropdowns_(sheet, labels) {
@@ -76,9 +86,18 @@ function ensureSettingsSheet_(book) {
   fillSettingsSheet_(sheet);
   return sheet;
 }
+/** 「設定」タブのB列（S_() が読むB2〜B60）を「文字」の形にする。from＝ここから下だけ（省略すると、B2から）。使えない環境でも止めない */
+function textFormatSettings_(sheet, from) {
+  try {
+    // 行が60より少ないタブでも、ある所までは「文字」にする（範囲が表の外に出ると、全部が失敗するため）
+    const top = Math.max(2, from || 2), bottom = Math.min(60, typeof sheet.getMaxRows === 'function' ? sheet.getMaxRows() : 60);
+    if (top <= bottom) sheet.getRange(top, 2, bottom - top + 1, 1).setNumberFormat('@');
+  } catch (_) { /* 形が付けられなくても、設定は読める */ }
+}
 function fillSettingsSheet_(sheet) {
   sheet.getRange(1, 1, 1, 3).setValues([['項目', '値（ここに入れる）', '説明']]).setFontWeight('bold');
-  sheet.getRange(2, 2, SETTING_ROWS.length, 1).setNumberFormat('@');
+  // 主催者が行を足すこともあるので、S_() が読む範囲（B2〜B60）ぜんぶを「文字」にする（先頭が - や + の階級の並びが、式にならないように）
+  textFormatSettings_(sheet);
   sheet.getRange(2, 1, SETTING_ROWS.length, 3).setValues(SETTING_ROWS);
   applyDropdowns_(sheet, [''].concat(SETTING_ROWS.map(function (row) { return row[0]; })));
   formatSettings_(sheet);
@@ -86,15 +105,85 @@ function fillSettingsSheet_(sheet) {
 function appendMissingSettingRows_(sheet) {
   const last = sheet.getLastRow();
   const labels = last > 0 ? sheet.getRange(1, 1, last, 1).getDisplayValues().map(function (row) { return String(row[0]).trim(); }) : [];
-  const missing = SETTING_ROWS.filter(function (row) { return labels.indexOf(row[0]) < 0; });
+  // 階級の区分の行（「階級：…」）は、「階級分け」の行がすでにあるときは足さない（会長が使わない区分の行を消したのを、もどさない）
+  const hasWeightBlock = labels.indexOf('階級分け') >= 0;
+  const missing = SETTING_ROWS.filter(function (row) { return labels.indexOf(row[0]) < 0 && !(hasWeightBlock && /^階級[:：]/.test(row[0])); });
   if (!missing.length || last < 1) return sheet;
   const start = last + 1, end = last + missing.length;
   if (typeof sheet.getMaxRows === 'function' && typeof sheet.insertRowsAfter === 'function' && sheet.getMaxRows() < end) sheet.insertRowsAfter(sheet.getMaxRows(), end - sheet.getMaxRows());
   sheet.getRange(start, 2, missing.length, 1).setNumberFormat('@');
+  // 足した行の下に、主催者が書き足す行（区分など）も、文字として入る。まだ「文字」になっていない所だけ（書いてある値は書き換えない）
+  textFormatSettings_(sheet, start + missing.length);
   sheet.getRange(start, 1, missing.length, 3).setValues(missing);
+  try { sheet.getRange(start, 1, missing.length, 3).setWrap(true); } catch (_) { /* 折り返しが付けられなくても、設定は読める */ }
   applyDropdowns_(sheet, labels.concat(missing.map(function (row) { return row[0]; })).map(function (label, i) { return i < last ? '' : label; }));
   return sheet;
 }
+/**
+ * 階級の文字を読む決まり。core/weightClass.ts と同じ（テストで、同じ答えになることを確かめる）。
+ * 保存する形：37kg以下／60kgをこえる／無差別／自由な名前（数字のない名前）。先頭が - + の文字は保存しない（表計算で式になるため）。
+ */
+/** 「なし」の言い方。表の1つのマスぜんぶがこれなら、階級を選ばせない区分。階級の名前には使えない */
+const WEIGHT_NONE_PHRASE_ = /^(?:特に)?(?:なし|無し|ナシ|階級(?:は)?(?:なし|無し|ありません)|ありません)(?:です|でした)?$/;
+/** マスや1つぶんの文字の外側の「（ ）」「「 」」と、うしろの「。」を取る */
+function weightStripEdges_(value) { return String(value).replace(/^[（(「『]([\s\S]*)[）)」』]$/, '$1').replace(/[。.．！!]+$/, '').trim(); }
+const WEIGHT_RESERVED_ = ['kg', 'キロ', '級', '以下', '以上', 'まで', '超', '超え', '超える', 'こえる', 'をこえる', 'を超える', '未満', 'なし', '無し', 'ナシ', 'ありません', 'あり', '有り', 'アリ', 'はい', 'いいえ'];
+const WEIGHT_OPEN_ = ['無差別', '無差別級', 'フリー', 'フリー級', 'free', 'open', 'オープン', 'オープン級', '体重無制限', '体重制限なし'];
+function weightSquash_(value) {
+  return String(value == null ? '' : value).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').toLowerCase().replace(/[ー‐‑–—−―－﹣]/g, '-').replace(/＋/g, '+').replace(/\s+/g, '');
+}
+function weightKg_(kg) { return String(Number(kg.toFixed(1))); }
+function weightText_(value) { return String(value == null ? '' : value).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40); }
+/** 階級の1つぶんを、保存する形にする。読めなければ ''。 */
+function weightCanon_(raw) {
+  const s = weightSquash_(raw);
+  if (!s) return '';
+  if (WEIGHT_OPEN_.map(weightSquash_).indexOf(s) >= 0) return '無差別';
+  const maxRes = [/^-(\d{1,3}(?:\.\d)?)(?:kg|キロ|ｋｇ)?(?:級)?(?:以下)?$/, /^(\d{1,3}(?:\.\d)?)(?:kg|キロ|ｋｇ)?(?:級)?(?:以下|まで)$/, /^(\d{1,3}(?:\.\d)?)(?:kg|キロ|ｋｇ)級$/];
+  const overRes = [/^\+(\d{1,3}(?:\.\d)?)(?:kg|キロ|ｋｇ)?(?:級)?$/, /^(\d{1,3}(?:\.\d)?)(?:kg|キロ|ｋｇ)?(?:をこえる|を超える|こえる|超える|超え|超|以上|超級)$/];
+  let i, m;
+  for (i = 0; i < maxRes.length; i++) { m = maxRes[i].exec(s); if (m) { const kg = Number(m[1]); return kg > 0 && kg < 300 ? weightKg_(kg) + 'kg以下' : ''; } }
+  for (i = 0; i < overRes.length; i++) { m = overRes[i].exec(s); if (m) { const kg = Number(m[1]); return kg > 0 && kg < 300 ? weightKg_(kg) + 'kgをこえる' : ''; } }
+  if (/\d/.test(s)) return '';
+  // 名前は、全角・半角のちがいをそろえて持つ（取り込んだファイルの「ＬＩＧＨＴ」と設定の「LIGHT」が、同じ階級になる）
+  const text = weightText_(raw).normalize('NFKC');
+  if (!text || text.length > 16 || /^[=+\-@]/.test(text)) return '';
+  // 名前には、文字（かな・漢字・英字）が1つは要る。記号や「ー」だけ、「kg」「以下」のような単位・ことば、「なし」の言い方は、階級の名前にしない
+  if (!/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z]/u.test(text) || WEIGHT_RESERVED_.map(weightSquash_).indexOf(weightSquash_(text)) >= 0 || WEIGHT_NONE_PHRASE_.test(weightSquash_(text))) return '';
+  return text;
+}
+/** 主催者が表に書いた「階級のならび」を、保存する形の一覧にする。「なし」だけなら none。書き方のまちがいは problems に。 */
+function weightList_(text) {
+  const raw = String(text == null ? '' : text).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').trim(), problems = [], classes = [], seen = {};
+  if (!raw) return { classes: [], problems: ['空です（階級を書くか、階級を選ばせない区分なら「なし」と書いてください）'], none: false };
+  // 「なし」と書いたことが分かる形：「なし」「階級なし」のあとに、（かっこの説明）や「。」が付いてもよい
+  const flatCell = raw.replace(/\s+/g, '');
+  if (/^(?:なし|無し|ナシ|階級なし|階級無し|階級はなし|ありません)(?:[（(][^）)]*[）)])?[。.]?$/.test(flatCell) || WEIGHT_NONE_PHRASE_.test(weightStripEdges_(flatCell))) return { classes: [], problems: [], none: true };
+  // 数字とあとの単位・「-」と数字のあいだの空白は、区切りではない（「-37 kg」「- 37」を2つに割らない）
+  const unit = '(?:kg|キロ|ｋｇ|級|以下|まで|をこえる|を超える|こえる|超える|超え|超|以上)';
+  const glued = raw.replace(/([-+＋−‐‑–—―－﹣])\s+(?=\d)/g, '$1').replace(new RegExp('(\\d)\\s+(?=' + unit + ')', 'gi'), '$1').replace(new RegExp('(kg|キロ|ｋｇ)\\s+(?=' + unit.replace('kg|キロ|ｋｇ|', '') + ')', 'gi'), '$1');
+  glued.split(/[,、，。;；\/／\n\r\t　 ]+/).forEach(function (part) {
+    const token = weightStripEdges_(part.trim());
+    if (!token) return;
+    if (token.length > 16) { problems.push('「' + token.slice(0, 12) + '」は長すぎます（16文字まで）'); return; }
+    const canon = weightCanon_(token), flat = weightSquash_(token);
+    if (!canon) {
+      const num = flat.replace(/kg|キロ/g, '');
+      problems.push(/^[\d.]+(?:kg|キロ)?$/.test(flat) ? '「' + token.slice(0, 12) + '」は、以下なら「-' + num + '」、こえるなら「+' + num + '」と書いてください' : '「' + token.slice(0, 12) + '」は、階級として読めません（例：-37、+60、無差別）');
+      return;
+    }
+    const key = canon.toLowerCase();
+    if (seen[key]) { problems.push('同じ階級が2回あります（' + canon + '）'); return; }
+    seen[key] = true; classes.push(canon);
+  });
+  if (classes.length > 20) problems.push('階級が多すぎます（20こまで）');
+  if (!classes.length && !problems.length) problems.push('階級が1つも読めません（例：-37、-40、+60、無差別／階級を選ばせない区分なら「なし」と書きます）');
+  return { classes: classes, problems: problems, none: false };
+}
+/** 区分の名前（「階級：」のあと）。見えない文字・制御文字を取り、空白を1つにする。 */
+function divisionName_(value) { return String(value == null ? '' : value).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim(); }
+/** 区分を比べる印：全角・半角・大文字・小文字・空白のちがいを無くす */
+function divisionKey_(value) { return String(value == null ? '' : value).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').replace(/\s+/g, '').toLowerCase(); }
 /** 設定は「設定」タブが正本。コードには焼き込まない。大会IDは自動で決まる（会長は入れない）。 */
 function S_() {
   if (SETTINGS_CACHE_) return SETTINGS_CACHE_;
@@ -108,7 +197,17 @@ function S_() {
   rows.forEach(function (row) { v[String(row[0]).trim()] = String(row[1]).trim(); });
   const classes = { enabled: v['クラス分け'] === 'あり', upper: { name: v['上のクラスの名前'], condition: v['上のクラスの条件'], rule: v['上のクラスのルール'] }, lower: { name: v['下のクラスの名前'], condition: v['下のクラスの条件'], rule: v['下のクラスのルール'] }, upperMinWins: Number(String(v['上のクラスにする勝ち数'] || '').normalize('NFKC')) || 0 };
   const classRows = Object.prototype.hasOwnProperty.call(v, 'クラス分け');
-  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, classRows: classRows, raw: v };
+  // 階級分け：「階級：」で始まる行が、1つの区分（上から順）。B列が、選べる階級（「なし」＝階級を選ばせない）
+  const weightRows = Object.prototype.hasOwnProperty.call(v, '階級分け');
+  const divisions = [];
+  rows.forEach(function (row) {
+    const m = /^階級[:：]([\s\S]*)$/.exec(String(row[0]).trim());
+    if (!m) return;
+    const parsed = weightList_(String(row[1]));
+    divisions.push({ name: divisionName_(m[1]), text: String(row[1]).trim(), classes: parsed.classes, none: parsed.none, problems: parsed.problems });
+  });
+  const weights = { enabled: v['階級分け'] === 'あり', divisions: divisions };
+  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, classRows: classRows, weights: weights, weightRows: weightRows, logo: v['ロゴ'] === 'あり', raw: v };
   return SETTINGS_CACHE_;
 }
 /** 設定の間違いを、直す場所つきで返す。空なら問題なし。 */
@@ -123,7 +222,7 @@ function settingsProblems_(s) {
   if (!raw['入場曲']) missing.push('入場曲（あり／なしを選ぶ）');
   if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
   if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
-  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
+  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']], ['階級分け', ['あり', 'なし']], ['ロゴ', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
   // クラスの欄は「クラス分け＝あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）
   if (raw['クラス分け'] === 'あり') {
     const sides = [['上', '上のクラス'], ['下', '下のクラス']], norm = function (t) { return String(t || '').normalize('NFKC').trim().toLowerCase(); };
@@ -148,14 +247,32 @@ function settingsProblems_(s) {
       if (lower && Number(lower[1]) !== Number(wins) - 1) bad.push('「下のクラスの条件」の「' + lower[1] + '勝以下」と、「上のクラスにする勝ち数」の' + Number(wins) + 'が、ちがいます（上のクラスは' + Number(wins) + '勝以上なので、' + (Number(wins) - 1) + '勝以下に直してください）');
     }
   }
+  // 階級の欄は「階級分け＝あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）
+  if (raw['階級分け'] === 'あり') {
+    const ds = (s.weights && s.weights.divisions) || [], seenNames = {};
+    if (!ds.length) bad.push('「階級分け」が「あり」ですが、「階級：…」の行がありません（「階級：中学生男子」のような行を足すか、「階級分け」を「なし」にしてください）');
+    if (ds.length > 12) bad.push('「階級：…」の行は12こまでです（いま' + ds.length + 'こ）');
+    ds.forEach(function (d) {
+      const label = '階級：' + d.name;
+      if (!d.name) { bad.push('「階級：」のあとに、区分の名前を書いてください（例：階級：中学生男子）'); return; }
+      if (d.name.length > 20) bad.push('「' + label + '」の区分の名前は20文字までにしてください');
+      if (/^[=+\-@]/.test(d.name)) bad.push('「' + label + '」の区分の名前は、「=」「+」「-」「@」で始めないでください');
+      const key = divisionKey_(d.name);
+      if (seenNames[key]) bad.push('「' + label + '」と同じ区分の名前が、2つあります（どちらかの名前を変えるか、1つ消してください）');
+      seenNames[key] = true;
+      d.problems.forEach(function (problem) { bad.push('「' + label + '」：' + problem); });
+    });
+  }
   // 長すぎる文は、選手に渡すURLに入らない。どの欄かを言う
   [['大会名', 300], ['会場', 300], ['主催者名', 300], ['問い合わせ先', 300], ['会場の地図URL', 500]].forEach(function (pair) { if (String(raw[pair[0]] || '').length > pair[1]) bad.push('「' + pair[0] + '」は' + pair[1] + '文字までにしてください'); });
   const out = [];
   if (missing.length) out.push('「設定」タブの、次の欄を入れてください：' + missing.join('、'));
   return out.concat(bad);
 }
-const PRIVATE_HEADERS = ['受付番号','申込日時','大会ID','所属ジム','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','連絡先氏名','連絡先電話番号','連絡先メールアドレス','同意','リクエストID','クラス'];
-const OS_HEADERS = ['管理番号','ジム名','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','クラス'];
+const PRIVATE_HEADERS = ['受付番号','申込日時','大会ID','所属ジム','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','連絡先氏名','連絡先電話番号','連絡先メールアドレス','同意','リクエストID','クラス','区分','階級'];
+const OS_HEADERS = ['管理番号','ジム名','選手名','学年','年齢','身長','体重','戦績・競技歴','試合への意気込み','入場曲URL（Apple Music推奨）','顔写真URL','クラス','区分','階級'];
+/** 古い版の表は、右のはしの列（クラス・区分・階級）が足りない。足りないのが右のはし3つまでなら、「old」として、①で足す。 */
+const OLD_MISSING_MAX = 3;
 function assertOwner_() {
   const props = PropertiesService.getScriptProperties(), owner = Session.getEffectiveUser().getEmail().toLowerCase(), saved = props.getProperty('ownerEmail');
   if (!owner || (saved && owner !== saved)) throw adminError_('owner', 'このシートを作った本人のGoogleで開き直してください。');
@@ -167,17 +284,21 @@ const TABLES = [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS�
 const PUBLIC_PROBLEM = 'ただいま受付に問題があります。主催者へご連絡ください。';
 function columnLetter_(index) { let n = index + 1, out = ''; while (n > 0) { const r = (n - 1) % 26; out = String.fromCharCode(65 + r) + out; n = Math.floor((n - 1) / 26); } return out; }
 /**
- * 見出しを調べる。state：ok＝そのまま／old＝最後の「クラス」の1マスだけ無い（古い表）／missing＝タブが無い・空／
+ * 見出しを調べる。state：ok＝そのまま／old＝右のはしの見出し（クラス・区分・階級のうち、最後の1〜3つ）だけ無い（古い表。from＝あるところまでの数）／missing＝タブが無い・空／
  * bad＝ほかが違う（最初に違う列の位置 index と、あるべき見出し expected、いまの文字 actual、列が足されたか inserted を返す）。
  */
 function headerCheck_(book, name, headers) {
   const sheet = book.getSheetByName(name), n = headers.length;
   if (!sheet || sheet.getLastRow() === 0) return { state: 'missing', name: name, sheet: sheet, headers: headers };
-  const width = typeof sheet.getMaxColumns === 'function' ? Math.min(n + 1, Math.max(n, sheet.getMaxColumns())) : n + 1;
+  const width = typeof sheet.getMaxColumns === 'function' ? Math.max(1, Math.min(n + 1, sheet.getMaxColumns())) : n + 1;
   const row = sheet.getRange(1, 1, 1, width).getDisplayValues()[0].map(function (cell) { return String(cell); });
+  while (row.length < n) row.push('');
   const head = row.slice(0, n);
   if (JSON.stringify(head) === JSON.stringify(headers)) return { state: 'ok', name: name, sheet: sheet, headers: headers };
-  if (JSON.stringify(head) === JSON.stringify(headers.slice(0, n - 1).concat(['']))) return { state: 'old', name: name, sheet: sheet, headers: headers };
+  // 古い表：左がそのままで、右のはし1〜3つの見出しが空（どれも空であることまで見る。ほかの文字が入っていたら、bad）
+  for (let missing = 1; missing <= OLD_MISSING_MAX && missing < n; missing++) {
+    if (JSON.stringify(head) === JSON.stringify(headers.slice(0, n - missing).concat(headers.slice(n - missing).map(function () { return ''; })))) return { state: 'old', name: name, sheet: sheet, headers: headers, from: n - missing };
+  }
   let index = 0;
   while (index < n && head[index] === headers[index]) index++;
   // 途中に1列足された形：そこから先が、ひとつずつ右にずれて同じ
@@ -192,11 +313,13 @@ function headerState_(sheet, headers) {
   if (JSON.stringify(row) === JSON.stringify(headers)) return 'ok';
   return JSON.stringify(row) === JSON.stringify(headers.slice(0, n - 1).concat([''])) ? 'old' : 'bad';
 }
-/** 古い表に、最後の見出し1マスだけ足す。ほかのマスは書き換えない。 */
-function upgradeHeader_(sheet, headers) {
-  const n = headers.length;
-  sheet.getRange(1, n).setValue(headers[n - 1]).setFontWeight('bold');
-  try { sheet.getRange(1, n).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
+/** 古い表に、足りない右のはしの見出し（1〜3マス）だけ足す。ほかのマスは書き換えない。from＝いまある見出しの数（headerCheck_ が返す）。 */
+function upgradeHeader_(sheet, headers, from) {
+  const n = headers.length, start = typeof from === 'number' ? from : n - 1;
+  // 列が足りない小さな表でも書けるように、先に列を足す
+  if (typeof sheet.getMaxColumns === 'function' && typeof sheet.insertColumnsAfter === 'function' && sheet.getMaxColumns() < n) sheet.insertColumnsAfter(sheet.getMaxColumns(), n - sheet.getMaxColumns());
+  sheet.getRange(1, start + 1, 1, n - start).setValues([headers.slice(start)]).setFontWeight('bold');
+  try { sheet.getRange(1, start + 1, 1, n - start).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
 }
 function entryError_(code,message,retryable) { const error=new Error(message); error.code=code; error.retryable=retryable; return error; }
 /** 主催者だけが直せる問題。主催者には message（直し方つき）を、選手には PUBLIC_PROBLEM を見せる。 */
@@ -245,8 +368,10 @@ function setupTournament() {
         const sheet = check.sheet || book.insertSheet(pair[0]);
         sheet.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]).setFontWeight('bold');
         try { sheet.getRange(1, 1, 1, pair[1].length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
-      } else if (check.state === 'old') upgradeHeader_(check.sheet, pair[1]);
+      } else if (check.state === 'old') upgradeHeader_(check.sheet, pair[1], check.from);
     });
+    // 新しく書いた見出しを、Googleに確実に書き込ませてから、次の確認へ進む（書き込みが遅れて「申込原本が見つからない（または、空）」と出るのを防ぐ）
+    SpreadsheetApp.flush();
     // フォルダがゴミ箱にあるときは、作り直さずに「元に戻す」を案内する（中の写真を失わないため）。完全に消えていたら、新しく作る
     ['photoFolderId', 'testFolderId'].forEach(function (key) { if (folderState_(props.getProperty(key)) === 'trashed') throw adminError_('folder', FOLDER_GONE); });
     const photoState = folderState_(props.getProperty('photoFolderId'));
@@ -262,12 +387,18 @@ function setupTournament() {
   Logger.log('準備できました。次は「拡張機能」→「Apps Script」→「デプロイ」→「新しいデプロイ」→「ウェブアプリ」です。何度押しても同じ申込表を使います。');
   return statusInfo_();
 }
+/** 自動テストの1件が選ぶ区分・階級：最初の区分と、その最初の階級（階級分けをしないときは、空）。 */
+function selfTestDivision_(s) {
+  if (!s.weights.enabled || !s.weights.divisions.length) return { division: '', weightClass: '' };
+  const d = s.weights.divisions[0];
+  return { division: d.name, weightClass: d.classes[0] || '' };
+}
 /** 架空の1件を、本物の申込と同じ道で書き、表と写真が残ったことを確かめる。会長が手でテスト送信しなくてよい。 */
 function selfTest_() {
   const resources = checkResources_();
   if (testComplete_(resources.book)) return true;
   const s = S_();
-  saveEntry_({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG });
+  saveEntry_({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG });
   if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
   return true;
 }
@@ -291,7 +422,7 @@ function checkResources_(){
   const tables=TABLES.map(function(pair){return headerCheck_(book,pair[0],pair[1]);});
   // どれか1つでも違っていたら（タブが無い・空も含む）、何も書き換えずに止まる。全部そろって（または古い形だけ）のときだけ、足りない1マスを足す。
   tables.forEach(function(t){if(t.state==='bad'||t.state==='missing')throw headerProblemError_(t);});
-  tables.forEach(function(t){if(t.state==='old')upgradeHeader_(t.sheet,t.headers);});
+  tables.forEach(function(t){if(t.state==='old')upgradeHeader_(t.sheet,t.headers,t.from);});
   return{book:book,folder:folder};
 }
 /** ⑤ いまの状態。画面（OS）が読むのは、公開してよい項目だけ。主催者のメール・鍵・申込の内容は含めない。 */
@@ -308,8 +439,11 @@ function statusInfo_() {
   else if (!info.accepting && props.getProperty('everOpened') === 'true') info.closedBy = 'stopped';
   // 「設定」タブに、クラスの行が無い（古い版のコピー）ときだけ知らせる。画面が黄色の注意を出す。
   if (!s.classRows) info.classRows = false;
+  if (!s.weightRows) info.weightRows = false;
   if (!problems.length) { info.title = s.tournamentName; info.date = s.date; info.venue = s.venue; info.venueUrl = s.venueUrl; info.organizer = s.organizer; info.contact = s.contact; info.deadline = s.deadline; info.music = s.music; info.grade = s.grade; info.age = s.age; info.comment = s.comment;
     // クラス分けが「あり」のときだけ足す。クラスの文は選手に見せるもの（公開してよい）。連絡先・DriveのIDは入れない。
+    if (s.logo) info.logo = true;
+    if (s.weights.enabled) { info.weightMode = true; info.weights = { enabled: true, divisions: s.weights.divisions.map(function (d) { return { name: d.name, classes: d.classes.slice() }; }) }; }
     if (s.classes.enabled) { info.classMode = true; info.classes = { enabled: true, upper: { name: s.classes.upper.name, condition: s.classes.upper.condition, rule: s.classes.upper.rule }, lower: { name: s.classes.lower.name, condition: s.classes.lower.condition, rule: s.classes.lower.rule }, upperMinWins: s.classes.upperMinWins }; }
   }
   return info;
@@ -382,8 +516,8 @@ function testComplete_(book){
   if(!requestId||props.getProperty('lastTestBuild')!==RECEPTION_BUILD)return false;
   const sheet=book.getSheetByName('テスト申込'),os=book.getSheetByName('テストOS取込用'),row=findRow_(sheet,18,requestId);
   if(!row)return false;
-  const values=sheet.getRange(row,1,1,19).getDisplayValues()[0],osRow=findRow_(os,1,values[0]);
-  if(!osRow||JSON.stringify(os.getRange(osRow,1,1,12).getDisplayValues()[0])!==JSON.stringify([values[0]].concat(values.slice(3,13),[values[18]])))return false;
+  const values=sheet.getRange(row,1,1,PRIVATE_HEADERS.length).getDisplayValues()[0],osRow=findRow_(os,1,values[0]);
+  if(!osRow||JSON.stringify(os.getRange(osRow,1,1,OS_HEADERS.length).getDisplayValues()[0])!==JSON.stringify(osValuesOf_(values)))return false;
   const photoId=String(values[12]).match(/\/d\/([\w-]+)/);if(!photoId)return false;
   const file=DriveApp.getFileById(photoId[1]),parents=file.getParents();let inside=false;
   while(parents.hasNext())if(parents.next().getId()===props.getProperty('testFolderId'))inside=true;
@@ -427,6 +561,36 @@ function classRetryOk_(stored,p){
   checkClass_(p);
   return stored===classLabel_(p);
 }
+/** 区分を探す（全角・半角・大文字小文字・空白のちがいは同じ）。なければ null */
+function findDivision_(name){
+  const w=S_().weights,key=divisionKey_(name);
+  if(!w.enabled||!key)return null;
+  for(let i=0;i<w.divisions.length;i++)if(divisionKey_(w.divisions[i].name)===key)return w.divisions[i];
+  return null;
+}
+/** 送られた区分・階級を、設定タブのいまの名前にそろえて返す。階級分けをしない大会は、どちらも空。選ばれていない・設定にないときは投げる。送られた文字そのものは保存しない。 */
+function weightPick_(p){
+  if(!S_().weights.enabled)return{division:'',weightClass:''};
+  const d=findDivision_(norm_(p.division));
+  if(!d)throw entryError_('weight','区分が選ばれていません。申込ページを開き直して、区分を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
+  if(!d.classes.length)return{division:d.name,weightClass:''};
+  const canon=weightCanon_(norm_(p.weightClass)).toLowerCase();
+  const found=canon?d.classes.filter(function(c){return c.toLowerCase()===canon;})[0]:'';
+  if(!found)throw entryError_('weight','階級が選ばれていません。申込ページを開き直して、「'+d.name+'」の階級を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
+  return{division:d.name,weightClass:found};
+}
+/** 保存ずみの申込の再送で、区分・階級が「変わった」と言うのは、保存した区分・階級がいまも設定にあって、選んだものとちがうときだけ。 */
+function weightRetryOk_(storedDivision,storedClass,p){
+  if(!S_().weights.enabled||!storedDivision)return true;
+  const d=findDivision_(storedDivision);
+  if(!d)return true;
+  // 送られた区分が、保存した区分と同じか（投げずに比べる。設定が変わったあとの再送で、「保存していない」と言わないため）
+  if(divisionKey_(norm_(p.division))!==divisionKey_(d.name))return false;
+  if(!d.classes.length||!storedClass)return true;
+  const stored=weightCanon_(storedClass).toLowerCase();
+  if(!d.classes.some(function(c){return c.toLowerCase()===stored;}))return true;
+  return weightCanon_(norm_(p.weightClass)).toLowerCase()===stored;
+}
 /** 電話番号：画面と同じ規則の安全網。数字だけにして、0から始まる10〜11けた／同じ数字だけ・フリーダイヤルは不可／携帯は11けた。 */
 function phoneOk_(raw){
   const d=norm_(String(raw==null?'':raw).normalize('NFKC')).replace(/[\s\-ー－―‐‑–—−]/g,'');
@@ -437,7 +601,7 @@ function phoneOk_(raw){
 }
 function validateEntry_(p){
   // 見えない文字・改行（\r\n）をそろえてから調べる。あとで保存する値も、同じそろえかたになる
-  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail'].forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
+  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','division','weightClass'].forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
   if((p.protocol!=='2'&&p.protocol!=='3')||p.eventId!==S_().eventId||(p.mode!=='test'&&p.mode!=='live'))throw entryError_('event','大会の申し込みリンクが違います。主催者から新しいリンクをもらってください。',false);
   if(p.website)throw entryError_('spam','送信を受け付けられませんでした。',false);
   if(p.consent!=='yes')throw entryError_('consent','個人情報の取扱いへの同意が必要です。申込ページにもどって、同意のチェックを入れてください。',false);
@@ -461,16 +625,17 @@ function saveEntry_(p){
     if(!isTest&&settingsProblems_(S_()).length)throw entryError_('setup','ただいま受付を調整しています。少し待ってからもう一度送ってください。',true);
     const existing=findRow_(sheet,18,requestId);let values;
     if(existing){
-      values=sheet.getRange(existing,1,1,19).getDisplayValues()[0];
+      values=sheet.getRange(existing,1,1,PRIVATE_HEADERS.length).getDisplayValues()[0];
       // 保存のときに付く守りの「'」や、改行の形（CRLF／LF）のちがいは、「変わった」ではない。両方を同じ形にそろえてくらべる
       const same=function(a,b){return JSON.stringify(a.map(retryNorm_))===JSON.stringify(b.map(retryNorm_));};
       const expected=[String(p.gym).trim(),String(p.name).trim(),S_().grade==='off'?'':String(p.grade||'').trim(),S_().age==='off'?'':String(p.age||'').trim(),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),S_().comment==='off'?'':String(p.comment||'').trim(),S_().music?String(p.musicUrl||'').trim():''];
-      if(!same(values.slice(3,12),expected)||!same(values.slice(13,17),[String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
+      if(!same(values.slice(3,12),expected)||!same(values.slice(13,17),[String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p)||!weightRetryOk_(String(values[19]||''),String(values[20]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
       const photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),values[0],p.photoDataUrl,true);
       if(photoUrl!==values[12])throw entryError_('photo','保存済みの写真と申込表が一致しません。主催者へご連絡ください。',false);
     }
     else{
       checkClass_(p);
+      const weightChoice=weightPick_(p);
       if(!isTest&&(props.getProperty('accepting')!=='true'||Date.now()>deadlineTime_()))throw entryError_('closed','現在、申し込みを受け付けていません。主催者へご連絡ください。',false);
       if(sheet.getLastRow()>3000)throw entryError_('capacity','受付件数が上限に達しました。主催者へご連絡ください。',false);
       const minute=String(Math.floor(Date.now()/60000)),count=props.getProperty('rateMinute')===minute?Number(props.getProperty('rateCount')||0):0;
@@ -478,26 +643,28 @@ function saveEntry_(p){
       props.setProperties({rateMinute:minute,rateCount:String(count+1)});
       const receiptNo=receipt_(requestId,isTest),photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),receiptNo,p.photoDataUrl);
       const common=[clean_(p.gym,120),clean_(p.name,80),S_().grade==='off'?'':clean_(p.grade,30),S_().age==='off'?'':clean_(p.age,3),String(Number(p.height)),String(Number(p.weight)),clean_(p.record,300),S_().comment==='off'?'':clean_(p.comment,500),S_().music?clean_(p.musicUrl,500):'',photoUrl];
-      values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId,clean_(classLabel_(p),40)]);
+      values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId,clean_(classLabel_(p),40),clean_(weightChoice.division,40),clean_(weightChoice.weightClass,40)]);
       // Googleの自動変換で電話番号の先頭0や数字だけの選手名を失わない。
       const newRow=sheet.getLastRow()+1;
-      sheet.getRange(newRow,3,1,17).setNumberFormat('@');
-      sheet.getRange(newRow,1,1,19).setValues([values]);
+      sheet.getRange(newRow,3,1,PRIVATE_HEADERS.length-2).setNumberFormat('@');
+      sheet.getRange(newRow,1,1,PRIVATE_HEADERS.length).setValues([values]);
       // 実際に書かれた電話番号が送った文字と違えば（先頭0が消えた等）、文字として書き直す。
       const phoneCell=sheet.getRange(newRow,15);
       if(phoneCell.getDisplayValue()!==String(values[14])){phoneCell.setNumberFormat('@').setValue(String(values[14]));}
-      values=sheet.getRange(findRow_(sheet,18,requestId),1,1,19).getDisplayValues()[0];
+      values=sheet.getRange(findRow_(sheet,18,requestId),1,1,PRIVATE_HEADERS.length).getDisplayValues()[0];
     }
-    const osValues=[values[0]].concat(values.slice(3,13),[values[18]]).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);
-    os.getRange(osRow||os.getLastRow()+1,1,1,12).setNumberFormat('@');
-    if(osRow)os.getRange(osRow,1,1,12).setValues([osValues]);else os.appendRow(osValues);
+    const osValues=osValuesOf_(values).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);
+    os.getRange(osRow||os.getLastRow()+1,1,1,OS_HEADERS.length).setNumberFormat('@');
+    if(osRow)os.getRange(osRow,1,1,OS_HEADERS.length).setValues([osValues]);else os.appendRow(osValues);
     SpreadsheetApp.flush();
     const savedRow=findRow_(os,1,values[0]);
-    if(!savedRow||JSON.stringify(os.getRange(savedRow,1,1,12).getDisplayValues()[0])!==JSON.stringify([values[0]].concat(values.slice(3,13),[values[18]])))throw entryError_('storage','大会用の名簿の保存を確認できませんでした。',true);
+    if(!savedRow||JSON.stringify(os.getRange(savedRow,1,1,OS_HEADERS.length).getDisplayValues()[0])!==JSON.stringify(osValuesOf_(values)))throw entryError_('storage','大会用の名簿の保存を確認できませんでした。',true);
     if(isTest){props.setProperty('lastTestBuild',RECEPTION_BUILD);props.setProperty('lastTestRequest',requestId);}
     return values[0];
   });
 }
+/** 申込原本の1行から、OS取込用の1行（連絡先なし）を作る：管理番号・ジム名〜写真URL・クラス・区分・階級 */
+function osValuesOf_(values){return[values[0]].concat(values.slice(3,13),[values[18],values[19],values[20]]);}
 function findRow_(sheet,column,value){if(sheet.getLastRow()<2)return 0;const values=sheet.getRange(2,column,sheet.getLastRow()-1,1).getDisplayValues();for(let i=0;i<values.length;i++)if(values[i][0]===value)return i+2;return 0;}
 function savePhoto_(folderId,receiptNo,dataUrl,requireExisting){
   const match=String(dataUrl).match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
@@ -524,7 +691,7 @@ function escape_(value){return String(value==null?'':value).replace(/[&<>"']/g,f
 function resultPage_(receiptNo,message,error,p){
   const success=Boolean(receiptNo),retry=!success&&(!error||error.retryable!==false);
   // まだ保存されていないと言い切れる失敗だけ「送れませんでした」。保存ずみかもしれない失敗（再送・写真）は、確認が必要と言う
-  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','closed','capacity','setup','headers','missing','sharing','owner','folder'].indexOf(error.code)>=0;
+  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','weight','closed','capacity','setup','headers','missing','sharing','owner','folder'].indexOf(error.code)>=0;
   // 色と言葉の約束：成功は緑と ✓、失敗は赤と ✕、確認が必要なのは黄色と ⚠（色だけで伝えない）
   const tone=success?'ok':notSaved?'bad':'warn';
   const mark=success?'✓ ':notSaved?'✕ ':'⚠ ';
@@ -534,7 +701,7 @@ function resultPage_(receiptNo,message,error,p){
   // 問い合わせ先は、主催者が「設定」タブに書いた、選手に見せてよいもの。読めないときは出さない
   let contact='';try{contact=String(S_().contact||'');}catch(_){contact='';}
   if(retry){const endpoint=ScriptApp.getService().getUrl();if(/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint||'')){
-    const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','fighterClass','photoDataUrl'];
+    const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','fighterClass','division','weightClass','photoDataUrl'];
     retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ内容で、保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
   const guide=success?'受付番号が出ています。この画面の写真をとってください。この画面は閉じて大丈夫です。':notSaved?'受付番号は出ていません。直せるときは、ブラウザの「戻る」で申込ページにもどって直し、もう一度送ります。直せないときは、下の問い合わせ先へご連絡ください。':'受付番号が出るまで完了ではありません。解決しない場合は、下の問い合わせ先へご連絡ください。';
   const contactLine=contact?'<p>問い合わせ：'+escape_(contact)+'</p>':'';
@@ -555,12 +722,13 @@ function exportTestTournament(){
     if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');
     const original=resources.book.getSheetByName('テスト申込'),sourceRow=findRow_(original,18,props.getProperty('lastTestRequest'));
     const receipt=original.getRange(sourceRow,1).getDisplayValues()[0][0],sheet=resources.book.getSheetByName('テストOS取込用'),row=findRow_(sheet,1,receipt);
-    const rows=[sheet.getRange(1,1,1,12).getDisplayValues()[0],sheet.getRange(row,1,1,12).getDisplayValues()[0]];
+    const rows=[sheet.getRange(1,1,1,OS_HEADERS.length).getDisplayValues()[0],sheet.getRange(row,1,1,OS_HEADERS.length).getDisplayValues()[0]];
     return exportRows_(rows,DriveApp.getFolderById(props.getProperty('testFolderId')),'TEST_Tournament_OS_');
   });
 }
 function exportRows_(rows,folder,prefix){
-    const withClass=rows[0].length>11&&String(rows[0][11])==='クラス',csvRows=rows.map(function(r){return r.slice(0,10).concat(withClass?[r[11]]:[]);});
+    // 右のはしの列（クラス・区分・階級）は、見出しがそろっている列だけ、CSVに付ける（古い表は、足りない列を付けない）。区分・階級は、階級分けが「あり」か、中身があるときだけ（使わない大会のCSVは、これまでと同じ形）
+    const weightOn=S_().weights.enabled,used=function(i){return rows.slice(1).some(function(r){return String(r[i]||'')!=='';});},extra=[11,12,13].filter(function(i){return rows[0].length>i&&String(rows[0][i])===OS_HEADERS[i]&&(i===11||weightOn||used(i));}),csvRows=rows.map(function(r){return r.slice(0,10).concat(extra.map(function(i){return r[i];}));});
     const csv='\uFEFF'+csvRows.map(function(row){return row.map(function(cell){return'"'+clean_(cell,2000).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
     const files=[Utilities.newBlob(csv,'text/csv','players.csv')];
     let totalBytes=csv.length*3;
