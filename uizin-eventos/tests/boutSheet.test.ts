@@ -3,7 +3,7 @@ import test from 'node:test';
 import { A3_MM, DEFAULT_SHOW, PER_PAGE, ROW_GAP_MM, buildSheet, clampPerPage, columnsOf, charEm, fitCenter, fitNameMm, fitSide, fitText, fitTitleMm, sideHeightMm, textWidthEm, wrapLines, pageCount, paginate, pagesIfTarget, parseSheetOptions, parseSheetPrefs, perPageForPages, perPageLimit, rangeText, resolvePerPage, rowsOf, sheetBouts, sheetMetrics, sheetNotes, sheetSide, suggestPerPage, type SheetBout } from '../core/boutSheet.ts';
 import { emptyTournament, isLocalTournament, mergeFighters, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
 import { mergeKeepExisting, restoreConfirmText, sameExceptProgress } from '../app/private/logic.ts';
-import { buildRow, nowModel, summarizeMusic } from '../app/private/live/listLogic.ts';
+import { buildRow, musicState, nowModel, summarizeMusic } from '../app/private/live/listLogic.ts';
 
 const PHOTO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
 const fighter = (id: string, over: Partial<LocalFighter> = {}): LocalFighter => ({ id, gym: '架空ジム' + id, name: '架空' + id, grade: '中1', age: '13', height: '150', weight: '45', record: '2勝1敗', comment: 'がんばります', musicUrl: '', photoDataUrl: PHOTO, ...over });
@@ -227,14 +227,21 @@ test('折り返しの数え方：かな・漢字は1字ずつ、英数字は単�
   // 英数字は、単語ごと折り返す。入りきらない1単語は、字の途中で折り返す
   assert.equal(wrapLines('AAAA BBBB', 10, 35), 2, '単語のあいだで折り返す');
   assert.ok(wrapLines('W'.repeat(40), 10, 100) >= 4, '長い単語は、字の途中で折り返す');
+  // 全角の空白（姓と名のあいだの「　」）は、1字ぶんの幅。幅 4.5字ぶんの行（文字 10mm・幅 46.8mm）に「田中　陽菜」（5字ぶん）は入らない
+  assert.equal(wrapLines('田中　陽菜', 10, 46.8), 2, '全角の空白も1字ぶん');
+  assert.equal(wrapLines('田中 陽菜', 10, 46.8), 1, '半角の空白は0.3字ぶん');
+  // 禁則：「ー」「・」「ェ」は行の頭に来ない。1行5字ぶん（文字 10mm・幅 52mm）に、10字の「ジェームス・ブラウン」は、ふつうに数えると2行だが、行の頭に来られない字が前の字にくっつくので3行
+  assert.equal(wrapLines('ジェームス・ブラウン', 10, 52), 3, 'ジェー|ム|ス・ブラウ|ン のように、前の字にくっつく');
+  assert.equal(wrapLines('ブラウンブラウン', 10, 52), 2, '禁則のない字は、5字ずつ（2行）');
+  assert.equal(wrapLines('「山田」太郎', 10, 52), 2, '開きかっこは、次の字とくっつく');
   // 本物のブラウザで測った結果（文字 15mm・幅 77.3mm、太字）：1行に入らない長い単語は、前の単語のあとで折り返してから、字の途中で折り返す。3行になる
   assert.equal(wrapLines('DAIKI NAKAMURA', 15, 77.3), 3, 'DAIKI | NAKAM | URA');
   assert.equal(wrapLines('Yuki Matsumoto', 15, 77.3), 3);
   assert.equal(wrapLines('JOHN SMITH', 15, 77.3), 2);
   // 小さい字ほど、行は増えない（大きさについて単調）
   for (const text of ['ミハイル・ゴルバチョフ', 'MAXIMILIAN WEBER', 'フラットアップキックボクシングジム千葉道場']) {
-    let before = Infinity;
-    for (let size = 3; size <= 14; size += 0.1) { const n = wrapLines(text, size, 80); assert.ok(n >= (Number.isFinite(before) ? 0 : 0)); before = n; }
+    let before = 0;
+    for (let size = 3; size <= 14; size += 0.1) { const n = wrapLines(text, size, 80); assert.ok(n >= before, text + '：文字が大きくなるのに、行が減る（' + size.toFixed(1) + 'mm：' + before + ' → ' + n + '）'); before = n; }
     assert.ok(wrapLines(text, 3, 80) <= wrapLines(text, 14, 80), text + '：小さいほうが、行が少ない');
   }
 });
@@ -379,4 +386,31 @@ test('欠場の流れ：画面の自動取り込みは欠場の変化を見の�
   const byId = new Map(absent.fighters.map((f) => [f.id, f]));
   assert.match(buildRow(absent.bouts[1], 1, byId, false, 0).openLabel, /赤コーナー 架空r2（欠場）/);
   assert.doesNotMatch(buildRow(absent.bouts[0], 0, byId, false, 0).openLabel, /欠場/);
+});
+
+test('写真は、その選手についている：赤の写真は赤の選手、青の写真は青の選手（入れかわらない）。欠場の人の写真は出ない', () => {
+  const data = tournament(3);
+  data.fighters = data.fighters.map((f) => ({ ...f, photoDataUrl: 'data:image/jpeg;base64,/9j/' + f.id }));
+  const bouts = sheetBouts(data, DEFAULT_SHOW);
+  bouts.forEach((b, i) => {
+    assert.equal(b.red.photo, 'data:image/jpeg;base64,/9j/r' + (i + 1), '赤の写真');
+    assert.equal(b.blue.photo, 'data:image/jpeg;base64,/9j/b' + (i + 1), '青の写真');
+    assert.equal(b.red.name, '架空r' + (i + 1)); assert.equal(b.blue.name, '架空b' + (i + 1));
+  });
+  const absent = { ...data, fighters: data.fighters.map((f) => f.id === 'b2' ? { ...f, absent: true } : f) };
+  assert.equal(sheetBouts(absent, DEFAULT_SHOW)[1].blue.photo, '', '欠場の人の写真は出ない');
+});
+
+test('欠場の人の文字：札（クラス・区分・階級）は出さず、「欠場」の札のぶん少し高い。入場曲は出さない。コピーから戻すとき、欠場の入れかわりも知らせる', () => {
+  const m = sheetMetrics(8, 'portrait', true);
+  const side = { name: '山田 太郎', gym: 'FLATUP GYM', tag: 'Bクラス　中学生男子・37kg以下' };
+  const ok = fitSide({ state: 'ok', ...side }, m, true), absent = fitSide({ state: 'absent', ...side }, m, true);
+  assert.ok(ok.tagLines > 0 && absent.tagLines === 0, '欠場の人は札の行が無い');
+  assert.ok(Math.abs(sideHeightMm('absent', ok) - sideHeightMm('ok', ok) - 0.8) < 1e-9, '欠場の札のぶん（0.8mm）高い');
+  const base = tournament(3);
+  assert.equal(musicState({ ...base.fighters[0], absent: true, musicUrl: 'https://music.apple.com/jp/album/x' }, true), 'empty', '欠場の人の入場曲は、出さない');
+  assert.equal(musicState({ ...base.fighters[0], musicUrl: 'https://music.apple.com/jp/album/x' }, true), 'link', '欠場でなければ、曲のリンクが出る');
+  const backup = { ...base, fighters: base.fighters.map((f) => f.id === 'r1' ? { ...f, absent: true } : f) };
+  const current = { ...base, fighters: base.fighters.map((f) => f.id === 'b2' ? { ...f, absent: true } : f) };
+  assert.match(restoreConfirmText({ restored: backup, current, dirty: false, everSaved: true }), /1人の「欠場」の印が、コピーにはありません/, '人数が同じでも、欠場の入れかわりを知らせる');
 });

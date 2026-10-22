@@ -135,6 +135,7 @@ export type MusicState = 'off' | 'empty' | 'link' | 'broken' | 'none';
 export function musicState(fighter: LocalFighter | undefined, musicEnabled: boolean): MusicState {
   if (!musicEnabled) return 'off';
   if (!fighter) return 'empty';
+  if (fighter.absent === true) return 'empty'; // 欠場の選手の入場曲は、出さない（曲なしの警告も、曲のリンクも）
   if (safeMusicUrl(fighter.musicUrl ?? '')) return 'link';
   return String(fighter.musicUrl ?? '').trim() ? 'broken' : 'none';
 }

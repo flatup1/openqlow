@@ -13,7 +13,7 @@ import { Caution, ErrorLine, Hint, LockReason, NextSlot, OkLine, cx } from '../l
   A3 対戦一覧表（掲示用）。主催者が決めた対戦カードを、見やすい一覧表にして印刷（PDF）する。組み合わせは、ここでは決めない・変えない。
   読むだけの画面：保存してある大会から作る（保存データには書き込まない。覚えるのは、このブラウザの設定だけ）。順番・相手・欠場は、準備の画面で直して「保存する」→ この画面を開いたままなら自動で、閉じたなら「A3の対戦一覧表をつくる」をもう一度押すと、入れかわる。
   載せるのは core/boutSheet.ts が通した項目だけ（氏名・所属ジム・小さな顔写真・クラス/区分/階級・試合番号・ルール）。電話・生年月日・健康・同意の記録は、載らない。
-  印刷は、ブラウザの印刷の画面（送り先を「PDFに保存」にするとPDF）。用紙の大きさ（A3・縦／横）は、このページから指定する。
+  印刷は、ブラウザの印刷の画面（プリンターを選ぶ欄を「PDFに保存」にするとPDF。Chromeでは「送信先」）。用紙の大きさ（A3・縦／横）は、このページから指定する。
 */
 
 /** 1mm が何px か（画面の96dpi）。プレビューの縮尺に使う */
@@ -72,7 +72,7 @@ function Bout({ bout, m, show, thumbs }: { bout: SheetBout; m: SheetMetrics; sho
 }
 
 /** 印刷の前に確かめてもらうこと。止めない（印刷はできる）。上から、直したほうがよい順 */
-function Checks({ notes, total, ready, pending, showPhoto, titleReal, cutBouts, fighterCount }: { notes: SheetNotes; total: number; ready: boolean; pending: number; showPhoto: boolean; titleReal: boolean; cutBouts: number[]; fighterCount: number }) {
+function Checks({ notes, total, ready, pending, showPhoto, titleReal, cutBouts, leftOut, fighterCount }: { notes: SheetNotes; total: number; ready: boolean; pending: number; showPhoto: boolean; titleReal: boolean; cutBouts: number[]; leftOut: number; fighterCount: number }) {
   const problems: string[] = [];
   if (!titleReal) problems.push('大会の名前がまだ入っていません。一覧表の各ページの上に「大会名未設定」と出ます。');
   if (notes.empty.length) problems.push(numbersText(notes.empty) + 'は、選手がまだ決まっていません。一覧表には「未定」と出ます。');
@@ -81,7 +81,7 @@ function Checks({ notes, total, ready, pending, showPhoto, titleReal, cutBouts, 
   if (notes.absent.length) problems.push(numbersText(notes.absent) + 'に、欠場の選手がいます。一覧表には「欠場」と出ます。');
   if (notes.twice.length) problems.push('2つ以上の試合に入っている選手がいます：' + notes.twice.slice(0, 5).join('、') + (notes.twice.length > 5 ? ' ほか' + (notes.twice.length - 5) + '人' : '') + '。');
   return <div className="sheet-noprint mt-4 space-y-2" data-sheet-checks="1">
-    {total > 0 && problems.length === 0 && cutBouts.length === 0 ? (ready
+    {total > 0 && problems.length === 0 && cutBouts.length === 0 && leftOut === 0 ? (ready
       ? <OkLine>どの試合も、赤と青が決まっています。そのまま印刷できます。</OkLine>
       : <Hint>どの試合も、赤と青が決まっています。写真をととのえ終わると、印刷できます（あと{pending}人）。</Hint>) : null}
     {problems.map((text) => <Caution key={text} title="印刷の前に確かめてください">{text}</Caution>)}
@@ -162,7 +162,7 @@ export default function BoutSheet() {
   const limit = perPageLimit(orientation);
   const model = useMemo(() => data ? buildSheet(data, { perPage, orientation, show }) : null, [data, perPage, orientation, show]);
   const m = useMemo(() => sheetMetrics(perPage, orientation, show.photo), [perPage, orientation, show.photo]);
-  // 印刷の前に知らせること：まん中の列に入らず省いた文字（ルール・契約体重など）／紙の上で切れる、名前・所属ジム・クラスの文字
+  // 印刷の前に知らせること：まん中の列に入らず省いた文字（ルール・体重の区分など）／紙の上で切れる、名前・所属ジム・クラスの文字
   const warn = useMemo(() => {
     const cut: number[] = [], rule: number[] = [], classLine: number[] = [];
     if (!model) return { cut, rule, classLine };
@@ -323,8 +323,8 @@ export default function BoutSheet() {
               {atMax ? <LockReason>これ以上ふやせません（{orientationWord(orientation)}は1ページ {limit.max} 試合まで）。</LockReason> : null}
               {!t3.can ? <LockReason>{lockText(3, t3)}</LockReason> : null}
               {!t4.can ? <LockReason>{lockText(4, t4)}</LockReason> : null}
-              {warn.rule.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(warn.rule.slice(0, 5))}{warn.rule.length > 5 ? ' ほか' + (warn.rule.length - 5) + '試合' : ''}の「ルール」の文字は、入りきらないので載りません。載せたいときは、1ページの試合数をへらします。</Caution> : null}
-              {warn.classLine.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(warn.classLine.slice(0, 5))}{warn.classLine.length > 5 ? ' ほか' + (warn.classLine.length - 5) + '試合' : ''}のまん中の列の文字（契約体重など）は、入りきらないので載りません。選手のそばの「クラス・区分・階級」は載ります。</Caution> : null}
+              {warn.rule.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(warn.rule.slice(0, 5))}{warn.rule.length > 5 ? ' ほか' + (warn.rule.length - 5) + '試合' : ''}の「ルール」の文字は、入りきらないので載りません。ルールは、短いときだけ載ります。1ページの試合数をへらすと載ることもありますが、長いルールは、1ページ1試合でも載りません。</Caution> : null}
+              {warn.classLine.length > 0 ? <Caution title="印刷の前に確かめてください">1ページに載せる試合が多いため、{numbersText(warn.classLine.slice(0, 5))}{warn.classLine.length > 5 ? ' ほか' + (warn.classLine.length - 5) + '試合' : ''}のまん中の列の文字（体重の区分など）は、入りきらないので載りません。選手のそばの「クラス・区分・階級」は載ります。</Caution> : null}
               {reduceHint ? <Hint>A3が{pages}枚になります。{reduceHint}</Hint> : null}
             </div>
           </div>
@@ -339,7 +339,7 @@ export default function BoutSheet() {
           </div>
         </section> : null}
 
-        <Checks notes={model.notes} total={total} ready={ready} pending={pending} showPhoto={show.photo} titleReal={isTitleReal(model.title)} cutBouts={warn.cut} fighterCount={fighterCount} />
+        <Checks notes={model.notes} total={total} ready={ready} pending={pending} showPhoto={show.photo} titleReal={isTitleReal(model.title)} cutBouts={warn.cut} leftOut={warn.rule.length + warn.classLine.length} fighterCount={fighterCount} />
 
         <div className="mt-4">
           {hasBouts
@@ -354,7 +354,7 @@ export default function BoutSheet() {
                 <Caution title="対戦カードがありません">準備の画面で対戦カードを作って「保存する」を押してから、ここにもどります。</Caution>
                 <NextSlot active label="準備の画面へもどる" className="mt-3 max-w-xl">{backLink}</NextSlot>
               </>}
-          {hasBouts ? <Hint className="mt-2 max-w-3xl">印刷の画面が開いたら、「送り先」を「PDFに保存」にすると、PDFのファイルになります。用紙は A3（{orientationWord(orientation)}）が選ばれています。ブラウザによって、言葉がちがうことがあります。</Hint> : null}
+          {hasBouts ? <Hint className="mt-2 max-w-3xl">印刷の画面が開いたら、プリンターを選ぶ欄（Chromeでは『送信先』）を『PDFに保存』にすると、PDFのファイルになります。Safariでは、左下の『PDF』から『PDFとして保存』を選びます。用紙は A3（{orientationWord(orientation)}）が選ばれます。ブラウザによって、言葉がちがうことがあります。</Hint> : null}
         </div>
 
         {hasBouts ? <h2 className="mt-6 text-lg font-black">印刷のプレビュー<span className="ml-2 text-[17px] font-bold text-slate-700">（実物の約{Math.round(scale * 100)}%。1ページずつ、このまま印刷されます）</span></h2> : null}

@@ -308,13 +308,18 @@ export function textWidthEm(text: string): number {
 const TEXT_SAFETY = 1.04;
 /** 英数字のつながり（単語）か。単語は、空白のところで折り返す。かな・漢字・全角は、どこでも折り返せる */
 const isWordChar = (ch: string): boolean => ch !== ' ' && !isWide(ch.codePointAt(0) ?? 0);
+/** 行の頭に来てはいけない字（長音「ー」・中点「・」・小さいかな・句読点・閉じかっこ）。前の字といっしょに折り返す */
+const NO_START = new Set(Array.from('ーｰ・ゃゅょっぁぃぅぇぉゎゕゖャュョッァィゥェォヮヵヶ、。，．，）」』】〕〉》〙〗｝！？…‥々'));
+/** 行の終わりに来てはいけない字（開きかっこ）。次の字といっしょに折り返す */
+const NO_END = new Set(Array.from('（「『【〔〈《〘〖｛'));
 
 /**
  * 何行になるか。ブラウザの折り返しをまねる：かな・漢字は1字ずつ、英数字は単語ごと（長すぎる単語は字の途中で）折り返す。
  * sizeMm = 文字の大きさ（mm）、widthMm = 文字を入れる場所の幅（mm）。文字がないときは 0 行。
  */
 export function wrapLines(text: string, sizeMm: number, widthMm: number): number {
-  const chars = Array.from(text.replace(/\s+/g, ' ').trim());
+  // 全角の空白（姓と名のあいだの「　」）は、1字ぶんの幅で数える。ふつうの空白・改行だけを、1つの空白にまとめる
+  const chars = Array.from(text.replace(/[ \t\r\n]+/g, ' ').replace(/^ | $/g, ''));
   if (chars.length === 0) return 0;
   const line = Math.max(0.5, widthMm / (Math.max(0.1, sizeMm) * TEXT_SAFETY));
   let lines = 1, x = 0;
@@ -334,9 +339,14 @@ export function wrapLines(text: string, sizeMm: number, widthMm: number): number
       x += charEm(ch); if (x > line) { lines++; x = 0; } // 行の終わりの空白は、次の行に回さない
       i++;
     } else {
-      const c = charEm(ch);
-      if (x + c > line + 1e-9) { lines++; x = c; } else x += c;
-      i++;
+      // かな・漢字：1字ずつ折り返せる。ただし、行の頭に来てはいけない字（ー ・ 小さい「ゃゅょっ」 句読点 閉じかっこ）は、前の字とひとまとまり。
+      // 行の終わりに来てはいけない字（開きかっこ）は、次の字とひとまとまり（ブラウザの禁則処理をまねる）
+      let w = charEm(ch);
+      let k = i + 1;
+      if (NO_END.has(ch) && k < chars.length && !isWordChar(chars[k]) && chars[k] !== ' ') { w += charEm(chars[k]); k++; }
+      while (k < chars.length && NO_START.has(chars[k])) { w += charEm(chars[k]); k++; }
+      if (x + w > line + 1e-9) { lines++; x = w; } else x += w;
+      i = k;
     }
   }
   return lines;

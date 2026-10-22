@@ -30,7 +30,7 @@ const PHOTO_MAX = ['', ' max-h-[max(72px,calc(100vh-800px))]', ' max-h-[max(72px
 
 function FighterCard({ side, fighter, musicEnabled, commentShown, problem, crowd = 0 }: { side: 'red'|'blue'; fighter: LocalFighter | undefined; musicEnabled: boolean; commentShown: boolean; problem: FighterProblem; crowd?: 0 | 1 | 2 | 3 }) {
   const [playing, setPlaying] = useState(false);
-  const musicUrl = musicEnabled ? safeMusicUrl(fighter?.musicUrl ?? '') : '';
+  const musicUrl = musicEnabled ? safeMusicUrl(fighter?.absent === true ? '' : fighter?.musicUrl ?? '') : ''; // 欠場の選手の曲リンクは出さない
   const music = musicState(fighter, musicEnabled);
   useEffect(()=>setPlaying(false),[fighter?.id]);
   const look = SIDE[side];

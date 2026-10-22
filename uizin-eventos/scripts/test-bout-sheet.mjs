@@ -34,7 +34,7 @@ const short = (s, n = 200) => String(s).replace(/\s+/g, ' ').slice(0, n);
 
 /* ───────────────────────── fake data ───────────────────────── */
 const DB_NAME = 'tournament-os-private-v1';
-let PHOTOS = [], BIG = '';
+let PHOTOS = [], BIG = '', REDISH = '', BLUEISH = '';
 const F = (id, over = {}) => ({ id, gym: '架空' + id + 'ジム', name: '架空' + id + '選手', grade: '中1', age: '13', height: '150', weight: '45', record: '2勝1敗', comment: 'がんばります', musicUrl: '', photoDataUrl: '', ...over });
 const B = (id, redId, blueId, over = {}) => ({ id, redId, blueId, className: '', rule: '', ...over });
 const T = (id, o = {}) => ({ schema: 1, eventId: id, title: o.title ?? '千葉県キックボクシング協会アマチュア大会', venue: '架空体育館', date: '2026年12月20日', updatedAt: Date.now() - 60_000, currentBout: 0, fighters: o.fighters ?? [], bouts: o.bouts ?? [], ...(o.entryConfig ? { entryConfig: o.entryConfig } : {}) });
@@ -93,10 +93,10 @@ async function makePhotos() {
   const c = await browser.newContext(); const p = await c.newPage(); await p.goto(base + '/private/setup/?event=photo-boot');
   const out = await p.evaluate(() => {
     const make = (w, h, hue, noise) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d'); x.fillStyle = `hsl(${hue} 55% 60%)`; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.beginPath(); x.arc(w / 2, h * 0.38, w * 0.22, 0, 7); x.fill(); x.fillRect(w * 0.25, h * 0.58, w * 0.5, h * 0.4); if (noise) for (let i = 0; i < 4000; i++) { x.fillStyle = `hsl(${(i * 37) % 360} 70% 50%)`; x.fillRect(Math.random() * w, Math.random() * h, 6, 6); } return cv.toDataURL('image/jpeg', 0.92); };
-    return { photos: [20, 80, 140, 200, 260, 320].map((h) => make(300, 400, h, false)), big: make(1200, 1600, 30, true) };
+    return { photos: [20, 80, 140, 200, 260, 320].map((h) => make(300, 400, h, false)), big: make(1200, 1600, 30, true), redish: make(300, 400, 0, false), blueish: make(300, 400, 240, false) };
   });
   await c.close();
-  PHOTOS = out.photos; BIG = out.big;
+  PHOTOS = out.photos; BIG = out.big; REDISH = out.redish; BLUEISH = out.blueish;
   assert.ok(PHOTOS.every((s) => /^data:image\/jpeg;base64,/.test(s)) && BIG.length > 200_000, 'fake photos were made');
 }
 
@@ -131,6 +131,11 @@ scenario('A', 'preview: title, page range, page number, two names and gyms per b
     const bouts = await p.evaluate(() => [...document.querySelectorAll('.sheet-bout')].map((b) => ({ n: b.getAttribute('data-sheet-bout'), names: [...b.querySelectorAll('.sheet-name')].map((e) => e.innerText), gyms: [...b.querySelectorAll('.sheet-gym')].map((e) => e.innerText), no: b.querySelector('.sheet-no')?.innerText, corners: [...b.querySelectorAll('.sheet-corner')].map((e) => e.innerText) })));
     check(bouts.every((b, i) => b.names.length === 2 && b.gyms.length === 2 && b.no === String(i + 1)), t + 'each bout: number in order, two names, two gyms');
     check(bouts.every((b) => b.corners[0] === '▲ 赤' && b.corners[1] === '■ 青'), t + 'red is on the left, blue on the right, with words as well as shapes');
+    const geo = await p.evaluate(() => [...document.querySelectorAll('.sheet-bout')].map((b) => { const r = b.querySelector('.sheet-red').getBoundingClientRect(), c = b.querySelector('.sheet-center').getBoundingClientRect(), bl = b.querySelector('.sheet-blue').getBoundingClientRect(); const col = (e) => getComputedStyle(e.querySelector('.sheet-corner')).color.match(/\d+/g).map(Number); return { left: r.right <= c.left + 1 && c.right <= bl.left + 1, rc: col(b.querySelector('.sheet-red')), bc: col(b.querySelector('.sheet-blue')) }; }));
+    check(geo.every((g) => g.left), t + 'on the screen the red side is really LEFT of the number column and the blue side RIGHT of it (not only DOM order)');
+    check(geo.every((g) => g.rc[0] > 150 && g.rc[1] < 80 && g.rc[2] < 80 && g.bc[2] > 150 && g.bc[0] < 80), t + 'the 赤 mark is red and the 青 mark is blue');
+    const boxes = await p.evaluate(() => [...document.querySelectorAll('main label')].filter((l) => l.querySelector('input[type=checkbox]')).map((l) => ({ t: l.innerText.trim().slice(0, 12), h: l.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(l).fontSize), box: l.querySelector('input').getBoundingClientRect().width })));
+    check(boxes.length === 4 && boxes.every((b) => b.h >= 47.5 && b.fs >= 17 && b.box >= 20), t + 'the four 「載せるもの」 checkboxes: label 17px+, row 48px+, box 20px+ (' + short(JSON.stringify(boxes.filter((b) => b.h < 47.5 || b.fs < 17 || b.box < 20)), 120) + ')');
     check(bouts[0].names[0] === '架空r1選手' && bouts[0].names[1] === '架空b1選手', t + 'left = red, right = blue');
     const yellow = await markers(p);
     check(yellow.length === 1 && /印刷の画面を開く/.test(yellow[0]), t + 'exactly one 👉 次はここ: open the print screen (' + short(yellow.join('|'), 80) + ')');
@@ -219,6 +224,9 @@ scenario('C', 'print: a real PDF. A3 size, one sheet per page, no blank extra pa
       return { pages: pages.map((g) => ({ w: g.r.width / (96 / 25.4), h: g.r.height / (96 / 25.4), top: g.r.top, bottom: g.r.bottom, outside: g.bouts.filter((b) => b.top < g.r.top - 0.5 || b.bottom > g.r.bottom + 0.5 || b.left < g.r.left - 0.5 || b.right > g.r.right + 0.5).length })), px: px(1), noprint: [...document.querySelectorAll('.sheet-noprint')].filter((e) => getComputedStyle(e).display !== 'none').length };
     });
     check(geo.noprint === 0, 'C ' + orient + ': the controls are hidden in print');
+    const printed = await p.evaluate(() => { const pg = [...document.querySelectorAll('.sheet-page')]; return { heads: pg.map((x) => x.querySelector('.sheet-head').innerText.replace(/\s+/g, ' ')), imgs: pg.map((x) => x.querySelectorAll('.sheet-photo img').length), order: pg.map((x) => [...x.querySelectorAll('.sheet-bout')].every((b) => b.querySelector('.sheet-red').getBoundingClientRect().left < b.querySelector('.sheet-blue').getBoundingClientRect().left)), grey: getComputedStyle(document.querySelector('.sheet-center')).backgroundColor }; });
+    check(printed.heads.every((h, i) => h.includes('千葉県キックボクシング協会アマチュア大会') && new RegExp((i + 1) + ' / ' + printed.heads.length + ' ページ').test(h)), 'C ' + orient + ': in PRINT media every page header still shows the tournament name and 「N / 全ページ」 (' + short(printed.heads.join(' | '), 100) + ')');
+    check(printed.imgs.every((n) => n > 0) && printed.order.every(Boolean), 'C ' + orient + ': in PRINT media the photos are there and red stays left of blue on every page');
     check(geo.pages.every((g) => g.outside === 0), 'C ' + orient + ': every bout lies inside its own page (none crosses a page edge)');
     const [W, H] = orient === 'portrait' ? [297, 419.5] : [420, 296.5];
     check(geo.pages.every((g) => Math.abs(g.w - W) < 0.6 && Math.abs(g.h - H) < 0.6), 'C ' + orient + ': every page is A3 (' + geo.pages.slice(0, 2).map((g) => Math.round(g.w) + 'x' + Math.round(g.h)).join(',') + ')');
@@ -242,7 +250,7 @@ scenario('D', 'privacy: phone, mail, birthday, health, consent, age, height, wei
   await photosReady(p);
   const html = (await p.content()).replace(/data:[^"')\s]+/g, 'data:'); // the photos are base64 text: numbers like 171 can appear by chance, so they are cut out before looking
   const text = await bodyText(p);
-  for (const word of ['09011112222', '09033334444', 'taro@example.com', '2011-02-03', '持病', 'consent', '保護者こっそり', '090-5555-6666', '3勝0敗', '171', '61.5', 'music.apple.com']) {
+  for (const word of ['09011112222', '09033334444', 'taro@example.com', '2011-02-03', '持病', 'consent', '保護者こっそり', '090-5555-6666', '3勝0敗', '171', '61.5', '15歳', '中3', 'music.apple.com']) {
     check(!text.includes(word) && !html.includes(word), 'D 「' + word + '」 does not appear anywhere on the page');
   }
   check(/どの試合も、赤と青が決まっています/.test(text), 'D the page says it is fine to print');
@@ -265,6 +273,24 @@ scenario('E', 'no photo: names and gyms still print; the count of fighters witho
   await p.getByLabel('小さな顔写真').check(); await settle(200);
   const btn = p.locator('#sheet-print');
   check((await btn.count()) === 1 && !(await btn.getAttribute('aria-disabled')), 'E printing is allowed without photos');
+  // rows with and without photos: the names still start at the same x (the empty box keeps its width)
+  await seed(ctx, tournament('sh-e2', 6, { photo: 'half' }));
+  const mixed = await openSheet(ctx, 'sh-e2'); await photosReady(mixed);
+  const mx = await mixed.evaluate(() => ({ red: [...document.querySelectorAll('.sheet-red .sheet-text')].map((e) => Math.round(e.getBoundingClientRect().left)), blue: [...document.querySelectorAll('.sheet-blue .sheet-text')].map((e) => Math.round(e.getBoundingClientRect().right)), imgs: document.querySelectorAll('.sheet-photo img').length }));
+  check(mx.imgs > 0 && mx.imgs < 12 && new Set(mx.red).size === 1 && new Set(mx.blue).size === 1, 'E rows with a photo and rows without keep the names aligned (red x ' + [...new Set(mx.red)].join(',') + ', blue x ' + [...new Set(mx.blue)].join(',') + ', ' + mx.imgs + ' images)');
+  await mixed.close();
+  // each photo sits on ITS fighter: red fighters have a red-ish photo, blue fighters a blue-ish one
+  const rb = tournament('sh-e3', 4, { photo: 'none' });
+  rb.fighters = rb.fighters.map((f) => ({ ...f, photoDataUrl: f.id.startsWith('r') ? REDISH : BLUEISH }));
+  await seed(ctx, rb);
+  const tie = await openSheet(ctx, 'sh-e3'); await photosReady(tie);
+  const hues = await tie.evaluate(async () => {
+    const mean = (img) => { const c = document.createElement('canvas'); c.width = 20; c.height = 20; const x = c.getContext('2d'); x.drawImage(img, 0, 0, 20, 20); const d = x.getImageData(0, 0, 20, 20).data; let r = 0, b = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; b += d[i + 2]; } return r > b ? 'red' : 'blue'; };
+    await Promise.all([...document.querySelectorAll('.sheet-photo img')].map((i) => i.complete ? 1 : new Promise((res) => { i.onload = res; i.onerror = res; })));
+    return { red: [...document.querySelectorAll('.sheet-red .sheet-photo img')].map(mean), blue: [...document.querySelectorAll('.sheet-blue .sheet-photo img')].map(mean) };
+  });
+  check(hues.red.length === 4 && hues.blue.length === 4 && hues.red.every((h) => h === 'red') && hues.blue.every((h) => h === 'blue'), 'E every photo is on its own fighter (red side shows the red-ish photos, blue side the blue-ish ones: ' + JSON.stringify(hues) + ')');
+  await tie.close();
   await ctx.close();
 });
 
@@ -347,7 +373,7 @@ scenario('H', 'thumbnails: big photos are made small for the sheet (light PDF); 
   const p = await openSheet(ctx, 'sh-h');
   await photosReady(p);
   const img = await p.evaluate(() => { const i = document.querySelector('.sheet-photo img'); return i ? { len: i.src.length, w: i.naturalWidth, h: i.naturalHeight } : null; });
-  check(img && img.len < BIG.length * 0.25 && Math.max(img.w, img.h) <= 361, 'H the sheet uses a small copy of the photo (' + (img ? img.len + ' bytes, ' + img.w + 'x' + img.h : 'no image') + ' vs ' + BIG.length + ')');
+  check(img && img.len < BIG.length * 0.25 && Math.max(img.w, img.h) <= 361 && Math.max(img.w, img.h) >= 300, 'H the sheet uses a small copy of the photo (' + (img ? img.len + ' bytes, ' + img.w + 'x' + img.h : 'no image') + ' vs ' + BIG.length + ')');
   const stored = await p.evaluate(([db]) => new Promise((res) => { const r = indexedDB.open(db, 1); r.onsuccess = () => { const g = r.result.transaction('events').objectStore('events').get('sh-h'); g.onsuccess = () => { res(g.result.fighters[0].photoDataUrl.length); r.result.close(); }; }; }), [DB_NAME]);
   check(stored === BIG.length, 'H the saved photo itself is not changed');
   await p.evaluate(() => { window.__printCalls = []; window.print = () => { window.__printCalls.push(document.title); }; });
@@ -358,6 +384,18 @@ scenario('H', 'thumbnails: big photos are made small for the sheet (light PDF); 
   check(calls.length === 1 && calls[0] === '対戦一覧表 千葉県キックボクシング協会アマチュア大会', 'H print() was called once, the title (the default PDF name) says what it is (' + JSON.stringify(calls) + ')');
   await p.evaluate(() => window.dispatchEvent(new Event('afterprint'))); await settle(100);
   check(await p.title() === '対戦一覧表（A3）', 'H the tab name is back after printing (' + (await p.title()) + ')');
+  await ctx.close();
+});
+
+scenario('H3', 'an unreadable photo never locks the print button for good: the sheet falls back to the original and printing unlocks', async () => {
+  const ctx = await newCtx(DESKTOP);
+  const data = tournament('sh-h3', 2, { photo: 'all' });
+  data.fighters[0] = { ...data.fighters[0], photoDataUrl: 'data:image/jpeg;base64,AAAA' };
+  await seed(ctx, data);
+  const p = await openSheet(ctx, 'sh-h3');
+  await p.waitForFunction(() => { const b = document.getElementById('sheet-print'); return b && !b.hasAttribute('aria-disabled'); }, null, { timeout: 12000 }).catch(() => {});
+  check((await p.locator('#sheet-print').getAttribute('aria-disabled')) === null, 'H3 a photo that cannot be read does not keep the print button locked (it unlocks within 12 s)');
+  check((await p.locator('.sheet-bout').count()) === 2, 'H3 the sheet still shows both bouts');
   await ctx.close();
 });
 
@@ -462,7 +500,8 @@ scenario('K', 'prep screen: 「欠場にする」 on the roster, the bout warnin
   const after = await p.evaluate(([db]) => new Promise((res) => { const r = indexedDB.open(db, 1); r.onsuccess = () => { const g = r.result.transaction('events').objectStore('events').get('sh-k'); g.onsuccess = () => { res(g.result.fighters.filter((f) => f.absent).map((f) => f.id)); r.result.close(); }; }; }), [DB_NAME]);
   check(JSON.stringify(after) === JSON.stringify(['r1']), 'K the click saved the unsaved change first (' + JSON.stringify(after) + ')');
   check(await sheet.locator('[data-sheet-bout="1"] .sheet-red .sheet-absent').count() === 1, 'K the opened sheet says 欠場 on bout 1');
-  await sheet.locator('#sheet-back').click(); await settle(800);
+  await Promise.all([sheet.waitForEvent('close', { timeout: 5000 }).catch(() => {}), sheet.locator('#sheet-back').click().catch(() => {})]);
+  await settle(300);
   check(sheet.isClosed(), 'K the back button closes the tab that the prep screen opened (the prep screen is still there)');
   // back: 欠場をやめる removes the flag completely
   await p.getByRole('button', { name: '欠場をやめる 架空r1選手', exact: true }).click(); await settle(200);
@@ -603,7 +642,7 @@ scenario('N', 'dense landscape (24 per page) with class lines, Latin names, a lo
   const noClass = await p.evaluate(() => [...document.querySelectorAll('.sheet-bout')].filter((b) => !b.querySelector('.sheet-classline')).length);
   const notes = await p.locator('#sheet-limit-notes').innerText();
   check(noRule === 0 || /の「ルール」の文字は、入りきらないので載りません/.test(notes), 'N when a rule did not fit and was left out, the page says so in words (' + noRule + ' bouts without a rule)');
-  check(noClass <= 36 || /のまん中の列の文字（契約体重など）は、入りきらないので載りません/.test(notes), 'N when the centre class line was left out, the page says so in words');
+  check(noClass <= 36 || /のまん中の列の文字（体重の区分など）は、入りきらないので載りません/.test(notes), 'N when the centre class line was left out, the page says so in words');
   const names = await p.evaluate(() => [...document.querySelectorAll('.sheet-name')].map((e) => ({ t: e.innerText, lines: Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).fontSize) / 1.15) })));
   check(names.filter((n) => /^(山田 太郎|田中 太郎丸)$/.test(n.t)).every((n) => n.lines === 1), 'N four- and five-character names stay on one line (no lonely last character)');
   const absentCount = await p.locator('.sheet-state-absent').count();
@@ -685,7 +724,7 @@ scenario('P', 'review fixes: all-undecided points the yellow at the prep screen;
 
 scenario('Q', 'text that is cut: usual long names / romaji / gyms fit at the default settings; extreme ones are warned in words before printing; no sideways scroll at 320px with a long Latin name', async () => {
   const ctx = await newCtx(DESKTOP);
-  const names = ['ミハイル・ゴルバチョフ', 'アレクサンダー・スミス', '田中太郎左衛門次郎', 'JOHN SMITH', 'TARO YAMADA', 'MAXIMILIAN WEBER', 'DAIKI NAKAMURA', 'Yuki Matsumoto'];
+  const names = ['ミハイル・ゴルバチョフ', 'アレクサンダー・スミス', '田中太郎左衛門次郎', 'JOHN SMITH', 'TARO YAMADA', 'MAXIMILIAN WEBER', 'DAIKI NAKAMURA', 'Yuki Matsumoto', '田中　陽菜', '高橋　花子', '佐々木　大二郎', '小野寺　まゆみ', 'ジェームス・ブラウン', 'エドワード・ノートン', 'ジェニファー・ローレンス', 'ニコラス・ケイジ'];
   const gyms = ['ゴールデングローブキックボクシングジム', 'フラットアップキックボクシングジム千葉道場', 'FLATUP KICKBOXING GYM', '千葉キックボクシングジム'];
   const data = tournament('sh-q', 8, { photo: 'half' });
   data.fighters = data.fighters.map((f, i) => ({ ...f, name: names[i % names.length], gym: gyms[i % gyms.length], fighterClass: 'Bクラス', division: '中学生男子', weightClass: '37kg以下' }));
@@ -737,6 +776,8 @@ for (const s of scenarios) {
   try { await s.fn(); } catch (e) { const at = (String(e.stack).match(/test-bout-sheet\.mjs:(\d+)/) || [])[1]; failures.push('[' + cur + '] scenario stopped at line ' + at + ': ' + short(e.message, 600)); console.log('  ABORT [' + cur + '] line ' + at + ': ' + short(e.message, 400)); }
   console.log('  ' + (failures.length === f0 ? 'ok' : (failures.length - f0) + ' failure(s)') + ' (' + Math.round((Date.now() - t0) / 100) / 10 + 's)');
 }
+cur = 'FILTER';
+check(!ONLY.length || scenarios.some((s) => ONLY.includes(s.id)), 'TOS_ONLY matched no scenario (' + ONLY.join(',') + '): nothing was checked');
 cur = 'NET';
 check(externals.length === 0, 'no request ever left 127.0.0.1 (' + externals.length + ': ' + short(externals.slice(0, 3).map((e) => e.method + ' ' + e.url).join(', ')) + ')');
 check(net.filter((n) => n.method !== 'GET').length === 0, 'no POST/PUT/DELETE request at all');

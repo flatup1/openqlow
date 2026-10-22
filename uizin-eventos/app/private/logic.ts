@@ -770,8 +770,12 @@ function restoreParts(a: { restored: LocalTournament; current: LocalTournament; 
   const w2 = a.current.fighters.filter(hasWeightTag).length, w = a.restored.fighters.filter(hasWeightTag).length;
   if (w < w2) warn.push('⚠ 減ります：区分・階級が入っている選手が' + w2 + '人から' + w + '人になります。');
   // 欠場にした選手の印も、数のくらべには出ない。消えるなら、はっきり言う
+  const restoredById = new Map(a.restored.fighters.map((f) => [f.id, f]));
   const x2 = a.current.fighters.filter((f) => f.absent === true).length, x = a.restored.fighters.filter((f) => f.absent === true).length;
+  // 人数だけでなく、「いま欠場なのに、コピーでは欠場でない人」がいるかも見る（入れかわりを見のがさない）
+  const lostAbsent = a.current.fighters.filter((f) => f.absent === true && restoredById.has(f.id) && restoredById.get(f.id)?.absent !== true).length;
   if (x < x2) warn.push('⚠ 減ります：欠場にしている選手が' + x2 + '人から' + x + '人になります。');
+  else if (lostAbsent > 0) warn.push('⚠ 消えます：いま欠場にしている選手のうち、' + lostAbsent + '人の「欠場」の印が、コピーにはありません。')
   if (a.current.entryConfig?.weights && !a.restored.entryConfig?.weights) warn.push('⚠ 消えます：階級分けの設定（区分と階級の表）。選手の区分・階級を選ぶ欄が出なくなります。');
   if (a.current.entryConfig?.logo && !a.restored.entryConfig?.logo) warn.push('⚠ 消えます：ロゴの設定。申込ページと当日の画面に、ロゴが出なくなります。');
   const title = isTitleReal(a.restored.title) ? a.restored.title : '名前なし';
