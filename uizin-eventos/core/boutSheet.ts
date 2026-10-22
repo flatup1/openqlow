@@ -326,13 +326,21 @@ export function wrapLines(text: string, sizeMm: number, widthMm: number): number
   for (let i = 0; i < chars.length;) {
     const ch = chars[i];
     if (isWordChar(ch)) {
-      let j = i, w = 0;
-      while (j < chars.length && isWordChar(chars[j])) { w += charEm(chars[j]); j++; }
-      if (x + w <= line + 1e-9) x += w;
-      else if (w <= line) { lines++; x = w; }
-      else { // 1行に入らない長い単語：ブラウザは、まず前の単語のあとで折り返して（次の行の先頭にして）、それでも入らない分を、字の途中で折り返す
-        if (x > 0) { lines++; x = 0; }
-        for (let k = i; k < j; k++) { const c = charEm(chars[k]); if (x + c > line + 1e-9) { lines++; x = c; } else x += c; }
+      let j = i;
+      while (j < chars.length && isWordChar(chars[j])) j++;
+      // 単語は、ハイフンのうしろでも折り返せる（ブラウザは、字の途中より先に、ハイフンのうしろで折り返す）。区切りごとに、順に置く
+      const parts: string[][] = [];
+      let cur: string[] = [];
+      for (let k = i; k < j; k++) { cur.push(chars[k]); if (chars[k] === '-' && k + 1 < j) { parts.push(cur); cur = []; } }
+      parts.push(cur);
+      for (const part of parts) {
+        const w = part.reduce((sum, c) => sum + charEm(c), 0);
+        if (x + w <= line + 1e-9) x += w;
+        else if (w <= line) { lines++; x = w; }
+        else { // 1行に入らない長い区切り：ブラウザは、まず前の区切りのあとで折り返して（次の行の先頭にして）、それでも入らない分を、字の途中で折り返す
+          if (x > 0) { lines++; x = 0; }
+          for (const c of part) { const e = charEm(c); if (x + e > line + 1e-9) { lines++; x = e; } else x += e; }
+        }
       }
       i = j;
     } else if (ch === ' ') {

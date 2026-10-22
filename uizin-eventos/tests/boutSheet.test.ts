@@ -238,6 +238,10 @@ test('折り返しの数え方：かな・漢字は1字ずつ、英数字は単�
   assert.equal(wrapLines('DAIKI NAKAMURA', 15, 77.3), 3, 'DAIKI | NAKAM | URA');
   assert.equal(wrapLines('Yuki Matsumoto', 15, 77.3), 3);
   assert.equal(wrapLines('JOHN SMITH', 15, 77.3), 2);
+  // 本物のブラウザの行数との照らし合わせ（ランダムな1500個の名前で、見つもりが実際より少なかったのは1個だけ）。ハイフンのうしろでも折り返せる
+  assert.equal(wrapLines('Jose-AntonioFernandez', 14.3, 95), 3, 'Jose-|Antonio|Fernandez のように、ハイフンのうしろで折り返す（本物のブラウザも3行）');
+  assert.equal(wrapLines('Anne-Marie　Anne-Marie', 14.4, 31), 8, '本物のブラウザは8行');
+  assert.equal(wrapLines('Jose-Antonio・JOHN', 6.4, 38), 3, '本物のブラウザは3行');
   // 小さい字ほど、行は増えない（大きさについて単調）
   for (const text of ['ミハイル・ゴルバチョフ', 'MAXIMILIAN WEBER', 'フラットアップキックボクシングジム千葉道場']) {
     let before = 0;
