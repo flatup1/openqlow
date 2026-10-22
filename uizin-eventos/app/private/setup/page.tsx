@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, settingLines, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, settingLines, supportsHanamichi, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
 import { isAppsScriptUrl, publicEntryHash } from '../../../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../../../core/classRules.ts';
 import { weightSettingsToParam } from '../../../core/weightClass.ts';
@@ -924,6 +924,8 @@ export default function SetupV3() {
     ['階級分け', 'B21', 'skip', '分けるときだけ「あり」（はじめは「なし」）'],
     ['ロゴ', 'B22', 'skip', '出すときだけ「あり」（はじめは「なし」）'],
     ['（この下）', '', 'more', '区分の行が7つ（B23〜B29）続きます。はじめから入っています'],
+    // いちばん下の行。区分の行は増やしたり消したりできるので、セルの番号は言わない
+    ['花道の追加情報', '', 'skip', '花道の質問をするときだけ「あり」（はじめは「なし」）'],
   ];
   /** クラスが使えないGoogle側のとき（古いコピー・古い版）に出す黄色の注意。クラスを使わない大会には、関係ない */
   const classCaution = !ping ? null
@@ -947,6 +949,9 @@ export default function SetupV3() {
   const logoRowText = ping?.logo ? (configProblem ? 'あり（上の「✕」の文のとおりに直すと、申し込みページと当日の画面に出ます）' : '✓ あり（申し込みページと当日の画面に出ます）')
     : ping?.weightRows === false || (ping && !supportsWeightClasses(ping)) ? '⚠ このシートでは、ロゴを使えません'
     : 'なし（ロゴは出しません）';
+  /** 読み取り欄の「花道の追加情報」の言葉。✓ あり／なし。古い版のシートは「あり」かどうかを ping で言えない（行が無い・読まれない）ので、警告は出さず、前と同じ「なし」と読む */
+  const hanamichiRowText = ping?.hanamichiMode && supportsHanamichi(ping) ? (configProblem ? 'あり（上の「✕」の文のとおりに直すと、申し込みページに出ます）' : '✓ あり（花道の区分を選んだ人にだけ、追加の質問が出ます）')
+    : 'なし（追加の質問は出しません）';
   const musicText = ping?.music === true ? 'あり' : ping?.music === false ? 'なし' : '（シートにありません）';
   const modeText = (v?: string) => (v === 'required' ? '必ず書く' : v === 'off' ? '聞かない' : '書いても、書かなくてもOK');
 
@@ -1137,7 +1142,7 @@ export default function SetupV3() {
             <li>下の絵と同じ行の、右の列（B列）に書きます。C列に{WRITE_MARK}と書いてある7つの行です。</li>
           </ol>
           <p className="font-bold">この絵は見本です。B列の、{WRITE_MARK}と書いてある7つの行に書きます。</p>
-          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある7つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。階級分けとロゴの行も、そのあとに入っています。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
+          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある7つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。階級分けとロゴの行も、そのあとに入っています。いちばん下に、花道の追加情報の行があります。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
             <p aria-hidden="true" className="tos-pic-tag bg-slate-100 px-3 py-1">📷 Googleのシートの絵（ここには書けません）</p>
             <div aria-hidden="true" className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-400 bg-slate-100 font-bold"><div className="px-3 py-1">項目（A列）</div><div className="border-l-2 border-slate-400 px-3 py-1">値（B列）</div></div>
             {sheetRows.map(([k, cell, kind, v], i) => <div aria-hidden="true" key={k + i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-300">
@@ -1153,6 +1158,7 @@ export default function SetupV3() {
           <p className="text-[17px] text-slate-700">（クラスの行は、新しいひな形をコピーしたときだけあります。古いコピーにはありません。そのときは、クラスなしで受け付けます）</p>
           <p id="weights-howto">選手に区分と階級（階級＝体重で分けたグループ）を選んでもらうときだけ、「階級分け」を「あり」にします。申し込みページと当日の画面にロゴを出すときだけ、「ロゴ」を「あり」にします。どちらも、はじめは「なし」です。区分と階級の表は、はじめから入っています。直したいときだけ書き換えます。</p>
           <p className="text-[17px] text-slate-700">（階級分け・ロゴの行も、新しいひな形をコピーしたときだけあります。古いコピーにはありません。そのときは、階級分け・ロゴなしで受け付けます）</p>
+          <p id="hanamichi-howto">花道の選手に、アナウンスで使う追加の質問をするときだけ、いちばん下の「花道の追加情報」を「あり」にします（A列が「花道の追加情報」の行のB列）。「階級分け」が「あり」で、区分の名前に「花道」が入っているときだけ使えます。はじめは「なし」です。</p>
           <p>まちがえたり、書き忘れたりしても大丈夫です。次の画面で「ここを直してください」と教えます。</p>
         </StepCard>
 
@@ -1262,8 +1268,9 @@ export default function SetupV3() {
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">クラス分け</dt><dd className="break-words text-lg font-bold">{classes && !configProblem ? '✓ あり（' + classes.upper.name + '／' + classes.lower.name + '）。申し込みページに出ます' : ping.classMode ? '✕ あり（でも、クラスの内容を申し込みページに入れられません。シートの「設定」タブのクラスの欄を直して、「もう一度確かめる」を押します）' : ping.classRows === false ? '⚠ このシートには、クラスの行がありません' : 'なし（クラスは分けません）'}</dd></div>
             <div id="read-weights" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">階級分け</dt><dd className="break-words text-lg font-bold">{weightRowText}</dd></div>
             <div id="read-logo" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">ロゴ</dt><dd className="break-words text-lg font-bold">{logoRowText}</dd></div>
+            <div id="read-hanamichi" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">花道の追加情報</dt><dd className="break-words text-lg font-bold">{hanamichiRowText}</dd></div>
           </dl>
-          {/* いちばん古い版のシートは、クラスも階級分けも使えない。直し方は同じ（ひな形をコピーし直す）なので、黄色は1つだけ */}
+          {/* いちばん古い版のシートは、クラスも階級分けも花道の追加情報も使えない。直し方は同じ（ひな形をコピーし直す）なので、黄色は1つだけ */}
           {classCaution ?? weightCaution}
           <p className="mt-3">違っていたら、シートの「設定」タブを直して、「もう一度確かめる」を押します。</p>
         </section> : null}
@@ -1335,6 +1342,7 @@ export default function SetupV3() {
           {classes && !configProblem ? <OkLine>クラス分け：あり（{classes.upper.name}／{classes.lower.name}）。申し込みページに出ます。</OkLine> : null}
           {weights && !configProblem ? <OkLine>階級分け：あり（{weights.divisions.length}区分）。申し込みページに出ます。</OkLine> : null}
           {ping?.logo && !configProblem ? <OkLine>ロゴ：あり。申し込みページと当日の画面に出ます。</OkLine> : null}
+          {ping?.hanamichiMode && supportsHanamichi(ping) && !configProblem ? <OkLine>花道の追加情報：あり。花道の区分を選んだ人にだけ、追加の質問が出ます。</OkLine> : null}
           {classCaution ?? weightCaution}
           {urlReady ? <>
             {staleCopy ? <ErrorLine>先に送ったURLは古い内容です。新しいURLを送り直します。</ErrorLine> : null}

@@ -155,8 +155,8 @@ test('設定タブ: 書く7つのB列に色（#fff2a8）と「✎ ここに書�
   assert.match(PAGE, /C列に\{WRITE_MARK\}と書いてある7つの行/);
   // 画面のセル番号（B2〜B29）は、シートの行の順番と同じ
   const cells: Record<string, string> = { ...CELL, ...CLASS_CELL, ...WEIGHT_CELL };
-  // 番号を持つのは、消されない行まで（区分の行「階級：…」は、主催者が消せるので、番号を持たない）
-  labels.forEach((label: string, i: number) => { if (/^階級：/.test(label)) assert.equal(cells[label], undefined, label + ' は消せる行：番号を持たない'); else assert.equal(cells[label], 'B' + (i + 2), label); });
+  // 番号を持つのは、消されない行まで（区分の行「階級：…」は、主催者が消せるので、番号を持たない。その下の「花道の追加情報」も、区分の行の数で動くので、番号を持たない）
+  labels.forEach((label: string, i: number) => { if (/^階級：/.test(label) || label === '花道の追加情報') assert.equal(cells[label], undefined, label + ' は動く行：番号を持たない'); else assert.equal(cells[label], 'B' + (i + 2), label); });
 });
 
 /* ───────── r1-61：古い設定タブの自己修復と、画面の黄色の注意 ───────── */
@@ -166,9 +166,9 @@ test('古い設定タブ: クラスの8行と、階級分け・ロゴの行だ�
   const sheet = h.settingsSheet();
   sheet.rows.length = 12; sheet.rows[1][1] = '私の大会';
   h.call('onOpen'); h.call('onOpen');
-  assert.equal(sheet.rows.length, 29, '17行（クラス8＋階級分け・区分7・ロゴ）足されて、2回目以降は増えない');
+  assert.equal(sheet.rows.length, 30, '18行（クラス8＋階級分け・区分7・ロゴ＋花道の追加情報）足されて、2回目以降は増えない');
   assert.equal(sheet.rows[1][1], '私の大会');
-  assert.equal(sheet.rows[12][0], 'クラス分け'); assert.equal(sheet.rows[19][0], '上のクラスにする勝ち数'); assert.equal(sheet.rows[20][0], '階級分け'); assert.equal(sheet.rows[21][0], 'ロゴ'); assert.equal(sheet.rows[28][0], '階級：花道・男子（40歳以上）');
+  assert.equal(sheet.rows[12][0], 'クラス分け'); assert.equal(sheet.rows[19][0], '上のクラスにする勝ち数'); assert.equal(sheet.rows[20][0], '階級分け'); assert.equal(sheet.rows[21][0], 'ロゴ'); assert.equal(sheet.rows[28][0], '階級：花道・男子（40歳以上）'); assert.equal(sheet.rows[29][0], '花道の追加情報');
   h.fill();
   const old = harness(); old.call('onOpen'); old.fill(); old.call('setupTournament');
   old.settingsSheet().rows.length = 12;
@@ -634,7 +634,7 @@ test('r2-64: 「設定」タブが空になっても、シートを開く・①�
   const h = harness(); h.call('onOpen');
   h.settingsSheet().rows.length = 0;
   h.call('onOpen');
-  assert.equal(h.settingsSheet().rows.length, 29, '見出し1行＋項目28行');
+  assert.equal(h.settingsSheet().rows.length, 30, '見出し1行＋項目29行');
   assert.deepEqual(h.rows('設定')[1].slice(0, 1), ['大会名']);
   assert.match(code(() => h.call('setupTournament')).message, /次の欄を入れてください/);
   const again = harness(); again.call('onOpen'); again.settingsSheet().rows.length = 0;

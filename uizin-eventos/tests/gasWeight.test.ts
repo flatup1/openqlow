@@ -20,7 +20,7 @@ test('階級: 設定タブの新しい行（階級分け・7区分・ロゴ）�
   const h = harness(); h.call('onOpen');
   const rows = h.rows('設定'), labels = rows.slice(1).map((r) => r[0]);
   assert.deepEqual(labels.slice(0, 19), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み', 'クラス分け', '上のクラスの名前', '上のクラスの条件', '上のクラスのルール', '下のクラスの名前', '下のクラスの条件', '下のクラスのルール', '上のクラスにする勝ち数'], 'これまでの19行は動かない');
-  assert.deepEqual(labels.slice(19), ['階級分け', 'ロゴ', ...DIVISION_ROWS]);
+  assert.deepEqual(labels.slice(19), ['階級分け', 'ロゴ', ...DIVISION_ROWS, '花道の追加情報']);
   for (const r of rows.slice(1)) assert.equal(r.length, 3, '項目・値・説明');
   const value = (label: string) => rows.find((r) => r[0] === label)![1];
   assert.equal(value('階級分け'), 'なし'); assert.equal(value('ロゴ'), 'なし');
@@ -268,13 +268,13 @@ test('階級: 自動テストは、最初の区分に階級があれば、その
 
 test('階級: 古い設定タブ（クラスまで・階級の行なし）は、階級分けは「なし」と読む。pingが「行がない」と知らせ、①で行が足される', () => {
   const h = harness(); h.ready();
-  const rows = h.settingsSheet().rows; for (const key of ['階級分け', 'ロゴ', ...DIVISION_ROWS]) rows.splice(rows.findIndex((r: any[]) => r[0] === key), 1);
+  const rows = h.settingsSheet().rows; for (const key of ['階級分け', 'ロゴ', ...DIVISION_ROWS, '花道の追加情報']) rows.splice(rows.findIndex((r: any[]) => r[0] === key), 1);
   const body = ping(h);
   assert.equal(body.weightRows, false); assert.equal(body.settingsProblem, ''); assert.equal('weightMode' in body, false);
   const before = JSON.stringify(h.rows('設定'));
   h.call('setupTournament');
   assert.equal(JSON.stringify(h.rows('設定').slice(0, 20)), JSON.stringify(JSON.parse(before).slice(0, 20)), '今ある行は1マスも書き換えない');
-  assert.deepEqual(h.rows('設定').slice(20).map((r) => r[0]), ['階級分け', 'ロゴ', ...DIVISION_ROWS]);
+  assert.deepEqual(h.rows('設定').slice(20).map((r) => r[0]), ['階級分け', 'ロゴ', ...DIVISION_ROWS, '花道の追加情報']);
   assert.equal('weightRows' in ping(h), false);
 });
 
@@ -291,8 +291,8 @@ test('階級: 階級の読み方は、core/weightClass.ts と同じ答えにな�
 test('階級: ログや画面に区分・階級の送信値を出さない。禁止語が増えていない', () => {
   assert.ok(!/console\.log|Logger\.log\([^)]*(?:division|weightClass)/.test(script), 'ログに送信値を出さない');
   for (const word of ['getAccessToken', 'ScriptApp.getOAuthToken', 'UrlFetchApp', 'eval(', 'new Function']) assert.ok(!script.includes(word), word);
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261019\.6';/);
-  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261019.6');
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261022\.7';/);
+  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261022.7');
 });
 
 test('階級: 新しい版にすると、古い版で済ませた自動テストはやり直しになる（1回だけ）。区分も保存する', () => {

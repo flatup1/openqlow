@@ -25,6 +25,8 @@ export type PublicEntryConfig = {
   weights?: WeightSettings;
   /** ロゴを出すときだけ true（出さないときは項目ごと無い）。 */
   logo?: boolean;
+  /** 花道の追加の質問をするときだけ true（しないときは項目ごと無い）。リンクでは hn=on。protocol が 3 のときだけ読む。 */
+  hanamichi?: boolean;
 };
 
 export const EMPTY_PUBLIC_ENTRY_CONFIG: PublicEntryConfig = {
@@ -53,17 +55,19 @@ export const LINK_END_KEY = 'end';
 const CLASS_KEYS = ['cls', 'cuN', 'cuC', 'cuR', 'clN', 'clC', 'clR', 'cw'] as const;
 /** 階級分けの項目。wc＝あり／wd＝表（初期の表と同じときは付けない）。logo は、ふつうの項目と同じ扱い */
 const WEIGHT_KEYS = ['wc', 'wd'] as const;
+/** 花道の追加の質問。hn＝on だけ（なしのときは付けない）。値の名前（hanamichi）は、リンクに出さない */
+const HANAMICHI_KEY = 'hn';
 
 /**
  * 申し込みページのリンク（# のあと）を作る。並べる順番に意味がある：
- * ふつうの項目 → クラスの項目 → 階級の項目 → protocol → mode → end=1。
+ * ふつうの項目 → クラスの項目 → 階級の項目 → ロゴ → 花道（hn=on） → protocol → mode → end=1。
  * 切れたリンクは、後ろから先に無くなる。だから「mode」か「end」が欠ければ、切れたと分かる。
  */
 export function publicEntryHash(config: PublicEntryConfig): string {
   const params = new URLSearchParams();
   const put = (key: string, value: unknown) => params.set(key, typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value));
   for (const [key, value] of Object.entries(config)) {
-    if (key === 'classes' || key === 'weights' || key === 'logo' || key === 'protocol' || key === 'mode') continue;
+    if (key === 'classes' || key === 'weights' || key === 'logo' || key === 'hanamichi' || key === 'protocol' || key === 'mode') continue;
     put(key, value);
   }
   if (config.classes?.enabled) {
@@ -79,6 +83,7 @@ export function publicEntryHash(config: PublicEntryConfig): string {
     if (!isDefaultWeightSettings(config.weights)) params.set('wd', weightSettingsToParam(config.weights));
   }
   if (config.logo) params.set('logo', 'on');
+  if (config.hanamichi) params.set(HANAMICHI_KEY, 'on');
   if (config.protocol !== undefined) put('protocol', config.protocol);
   if (config.mode !== undefined) put('mode', config.mode);
   params.set(LINK_END_KEY, '1');
@@ -91,6 +96,8 @@ export function publicEntryHash(config: PublicEntryConfig): string {
  * - クラスの項目があるリンクは、最後の end=1 が無ければ、切れている。
  * - cls=on なのに、クラスの文が読めないときも、切れている（同じ名前など）。
  * - 階級の項目（wc・wd）があるリンクも、同じ。wc=on なのに、表が読めないときも、切れている。
+ * - 花道の項目（hn）があるリンクも、同じ。hn は「on」だけが正しい。ほかの値（off・o・空）は、切れている。
+ *   hn の無い昔のリンクは、切れではない。
  */
 export function publicEntryLinkCut(hash: string): boolean {
   try {
@@ -99,11 +106,12 @@ export function publicEntryLinkCut(hash: string): boolean {
     const music = params.get('music'), comment = params.get('comment');
     if (!params.has('eventId') || !params.has('title') || !params.has('contact') || (music !== 'on' && music !== 'off') || (comment !== 'off' && comment !== 'optional' && comment !== 'required')) return true;
     if (params.has('mode') && !['test', 'live'].includes(params.get('mode') || '')) return true;
-    const hasClassKey = CLASS_KEYS.some((key) => params.has(key)) || WEIGHT_KEYS.some((key) => params.has(key)) || params.has('logo');
+    const hasClassKey = CLASS_KEYS.some((key) => params.has(key)) || WEIGHT_KEYS.some((key) => params.has(key)) || params.has('logo') || params.has(HANAMICHI_KEY);
     if (params.has(LINK_END_KEY) && params.get(LINK_END_KEY) !== '1') return true;
     if (hasClassKey) {
       if (params.get(LINK_END_KEY) !== '1') return true;
       if (params.has('wd') && params.get('wc') !== 'on') return true;
+      if (params.has(HANAMICHI_KEY) && params.get(HANAMICHI_KEY) !== 'on') return true;
       // クラスの項目と階級の項目のどちらか一方だけがあるリンクも、ここまで来る。cls は、クラスの項目があるときだけ見る
       if (CLASS_KEYS.some((key) => params.has(key))) {
         const cls = params.get('cls');
@@ -156,5 +164,7 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
     ...(classes ? { classes } : {}),
     ...(weights ? { weights } : {}),
     ...(params.get('logo') === 'on' ? { logo: true } : {}),
+    // 花道は、protocol が 3 の受付だけが知っている。古い受付（protocol 2）には、花道の鍵を送らないよう、読まない
+    ...(params.get(HANAMICHI_KEY) === 'on' && params.get('protocol') === '3' ? { hanamichi: true } : {}),
   };
 }

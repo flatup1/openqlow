@@ -4,7 +4,7 @@ import { Fragment, memo, useState } from 'react';
 import { contractWeight, gymKey, sameFighterKey, type LocalBout, type LocalFighter } from '../../core/privateTournament.ts';
 import type { EntryFormConfig } from '../../core/entryPackage.ts';
 import { boutClassWarning, classKey, classMismatch, classMixMessage, classState, suggestClass, suggestText, type ClassSettings } from '../../core/classRules.ts';
-import { boutWeightWarning, cleanDivisionName, cleanWeightText, findDivision, normalizeWeightClass, weightClassLabel, weightTag, type WeightSettings } from '../../core/weightClass.ts';
+import { boutWeightWarning, cleanDivisionName, cleanWeightText, findDivision, NO_CLASS_NOTE, normalizeWeightClass, weightClassLabel, weightTag, type WeightSettings } from '../../core/weightClass.ts';
 import { BOUT_TEXT_MAX, gapLevel, isBlankBout, isHalfBout, parseKg, sameClassName, weightGap, weightIssue, weightIssueText, weightTrouble, weightTroubleText } from './logic.ts';
 import { FIELD_LABEL, shorten, type FieldKey } from './normalize.ts';
 import { Caution, ErrorLine, Example, LockReason, NextSlot, OkLine, Soft } from './marks.tsx';
@@ -109,7 +109,7 @@ export function FighterFields({ value, onChange, onBlurField, config, prefix, pr
       </div> : null}
     </div>
     <Soft id={divId + '-note'} className="mt-1">区分と階級を選びます。階級＝体重で分けたグループです。わからないときは「えらばない」。</Soft>
-    {divSetting && wcList.length === 0 ? <Soft className="mt-1">この区分には階級がありません。体重が近い人どうしで組みます。</Soft> : null}
+    {divSetting && wcList.length === 0 ? <Soft className="mt-1">{NO_CLASS_NOTE}</Soft> : null}
     {wIssue ? <Caution className="mt-2" role="status">{weightIssueText(wIssue, value)}</Caution> : null}
   </div> : null;
   return <div className="grid gap-4 sm:grid-cols-2">{rows.filter((row) => row.show).map((row) => {

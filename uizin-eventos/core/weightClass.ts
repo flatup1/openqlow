@@ -212,6 +212,18 @@ export function weightChoiceError(divisionName: string, weightClass: string, s: 
   return '';
 }
 
+/**
+ * 階級のない区分（初期は「小学生以下」）を選んだときの説明。オーナーの言葉のまま。
+ * 申込ページの灰色の説明・準備の画面・ほかのジム用の画面は、この定数をそのまま出す（手で別々に書かない）。
+ * 「目安」であって約束ではない。クラスを決める人の話は、ここに入れない（クラスを選ぶのは本人）。
+ */
+export const NO_CLASS_NOTE = 'この区分には階級がありません。小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。';
+
+/** 送る前の確認の「階級」の行。上の定数のうしろ2文（先頭の1文は、行の名前「階級」と重なるので外す）を「なし（ ）」で包む */
+export function noClassReviewValue(): string {
+  return 'なし（' + NO_CLASS_NOTE.slice(NO_CLASS_NOTE.indexOf('。') + 1) + '）';
+}
+
 /** この区分は、階級を選ばせるか */
 export const divisionHasClasses = (name: string, s: WeightSettings | null | undefined): boolean => (findDivision(name, s)?.classes.length ?? 0) > 0;
 

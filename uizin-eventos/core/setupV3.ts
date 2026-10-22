@@ -5,12 +5,21 @@ import { formatDateInput } from './dateInput.ts';
 import type { EntryFieldMode } from './entryPackage.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
-export const EXPECTED_RECEPTION_BUILD = '3.20261019.6';
-/** クラス分けが入る前の版（3.20261004.4）・階級分けが入る前の版（3.20261010.5）も、そのまま使える（その分の機能が無いだけ）。 */
-export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', '3.20261010.5', EXPECTED_RECEPTION_BUILD] as const;
+export const EXPECTED_RECEPTION_BUILD = '3.20261022.7';
+/** クラス分けが入る前の版（3.20261004.4）・階級分けが入る前の版（3.20261010.5）・花道の追加情報が入る前の版（3.20261019.6）も、そのまま使える（その分の機能が無いだけ）。古い順に並べる */
+export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', '3.20261010.5', '3.20261019.6', EXPECTED_RECEPTION_BUILD] as const;
 
-/** このシートの受付（Googleのコード）は、階級分け・ロゴに対応した版か。古い版のシートでは、設定タブに階級分けの行を足しても、選手には出ない */
-export const supportsWeightClasses = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && ping.build === EXPECTED_RECEPTION_BUILD;
+/** build が、受け付ける版の一覧の中で since 以降か。一覧に無い版は false。新しい版を足しても、前の版の判定が「古い」に変わらないよう、等しいかではなく、位置で比べる */
+const buildSince = (build: string | undefined, since: (typeof ACCEPTED_RECEPTION_BUILDS)[number]): boolean => {
+  const list = ACCEPTED_RECEPTION_BUILDS as readonly string[];
+  const at = build === undefined ? -1 : list.indexOf(build);
+  return at >= 0 && at >= list.indexOf(since);
+};
+
+/** このシートの受付（Googleのコード）は、階級分け・ロゴに対応した版（3.20261019.6 以降）か。古い版のシートでは、設定タブに階級分けの行を足しても、選手には出ない */
+export const supportsWeightClasses = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261019.6');
+/** このシートの受付は、花道の追加情報に対応した版（3.20261022.7 以降）か。古い版では、設定タブに行を足しても、ping に hanamichiMode が来ない */
+export const supportsHanamichi = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261022.7');
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;
@@ -26,6 +35,8 @@ export type Ping = {
   weightRows?: boolean;
   /** 「設定」タブの「ロゴ」が「あり」のときだけ true で来る */
   logo?: boolean;
+  /** 「設定」タブの「花道の追加情報」が「あり」で、設定に問題がないときだけ true で来る（個人情報・項目名は来ない）。「なし」のときは鍵ごと無い */
+  hanamichiMode?: boolean;
   /** 見出しが変わったときだけ来る：直すタブの名前・マス・あるべき見出し（申込の中身・メールは来ない） */
   errorTab?: string; errorCell?: string; errorExpected?: string;
   /** 見出しの問題の種類：列が足された（その列を消す）／1行目が消えた（上に1行入れる）。どちらでもなければ、見出しの文字がちがう */
@@ -58,6 +69,7 @@ export function parsePing(value: unknown): Ping {
     weightMode: flag('weightMode'), weights: v.weightMode === true ? parseWeightSettings(v.weights) : undefined,
     weightRows: v.weightRows === false ? false : undefined,
     logo: v.logo === true ? true : undefined,
+    ...(v.hanamichiMode === true ? { hanamichiMode: true } : {}),
     errorTab: text('errorTab', 60), errorCell: text('errorCell', 6), errorExpected: text('errorExpected', 60),
     errorInserted: v.errorInserted === true ? true : undefined, errorRowGone: v.errorRowGone === true ? true : undefined,
     closedBy: v.closedBy === 'deadline' || v.closedBy === 'stopped' ? v.closedBy : undefined,
@@ -119,6 +131,8 @@ export function entryConfigFromPing(ping: Ping, endpoint: string, mode: 'test' |
     ...(ping.classes ? { classes: ping.classes } : {}),
     ...(ping.weights ? { weights: ping.weights } : {}),
     ...(ping.logo ? { logo: true } : {}),
+    // 花道の追加の質問は、対応した版のシートが「あり」と言ったときだけ（リンクに hn=on が付く）。「なし」・古い版では、項目ごと無い
+    ...(ping.hanamichiMode && supportsHanamichi(ping) ? { hanamichi: true } : {}),
   };
   if (publicEntryHash(config).length > 4500) throw sheetFixError(longestFieldMessage(ping));
   return config;
@@ -204,6 +218,7 @@ export const CELL: Record<string, string> = { 大会名: 'B2', 開催日: 'B3', 
 export const CLASS_CELL: Record<string, string> = { クラス分け: 'B13', 上のクラスの名前: 'B14', 上のクラスの条件: 'B15', 上のクラスのルール: 'B16', 下のクラスの名前: 'B17', 下のクラスの条件: 'B18', 下のクラスのルール: 'B19', 上のクラスにする勝ち数: 'B20' };
 /** 階級分けとロゴの行（クラスの8行のあとに足した行）。区分の行（「階級：…」）は、主催者が増やしたり消したりできる（消すと、下の行の番号が1つずつ上がる）ので、番号を持たせない。区分の行は、いちばん下にまとめてある */
 export const WEIGHT_CELL: Record<string, string> = { 階級分け: 'B21', ロゴ: 'B22' };
+// 「花道の追加情報」の行は、区分の行のあと（いちばん下）にあるので、番号を持たせない。場所は『A列が「花道の追加情報」の行のB列』と言う（settingLines）
 export const HOW: Record<string, string> = {
   大会名: '例：第3回 青空ジム大会 のように入れる', 開催日: '2027年10月3日 のように入れる', 会場: '例：○○体育館 のように入れる', 主催者名: '例：○○ジム のように入れる',
   問い合わせ先: '電話番号か、LINEのURLを入れる', 申込締切: '2027年9月20日 のように入れる（開催日と同じか、その前の日）', 入場曲: '▼から「あり」か「なし」を選ぶ',
@@ -223,6 +238,8 @@ export function settingLines(message: string): { google: string; fixes: string[]
   // 申込ページに入れられない理由（クラスの内容・文が長すぎる）は、1つの文のまま出す
   if (/^クラス|^階級分け|長すぎて、選手に渡すURLに入りません/.test(body)) return [{ google: body, fixes: [body] }];
   return (body || message).split('。').filter(Boolean).map((item) => {
+    // 花道の追加情報の行は、区分の行のあと（いちばん下）にある。セルの番号は言わず、A列の名前で探してもらう（文の中に場所があるときは、そのまま）
+    if (/「花道の追加情報」/.test(item)) return { google: item, fixes: [/A列が「花道の追加情報」の行/.test(item) ? item : item + '（「設定」タブの、A列が「花道の追加情報」の行のB列。▼から選び直す）'] };
     const miss = item.match(/次の欄を入れてください：(.+)$/);
     if (miss) {
       return { google: item, fixes: miss[1].split('、').map((n) => { const hit = cellOf(n); return hit ? hit.key + '（' + hit.cell + '）：書いてありません。' + (CLASS_CELL[hit.key] ? '右どなり（C列）の例を見て書く' : HOW[hit.key] || WRITE_MARK + 'の行に書く') : n + '：書いてありません'; }) };

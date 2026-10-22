@@ -472,6 +472,14 @@ scenario('CLS', 'the add/edit form offers both renamed classes with conditions a
   await e2.goto(base + '/private/entry/?music=off&grade=optional&age=optional&comment=optional');
   await e2.getByText('選手エントリーシート').waitFor();
   check((await e2.locator('input[name="fighterClass"]').count()) === 0, 'other-gym form without classes: no class block');
+  // other-gym form with 区分・階級: a division without 階級 shows the owner's 小学生 sentence (the same constant as /apply/ and the chairman screen)
+  const e3 = await ctx2.newPage();
+  await e3.goto(base + '/private/entry/?music=off&grade=optional&age=optional&comment=optional&ws=' + encodeURIComponent('[["小学生以下",""],["中学生男子","-37,-40"]]'));
+  await e3.getByText('選手エントリーシート').waitFor();
+  await e3.locator('#entry-division').selectOption('中学生男子');
+  check((await e3.locator('#entry-weightClass-none').count()) === 0, 'other-gym form: a division with 階級 shows no "no 階級" note');
+  await e3.locator('#entry-division').selectOption('小学生以下');
+  check((await e3.locator('#entry-weightClass-none').innerText()).trim() === 'この区分には階級がありません。小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。', 'other-gym form: 小学生以下 shows the owner sentence');
   await ctx.close(); await ctx2.close();
 });
 
