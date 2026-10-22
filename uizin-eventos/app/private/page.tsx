@@ -229,6 +229,7 @@ function PrivateAdmin() {
   const [placeNote, setPlaceNote] = useState<{ index: number; side: 'red' | 'blue' } | null>(null);
   const [openError, setOpenError] = useState('');
   const [openedNote, setOpenedNote] = useState(false);
+  const sheetOpeningRef = useRef(false);
   /** 大会名を、一度でも『出ないまま』にしたか（欄から出た・保存や開くを押した）。そのあとから、赤い『まだです』を出す */
   const [titleTried, setTitleTried] = useState(false);
   const [rewound, setRewound] = useState(false);
@@ -961,11 +962,23 @@ function PrivateAdmin() {
     if (!original) return;
     const result = checkFighter(draft, entryConfig, 'edit');
     if (result.problems.length) { focusSoon('edit-' + editingId + '-' + result.problems[0].key); return; }
-    const next: LocalFighter = tidyWeight(tidyClass({ ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl }));
+    const next: LocalFighter = tidyWeight(tidyClass({ ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl, ...(original.absent ? { absent: true } : {}) }));
     setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === editingId ? next : item) }));
     setEditNote({ id: editingId, text: [describeChange(original, next), describeClassChange(original, next), describeWeightChange(original, next)].filter(Boolean).join('、') });
     setEditingId(null); setEditFixes({}); setOtherEditErr(null);
     focusSoon('edit-note-' + original.id, 'edit-btn-' + original.id);
+  };
+  /** 欠場にする／やめる。ほかの直しと同じで、「保存する」を押すまで、保存されない。保存すると、対戦一覧表・当日の画面に「欠場」と出る */
+  const toggleAbsent = (id: string) => {
+    const person = dataRef.current.fighters.find((item) => item.id === id);
+    if (!person) return;
+    const nowAbsent = person.absent !== true;
+    const inBouts = dataRef.current.bouts.map((bout, index) => (bout.redId === id || bout.blueId === id ? index + 1 : 0)).filter(Boolean);
+    setData((old) => ({ ...old, fighters: old.fighters.map((item) => { if (item.id !== id) return item; if (nowAbsent) return { ...item, absent: true }; const { absent: _gone, ...rest } = item; return rest; }) }));
+    const name = (person.name.trim() || '名前未入力') + 'さん';
+    if (!nowAbsent) notify('ok', name + 'を、欠場からもどしました。保存すると、一覧表と当日の画面も、もとにもどります。');
+    else if (inBouts.length) notify('warn', name + 'を欠場にしました。第' + inBouts.join('・') + '試合に入っています。相手を決め直すか、その試合を消します。保存すると、一覧表と当日の画面に「欠場」と出ます。');
+    else notify('info', name + 'を欠場にしました。保存すると、一覧表と当日の画面に「欠場」と出ます。');
   };
   const removeFighter = (id: string) => {
     const person = byId.get(id);
@@ -997,7 +1010,7 @@ function PrivateAdmin() {
     lastTouched.current = data.bouts.length;
     pendingJump.current = { id: 'bout-' + data.bouts.length + '-red' };
   };
-  const unplaced = useMemo(() => data.fighters.filter((fighter) => !placed.has(fighter.id)), [data.fighters, placed]);
+  const unplaced = useMemo(() => data.fighters.filter((fighter) => !placed.has(fighter.id) && fighter.absent !== true), [data.fighters, placed]);
   /** 名前の札を押したとき、どこに入るか（押す前に言うため、押したときと同じ決め方を使う） */
   const placeTarget = (): { index: number; side: 'red' | 'blue' } | null => {
     const room = (i: number) => i >= 0 && i < data.bouts.length && (!data.bouts[i].redId || !data.bouts[i].blueId);
@@ -1021,7 +1034,8 @@ function PrivateAdmin() {
     placeTimer.current = window.setTimeout(() => setPlaceNote(null), 15_000);
   };
   const makeSuggestion = () => {
-    const made = suggestBouts(data.fighters, data.bouts, () => crypto.randomUUID());
+    // 欠場の選手は、おすすめに入れない
+    const made = suggestBouts(data.fighters.filter((fighter) => fighter.absent !== true), data.bouts, () => crypto.randomUUID());
     if (!made.length) { setSuggestNote({ kind: 'warn', ids: [], wide: [], noPartner: '', text: 'おすすめは作れませんでした。体重が入っていない選手がいると、自動では組めません。「＋ 試合を追加」から、自分で選んでください。' }); return; }
     // 体重差が10kg以上の組は、案に入れない（けがの危険）
     const gapOf = (bout: LocalBout) => weightGap(byId.get(bout.redId), byId.get(bout.blueId));
@@ -1218,6 +1232,7 @@ function PrivateAdmin() {
 
   /* ───── 計算 ───── */
   const live = '/private/live/?event=' + encodeURIComponent(data.eventId);
+  const sheetLink = '/private/sheet/?event=' + encodeURIComponent(data.eventId);
   // 他のジム用の入力画面にも、クラスの選び方を渡す（クラスを使う大会だけ）
   const linkClasses = entryConfig.classes ?? (data.fighters.some((fighter) => (fighter.fighterClass ?? '').trim() !== '') ? effectiveClassSettings(undefined, data.fighters, false) ?? undefined : undefined);
   const entryLink = '/private/entry/?' + entryConfigSearch(linkClasses ? { ...entryConfig, classes: linkClasses } : entryConfig);
@@ -1252,7 +1267,7 @@ function PrivateAdmin() {
   const halfIndex = data.bouts.findIndex(isHalfBout);
   const halfSide = halfIndex >= 0 && !data.bouts[halfIndex].redId ? 'red' : 'blue';
   const withPhoto = data.fighters.filter((fighter) => fighter.photoDataUrl).length;
-  const placedCount = data.fighters.length - unplaced.length;
+  const placedCount = data.fighters.filter((fighter) => placed.has(fighter.id)).length;
   const titleMissing = !data.title.trim();
   const otherCore = Math.max(0, coreErrors.length - boutIssues.length - (titleMissing ? 1 : 0)) > 0;
   const problemCount = boutIssues.length + (titleMissing ? 1 : 0) + (otherCore ? 1 : 0);
@@ -1358,12 +1373,22 @@ function PrivateAdmin() {
     setOpened(true); setOpenError(''); setOpenedNote(true);
     if (popup) { try { popup.opener = null; } catch { /* 古い画面では無視 */ } popup.location.href = live; } else location.href = live;
   }
+  /** A3の対戦一覧表を、新しい画面で開く。保存していない直しがあるときは、先に保存する（一覧表は、保存した内容から作るため）。二度押しで、いくつも開かない */
+  async function openSheet() {
+    if (sheetOpeningRef.current) return;
+    if (nonBlank === 0) { goTarget('add-bout'); return; }
+    sheetOpeningRef.current = true; window.setTimeout(() => { sheetOpeningRef.current = false; }, 2000);
+    let popup: Window | null = null;
+    try { popup = window.open('', '_blank'); } catch { popup = null; }
+    if (dirty && !(await save())) { popup?.close(); sheetOpeningRef.current = false; return; }
+    if (popup) { try { popup.opener = null; } catch { /* 古い画面では無視 */ } popup.location.href = sheetLink; } else location.href = sheetLink;
+  }
   /** この大会を、このパソコンから消す（消す前に、コピーのファイルがあることを確かめてある）。ほかの大会は消えない */
   async function removeThisEvent() {
     const id = dataRef.current.eventId;
     try {
       await deletePrivateEvent(id);
-      try { for (const prefix of [SETUP_KEY, BACKUP_AT_KEY, BACKUP_FOR_KEY]) localStorage.removeItem(prefix + id); } catch { /* 覚え書きが消せなくても、大会は消えている */ }
+      try { for (const prefix of [SETUP_KEY, BACKUP_AT_KEY, BACKUP_FOR_KEY, 'tos-sheet:']) localStorage.removeItem(prefix + id); } catch { /* 覚え書きが消せなくても、大会は消えている */ }
       cleanRef.current = dataRef.current;
       location.href = '/private/';
     } catch { notify('error', '失敗：消せませんでした。この大会は、そのまま残っています。もう一度「この大会のデータを、このパソコンから消す」を押してください。'); }
@@ -1841,6 +1866,7 @@ function PrivateAdmin() {
                         {fighter.fighterClass ? <p className="mt-1 min-w-0"><Chip tone="slate">クラス：{fighter.fighterClass}</Chip></p> : null}
                         {weightTag(fighter) ? <p data-weight-chip="1" className="mt-1 min-w-0"><Chip tone="slate">区分・階級：{weightTag(fighter)}</Chip></p> : null}
                         <p className="text-[17px] font-medium">{kgText(fighter.weight)}{fighter.record ? '・' + fighter.record : ''}</p>
+                        {fighter.absent ? <p data-absent-chip="1" className="mt-1"><Chip tone="rose">✕ 欠場</Chip></p> : null}
                         {!fighter.photoDataUrl ? <p className="mt-1"><Chip tone="slate">写真：あとでOK</Chip></p> : null}
                         {dupIds.has(fighter.id) ? <p className="mt-1"><Chip tone="amber">⚠ 同じ名前の人がいます</Chip></p> : null}
                       </div>
@@ -1870,6 +1896,7 @@ function PrivateAdmin() {
                         if (otherEditing) { setOtherEditErr(fighter.id); return; }
                         editFighter(fighter.id, 'name');
                       }} aria-label={'直す ' + fighter.name} className={cls(btn.base, btn.outline)}>直す</button>
+                      <button id={'absent-' + fighter.id} type="button" onClick={() => toggleAbsent(fighter.id)} aria-label={(fighter.absent ? '欠場をやめる ' : '欠場にする ') + fighter.name} className={cls(btn.base, btn.outline)}>{fighter.absent ? '欠場をやめる' : '欠場にする'}</button>
                       <button id={'remove-' + fighter.id} type="button" onClick={() => setAsk({ kind: 'remove', id: fighter.id, nonce: ++askSeq.current })} aria-label={'消す ' + fighter.name} className="tos-danger-btn inline-flex items-center justify-center text-center text-lg touch-manipulation"><span aria-hidden="true">✕ </span>消す：{shorten(fighter.name, 12)}</button>
                     </div>}
                     {otherEditErr === fighter.id && !editing ? <div className="mt-2 space-y-2">
@@ -2012,7 +2039,7 @@ function PrivateAdmin() {
               </ul>
             </div> : null}
             {warnCount > 0 ? <Caution><span className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1">気をつけたいところが{warnCount}つあります。保存はできます。ただし、試合の前に、1つずつ確かめてください（体重差が大きい試合・クラスがちがう試合{data.bouts.some(weightMix) ? '・区分や階級がちがう試合' : ''}など）。</span>
+              <span className="min-w-0 flex-1">気をつけたいところが{warnCount}つあります。保存はできます。ただし、試合の前に、1つずつ確かめてください（体重差が大きい試合・クラスがちがう試合{data.bouts.some(weightMix) ? '・区分や階級がちがう試合' : ''}{data.fighters.some((f) => f.absent === true) ? '・欠場の選手が入っている試合' : ''}など）。</span>
               {firstWarn >= 0 ? <button type="button" onClick={() => jump('bout-' + firstWarn)} className={cls(btn.base, btn.outline)}>見直す：第{firstWarn + 1}試合へ</button> : null}
             </span></Caution> : null}
             {done4 ? <div className="space-y-3 rounded-2xl border-2 border-[#166534] bg-[#f0fdf4] p-4">
@@ -2036,6 +2063,10 @@ function PrivateAdmin() {
               <div className="space-y-1">
                 <button type="button" aria-disabled={!canOpen || undefined} onClick={() => { void openLive(); }} className={cls(btn.base, btn.outlineBig, 'w-full', !canOpen && 'tos-locked')}>試合当日の画面を開く</button>
                 {!canOpen ? <LockReason>{openWhy}</LockReason> : null}
+              </div>
+              <div className="space-y-1">
+                <button id="open-sheet" type="button" aria-disabled={nonBlank === 0 || undefined} onClick={() => { void openSheet(); }} className={cls(btn.base, btn.outlineBig, 'w-full', nonBlank === 0 && 'tos-locked')}>A3の対戦一覧表をつくる</button>
+                {nonBlank === 0 ? <LockReason>先に、対戦カードを作ります</LockReason> : <Soft>掲示用の一覧表です。印刷・PDFにできます。保存した内容から作ります（保存していないときは、先に保存します）。</Soft>}
               </div>
             </div>
             {openedNote ? <OkLine>開きました。この画面はそのまま閉じずに残します。</OkLine> : null}

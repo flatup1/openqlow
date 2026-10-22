@@ -148,7 +148,7 @@ function makeBuild(): string {
   put('_redirects', '/  /private/  302\n');
   put('template-link.json', '{ "copyUrl": "" }');
   put('templates/Tournament_OS_Google受付_v3.gs', "const RECEPTION_BUILD = '1.0.0';");
-  for (const page of ['private/index.html', 'private/setup/index.html', 'private/live/index.html', 'apply/index.html']) put(page, '<!doctype html><html><body><a href="https://docs.google.com/spreadsheets/">link</a></body></html>');
+  for (const page of ['private/index.html', 'private/setup/index.html', 'private/live/index.html', 'private/sheet/index.html', 'apply/index.html']) put(page, '<!doctype html><html><body><a href="https://docs.google.com/spreadsheets/">link</a></body></html>');
   put('_next/static/chunks/a.js', 'var a="invalid zip data";var b="sharedStrings";');
   put('_next/static/chunks/a.css', 'body{color:red}');
   return dir;

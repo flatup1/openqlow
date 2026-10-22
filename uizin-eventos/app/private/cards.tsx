@@ -177,7 +177,7 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
     const other = side === 'red' ? bout.blueId : bout.redId;
     const mark = f.id === other ? (side === 'red' ? '（青コーナーで選んでいます）' : '（赤コーナーで選んでいます）') : elsewhere.has(f.id) ? '（もう第' + ((elsewhere.get(f.id) ?? 0) + 1) + '試合に入っています）' : (placed.get(f.id) ?? 0) - (inThisBout(f.id) ? 1 : 0) > 0 ? '（ほかの試合に入っています）' : '';
     const twin = (labelCount.get(labelKey(f)) ?? 0) > 1 ? `（番号 ${shorten(f.id, 10)}）` : '';
-    return <option key={f.id} value={f.id} disabled={f.id === other}>{baseLabel(f) + twin + mark}</option>;
+    return <option key={f.id} value={f.id} disabled={f.id === other}>{baseLabel(f) + twin + (f.absent === true ? '（欠場）' : '') + mark}</option>;
   })}</optgroup>);
   const profile = (f: LocalFighter | undefined, side: 'red' | 'blue') => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
     <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
@@ -302,6 +302,13 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
       <div>{reselect(blue, '青を選び直す')}</div>
     </div> : null}
     {classesOn && !classWarn ? classNotes : null}
+    {/* 欠場の選手が入っている試合。止めない（決めるのは主催者）。赤い ⚠ と言葉で知らせ、選び直すボタンを付ける */}
+    {[red, blue].some((f) => f?.absent === true) ? <div className="mt-3 space-y-2" data-absent-warning="1">
+      {([['赤', red], ['青', blue]] as const).filter(([, f]) => f?.absent === true).map(([side, f]) => <div key={side} className="space-y-2">
+        <ErrorLine role="status" mark="⚠ " className="[overflow-wrap:anywhere]">{side}コーナーの{(f?.name ?? '').trim() || '名前未入力'}さんは、欠場です。相手を決め直すか、この試合を消してください。</ErrorLine>
+        {f ? <div>{reselect(f, side + 'を選び直す')}</div> : null}
+      </div>)}
+    </div> : null}
     {samePerson && red && blue ? <div className="mt-3 space-y-2">
       <ErrorLine role="status" mark="⚠ ">同じ人かもしれません：赤と青が、同じ名前・同じジムです（番号 {shorten(red.id, 10)} と {shorten(blue.id, 10)}）。</ErrorLine>
       <div>{reselect(blue, '青を選び直す')}</div>

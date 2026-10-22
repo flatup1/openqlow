@@ -33,7 +33,7 @@ npm run deploy:private
 3. 名簿を読む部品（ZIP・Excel）が、本当に入っている（抜けると、公開後に取り込みが動かない）
 4. HTML・JSが指しているファイルが、すべて存在する
 5. 付属ファイル：`_headers`・ひな形のプログラム・`template-link.json`。`template-link.json` は、空か、`https://docs.google.com/spreadsheets/d/…/copy` の形だけ
-6. 安全のための設定（`_headers`）の中身：5つの道すじ（`/private/`・`/private/entry/*`・`/private/live/*`・`/private/setup/*`・`/apply/*`）すべてに、`default-src 'self'`・`object-src 'none'`・`frame-src 'none'`・`base-uri 'none'`・`frame-ancestors 'none'`・`Referrer-Policy: no-referrer`・`nosniff`・`DENY`・`X-Robots-Tag: noindex`。許す宛先は「自分・none・data:・blob:・Googleの2つ」だけ。`/apply/*` は `connect-src 'none'`、送れる先は Google の2つだけ
+6. 安全のための設定（`_headers`）の中身：6つの道すじ（`/private/`・`/private/entry/*`・`/private/live/*`・`/private/setup/*`・`/private/sheet/*`・`/apply/*`）すべてに、`default-src 'self'`・`object-src 'none'`・`frame-src 'none'`・`base-uri 'none'`・`frame-ancestors 'none'`・`Referrer-Policy: no-referrer`・`nosniff`・`DENY`・`X-Robots-Tag: noindex`。許す宛先は「自分・none・data:・blob:・Googleの2つ」だけ。`/apply/*` は `connect-src 'none'`、送れる先は Google の2つだけ
 7. 外のスクリプト・フォント・画像・CSSを読み込む書き方が無い（文章の中のリンクは数えない）。外へ通信する書き方（`fetch("https://…")` など）も止める
 8. 鍵・秘密・個人情報らしき文字が入っていない（Google・AWS・GitHub・Slack の鍵、JWT、`sk-…`、`password: "…"` の形、本物らしい電話番号とメールアドレス。見本の `name@example.com`・`090-1234-5678` の形は許す）。大きさ・種類に関わらず、文字のファイルは全部読む
 9. 古い Safari で動かない書き方が無い（クラスの `static` ブロック、正規表現の後読み）
@@ -71,6 +71,7 @@ npm run verify:all -- --fast   （いちばん長い mistake-proof（およそ16
 - `scripts/test-private-mistake-proof.mjs`（まちがえやすい操作を、1つずつ試す）
 - `scripts/test-class-ab.mjs`（A／Bクラス）
 - `scripts/test-weight-class.mjs`（階級分け：区分→階級・赤い注意・ロゴ）
+- `scripts/test-bout-sheet.mjs`（A3対戦一覧表：プレビュー・ページ分け・本物のPDF・個人情報が出ない・欠場・写真なし・並べ替えのあとの出しなおし）
 - `scripts/test-bout-flow.mjs`（黄色の「次はここ」だけで、対戦カードを3つ作る）
 - `scripts/test-polish-private.mjs`（準備の画面の仕上げ：ZIP・戻す・失敗の帯・取り込み・クラス）
 - `scripts/test-polish-apply.mjs`（申し込みページの仕上げ）

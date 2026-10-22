@@ -135,6 +135,7 @@ export type MusicState = 'off' | 'empty' | 'link' | 'broken' | 'none';
 export function musicState(fighter: LocalFighter | undefined, musicEnabled: boolean): MusicState {
   if (!musicEnabled) return 'off';
   if (!fighter) return 'empty';
+  if (fighter.absent === true) return 'empty'; // 欠場の選手の入場曲は、出さない（曲なしの警告も、曲のリンクも）
   if (safeMusicUrl(fighter.musicUrl ?? '')) return 'link';
   return String(fighter.musicUrl ?? '').trim() ? 'broken' : 'none';
 }
@@ -187,6 +188,8 @@ export type CornerModel = {
   present: boolean;
   /** 選手はいるが、名前が空（または空白だけ）。一覧でも赤い行を出す（1試合ずつの画面と同じ） */
   noName: boolean;
+  /** 欠場の選手（準備画面で「欠場にする」を押した人）。一覧でも「✕ 欠場」の言葉と赤い行を出す（1試合ずつの画面と同じ） */
+  absent: boolean;
   name: string;
   gym: string;
   /** クラスの名前（Aクラスなど）。ないときは ''。見せるだけで、色は使わない */
@@ -226,6 +229,7 @@ function corner(side: 'red' | 'blue', fighter: LocalFighter | undefined, musicEn
     label: side === 'red' ? '赤コーナー' : '青コーナー',
     present: !!fighter,
     noName: !!fighter && !fighter.name.trim(),
+    absent: fighter?.absent === true,
     name: displayName(fighter),
     gym: fighter?.gym.trim() ?? '',
     fighterClass: fighter?.fighterClass?.trim() ?? '',
@@ -264,7 +268,7 @@ export function buildRow(bout: LocalBout, index: number, byId: Map<string, Local
     blue: b,
     classMix: boutClassWarning(red, blue) !== '',
     weightWarning: boutWeightWarning(red, blue),
-    openLabel: 'この試合を開く ' + title + ' 赤コーナー ' + r.name + ' 対 青コーナー ' + b.name,
+    openLabel: 'この試合を開く ' + title + ' 赤コーナー ' + r.name + (r.absent ? '（欠場）' : '') + ' 対 青コーナー ' + b.name + (b.absent ? '（欠場）' : ''),
   };
 }
 
@@ -298,6 +302,7 @@ export function summarizeMusic(data: Pick<LocalTournament, 'bouts' | 'fighters'>
     let missing = false;
     for (const id of [bout.redId, bout.blueId]) {
       const f = byId.get(id);
+      if (f?.absent === true) continue; // 欠場の選手の曲は、数えない（出ない人の曲を、さがさせない）
       const state = musicState(f, true);
       if (state !== 'none' && state !== 'broken') continue;
       missing = true;
@@ -316,7 +321,7 @@ export function nowModel(data: Pick<LocalTournament, 'bouts' | 'fighters' | 'cur
   const bout = data.bouts[data.currentBout];
   if (!bout) return null;
   const byId = new Map(data.fighters.map((f) => [f.id, f]));
-  const name = (id: string) => displayName(byId.get(id));
+  const name = (id: string) => displayName(byId.get(id)) + (byId.get(id)?.absent === true ? '（欠場）' : '');
   const title = '第' + (data.currentBout + 1) + '試合';
   return { index: data.currentBout, title, text: title + '　' + name(bout.redId) + ' 対 ' + name(bout.blueId), page: pageOfBout(data.currentBout, total, size) };
 }

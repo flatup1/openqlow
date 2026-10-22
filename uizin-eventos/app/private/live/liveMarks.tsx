@@ -33,7 +33,7 @@ export function NextSlot({ active, label, className = '', style, row = false, ch
 
 /** 薄い黄の「⚠ 気をつけて：」。消えない注意（取り消せないことには使わない） */
 export function Caution({ children, title = '気をつけて', className = '', id, role = 'note' }: { children: ReactNode; title?: string; className?: string; id?: string; role?: 'note' | 'status' }) {
-  return <div id={id} role={role} className={cx('tos-caution text-[17px]', className)}>
+  return <div id={id} role={role} className={cx('tos-caution text-[17px] [overflow-wrap:anywhere]', className)}>
     <span className="tos-caution-title"><span aria-hidden="true">⚠ </span>{title}：</span>{children}
   </div>;
 }
@@ -49,13 +49,13 @@ export function OkLine({ children, className = '', id, role }: { children: React
 }
 
 /** 灰の「🔒 理由」。押せないボタンの『すぐ下』に、いつも出す */
-export function LockReason({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <p className={cx('tos-locked-reason m-0', className)} style={BIG}><span aria-hidden="true">🔒 </span>{children}</p>;
+export function LockReason({ children, className = '', id }: { children: ReactNode; className?: string; id?: string }) {
+  return <p id={id} className={cx('tos-locked-reason m-0', className)} style={BIG}><span aria-hidden="true">🔒 </span>{children}</p>;
 }
 
 /** 灰色の小さな説明（色は付けない。17px） */
 export function Hint({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <p className={cx('m-0 text-[17px] font-bold leading-snug text-slate-700', className)}>{children}</p>;
+  return <p className={cx('m-0 text-[17px] font-bold leading-snug text-slate-700 [overflow-wrap:anywhere]', className)}>{children}</p>;
 }
 
 /** 入力欄の横の『例：』の行 */

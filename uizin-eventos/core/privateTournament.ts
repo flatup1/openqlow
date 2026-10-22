@@ -20,6 +20,8 @@ export type LocalFighter = {
   /** 区分（例：中学生男子）と階級（例：37kg以下）。階級分けの申込のときに選んだ文字。ないときは項目ごと無い。階級は、小学生以下のように選ばない区分では、無い。 */
   division?: string;
   weightClass?: string;
+  /** 欠場（出ない）。true のときだけ入る。対戦一覧表・当日の画面・準備の画面が、この人を「欠場」と言う。名簿の取り込みでも消さない */
+  absent?: boolean;
 };
 
 export type LocalBout = {
@@ -186,7 +188,7 @@ export function mergeFighters(current: LocalFighter[], incoming: LocalFighter[])
   const existing = new Set(current.map(fighter=>fighter.id));
   const combined = current.map(fighter=>{
     const next=updates.get(fighter.id);
-    return next ? {...next,photoDataUrl:next.photoDataUrl||fighter.photoDataUrl} : fighter;
+    return next ? {...next,photoDataUrl:next.photoDataUrl||fighter.photoDataUrl,...(fighter.absent?{absent:true}:{})} : fighter;
   }).concat(incoming.filter(fighter=>!existing.has(fighter.id)));
   if(combined.length>3000)throw new Error('名簿が3000人を超えます。元の名簿は変えていません。');
   return combined;
@@ -230,6 +232,8 @@ export function boutWarnings(bout: LocalBout, fighters: LocalFighter[], bouts: L
       return !!person && sameFighterKey(person) === key;
     });
   };
+  // 欠場の人が入っている試合。相手を決め直すか、試合を消す（止めない。決めるのは主催者）
+  [red, blue].forEach((f) => { if (f?.absent === true) warnings.push((f.name.trim() || '名前未入力') + ' さんは欠場です。相手を決め直すか、この試合を消してください。'); });
   [red, blue].forEach((f) => {
     if (!f) return;
     const count = bouts.filter((other) => inBout(other, f)).length;
@@ -285,5 +289,5 @@ export function isLocalTournament(value: unknown): value is LocalTournament {
   if (data.entryConfig?.weights !== undefined && !isStoredWeights(data.entryConfig.weights)) return false;
   if (data.entryConfig?.logo !== undefined && typeof data.entryConfig.logo !== 'boolean') return false;
   if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
-  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && (fighter.division === undefined || (typeof fighter.division === 'string' && fighter.division.length <= 40)) && (fighter.weightClass === undefined || (typeof fighter.weightClass === 'string' && fighter.weightClass.length <= 40)) && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
+  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && (fighter.division === undefined || (typeof fighter.division === 'string' && fighter.division.length <= 40)) && (fighter.weightClass === undefined || (typeof fighter.weightClass === 'string' && fighter.weightClass.length <= 40)) && (fighter.absent === undefined || typeof fighter.absent === 'boolean') && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }
