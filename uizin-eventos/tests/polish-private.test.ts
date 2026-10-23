@@ -607,7 +607,7 @@ test('r2-155 / r2-157 / r2-158 / r2-160 / r2-168 / r2-169 / r2-162 / r2-165 言�
   const page = src('app/private/page.tsx'), cards = src('app/private/cards.tsx'), logic = src('app/private/logic.ts');
   assert.match(page, /試合当日の画面＝選手の名前・写真・体重を、大きく映す画面です。/); assert.match(page, /対戦カード＝だれとだれが戦うかを書いた表です。/); assert.match(page, /開いても、試合は始まりません。/);
   assert.ok(!page.includes('対戦カードの画面に出る'));
-  assert.match(page, /じゅんびは、ぜんぶできました。あとは「試合当日の画面を開く」を押します。/); assert.ok(!page.includes('ぜんぶ終わりました'));
+  assert.match(page, /じゅんびの4つは、ぜんぶできました。あとは「試合当日の画面を開く」を押します。/); assert.ok(!page.includes('じゅんびは、ぜんぶできました'), '「じゅんびは、ぜんぶ」と言い切らない（コピーのファイル・USB・紙の一覧は、別の用意）'); assert.ok(!page.includes('ぜんぶ終わりました'));
   assert.ok(!logic.includes('（空の試合があります）'), '黄色の札は短く（第1試合の赤コーナーを選ぶ）');
   assert.match(src('app/private/marks.tsx'), /whiteSpace: 'nowrap'/, '第1試合 が途中で割れない');
   assert.match(cards, /体重がまだわからないので、試合当日の画面に「契約体重」が出ません。上の「体重を入れる」を押してください。/);

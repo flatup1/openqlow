@@ -23,7 +23,7 @@ export type FieldFixes = Partial<Record<FieldKey, string>>;
 
 /* ───────── 選手の入力欄（1人ずつ入れる / 直す で共通） ───────── */
 const EXAMPLES: Record<FieldKey, string> = {
-  name: '山田 太郎', gym: '○○ジム', grade: '小6／中2／社会人', age: '15（数字だけ）', height: '170', weight: '65.5',
+  name: '山田 太郎', gym: '○○ジム', grade: '小5／中2／社会人', age: '15（数字だけ）', height: '170', weight: '65.5',
   record: '初試合なら「初試合」', comment: '全力でがんばります', musicUrl: 'https://music.apple.com/…',
 };
 

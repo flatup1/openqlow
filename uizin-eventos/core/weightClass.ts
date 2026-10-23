@@ -145,7 +145,7 @@ export function divisionNameProblem(name: string): string {
 
 const division = (name: string, tokens: string): DivisionSetting => ({ name, classes: tokens ? parseClassList(tokens).classes : [] });
 
-/** 申込ページ・当日画面にそのまま出る、初期の表（千葉県キックボクシング協会 Vol.6 の要項と同じ）。Googleのシート「設定」タブの初期値と同じ（テストで一致を確認する）。 */
+/** 申込ページ・当日画面にそのまま出る、初期の表（千葉県キックボクシング協会 Vol.7（2026年12月20日大会）の要項と同じ）。Googleのシート「設定」タブの初期値と同じ（テストで一致を確認する）。 */
 export const DEFAULT_DIVISIONS: DivisionSetting[] = [
   division('小学生以下', ''),
   division('中学生女子', '-37,-40,-43,-46,-49,-52,-55,-58'),
@@ -200,12 +200,18 @@ export function normalizeWeightClassLoose(divisionName: string, value: string, s
   return info ? info.canon : cleanWeightText(value);
 }
 
-/** 「区分」と「階級」の選びかたの検査。問題があれば、直し方つきの文。空なら問題なし。 */
-export function weightChoiceError(divisionName: string, weightClass: string, s: WeightSettings | null | undefined): string {
+/**
+ * 選手に見せる、区分の欄の名前。申し込みページの見出し「出場区分」と同じ言葉（見出し・赤い文・案内の文は、ここ1つから作る）。
+ * 保存される値・シートの列見出し・リンクの鍵は「区分」のまま（ここで変えるのは、選手に見える文字だけ）。
+ */
+export const DIVISION_LABEL = '出場区分';
+
+/** 「出場区分」と「階級」の選びかたの検査。問題があれば、直し方つきの文。空なら問題なし。label は選手に見せる欄の名前（ふつうは DIVISION_LABEL） */
+export function weightChoiceError(divisionName: string, weightClass: string, s: WeightSettings | null | undefined, label: string = DIVISION_LABEL): string {
   if (!s || !s.enabled) return '';
-  if (!cleanDivisionName(divisionName)) return '区分を選んでください。';
+  if (!cleanDivisionName(divisionName)) return label + 'を選んでください。';
   const d = findDivision(divisionName, s);
-  if (!d) return '区分は、えらべるものから選んでください。';
+  if (!d) return label + 'は、えらべるものから選んでください。';
   if (!d.classes.length) return '';
   if (!cleanWeightText(weightClass)) return '階級を選んでください。';
   if (!normalizeWeightClass(d.name, weightClass, s)) return '階級は、えらべるものから選んでください。';
@@ -214,10 +220,16 @@ export function weightChoiceError(divisionName: string, weightClass: string, s: 
 
 /**
  * 階級のない区分（初期は「小学生以下」）を選んだときの説明。オーナーの言葉のまま。
- * 申込ページの灰色の説明・準備の画面・ほかのジム用の画面は、この定数をそのまま出す（手で別々に書かない）。
+ * 申込ページの灰色の説明・準備の画面・ほかのジム用の画面は、この定数（選手に見える2画面は NO_CLASS_NOTE_APPLY）を出す（手で別々に書かない）。
  * 「目安」であって約束ではない。クラスを決める人の話は、ここに入れない（クラスを選ぶのは本人）。
  */
 export const NO_CLASS_NOTE = 'この区分には階級がありません。小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。';
+
+/** 上の文を、選手に見える画面（申し込みページ・ほかのジム用の入力画面）用に「出場区分」の言い方にしたもの（言葉をそろえるだけ。文の元は上の1つ。会長側の準備の画面は、上のまま） */
+export const NO_CLASS_NOTE_APPLY = NO_CLASS_NOTE.replace('この区分には', 'この' + DIVISION_LABEL + 'には');
+
+/** 赤い文（weightChoiceError）が、区分の欄のものか（そうでなければ階級の欄）。文の頭の言葉で決めるので、頭の言葉も DIVISION_LABEL と同じ元を見る */
+export const isDivisionError = (text: string, label: string = DIVISION_LABEL): boolean => text.startsWith(label);
 
 /** 送る前の確認の「階級」の行。上の定数のうしろ2文（先頭の1文は、行の名前「階級」と重なるので外す）を「なし（ ）」で包む */
 export function noClassReviewValue(): string {

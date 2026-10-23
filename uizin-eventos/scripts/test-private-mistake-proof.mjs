@@ -1967,7 +1967,10 @@ scenario('APPLY-B', 'APPLY', 'numbers, phone, email typed the wrong way', async 
   }
   const eitherCases = [
     ['N24', '電話番号の前に「TEL:」と書く', 'contactPhone', 'TEL:090-1234-5678', '09012345678', /電話/],
-    ['N25', '身長をメートルで「1.7m」と書く', 'height', '1.7m', null, /身長|cm|センチ|数字|範囲|〜|から/],
+    // R6a-4（採点からの最適化）：m（メートル）と書いた「1.7m」は、170 に自動で直す。単位のない「1.7」は、m かどうか分からないので直さず、赤で「cm で入れてください。例：170」と言う
+    // 赤い線を探す言葉は「身長・cm・センチ」だけにする。前の N24 で残った電話番号の赤い線（「…数字だけで…」）を、身長の赤い線と取りちがえない
+    ['N25', '身長をメートルで「1.7m」と書く', 'height', '1.7m', '170', /身長|cm|センチ/],
+    ['N25b', '身長を単位なしで「1.7」と書く', 'height', '1.7', null, /身長|cm|センチ/],
     ['N28', 'メールの前に「mailto:」が付いている', 'contactEmail', 'mailto:dummy@example.com', 'dummy@example.com', /メール/],
     ['N29', '身長を「170センチ」', 'height', '170センチ', '170', /身長/],
   ];
@@ -2141,7 +2144,7 @@ scenario('APPLY-D', 'APPLY', 'sending: double press, offline, edit after checkin
     await page.close();
     return short(al.join(' | '), 100);
   });
-  await mistake({ id: 'X04', screen: ASCR, vp: V, op: 'ページを閉じる・戻る・再読み込み', what: '入力の途中で閉じる／戻る／更新する', risk: 'P1', guard: '「このページを離れますか」が出る。入力はこの端末に残らない（個人情報）ので、ページで「入力は消えます」と言っておく' }, null, async () => {
+  await mistake({ id: 'X04', screen: ASCR, vp: V, op: 'ページを閉じる・戻る・再読み込み', what: '入力の途中で閉じる／戻る／更新する', risk: 'P1', guard: '「このページを離れますか」が出る。入力は、このタブの中（sessionStorage）にだけ一時的に覚える（選手の欄だけ。連絡先・写真・同意のチェックなどは途中では覚えない。localStorage には残さない）ので、ページで「入力は消えます」と言っておく' }, null, async () => {
     const page = await openApply(ctx);
     check(/入力は消えます/.test(await text(page)), 'X04: the page warns beforehand that reloading erases the input');
     check(page.__dlg.log.length === 0, 'X04: nothing asked while the form is empty');

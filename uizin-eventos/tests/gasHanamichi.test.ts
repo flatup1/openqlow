@@ -30,12 +30,12 @@ const SENTENCE = '花道の追加の質問に、答えていない所があり�
 
 /* ───────── 設定の行 ───────── */
 
-test('設定の行: 「花道の追加情報」は、いちばん下の1行（B30）。初期値は「なし」。▼は なし／あり。既存の行の位置（B21・B22）は動かない', () => {
+test('設定の行: 「花道の追加情報」は、誓約書の4行の前（B30）。花道のルールの行は、そのいちばん下（B35）。初期値は「なし」。▼は なし／あり。既存の行の位置（B21・B22）は動かない', () => {
   const h = harness(); h.call('onOpen');
   const rows = h.rows('設定'), labels = rows.slice(1).map((r) => r[0]);
-  assert.equal(labels.at(-1), ROW); assert.equal(labels.indexOf(ROW) + 2, 30, 'B30'); assert.equal(rows.length, 30);
+  assert.equal(labels.at(-6), ROW); assert.equal(labels.indexOf(ROW) + 2, 30, 'B30'); assert.equal(rows.length, 35, '花道の行のあとに、誓約書の4行と、花道のルールの1行'); assert.equal(labels.at(-1), '花道のルール');
   assert.equal(labels.indexOf('階級分け') + 2, 21); assert.equal(labels.indexOf('ロゴ') + 2, 22);
-  const row = rows.at(-1)!;
+  const row = rows[29]!;
   assert.deepEqual(json(row), [ROW, 'なし', '「あり」にすると、区分の名前に「花道」が入っている区分を選んだ人にだけ、追加の質問が出ます。']);
   const rule = h.settingsSheet().validations.get('30:2');
   assert.deepEqual(json(rule.list), ['なし', 'あり']); assert.equal(rule.allowInvalid, false);
@@ -43,19 +43,19 @@ test('設定の行: 「花道の追加情報」は、いちばん下の1行（B3
   assert.equal(String(h.settingsSheet().formats.get('30:2')), '@', 'B列は文字の形');
 });
 
-test('設定の行: 行が無い古いシートは、「なし」と読む。シートを開く・①で、いちばん下に1行だけ足される（書いてあるマスは書き換えない）', () => {
-  const h = harness(); h.ready(); without(h, ROW);
+test('設定の行: 行が無い古いシートは、「なし」と読む。シートを開く・①で、いちばん下に花道の1行と誓約書の4行だけ足される（書いてあるマスは書き換えない）', () => {
+  const h = harness(); h.ready(); without(h, ROW); for (const label of ['誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール']) without(h, label);
   h.settingsSheet().rows[1][1] = '私の大会';
   const body = ping(h);
   assert.equal(body.settingsProblem, ''); assert.equal('hanamichiMode' in body, false);
   assert.equal(h.call('S_').hanamichi, false);
   const before = JSON.stringify(h.rows('設定'));
   h.call('onOpen');
-  assert.equal(h.rows('設定').length, 30);
+  assert.equal(h.rows('設定').length, 35);
   assert.equal(JSON.stringify(h.rows('設定').slice(0, 29)), before, 'いまある29行は1マスも変わらない');
   assert.deepEqual(json(h.rows('設定')[29]), [ROW, 'なし', '「あり」にすると、区分の名前に「花道」が入っている区分を選んだ人にだけ、追加の質問が出ます。']);
   assert.deepEqual(json(h.settingsSheet().validations.get('30:2').list), ['なし', 'あり'], '足した行にも▼が付く');
-  h.call('onOpen'); h.call('setupTournament'); assert.equal(h.rows('設定').length, 30, '2回目以降は増えない');
+  h.call('onOpen'); h.call('setupTournament'); assert.equal(h.rows('設定').length, 35, '2回目以降は増えない');
   assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS], '「なし」では花道のタブは作らない');
 });
 

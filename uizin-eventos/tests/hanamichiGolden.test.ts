@@ -12,18 +12,21 @@ const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連�
 /** 足す前の「設定」タブの行（29行）。この並びも、B21（階級分け）・B22（ロゴ）の位置も動かさない */
 const FROZEN_LABELS = ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み', 'クラス分け', '上のクラスの名前', '上のクラスの条件', '上のクラスのルール', '下のクラスの名前', '下のクラスの条件', '下のクラスのルール', '上のクラスにする勝ち数', '階級分け', 'ロゴ',
   '階級：小学生以下', '階級：中学生女子', '階級：中学生男子', '階級：高校生・一般女子', '階級：高校生・一般男子', '階級：花道・女子（40歳以上）', '階級：花道・男子（40歳以上）'];
-const FROZEN_VALUES = ['', '', '', '', '', '', '', '', '必須', '必須', '必須', 'なし', 'Aクラス', '3勝以上（3勝以下でも、会長・指導者の許可があればAクラスに出られます）', '首相撲5秒／蹴り足キャッチはワンアタック（キャッチ後に1回だけ攻撃できる）／ワンマッチは顔面への膝蹴り禁止', 'Bクラス', 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', '首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし', '3', 'なし', 'なし',
+// 入場曲（8番目）の初期値だけ、owner 決定（2026-10-22「入場曲はデフォルトでなしにして」）で '' から 'なし' に変えた。ほかの値は1つも動かしていない
+const FROZEN_VALUES = ['', '', '', '', '', '', '', 'なし', '必須', '必須', '必須', 'なし', 'Aクラス', '3勝以上（3勝以下でも、会長・指導者の許可があればAクラスに出られます）', '首相撲5秒／蹴り足キャッチはワンアタック（キャッチ後に1回だけ攻撃できる）／ワンマッチは顔面への膝蹴り禁止', 'Bクラス', 'アマチュア。2勝以下（例：初出場、2勝1敗、1勝3敗）', '首相撲なし／蹴り足キャッチなし／膝蹴りなし／回転技なし', '3', 'なし', 'なし',
   'なし', '-37、-40、-43、-46、-49、-52、-55、-58', '-37、-40、-43、-46、-49、-52、-55、-58', '-40、-43、-46、-50、-53、-56、-59、-62、-65', '-50、-53、-56、-59、-62、-65、-68、-71、-74、-77、-80、-85、無差別', '-40、-45、-50、-55、-60、+60', '-55、-60、-65、-70、-75、-80、-85、無差別'];
 /** 説明（C列）29行ぶんの SHA-256。文を直したときは、直してよいか確かめてから、この値を新しくする */
-const FROZEN_DESCRIPTION_SHA = '28f1adb7fda44e2d8bae2f4979ffa310627fabc917144f5515d8a373ef530bf7';
-/** 足してよい行。足す前は空 []。花道の追加情報を足したので、この1行だけ（それ以外の差は、赤くなる） */
-const ADDED_SETTING_ROWS: string[] = ['花道の追加情報'];
+// 入場曲の説明だけを新しい文にしたので、新しくした（ほかの27行の説明は、1字も変えていない。古い文に戻して計算すると、前の値と一致することを確かめた）
+const FROZEN_DESCRIPTION_SHA = '06c7a9d1b5dfb9386228571777c60fa1b398fd257f9b245687d32c8712bdb34f';
+/** 足してよい行。足す前は空 []。花道の追加情報と、そのあとに足した誓約書の4行だけ（それ以外の差は、赤くなる） */
+const ADDED_SETTING_ROWS: string[] = ['花道の追加情報', '誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール'];
 const FROZEN_SHEETS = ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS];
 const PRIVATE_HEADERS = ['受付番号', '申込日時', '大会ID', '所属ジム', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', '連絡先氏名', '連絡先電話番号', '連絡先メールアドレス', '同意', 'リクエストID', 'クラス', '区分', '階級'];
 const OS_HEADERS = ['管理番号', 'ジム名', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', 'クラス', '区分', '階級'];
 const FROZEN_PROPS = ['spreadsheetId', 'ownerEmail', 'eventId', 'accepting', 'photoFolderId', 'testFolderId', 'rateMinute', 'rateCount', 'lastTestBuild', 'lastTestRequest'];
 const PING_BASE = ['app', 'protocol', 'build', 'ready', 'accepting', 'eventId', 'testComplete', 'settingsProblem', 'storageProblem', 'title', 'date', 'venue', 'venueUrl', 'organizer', 'contact', 'deadline', 'music', 'grade', 'age', 'comment'];
-const PING_ALL_ON = [...PING_BASE, 'logo', 'weightMode', 'weights', 'classMode', 'classes'];
+// 花道のルール（R8-1）：クラス分けが「あり」で花道の区分があると、ping に hanamichiRule が1つ増える。花道の追加情報の鍵ではない
+const PING_ALL_ON = [...PING_BASE, 'logo', 'weightMode', 'weights', 'classMode', 'classes', 'hanamichiRule'];
 const RETRY_FIELDS = ['protocol', 'eventId', 'entryKey', 'mode', 'requestId', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl', 'contactName', 'contactPhone', 'contactEmail', 'consent', 'fighterClass', 'division', 'weightClass', 'photoDataUrl'];
 /** 申し込みページが送る鍵（photoDataUrl まで）。'...' は階級分けのときだけ足す division・weightClass */
 const PAGE_POST_KEYS = ['protocol', 'entryKey', 'mode', 'website', 'eventId', 'requestId', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'fighterClass', '...', 'comment', 'musicUrl', 'contactName', 'contactPhone', 'contactEmail', 'consent', 'photoDataUrl'];
@@ -56,8 +59,8 @@ test('golden 設定タブ: ▼の欄・色・列の幅・固定行は、足す�
   const entries = [...sheet.validations.entries()].map(([k, v]: [string, any]) => [k, json(v.list), v.allowInvalid]);
   const frozen = [['9:2', ['あり', 'なし'], false], ['10:2', ['必須', '任意', 'なし'], false], ['11:2', ['必須', '任意', 'なし'], false], ['12:2', ['必須', '任意', 'なし'], false], ['13:2', ['なし', 'あり'], false], ['21:2', ['なし', 'あり'], false], ['22:2', ['なし', 'あり'], false]];
   assert.deepEqual(entries.slice(0, frozen.length), frozen);
-  assert.equal(entries.length, frozen.length + ADDED_SETTING_ROWS.length, '▼の欄は、足した行ぶんだけ増える');
-  assert.deepEqual(json([...sheet.backgrounds.entries()]), [['2:2', '#fff2a8'], ['3:2', '#fff2a8'], ['4:2', '#fff2a8'], ['6:2', '#fff2a8'], ['7:2', '#fff2a8'], ['8:2', '#fff2a8'], ['9:2', '#fff2a8']], '会長が必ず書く7つの色');
+  assert.equal(entries.length, frozen.length + ADDED_SETTING_ROWS.filter((label) => label !== '花道のルール').length, '▼の欄は、足した行ぶんだけ増える（花道のルールの行は、長い文を書く行なので▼が無い）');
+  assert.deepEqual(json([...sheet.backgrounds.entries()]), [['2:2', '#fff2a8'], ['3:2', '#fff2a8'], ['4:2', '#fff2a8'], ['6:2', '#fff2a8'], ['7:2', '#fff2a8'], ['8:2', '#fff2a8']], '会長が必ず書く6つの色（入場曲 B9 は、はじめから「なし」が入るので、色を付けない）');
   assert.deepEqual(json([...sheet.columnWidths.entries()]), [[1, 160], [2, 380], [3, 520]]); assert.equal(sheet.frozenRows, 1);
 });
 
@@ -81,7 +84,7 @@ test('golden ping: 鍵の並びは足す前のとおり。花道の鍵は1つも
   h.call('openEntries'); assert.deepEqual(Object.keys(ping(h)), PING_BASE);
   const all = harness(); all.ready({ クラス分け: 'あり', 階級分け: 'あり', ロゴ: 'あり' }); all.call('openEntries');
   assert.deepEqual(Object.keys(ping(all)), PING_ALL_ON);
-  for (const body of [ping(h), ping(all)]) assert.ok(!/hanamichi|花道プロフィール|hn[A-Z]/.test(JSON.stringify(body)), '花道の印はどこにも無い');
+  for (const body of [ping(h), ping(all)]) assert.ok(!/hanamichi(?!Rule)|花道プロフィール|hn[A-Z]/.test(JSON.stringify(body)), '花道の追加情報の印はどこにも無い（花道のルールの文は別の機能）');
   // ready=false（まだ最初の設定をしていない）のとき
   const fresh = harness(); fresh.call('onOpen');
   assert.deepEqual(Object.keys(ping(fresh)), ['app', 'protocol', 'build', 'ready', 'accepting']);

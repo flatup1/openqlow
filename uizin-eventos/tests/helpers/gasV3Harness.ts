@@ -12,6 +12,8 @@ export type Opts = { ignoreTextFormat?: boolean };
 export function harness(opts: Opts = {}) {
   const props = new Map<string, string>(), resources = new Map<string, any>(), logs: string[] = [], zips: any[] = [];
   let currentOwner = owner, serial = 0, menu: string[] = [];
+  // 保存のロック（LockService）。ふつうは、いつも取れる（free=true）。試験で free を false にすると、tryLock が false を返す（待っても取れなかったときと同じ）。数は、取ろうとした回数・取れた回数・手放した回数
+  const lock = { free: true, tries: 0, acquired: 0, released: 0, lastWaitMs: -1 };
   const alerts: string[] = [], toasts: string[] = [], dialogs: { html: string; title: string; width?: number; height?: number }[] = []; let storage = { limit: 15 * 1024 ** 3, used: 1024 ** 3 };
   const iterator = (array: any[]) => { let i = 0; return { hasNext: () => i < array.length, next: () => array[i++] }; };
   const blob = (bytes: any, type: string, name: string) => ({ bytes: typeof bytes === 'string' ? Buffer.from(bytes) : Buffer.from(bytes), type, name, getBytes() { return [...this.bytes]; }, setName(v: string) { this.name = v; return this; } });
@@ -60,7 +62,7 @@ export function harness(opts: Opts = {}) {
   const api: any = {
     Session: { getEffectiveUser: () => ({ getEmail: () => currentOwner }) },
     PropertiesService: { getScriptProperties: () => propsApi },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
+    LockService: { getScriptLock: () => ({ tryLock: (waitMs: number) => { lock.tries++; lock.lastWaitMs = waitMs; if (!lock.free) return false; lock.acquired++; return true; }, releaseLock: () => { lock.released++; } }) },
     SpreadsheetApp: { newDataValidation: () => { const b: any = { list: [] as string[], requireValueInList: (l: string[]) => { b.list = l; return b; }, setAllowInvalid: (v: boolean) => { b.allowInvalid = v; return b; }, build: () => ({ list: b.list, allowInvalid: b.allowInvalid }) }; return b; }, getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
       getUi: () => ({ ButtonSet: { OK: 'OK' }, showModalDialog: (output: any, title: string) => { dialogs.push({ html: String(output.html), title, width: output.width, height: output.height }); }, alert: (_t: string, message: string) => { alerts.push(String(message)); }, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
     DriveApp: { getStorageLimit: () => storage.limit, getStorageUsed: () => storage.used, Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
@@ -81,6 +83,6 @@ export function harness(opts: Opts = {}) {
   const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '中3', age: '20', height: '170', weight: '65', record: '初試合', comment: 'がんばります', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
   // 会長の操作: コピーしたシートを開く（onOpen）→ 「設定」タブに入れる → 「① 最初の設定」
   const ready = (over: Record<string, string> = {}) => { call('onOpen'); fill(over); call('setupTournament'); };
-  return { api, props, resources, book, logs, zips, alerts, toasts, dialogs, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
+  return { api, props, resources, book, logs, zips, alerts, toasts, dialogs, lock, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
 }
 

@@ -479,7 +479,7 @@ scenario('CLS', 'the add/edit form offers both renamed classes with conditions a
   await e3.locator('#entry-division').selectOption('中学生男子');
   check((await e3.locator('#entry-weightClass-none').count()) === 0, 'other-gym form: a division with 階級 shows no "no 階級" note');
   await e3.locator('#entry-division').selectOption('小学生以下');
-  check((await e3.locator('#entry-weightClass-none').innerText()).trim() === 'この区分には階級がありません。小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。', 'other-gym form: 小学生以下 shows the owner sentence');
+  check((await e3.locator('#entry-weightClass-none').innerText()).trim() === 'この出場区分には階級がありません。小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。', 'other-gym form: 小学生以下 shows the owner sentence');
   await ctx.close(); await ctx2.close();
 });
 

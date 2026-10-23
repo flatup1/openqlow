@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { noClassReviewValue, NO_CLASS_NOTE } from '../core/weightClass.ts';
+import { noClassReviewValue, NO_CLASS_NOTE, NO_CLASS_NOTE_APPLY } from '../core/weightClass.ts';
 
 /*
   小学生（階級のない区分）の説明文。オーナーの言葉のまま、定数1つ（core/weightClass.ts の NO_CLASS_NOTE）から出す。
@@ -56,18 +56,20 @@ test('小学生の文: 4つの場所が、定数1つから出している（手�
   const entry = src('app/private/entry/page.tsx');
   // 読み込み：4つのファイルとも、core/weightClass.ts から取る
   const importsFrom = (source: string, name: string): boolean => new RegExp('import\\s*\\{[^}]*\\b' + name + '\\b[^}]*\\}\\s*from\\s*\'[^\']*core/weightClass\\.ts\'').test(source);
-  // 1) 申込ページの灰色の説明（id f-weightClass-none）
-  assert.ok(importsFrom(apply, 'NO_CLASS_NOTE'));
-  assert.ok(/<Note id="f-weightClass-none"[^>]*>\{NO_CLASS_NOTE\}<\/Note>/.test(apply), '申込ページの灰色の説明は NO_CLASS_NOTE');
+  // 1) 申込ページの灰色の説明（id f-weightClass-none）。見出しが「出場区分」になったので、同じ文の「この区分には」だけを「この出場区分には」にした定数（NO_CLASS_NOTE_APPLY。文の元は NO_CLASS_NOTE の1つ）
+  assert.ok(importsFrom(apply, 'NO_CLASS_NOTE_APPLY'));
+  assert.ok(/<Note id="f-weightClass-none"[^>]*>\{NO_CLASS_NOTE_APPLY\}<\/Note>/.test(apply), '申込ページの灰色の説明は NO_CLASS_NOTE_APPLY');
+  assert.equal(NO_CLASS_NOTE_APPLY, NO_CLASS_NOTE.replace('この区分には', 'この出場区分には'), '直したのは「区分」の言い方だけ');
+  assert.equal(NO_CLASS_NOTE_APPLY.replace('この出場区分には', 'この区分には'), NO_CLASS_NOTE, 'それ以外の字は、オーナーの文のまま');
   // 2) 申込ページの送る前の確認の「階級」の行
   assert.ok(importsFrom(apply, 'noClassReviewValue'));
   assert.ok(/\['階級', noClass \? noClassReviewValue\(\)/.test(apply), '確認の「階級」の行は noClassReviewValue()');
   // 3) 準備の画面（cards.tsx の divSetting && wcList.length === 0 の行）
   assert.ok(importsFrom(cards, 'NO_CLASS_NOTE'));
   assert.ok(/divSetting && wcList\.length === 0 \? <Soft className="mt-1">\{NO_CLASS_NOTE\}<\/Soft>/.test(cards), '準備の画面は NO_CLASS_NOTE');
-  // 4) ほかのジム用の画面（entry/page.tsx の entry-weightClass-none）
-  assert.ok(importsFrom(entry, 'NO_CLASS_NOTE'));
-  assert.ok(/id="entry-weightClass-none"[^>]*>\{NO_CLASS_NOTE\}<\/p>/.test(entry), 'ほかのジム用の画面は NO_CLASS_NOTE');
+  // 4) ほかのジム用の画面（entry/page.tsx の entry-weightClass-none）。選手に見える画面なので、申込ページと同じ「出場区分」の言い方
+  assert.ok(importsFrom(entry, 'NO_CLASS_NOTE_APPLY'));
+  assert.ok(/id="entry-weightClass-none"[^>]*>\{NO_CLASS_NOTE_APPLY\}<\/p>/.test(entry), 'ほかのジム用の画面も、選手に見える画面なので NO_CLASS_NOTE_APPLY（見出し「出場区分」と合わせる）');
   // 手書きの文が、どこにも残っていない（古い文も、新しい文の手書きも）
   for (const [name, source] of [['apply', apply], ['cards', cards], ['entry', entry]] as const) {
     assert.ok(!source.includes('この区分には階級がありません'), name + ' に、手書きの文が残っている');

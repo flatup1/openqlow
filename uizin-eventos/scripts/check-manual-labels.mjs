@@ -35,9 +35,9 @@ const root = path.resolve(here, "..");
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith("--")));
 const manualPath = path.resolve(args[0] ?? path.join(root, "docs", "TOURNAMENT_OS_使い方マニュアル.md"));
-const DEFAULT_BUILT = "/tmp/claude-0/-home-user-openqlow/fab3c520-9e3b-55ea-a429-23f58091261b/scratchpad/snap-r1/out-private-pages";
-let builtDir = path.resolve(args[1] ?? DEFAULT_BUILT);
-if (!args[1] && !fs.existsSync(builtDir)) builtDir = path.join(root, "out-private-pages");
+// 画面フォルダの既定：いまの作業フォルダの out-private-pages（npm run build:private が作る）。外のスナップショットは見ない。別の場所を見たいときだけ、第2引数で渡す
+const DEFAULT_BUILT = path.join(root, "out-private-pages");
+const builtDir = path.resolve(args[1] ?? DEFAULT_BUILT);
 
 const TEXT_EXT = new Set([".html", ".js", ".mjs", ".css", ".txt", ".json", ".gs", ".ts", ".tsx", ".jsx", ".md", ".csv", ".sh"]);
 const SKIP_DIR = new Set(["node_modules", ".git", ".next", "manual-images"]);
@@ -55,7 +55,7 @@ function walk(dir, out = []) {
 }
 
 if (!fs.existsSync(manualPath)) { console.error(`マニュアルが見つかりません: ${manualPath}`); process.exit(2); }
-if (!fs.existsSync(builtDir)) { console.error(`画面フォルダが見つかりません: ${builtDir}`); process.exit(2); }
+if (!fs.existsSync(builtDir)) { console.error(`画面フォルダが見つかりません: ${builtDir}\n  先に「npm run build:private」で作ってください（引数なしのときは、いまの作業フォルダの out-private-pages を見ます）。別の場所を見るときは、第2引数で画面フォルダを渡します。`); process.exit(2); }
 
 // ---- 文字の正規化 ----
 const decodeEscapes = (s) =>
@@ -213,6 +213,10 @@ const VERIFIED_COMPOSED = [
   ["53kg契約", "core/privateTournament.ts:130 N + 'kg契約'"],
   ["戦績と合っていますか？ 戦績は2勝で、目安はBクラスです。", "core/classRules.ts:160 '戦績と合っていますか？ 戦績は' + 勝 + '勝で、目安は' + 名前 + 'です。'"],
   ["クラスを選んでください（AクラスかBクラス）。", "app/apply/page.tsx:186 'クラスを選んでください（' + 上 + 'か' + 下 + '）。'"],
+  // R1（owner 修正願 2026-10-22）：申し込みページの「区分」は「出場区分」。この言葉は core/weightClass.ts の DIVISION_LABEL 1つから、見出し・ヒント・赤い文・灰色の文に組み立てられる（一続きの文字としては、ソースに無い）
+  ["出場区分を選んでください。出場区分によって、選べる階級（体重で分けたグループ）がちがいます。", "app/apply/page.tsx divisionField の hint = DIVISION_LABEL + 'を選んでください。' + DIVISION_LABEL + 'によって、…'（DIVISION_LABEL は core/weightClass.ts の '出場区分'）"],
+  ["出場区分を選んでください。", "core/weightClass.ts weightChoiceError の label + 'を選んでください。'（label の初期値は DIVISION_LABEL＝'出場区分'）"],
+  ["この出場区分には階級がありません。小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。", "core/weightClass.ts NO_CLASS_NOTE_APPLY = NO_CLASS_NOTE.replace('この区分には', 'この' + DIVISION_LABEL + 'には')（申し込みページの灰色の説明）"],
   ["クラス：Aクラス", "app/private/cards.tsx:138 / page.tsx:1717 'クラス：' + 名前"],
   ["クラス：Bクラス", "app/private/cards.tsx:138 / page.tsx:1717 'クラス：' + 名前"],
   ["写真 0/6 あとでOK", "app/private/page.tsx:1854,1862 '写真 ' + 人数 + '/' + 全員 + 札『あとでOK』"],

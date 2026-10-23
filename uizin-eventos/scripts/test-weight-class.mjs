@@ -15,7 +15,7 @@ import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:
 import { readFile } from 'node:fs/promises';
 import { publicEntryHash } from '../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
-import { DEFAULT_WEIGHT_SETTINGS, noClassReviewValue, NO_CLASS_NOTE, weightClassLabel } from '../core/weightClass.ts';
+import { DEFAULT_WEIGHT_SETTINGS, noClassReviewValue, NO_CLASS_NOTE, NO_CLASS_NOTE_APPLY, weightClassLabel } from '../core/weightClass.ts';
 import { emptyTournament } from '../core/privateTournament.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -240,6 +240,11 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     const sel = DIV(page);
     check(await sel.isVisible(), 'A1 the 区分 select is on the form');
     check(/区分/.test(await page.locator('body').innerText()), 'A1 the word 区分 is on the page');
+    // R1（owner 修正願 2026-10-22）：選手に見える見出しは「出場区分」。「区分」だけの見出し・案内は残らない
+    const divHead = (await page.locator('label[for="f-division"]').innerText()).replace(/\s+/g, ' ');
+    check(/^出場区分 必須$/.test(divHead), 'A1 the heading is 出場区分 必須 (' + divHead + ')');
+    check(/出場区分を選んでください。出場区分によって、選べる階級/.test(await page.locator('#f-division-hint').innerText()), 'A1 the hint says 出場区分 (' + short(await page.locator('#f-division-hint').innerText(), 80) + ')');
+    check(((await page.locator('main').innerText()).replace(/出場区分/g, '').match(/区分/g) || []).length === 0, 'A1 no 区分 stands alone on the apply form (only 出場区分)');
     const texts = await optionTexts(sel);
     check(texts[0] === '選んでください' && texts.length === 1 + DEF.divisions.length, 'A1 first option is 選んでください, then every division (' + texts.length + ')');
     check(DEF.divisions.every((d, i) => texts[i + 1] === d.name), 'A1 the divisions are listed in the sheet order (' + short(texts.join('|'), 160) + ')');
@@ -292,7 +297,7 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     await DIV(page).selectOption('小学生以下');
     check((await WCL(page).count()) === 0, 'A2 小学生以下 has no 階級 select');
     const none = page.locator('#f-weightClass-none');
-    check((await none.count()) === 1 && /この区分には階級がありません/.test(await none.innerText()) && /小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。/.test(await none.innerText()) && (await none.innerText()).includes(NO_CLASS_NOTE), 'A2 小学生以下 shows the grey note (' + short(await none.allInnerTexts(), 100) + ')');
+    check((await none.count()) === 1 && /この出場区分には階級がありません/.test(await none.innerText()) && /小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。/.test(await none.innerText()) && (await none.innerText()).includes(NO_CLASS_NOTE_APPLY), 'A2 小学生以下 shows the grey note (' + short(await none.allInnerTexts(), 100) + ')');
     check(await noOverflow(page), 'A2 no overflow in every state');
     // back to a division with classes: the note is gone, the list is empty
     await DIV(page).selectOption('中学生女子');
@@ -309,12 +314,12 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     await fillAllW(page);
     await settle(200);
     const nm = await nextMarks(page);
-    check(nm.length === 1 && /区分を選ぶ/.test(nm[0] ?? ''), 'A3 with everything else filled, the ONE marker says 区分を選ぶ (' + nm.join(' | ') + ')');
+    check(nm.length === 1 && /出場区分を選ぶ/.test(nm[0] ?? ''), 'A3 with everything else filled, the ONE marker says 出場区分を選ぶ (' + nm.join(' | ') + ')');
     await reviewBtn(page).click();
     await settle(400);
     check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'A3 no review screen without a 区分');
     const err = page.locator('#f-division-err');
-    check((await err.count()) === 1 && /区分を選んでください/.test(await err.innerText()), 'A3 red message at the 区分 says 区分を選んでください (' + short(await err.allInnerTexts(), 80) + ')');
+    check((await err.count()) === 1 && /出場区分を選んでください/.test(await err.innerText()), 'A3 red message at the 出場区分 says 出場区分を選んでください (' + short(await err.allInnerTexts(), 80) + ')');
     check(/[✕✖]/.test(await err.innerText()) || (await err.locator('[aria-hidden]').count()) > 0, 'A3 the red message carries a mark, not only a colour');
     check((await nextMarks(page)).length === 1, 'A3 after the failed press there is still ONE marker (' + (await nextMarks(page)).join(' | ') + ')');
     check((await page.evaluate(() => document.activeElement && document.activeElement.id)) === 'f-division', 'A3 the cursor moves to the 区分 box (' + (await page.evaluate(() => document.activeElement && document.activeElement.id)) + ')');
@@ -348,7 +353,7 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     await reviewBtn(page).click();
     await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
     const review = await bodyText(page);
-    check(/区分\s*中学生男子/.test(review) && /階級\s*-40kg（40kg以下）/.test(review), 'A4 the review lists 区分 中学生男子 and 階級 -40kg（40kg以下） (' + short(review.match(/区分[\s\S]{0,60}/)?.[0] ?? '', 100) + ')');
+    check(/出場区分\s*中学生男子/.test(review) && /階級\s*-40kg（40kg以下）/.test(review), 'A4 the review lists 出場区分 中学生男子 and 階級 -40kg（40kg以下） (' + short(review.match(/区分[\s\S]{0,60}/)?.[0] ?? '', 100) + ')');
     await sendBtn(page).click();
     await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
     const f = posted(ctx);

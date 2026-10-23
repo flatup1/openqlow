@@ -11,7 +11,11 @@ export type SheetOrientation = 'portrait' | 'landscape';
 
 /** 載せる項目（会長が決める）。氏名は、いつも載る */
 export type SheetShow = { photo: boolean; gym: boolean; classLine: boolean; rule: boolean };
-export const DEFAULT_SHOW: SheetShow = { photo: true, gym: true, classLine: true, rule: false };
+/**
+ * はじめの状態。顔写真は「出さない」（壁に貼る紙に載せてよいかは、会長が決める。決めたら「小さな顔写真」に✔を入れる）。
+ * すでに覚えてある設定（このブラウザの localStorage の tos-sheet:<大会の名札>）は、勝手に変えない：書いてある true / false は、そのまま読む。
+ */
+export const DEFAULT_SHOW: SheetShow = { photo: false, gym: true, classLine: true, rule: false };
 
 export type SheetOptions = { perPage: number; orientation: SheetOrientation; show: SheetShow };
 
@@ -240,7 +244,7 @@ export type SheetMetrics = {
   centerW: number; sideW: number;
   /** 写真の幅・高さ。写真を載せないときは 0 */
   photoW: number; photoH: number;
-  /** 文字の大きさ（mm）。氏名・所属ジム・クラス/階級の札・ルール・試合番号 */
+  /** 文字の大きさ（mm）。氏名・ジム名・クラス/階級の札・ルール・試合番号 */
   name: number; gym: number; tag: number; rule: number; no: number;
 };
 
@@ -391,7 +395,7 @@ export function fitNameMm(name: string, maxMm: number, textW: number): number {
   return fitNameText(name, textW, maxMm).size;
 }
 
-/** 1人ぶんの文字の高さの見つもり（mm）。「▲ 赤」の行（欠場の札は、この行に並べる）＋氏名＋所属ジム＋札。欠場の選手は、札（クラス・区分・階級）を出さない */
+/** 1人ぶんの文字の高さの見つもり（mm）。「▲ 赤」の行（欠場の札は、この行に並べる）＋氏名＋ジム名＋札。欠場の選手は、札（クラス・区分・階級）を出さない */
 export function sideHeightMm(state: SheetSide['state'], f: Pick<SideFit, 'corner' | 'name' | 'gym' | 'tag' | 'nameLines' | 'gymLines' | 'tagLines'>): number {
   // 欠場の札は、枠の線と余白のぶん、行より少し高い
   return f.corner * 1.25 + (state === 'absent' ? 0.8 : 0) + f.nameLines * f.name * 1.17 + f.gymLines * f.gym * 1.22 + f.tagLines * f.tag * 1.27;
@@ -464,7 +468,7 @@ export type SideFit = {
 };
 
 /**
- * 1人ぶんの文字（氏名・所属ジム・クラス/階級の札）が、枠の高さに入るように、大きさと行数を決める。
+ * 1人ぶんの文字（氏名・ジム名・クラス/階級の札）が、枠の高さに入るように、大きさと行数を決める。
  * 折り返しは wrapLines でまねて数える（1行に入る文字数が、字の幅で決まることも見る）。氏名は、まず1行、だめなら小さく、それでも長ければ2行。
  * 高さに入らないときは、ぜんぶの文字を少しずつ小さくする（下限あり）。それでも入らないときは、行数をへらす（あふれるより、1行に切るほうがよい）。
  * 最小の大きさでも入らない文字は、cut = true で返す（画面で「切れる」と知らせる）。

@@ -31,7 +31,8 @@ export const HANAMICHI_NUMBER_MAX = 99;
 export const HANAMICHI_MIN_BIRTH_YEAR = 1900;
 
 /**
- * 項目の表（POSTの鍵・シートの列は、この順）。原本の「必須選手情報」のとおり、職業と他格闘歴だけ任意、あとは必須。
+ * 項目の表（POSTの鍵・シートの列は、この順）。職業と他格闘歴だけ任意、あとは必須。
+ * 原本の別紙は「必須選手情報 …記入漏れが無いように」と書いてあり、任意の印があるのは【職業】（差支えのない範囲で）だけ。他格闘歴を任意にしたのは、こちらの選択（原本には任意の印が無い。会長に聞くこと）。
  * 文字数の上限：リングネーム・フリガナ・職業・他格闘歴・趣味は60字、理由・メッセージは300字。
  */
 export const HANAMICHI_ITEMS: readonly HanamichiItem[] = [
@@ -59,6 +60,24 @@ export const HANAMICHI_SHEET_HEADERS: readonly string[] = ['受付番号', '申�
 export const HANAMICHI_ERROR_CODE = 'hanamichi';
 export const HANAMICHI_MISSING_MESSAGE = '花道の追加の質問に、答えていない所があります。申込ページにもどって、入れてから、もう一度送ってください。';
 export const HANAMICHI_BAD_MESSAGE = '花道の追加の質問に、まちがいがある所があります。申込ページにもどって、直してから、もう一度送ってください。';
+
+/**
+ * 花道のルール：花道の選手には、クラス（A/B）を選ばせない。かわりに、花道の決まりを灰色の1行で見せる。
+ * 文は、Googleの「設定」タブの「花道のルール」にだけある（会長が確認して直す）。ここは長さの上限と形の検査だけで、文を持たない。
+ * 長さは JavaScript の length（UTF-16 の単位。絵文字は2）で数える。.gs の HANAMICHI_RULE_MAX_ も同じ。
+ */
+export const HANAMICHI_RULE_MAX = 120;
+
+/** 花道のルールとして使える文か：空でなく（空白だけも不可）、120字まで、対になっていないサロゲート（半端な文字）なし */
+export function hanamichiRuleOk(text: unknown): text is string {
+  if (typeof text !== 'string' || text.trim() === '' || text.length > HANAMICHI_RULE_MAX) return false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) { const d = text.charCodeAt(i + 1); if (d >= 0xdc00 && d <= 0xdfff) { i++; continue; } return false; }
+    if (c >= 0xdc00 && c <= 0xdfff) return false;
+  }
+  return true;
+}
 
 const INVISIBLE = /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 

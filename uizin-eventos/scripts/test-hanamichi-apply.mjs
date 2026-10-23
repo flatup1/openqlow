@@ -337,8 +337,22 @@ await scenario('E', 'no sideways scroll: the card, its red lines, the long answe
   check(out.length === 0, 'E nothing in the card reaches outside the screen (' + out.join(',') + ')');
   const birth = await page.evaluate(() => ['f-hnBirth', 'f-hnBirthM', 'f-hnBirthD'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return { id, w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top + scrollY), right: Math.round(r.right) }; }));
   check(birth.every((b) => b.h >= 48 && b.w >= 70), 'E the three birth selects are at least 48px tall and 70px wide (' + birth.map((b) => b.w + 'x' + b.h).join(' ') + ')');
-  if (vp.width < 480) check(birth[0].top < birth[1].top && birth[1].top === birth[2].top, 'E on a narrow screen: the year is on its own row, month and day share the next row');
-  else check(birth[0].top === birth[1].top && birth[1].top === birth[2].top, 'E on a wide screen: year, month and day sit on one row');
+  // R5 (owner 2026-10-22): the year lines are long ("1989（昭和64・平成元）"), so the year select has a row to itself at EVERY width (it used to share one row with month and day on a wide screen)
+  check(birth[0].top < birth[1].top && birth[1].top === birth[2].top, 'E at every width: the year is on its own row, month and day share the next row (' + birth.map((b) => b.top).join(',') + ')');
+  // R5: the year lines are longer now ("1989（昭和64・平成元）" is the longest). The chosen text must fit inside the select (not cut) at every width, and be 17px+
+  for (const y of ['1989', '2019', '1990']) {
+    await page.locator('#f-hnBirth').selectOption(y);
+    const fit = await page.evaluate(() => {
+      const el = document.getElementById('f-hnBirth'), cs = getComputedStyle(el), c = document.createElement('canvas').getContext('2d');
+      c.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      const text = el.selectedOptions[0].text;
+      return { text, textWidth: Math.ceil(c.measureText(text).width), inner: el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), font: parseFloat(cs.fontSize) };
+    });
+    // 24px is kept for the drop-down arrow (Chromium needs about 20px; the rest is a margin for other browsers)
+    check(fit.textWidth + 24 <= fit.inner && fit.font >= 17, 'E the chosen year ' + fit.text + ' fits inside its select at ' + vp.width + 'px (text ' + fit.textWidth + 'px + 24px arrow <= ' + Math.round(fit.inner) + 'px; font ' + fit.font + 'px)');
+  }
+  s = await sideways(page);
+  check(s.sw <= s.cw, 'E with the longest year chosen: no sideways scroll (' + s.sw + ' vs ' + s.cw + ')');
   const sz = await smallThings(page);
   check(sz.small.length === 0 && sz.short.length === 0, 'E text 17px+ and targets 48px+ also with long answers (' + sz.small.concat(sz.short).slice(0, 3).join(' | ') + ')');
   await toReview(page);
@@ -358,8 +372,13 @@ await scenario('H', 'birth date: three selects, order 1990→1930 then 1991→th
   const months = await page.locator('#f-hnBirthM option').allInnerTexts();
   const days = await page.locator('#f-hnBirthD option').allInnerTexts();
   check(years[0] === '年を選ぶ' && months[0] === '月を選ぶ' && days[0] === '日を選ぶ', 'H each select starts with a "…を選ぶ" line');
-  check(years[1] === '1990年' && years[2] === '1989年' && years[61] === '1930年', 'H the years run 1990, 1989 … 1930 (not newest first) (' + years.slice(1, 4).join(',') + '…' + years[61] + ')');
-  check(years[62] === '1991年' && years[years.length - 1] === THIS_YEAR + '年' && years.length === 1 + 61 + (THIS_YEAR - 1990), 'H then 1991 … this year (' + years[62] + '…' + years[years.length - 1] + ', ' + years.length + ' lines)');
+  // R5 (owner 2026-10-22): the year lines are "西暦（和暦）"; the borders are written both ways; the VALUES stay the western year
+  check(years[1] === '1990（平成2）' && years[2] === '1989（昭和64・平成元）' && years[3] === '1988（昭和63）' && years[61] === '1930（昭和5）', 'H the years run 1990, 1989 … 1930 (not newest first), each with its 和暦 (' + years.slice(1, 4).join(',') + '…' + years[61] + ')');
+  check(years[62] === '1991（平成3）' && years[years.length - 1] === THIS_YEAR + '（令和' + (THIS_YEAR - 2018) + '）' && years.length === 1 + 61 + (THIS_YEAR - 1990), 'H then 1991 … this year (' + years[62] + '…' + years[years.length - 1] + ', ' + years.length + ' lines)');
+  check(years.includes('2019（平成31・令和元）') && years.includes('2020（令和2）') && years.includes('1986（昭和61）'), 'H 2019 is written both ways (平成31・令和元), 2020 is 令和2, 1986 is 昭和61');
+  const yearValues = await page.locator('#f-hnBirth option').evaluateAll((os) => os.map((o) => o.value));
+  check(yearValues[0] === '' && yearValues[1] === '1990' && yearValues[2] === '1989' && yearValues[61] === '1930' && yearValues[62] === '1991' && yearValues.slice(1).every((v) => /^\d{4}$/.test(v)), 'H the option VALUES are still the plain western years (' + yearValues.slice(0, 4).join(',') + ')');
+
   check(months.length === 13 && months[1] === '1月' && months[12] === '12月' && days.length === 32 && days[1] === '1日' && days[31] === '31日', 'H 12 months and 31 days');
   check((await page.locator('#f-hnBirth').evaluate((el) => el.getAttribute('aria-label'))).includes('年') && (await page.locator('label[for="f-hnBirth"]').count()) === 1, 'H the year select has the 生年月日 label; each select has its own spoken name');
   // partly chosen: nothing red yet (only an empty answer)
@@ -404,8 +423,12 @@ await scenario('H', 'birth date: three selects, order 1990→1930 then 1991→th
   check((await activeId(page)) === 'f-hnBirth', 'H the cursor goes to the year select');
   await fillBirth(page, BIRTH_GOOD);
   await oneMark(page, 'H date fixed');
+  check((await page.locator('#f-hnBirth').evaluate((el) => el.selectedOptions[0].text)) === '1975（昭和50）', 'H once chosen, the year select shows 1975（昭和50）');
+  const yearFont = await page.locator('#f-hnBirth').evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  check(yearFont >= 17, 'H the chosen year is written at 17px or more (' + yearFont + 'px)');
   const post = await sendIt(page, ctx);
   check(post && post.get('hnBirth') === '1975-08-20', 'H the POST carries hnBirth=1975-08-20 (' + (post && post.get('hnBirth')) + ')');
+  check(!(ctx.__postBodies.at(-1) || '').includes(encodeURIComponent('昭和')) && !(ctx.__postBodies.at(-1) || '').includes(encodeURIComponent('平成')), 'H no 和暦 word travels in the POST (the sent value is the western date)');
   await ctx.close();
 });
 
@@ -695,8 +718,9 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
     await page.locator('#f-division').selectOption('花道男子');
     const fold = await page.locator('#privacy-fold').evaluate((el) => el.textContent.replace(/\s+/g, ' '));
     check(/集めるもの：[^見]*花道の追加の質問の答え/.test(fold), 'N4 the 集めるもの line lists the 花道 answers (' + short(fold, 120) + ')');
-    check(fold.includes('見る人：主催者と、大会の運営の人') && !fold.includes('主催者だけが見ます'), 'N4 only one statement of who sees: 主催者と、大会の運営の人 (no 主催者だけが見ます)');
-    check(/花道の追加の質問の答え：見る人は、上の「見る人」と同じです/.test(fold), 'N4 the 花道 line points back to the same readers');
+    // R6a-6/7（採点からの最適化。owner 回答：花道の答えはすべてアナウンスで使う）：見る人は1つの言い方にそろえ、花道の答えは「アナウンスで読み上げることがある」とはっきり書く
+    check(fold.includes('見る人：申し込みの元データは、主催者と運営スタッフだけが見ます') && !fold.includes('主催者だけが見ます'), 'N4 only one statement of who sees: 主催者と運営スタッフだけが見ます (no 主催者だけが見ます)');
+    check(fold.includes('花道の質問の答え（フリガナ・リングネーム・生年月日・キック歴・練習頻度・他格闘歴・職業・趣味・始めた理由・メッセージ）は、会場のアナウンスで読み上げることがあります'), 'N4 the 花道 line says the answers may be read out at the venue');
     await page.locator('#f-division').selectOption('一般男子');
     const plain = await page.locator('#privacy-fold').evaluate((el) => el.textContent.replace(/\s+/g, ' '));
     check(!plain.includes('花道') && plain.includes('集めるもの：選手の情報・顔写真・連絡先（名前・電話・メール・写真）見る人：'), 'N4 an ordinary division: the fold is the old one, with no 花道 word');

@@ -1,4 +1,5 @@
 import { stripInvisibleChars } from './csv.ts';
+import { isHanamichiDivision } from './hanamichi.ts';
 import type { LocalFighter } from './privateTournament.ts';
 
 /**
@@ -230,12 +231,12 @@ export function shortRule(rule: string): string {
 
 /**
  * クラスを使う大会で、この人のクラスがどんな状態か。
- * ok＝決めたクラスのどちらか / blank＝入っていない / unknown＝入っているが、決めたクラスの名前にない（例：S）。
- * 設定（受付で決めた2つの名前）が無いときは、blank だけを見分ける。
+ * ok＝決めたクラスのどちらか（または、出場区分が花道でクラスが空：花道の選手は、クラスを選ばない決まりなので、空でも「入っていない」とは言わない） / blank＝入っていない / unknown＝入っているが、決めたクラスの名前にない（例：S）。
+ * 設定（受付で決めた2つの名前）が無いときは、blank だけを見分ける。花道の人でも、クラスが入っているときは、ほかの人と同じに調べる。
  */
 export function classState(fighter: LocalFighter | undefined, s?: ClassSettings | null): 'ok' | 'blank' | 'unknown' {
   const label = cleanClassLabel(fighter?.fighterClass ?? '');
-  if (!label) return 'blank';
+  if (!label) return isHanamichiDivision(fighter?.division) ? 'ok' : 'blank';
   if (s && s.enabled && classKey(label, s) === '') return 'unknown';
   return 'ok';
 }

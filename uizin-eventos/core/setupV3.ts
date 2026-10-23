@@ -3,6 +3,8 @@ import { parseClassSettings, type ClassSettings } from './classRules.ts';
 import { isDefaultWeightSettings, parseWeightSettings, weightSettingsToParam, type WeightSettings } from './weightClass.ts';
 import { formatDateInput } from './dateInput.ts';
 import type { EntryFieldMode } from './entryPackage.ts';
+import { hanamichiRuleOk } from './hanamichi.ts';
+import { PLEDGE_LIMITS, packPledge, parsePledgeCanon, type GuardianMode, type PledgeConfig } from './pledge.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
 export const EXPECTED_RECEPTION_BUILD = '3.20261022.7';
@@ -20,6 +22,8 @@ const buildSince = (build: string | undefined, since: (typeof ACCEPTED_RECEPTION
 export const supportsWeightClasses = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261019.6');
 /** このシートの受付は、花道の追加情報に対応した版（3.20261022.7 以降）か。古い版では、設定タブに行を足しても、ping に hanamichiMode が来ない */
 export const supportsHanamichi = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261022.7');
+/** このシートの受付は、誓約書に対応した版（3.20261022.7 以降）か。古い版は、ping に誓約書の印が来ない（来ても、リンクには付けない） */
+export const supportsPledge = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261022.7');
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;
@@ -37,6 +41,17 @@ export type Ping = {
   logo?: boolean;
   /** 「設定」タブの「花道の追加情報」が「あり」で、設定に問題がないときだけ true で来る（個人情報・項目名は来ない）。「なし」のときは鍵ごと無い */
   hanamichiMode?: boolean;
+  /**
+   * 花道のルールの1行（「設定」タブの「花道のルール」）。クラス分けが「あり」で、選べる区分に「花道」の入った名前があり、設定に問題がないときだけ来る。
+   * これがあると、花道の区分を選んだ人には、クラスを選ばせず、この1行を見せる。無いとき（クラス分けが「なし」・花道の区分が無い・古い版）は鍵ごと無い。1〜120字
+   */
+  hanamichiRule?: string;
+  /**
+   * 「設定」タブの「誓約書」が「あり」で、設定に問題がないときだけ来る。「なし」のときは、ここから下の6つの鍵ごと無い。
+   * pledgeCanon＝文のひとまとめ（JSON の文字 {items, guardian, gym}。形と長さが守れていなければ、読み取りで捨てて undefined）／pledgeHash＝その指紋（16進の小文字64字）／
+   * guardianMode＝保護者の同意を求める相手／gymMode＝ジム責任者の欄を出すか／pledgeChecked＝会長が文を「済み」にしたか（来なければ、まだ）
+   */
+  pledgeMode?: boolean; pledgeCanon?: string; pledgeHash?: string; guardianMode?: GuardianMode; gymMode?: boolean; pledgeChecked?: boolean;
   /** 見出しが変わったときだけ来る：直すタブの名前・マス・あるべき見出し（申込の中身・メールは来ない） */
   errorTab?: string; errorCell?: string; errorExpected?: string;
   /** 見出しの問題の種類：列が足された（その列を消す）／1行目が消えた（上に1行入れる）。どちらでもなければ、見出しの文字がちがう */
@@ -70,6 +85,10 @@ export function parsePing(value: unknown): Ping {
     weightRows: v.weightRows === false ? false : undefined,
     logo: v.logo === true ? true : undefined,
     ...(v.hanamichiMode === true ? { hanamichiMode: true } : {}),
+    // 花道のルール：前後の空白を取って、1〜120字・対になっていないサロゲートなしのものだけ。読めなければ捨てる（クラスを選ばせるのは、今までどおり）
+    ...(typeof v.hanamichiRule === 'string' && hanamichiRuleOk(v.hanamichiRule.trim()) ? { hanamichiRule: v.hanamichiRule.trim() } : {}),
+    // 誓約書：「あり」のときだけ。文は形と長さを調べて、守れていなければ捨てる（pledgeMode だけ残るので、読み取る側が「文を読めない」と言える）
+    ...(v.pledgeMode === true ? { pledgeMode: true, pledgeCanon: typeof v.pledgeCanon === 'string' && parsePledgeCanon(v.pledgeCanon) ? v.pledgeCanon : undefined, pledgeHash: typeof v.pledgeHash === 'string' && /^[0-9a-f]{64}$/.test(v.pledgeHash) ? v.pledgeHash : undefined, guardianMode: v.guardianMode === 'under18' || v.guardianMode === 'all' || v.guardianMode === 'none' ? (v.guardianMode as GuardianMode) : undefined, gymMode: flag('gymMode'), pledgeChecked: v.pledgeChecked === true } : {}),
     errorTab: text('errorTab', 60), errorCell: text('errorCell', 6), errorExpected: text('errorExpected', 60),
     errorInserted: v.errorInserted === true ? true : undefined, errorRowGone: v.errorRowGone === true ? true : undefined,
     closedBy: v.closedBy === 'deadline' || v.closedBy === 'stopped' ? v.closedBy : undefined,
@@ -129,10 +148,14 @@ export function entryConfigFromPing(ping: Ping, endpoint: string, mode: 'test' |
     endpoint: endpoint.trim(), protocol: '3', mode, eventId: ping.eventId!, title: ping.title!, organizer: ping.organizer!, date: formatDateInput(ping.date!), venue: ping.venue!, venueUrl: ping.venueUrl || '',
     deadline: ping.deadline!, contact: ping.contact!, music: ping.music === true, grade: ping.grade || 'optional', age: ping.age || 'optional', comment: ping.comment || 'optional',
     ...(ping.classes ? { classes: ping.classes } : {}),
+    // 花道のルール：クラス分けがあるときだけ（リンクに hr が付く）。「なし」・古い版では、項目ごと無い
+    ...(ping.classes && ping.hanamichiRule ? { hanamichiRule: ping.hanamichiRule } : {}),
     ...(ping.weights ? { weights: ping.weights } : {}),
     ...(ping.logo ? { logo: true } : {}),
     // 花道の追加の質問は、対応した版のシートが「あり」と言ったときだけ（リンクに hn=on が付く）。「なし」・古い版では、項目ごと無い
     ...(ping.hanamichiMode && supportsHanamichi(ping) ? { hanamichi: true } : {}),
+    // 誓約書は、対応した版のシートが「あり」と言ったときだけ（リンクに pl・plg・plm・plc・plf・plt が付く）。「なし」・古い版では、項目ごと無い
+    ...pledgeFromPing(ping),
   };
   if (publicEntryHash(config).length > 4500) throw sheetFixError(longestFieldMessage(ping));
   return config;
@@ -141,6 +164,45 @@ export function entryConfigFromPing(ping: Ping, endpoint: string, mode: 'test' |
 /** 「設定」タブを直せば解決する問題（画面では、設定の直しものとして出す）。 */
 export class SheetFixError extends Error {}
 function sheetFixError(message: string): SheetFixError { return new SheetFixError(message); }
+
+/**
+ * 誓約書の決まりと文を、ping から読む（申し込みリンクに入れる形）。ping の文（pledgeCanon）は Google が作ったもの。ここでは作らず・直さず、そのまま使う。
+ * 「なし」（pledgeMode が無い）・この版が対応していない → 何も足さない（{}）。「あり」なのに、文・指紋・決まりのどれかが読めない → 直しもの（リンクを作らない）。
+ */
+function pledgeFromPing(ping: Ping): { pledge?: PledgeConfig; pledgeHash?: string } {
+  if (!ping.pledgeMode || !supportsPledge(ping)) return {};
+  const texts = parsePledgeCanon(ping.pledgeCanon);
+  if (!texts || !ping.pledgeHash || !ping.guardianMode || typeof ping.gymMode !== 'boolean') {
+    // 1つの問題＝1つの文（文の中に「。」を入れない。設定の直しものは「。」で割って1文ずつ出すため）
+    throw sheetFixError('誓約書が「あり」ですが、「誓約書」タブの文を読めませんでした（項目は' + PLEDGE_LIMITS.items + '個まで、1項目' + PLEDGE_LIMITS.item + '文字まで、全部で' + PLEDGE_LIMITS.total + '文字までなので、「誓約書」タブを確かめてください）。');
+  }
+  return { pledge: { items: texts.items, guardian: texts.guardian, gym: texts.gym, mode: ping.guardianMode, gymMode: ping.gymMode, confirmed: ping.pledgeChecked === true }, pledgeHash: ping.pledgeHash };
+}
+
+/** リンクの plt に入る誓約書の文の長さ（packPledge の長さ。1文字が約2.7文字になる）。「あり」でないとき・読めないときは 0 */
+function pledgeLinkSize(ping: Ping): number {
+  if (!ping.pledgeMode || !supportsPledge(ping)) return 0;
+  const texts = parsePledgeCanon(ping.pledgeCanon);
+  return texts ? packPledge(texts.items, texts.guardian, texts.gym).length : 0;
+}
+
+/** 診断の1行に書く、保護者の同意を求める相手の言い方（「設定」タブの「保護者の同意」の▼と同じ言葉） */
+const GUARDIAN_MODE_TEXT: Record<GuardianMode, string> = { under18: '18歳未満のみ', all: '全員', none: 'なし' };
+
+/** 会長が文を「済み」にしていないとき、診断の赤い✕に足す1文（操作の言葉だけ。URLは出る。止めるのは、申し込みページとGoogleの受付） */
+export const PLEDGE_UNCONFIRMED_ADVICE = '会長が原本と見比べて、設定タブの「誓約書の文の確認」を「済み」にするまで、本番のURLは選手に送らないでください。';
+
+/**
+ * 設定の画面の診断に出す、誓約書の1行。「なし」・この版が対応していない・文が読めない（その場合は entryConfigProblem が赤い直しものを出す）→ undefined（何も足さない）。
+ * line＝「誓約書：あり（5項目・保護者の同意：18歳未満のみ・ジム責任者：あり）・会長の確認：まだ」／confirmed＝会長の確認が「済み」か／gym＝ジム責任者の欄があるか（画面は ping の鍵を読まない。「選手に送る前の説明」が、ジム責任者の名前・電話も覚えると言うかどうかに使う）
+ */
+export function pledgeDiagnosis(ping: Ping | null | undefined): { line: string; confirmed: boolean; gym: boolean } | undefined {
+  if (!ping || !ping.pledgeMode || !supportsPledge(ping) || !ping.pledgeHash || !ping.guardianMode || typeof ping.gymMode !== 'boolean') return undefined;
+  const texts = parsePledgeCanon(ping.pledgeCanon);
+  if (!texts) return undefined;
+  const confirmed = ping.pledgeChecked === true;
+  return { line: '誓約書：あり（' + texts.items.length + '項目・保護者の同意：' + GUARDIAN_MODE_TEXT[ping.guardianMode] + '・ジム責任者：' + (ping.gymMode ? 'あり' : 'なし') + '）・会長の確認：' + (confirmed ? '済み' : 'まだ'), confirmed, gym: ping.gymMode };
+}
 
 /** URLが長すぎるとき、いちばん長い欄を名前で言う（クラスだけのせいにしない）。 */
 function longestFieldMessage(ping: Ping): string {
@@ -154,6 +216,9 @@ function longestFieldMessage(ping: Ping): string {
   const classy = top[0].includes('クラス');
   // 階級の表（区分と階級）が長いときは、表のほうを言う。はじめの表と同じなら、リンクに何も足さないので、数えない
   const weightSize = ping.weights && !isDefaultWeightSettings(ping.weights) ? size(weightSettingsToParam(ping.weights)) : 0;
+  // 誓約書の文は、リンクの中では plt（packPledge）の長さ。いちばん長いのが誓約書なら、誓約書のせいだと言う
+  const pledgeSize = pledgeLinkSize(ping);
+  if (pledgeSize > size(top[2]) && pledgeSize > weightSize) return '誓約書の文が長すぎて、選手に渡すURLに入りません。「誓約書」タブの項目を、減らすか短くしてください。';
   if (weightSize > size(top[2])) return '階級の表（区分と階級）が長すぎて、選手に渡すURLに入りません。「設定」タブの「階級：…」の行を、減らすか短くしてください。';
   return (classy ? 'クラスの' : '') + '文が長すぎて、選手に渡すURLに入りません。「' + top[0] + '」（セル ' + top[1] + '）を短くしてください。';
 }
@@ -221,7 +286,7 @@ export const WEIGHT_CELL: Record<string, string> = { 階級分け: 'B21', ロゴ
 // 「花道の追加情報」の行は、区分の行のあと（いちばん下）にあるので、番号を持たせない。場所は『A列が「花道の追加情報」の行のB列』と言う（settingLines）
 export const HOW: Record<string, string> = {
   大会名: '例：第3回 青空ジム大会 のように入れる', 開催日: '2027年10月3日 のように入れる', 会場: '例：○○体育館 のように入れる', 主催者名: '例：○○ジム のように入れる',
-  問い合わせ先: '電話番号か、LINEのURLを入れる', 申込締切: '2027年9月20日 のように入れる（開催日と同じか、その前の日）', 入場曲: '▼から「あり」か「なし」を選ぶ',
+  問い合わせ先: '電話番号か、LINEのURLを入れる', 申込締切: '2027年9月20日 のように入れる（開催日と同じか、その前の日）', 入場曲: '▼から「なし」を選ぶ（はじめは「なし」。選手に入場曲のリンクを書いてもらうときだけ「あり」）',
 };
 const ALL_KEYS = [...Object.keys(CELL), ...Object.keys(CLASS_CELL), ...Object.keys(WEIGHT_CELL)].sort((a, b) => b.length - a.length);
 /** 欄の名前から、セルの番号を引く。名前がそのまま合うものを先に、なければ「いちばん長い名前で始まるもの」（「会場」より「会場の地図URL」が先） */
@@ -240,6 +305,9 @@ export function settingLines(message: string): { google: string; fixes: string[]
   return (body || message).split('。').filter(Boolean).map((item) => {
     // 花道の追加情報の行は、区分の行のあと（いちばん下）にある。セルの番号は言わず、A列の名前で探してもらう（文の中に場所があるときは、そのまま）
     if (/「花道の追加情報」/.test(item)) return { google: item, fixes: [/A列が「花道の追加情報」の行/.test(item) ? item : item + '（「設定」タブの、A列が「花道の追加情報」の行のB列。▼から選び直す）'] };
+    // 誓約書の4つの行（「誓約書」「保護者の同意」「ジム責任者の同意」「誓約書の文の確認」）も、区分の行のあと（いちばん下）にある。セルの番号は言わず、A列の名前で探してもらう
+    const pledgeRow = item.match(/^「(誓約書|保護者の同意|ジム責任者の同意|誓約書の文の確認)」は、.+のどれかにしてください$/);
+    if (pledgeRow) return { google: item, fixes: [item + '（「設定」タブの、A列が「' + pledgeRow[1] + '」の行のB列。▼から選び直す）'] };
     const miss = item.match(/次の欄を入れてください：(.+)$/);
     if (miss) {
       return { google: item, fixes: miss[1].split('、').map((n) => { const hit = cellOf(n); return hit ? hit.key + '（' + hit.cell + '）：書いてありません。' + (CLASS_CELL[hit.key] ? '右どなり（C列）の例を見て書く' : HOW[hit.key] || WRITE_MARK + 'の行に書く') : n + '：書いてありません'; }) };

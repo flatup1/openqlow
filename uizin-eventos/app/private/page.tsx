@@ -63,8 +63,8 @@ type SetupState = 'yes' | 'entered' | 'blocked' | 'no' | 'unknown';
 const EDIT_KEYS: FieldKey[] = ['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'];
 const toMap = (list: FieldProblem[]): FieldProblems => { const map: FieldProblems = {}; for (const item of list) if (!map[item.key]) map[item.key] = item.text; return map; };
 const BIG = { fontSize: '1.0625rem' } as const;
-/** じゅんびが全部できたときの一文。デスクトップの箱とスマホの帯で、同じ言葉を使う（「終わりました」は、大会が終わったように読める） */
-const ALL_READY = (opened: boolean): string => opened ? 'じゅんびは、ぜんぶできました。試合当日の画面は、開いてあります。' : 'じゅんびは、ぜんぶできました。あとは「試合当日の画面を開く」を押します。';
+/** じゅんびの4つ（1 大会の情報・2 選手を入れる・3 対戦カードを作る・4 保存して開く）が全部できたときの一文。デスクトップの箱とスマホの帯で、同じ言葉を使う（「終わりました」は、大会が終わったように読める。「4つ」と言うのは、コピーのファイル・USB・紙の一覧など、ほかの用意は別だから） */
+const ALL_READY = (opened: boolean): string => opened ? 'じゅんびの4つは、ぜんぶできました。試合当日の画面は、開いてあります。' : 'じゅんびの4つは、ぜんぶできました。あとは「試合当日の画面を開く」を押します。';
 
 /* ───────── 古いSafari（15.4より前）: 画面を作る前に、赤い箱で知らせる ───────── */
 function OldBrowser() {

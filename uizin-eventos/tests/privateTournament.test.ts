@@ -58,7 +58,7 @@ test('募集項目は名簿と一緒に保存・復元でき、旧バックア�
 });
 test('写真の選び直しは古い写真・遅れて終わる加工を送らず、加工中に送信できない',()=>{
   const source=readFileSync(new URL('../app/apply/page.tsx',import.meta.url),'utf8');
-  assert.match(source,/setPhotoLoading\(true\); setPhoto\(''\)/);assert.match(source,/version !== photoVersionRef\.current/);assert.match(source,/if \(photoLoadingRef\.current\)/);assert.match(source,/disabled=\{sending\|\|photoLoading\|\|!endpointReady\}/);
+  assert.match(source,/setPhotoLoading\(true\); setPhoto\(''\)/);assert.match(source,/version !== photoVersionRef\.current/);assert.match(source,/if \(photoLoadingRef\.current\)/);assert.match(source,/disabled=\{sending\|\|photoLoading\|\|!endpointReady(?:\|\|deadlineLocked)?\}/);
 });
 test('読み込み失敗・空名簿・別大会復元・進行保存失敗で元データを上書きしない',()=>{
   const admin=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');

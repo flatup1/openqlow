@@ -1,6 +1,13 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
 const RECEPTION_BUILD = '3.20261022.7';
 const MIN_FREE_BYTES = 200 * 1024 * 1024;
+/**
+ * 「設定」タブの「花道のルール」を新しく作るときだけ入れる初期の文。原本（募集要項 Vol.7）の言葉を並べた仮の文で、owner が「OK」と答えたもの（2026-10-22）。
+ * 花道の選手には、クラス（A/B）を選ばせない。かわりに、この1行を灰色の説明で見せる。すでにあるマスは書き換えない。会長が確認して、設定タブの上で直す。
+ */
+const HANAMICHI_RULE_INITIAL = '花道（シニア）のルール：90秒×2ラウンド（インターバル1分）。蹴り足キャッチ・回転技・顔面への膝蹴りは禁止です。';
+/** 花道のルールの長さの上限（length で数える）。core/hanamichi.ts の HANAMICHI_RULE_MAX と同じ */
+const HANAMICHI_RULE_MAX_ = 120;
 /** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
   ['大会名', '', '✎ ここに書く。例：第3回 青空ジム大会'],
@@ -10,7 +17,7 @@ const SETTING_ROWS = [
   ['主催者名', '', '✎ ここに書く。例：○○ジム'],
   ['問い合わせ先', '', '✎ ここに書く。選手に見えます。電話番号か、LINEのURL'],
   ['申込締切', '', '✎ ここに書く。例：2027年9月20日（開催日と同じか、その前の日）'],
-  ['入場曲', '', '✎ ここに書く（▼から「あり」か「なし」を選びます）。選手に入場曲のリンクを書いてもらうかどうかを、最初に決めます'],
+  ['入場曲', 'なし', 'あり／なし。はじめは「なし」。選手に入場曲のリンクを書いてもらうときだけ、▼から「あり」を選びます'],
   ['学年', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
   ['年齢', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
   ['意気込み', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
@@ -32,7 +39,14 @@ const SETTING_ROWS = [
   ['階級：花道・女子（40歳以上）', '-40、-45、-50、-55、-60、+60', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
   ['階級：花道・男子（40歳以上）', '-55、-60、-65、-70、-75、-80、-85、無差別', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
   // いちばん下に足した行（既存の行の位置は動かさない）。「あり」にすると、花道の区分を選んだ人にだけ、追加の質問が出る
-  ['花道の追加情報', 'なし', '「あり」にすると、区分の名前に「花道」が入っている区分を選んだ人にだけ、追加の質問が出ます。']
+  ['花道の追加情報', 'なし', '「あり」にすると、区分の名前に「花道」が入っている区分を選んだ人にだけ、追加の質問が出ます。'],
+  // 誓約書の行（花道の行のあと。既存の行の位置は動かさない）。文は「誓約書」タブに書く（「① 最初の設定」が、「あり」のときにタブを作る）
+  ['誓約書', 'なし', 'なし／あり。「あり」にすると、申し込みの最後に、誓約書の□が出ます。選手が□ぜんぶに✔を入れないと、先へ進めません。文は「誓約書」タブに書きます（▼から選びます）'],
+  ['保護者の同意', '18歳未満のみ', '18歳未満のみ／全員／なし。「誓約書」が「あり」のときだけ意味があります。「18歳未満のみ」のときは、「年齢」を「必須」か「任意」にしてください（年齢が分からない人には、保護者の同意を求めます）'],
+  ['ジム責任者の同意', 'あり', 'あり／なし。「誓約書」が「あり」のときだけ意味があります。「あり」だと、ジム名が「無所属」ではない選手に、ジム責任者のお名前・携帯電話・許可の確認を入れてもらいます'],
+  ['誓約書の文の確認', 'まだ', 'まだ／済み。「誓約書」タブの文を、原本と見比べて、まちがいがなければ「済み」にします。「まだ」のあいだは、本番の申し込みを受け付けません（テスト用は動きます）。文を直したら、新しい申し込みリンクを作ってください'],
+  // 花道のルールの行（誓約書の行のあと。既存の行の位置は動かさない）。▼の選択欄は無い（長い文を1つ書く）。クラス分けが「あり」で、花道の区分があるときだけ使う
+  ['花道のルール', HANAMICHI_RULE_INITIAL, '原本から写した仮の文です。会長が確認してください。クラス分けが「あり」で、区分の名前に「花道」が入っているときだけ使います。花道の選手には、クラスを選ばせず、この1行だけを見せます。120文字までです']
 ];
 const SELFTEST_JPEG = '/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALIAP//Z';
 let SETTINGS_CACHE_ = null;
@@ -42,6 +56,8 @@ let SETTINGS_REBUILT_ = false;
 let SETUP_NOTES_ = [];
 /** 学年・年齢・意気込みの書き方。「必須」「任意」「なし」。マスが空のときは、はじめの決まりの「必須」（うっかり消しても、聞きもれがないように） */
 function mode_(text) { const v = String(text || '').trim(); return v === 'なし' ? 'off' : v === '任意' ? 'optional' : 'required'; }
+/** 保護者の同意の書き方。「なし」「全員」「18歳未満のみ」。マスが空のときは、はじめの決まりの「18歳未満のみ」。ほかの言葉は、いちばんかたい「全員」（聞きもれがないように） */
+function guardianMode_(text) { const v = String(text || '').trim(); return v === 'なし' ? 'none' : v === '' || v === '18歳未満のみ' ? 'under18' : 'all'; }
 function dateIso_(text) {
   const t = String(text || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).trim();
   let y, m, d;
@@ -52,9 +68,9 @@ function dateIso_(text) {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? '' : iso;
 }
 /** 「▼から選ぶ」欄にする項目。選び間違い・入れ間違いを防ぐ。 */
-const DROPDOWNS = [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']], ['階級分け', ['なし', 'あり']], ['ロゴ', ['なし', 'あり']], ['花道の追加情報', ['なし', 'あり']]];
-/** 会長が必ず書く7つ（B列）。色と「✎ ここに書く」の印をつける。 */
-const WRITE_LABELS = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切', '入場曲'];
+const DROPDOWNS = [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']], ['階級分け', ['なし', 'あり']], ['ロゴ', ['なし', 'あり']], ['花道の追加情報', ['なし', 'あり']], ['誓約書', ['なし', 'あり']], ['保護者の同意', ['18歳未満のみ', '全員', 'なし']], ['ジム責任者の同意', ['あり', 'なし']], ['誓約書の文の確認', ['まだ', '済み']]];
+/** 会長が必ず書く6つ（B列）。色と「✎ ここに書く」の印をつける。入場曲は、はじめから「なし」が入っているので、ここに入れない。 */
+const WRITE_LABELS = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切'];
 function applyDropdowns_(sheet, labels) {
   // 使えない環境でも、設定は読めるので止めない。
   try {
@@ -64,7 +80,7 @@ function applyDropdowns_(sheet, labels) {
     });
   } catch (_) { /* 選択欄が作れなくても、手で入れられる */ }
 }
-/** 見た目：書く7つのB列に色（#fff2a8）、列の幅、文字の折り返し、1行目の固定。つくるときだけ。使えない環境でも止めない。 */
+/** 見た目：書く6つのB列に色（#fff2a8）、列の幅、文字の折り返し、1行目の固定。つくるときだけ。使えない環境でも止めない。 */
 function formatSettings_(sheet) {
   try {
     SETTING_ROWS.forEach(function (row, i) { if (WRITE_LABELS.indexOf(row[0]) >= 0) sheet.getRange(i + 2, 2).setBackground('#fff2a8'); });
@@ -191,7 +207,7 @@ function S_() {
   if (SETTINGS_CACHE_) return SETTINGS_CACHE_;
   const props = PropertiesService.getScriptProperties(), id = props.getProperty('spreadsheetId');
   if (!id) throw adminError_('setup', '「Tournament OS」メニューの「① 最初の設定」を押してください。');
-  const sheet = SpreadsheetApp.openById(id).getSheetByName('設定');
+  const book = SpreadsheetApp.openById(id), sheet = book.getSheetByName('設定');
   if (!sheet) throw adminError_('setup', '「設定」タブが見つかりません。「① 最初の設定」を押してください。');
   // 古い設定タブ（11行）でも読める：行が足りない分は空として読む。会長が行を足していても、名前で探す（60行まで）。
   const count = Math.max(1, Math.min(60, (typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : typeof sheet.getMaxRows === 'function' ? sheet.getMaxRows() : SETTING_ROWS.length + 1) - 1));
@@ -209,7 +225,9 @@ function S_() {
     divisions.push({ name: divisionName_(m[1]), text: String(row[1]).trim(), classes: parsed.classes, none: parsed.none, problems: parsed.problems });
   });
   const weights = { enabled: v['階級分け'] === 'あり', divisions: divisions };
-  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, classRows: classRows, weights: weights, weightRows: weightRows, logo: v['ロゴ'] === 'あり', hanamichi: v['花道の追加情報'] === 'あり', raw: v };
+  // 誓約書：「あり」のときだけ、「誓約書」タブの文も読む（なし・行が無いときは、何も読まない）。ジム責任者の同意の空は「あり」、確認の空は「まだ」（どちらも安全側）
+  const pledge = v['誓約書'] === 'あり';
+  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, classRows: classRows, weights: weights, weightRows: weightRows, logo: v['ロゴ'] === 'あり', hanamichi: v['花道の追加情報'] === 'あり', hanamichiRule: v['花道のルール'] || '', hanamichiRuleRow: Object.prototype.hasOwnProperty.call(v, '花道のルール'), pledge: pledge, guardianMode: guardianMode_(v['保護者の同意']), gymMode: v['ジム責任者の同意'] !== 'なし', pledgeConfirmed: v['誓約書の文の確認'] === '済み', pledgeTab: pledge ? readPledgeTab_(book) : null, raw: v };
   return SETTINGS_CACHE_;
 }
 /** 設定の間違いを、直す場所つきで返す。空なら問題なし。 */
@@ -224,7 +242,7 @@ function settingsProblems_(s) {
   if (!raw['入場曲']) missing.push('入場曲（あり／なしを選ぶ）');
   if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
   if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
-  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']], ['階級分け', ['あり', 'なし']], ['ロゴ', ['あり', 'なし']], ['花道の追加情報', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
+  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']], ['階級分け', ['あり', 'なし']], ['ロゴ', ['あり', 'なし']], ['花道の追加情報', ['あり', 'なし']], ['誓約書', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
   // クラスの欄は「クラス分け＝あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）
   if (raw['クラス分け'] === 'あり') {
     const sides = [['上', '上のクラス'], ['下', '下のクラス']], norm = function (t) { return String(t || '').normalize('NFKC').trim().toLowerCase(); };
@@ -270,6 +288,29 @@ function settingsProblems_(s) {
     const hn = (s.weights && s.weights.enabled && s.weights.divisions) || [];
     if (!hn.some(function (d) { return isHanamichiName_(d.name); })) bad.push('「花道の追加情報」が「あり」ですが、選べる区分に「花道」の入った名前がありません（「階級分け」を「あり」にして、区分の名前に「花道」を入れるか、A列が「花道の追加情報」の行のB列を「なし」にしてください）');
   }
+  // 花道のルールは、クラス分けが「あり」で、選べる区分に「花道」の入った名前があるときだけ調べる（花道の選手には、クラスを選ばせず、この1行を見せるため）。ほかのときは、何が入っていても止めない。1つの問題＝1つの文（文の中に「。」を入れない）
+  if (hanamichiRuleApplies_(s)) {
+    const rule = String(s.hanamichiRule || '').trim();
+    if (!rule) bad.push('「花道のルール」が空です（A列が「花道のルール」の行のB列に、花道の選手に見せる1行を書いてください）');
+    else if (rule.length > HANAMICHI_RULE_MAX_) bad.push('「花道のルール」は' + HANAMICHI_RULE_MAX_ + '文字までにしてください（A列が「花道のルール」の行のB列を、いまの' + rule.length + '文字から短くしてください）');
+  }
+  // 誓約書は「あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）。1つの問題＝1つの文（文の中に「。」を入れない）。直すマスを言う
+  if (raw['誓約書'] === 'あり') {
+    [['保護者の同意', ['18歳未満のみ', '全員', 'なし']], ['ジム責任者の同意', ['あり', 'なし']], ['誓約書の文の確認', ['まだ', '済み']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
+    const tab = s.pledgeTab;
+    if (!tab) bad.push('「誓約書」が「あり」ですが、「誓約書」タブがありません（「① 最初の設定」を押して作るか、使わないなら、A列が「誓約書」の行のB列を「なし」にしてください）');
+    else {
+      if (!tab.items.length) bad.push('「誓約書」タブのA列（A2〜A9）に、誓約の項目が1つもありません（原本のとおりに、1マスに1項目ずつ書いてください）');
+      else if (tab.items.length > PLEDGE_LIMITS_.items) bad.push('「誓約書」タブの項目が' + tab.items.length + '個あります（' + PLEDGE_LIMITS_.items + '個までなので、A2〜A9に収めてください）');
+      const longCells = tab.items.map(function (text, i) { return text.length > PLEDGE_LIMITS_.item ? 'A' + tab.rows[i] : ''; }).filter(Boolean);
+      if (longCells.length) bad.push('「誓約書」タブの項目が長すぎます（1項目' + PLEDGE_LIMITS_.item + '文字までなので、' + longCells.join('・') + 'のマスを短くしてください）');
+      const total = tab.items.concat([tab.guardian, tab.gym]).reduce(function (sum, text) { return sum + text.length; }, 0);
+      if (total > PLEDGE_LIMITS_.total) bad.push('「誓約書」タブの文字の合計が多すぎます（項目と、保護者・ジム責任者の文を合わせて' + PLEDGE_LIMITS_.total + '文字までなので、いまの' + total + '文字を短くしてください）');
+      if (s.guardianMode !== 'none' && !tab.guardian) bad.push('「保護者の同意」が「なし」ではないのに、「誓約書」タブのB2（保護者の同意の文）が空です（文を書くか、「保護者の同意」を「なし」にしてください）');
+      if (s.gymMode && !tab.gym) bad.push('「ジム責任者の同意」が「あり」なのに、「誓約書」タブのC2（ジム責任者の同意の文）が空です（文を書くか、「ジム責任者の同意」を「なし」にしてください）');
+    }
+    if (s.guardianMode === 'under18' && s.age === 'off') bad.push('「保護者の同意」が「18歳未満のみ」ですが、「年齢」が「なし」です（年齢を聞かないと18歳未満かどうか分からないので、「年齢」を「必須」か「任意」にするか、「保護者の同意」を「全員」か「なし」にしてください）');
+  }
   // 長すぎる文は、選手に渡すURLに入らない。どの欄かを言う
   [['大会名', 300], ['会場', 300], ['主催者名', 300], ['問い合わせ先', 300], ['会場の地図URL', 500]].forEach(function (pair) { if (String(raw[pair[0]] || '').length > pair[1]) bad.push('「' + pair[0] + '」は' + pair[1] + '文字までにしてください'); });
   const out = [];
@@ -290,6 +331,13 @@ const TABLES = [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS�
 /* ---------- 花道の追加情報（core/hanamichi.ts と同じ決まり。tests/gasHanamichi.test.ts が、同じ答えになることを確かめる） ---------- */
 /** 区分の名前に「花道」が入っているか（全角・半角・空白・見えない文字のちがいは見ない） */
 function isHanamichiName_(name) { return divisionKey_(name).indexOf('花道') >= 0; }
+/**
+ * 花道のルールを使う設定か：「花道のルール」の行があり、クラス分けが「あり」で、階級分けが「あり」、選べる区分に「花道」の入った名前がある（花道の選手には、クラスを選ばせない）。
+ * 行そのものが無い昔のシートは、「まだルールを決めていない」と読む（動かなくならない。花道の選手も、今までどおりクラスを選ぶ）。行があって空のときだけ、設定の問題
+ */
+function hanamichiRuleApplies_(s) {
+  return Boolean(s.hanamichiRuleRow && s.classes.enabled && s.weights.enabled && s.weights.divisions.some(function (d) { return isHanamichiName_(d.name); }));
+}
 /**
  * 12項目の表（POSTの鍵・シートの列は、この順）。必須／任意を変えたいときは、required を1行ずつ直す。
  * 職業と他格闘歴だけ任意。needs＝その項目が空でないときだけ要る（リングネームが空なら、フリガナは要らない）。個人情報なので、ログには出さない。
@@ -316,8 +364,8 @@ const HANAMICHI_MISSING_ = '花道の追加の質問に、答えていない所�
 const HANAMICHI_BAD_ = '花道の追加の質問に、まちがいがある所があります。申込ページにもどって、直してから、もう一度送ってください。';
 /** 自動テストの1件が花道の区分に当たるときだけ付ける、架空の答え */
 const SELFTEST_HANAMICHI_ = { hnNameKana: 'ジドウテスト', hnGymKana: 'ジドウテスト', hnRing: '自動テスト', hnRingKana: 'ジドウテスト', hnBirth: '1980-01-01', hnKickYears: '1', hnPerWeek: '1', hnOther: '', hnJob: '', hnHobby: 'テスト', hnReason: 'テスト', hnMessage: 'テスト' };
-/** 見る表。「花道の追加情報」が「あり」のときだけ、花道のタブも見る（なしのときは、これまでの4つだけ） */
-function tables_() { return S_().hanamichi ? TABLES.concat(HANAMICHI_TABLES_) : TABLES; }
+/** 見る表。「花道の追加情報」が「あり」のときだけ花道のタブも、「誓約書」が「あり」のときだけ誓約の記録のタブも見る（なしのときは、これまでの4つだけ） */
+function tables_() { const s = S_(); let all = TABLES; if (s.hanamichi) all = all.concat(HANAMICHI_TABLES_); if (s.pledge) all = all.concat(PLEDGE_TABLES_); return all; }
 /** 表の見出しを調べる。個人情報のタブ（3つ目が true）は、あるときは1マスも書き換えない：右はしの見出しが空でも、書き足さず、直すマスとして言う */
 function tableCheck_(book, pair) {
   const check = headerCheck_(book, pair[0], pair[1]);
@@ -376,6 +424,165 @@ function saveHanamichiRow_(sheet, values, p) {
   const saved = findRow_(sheet, 1, values[0]);
   if (!saved || JSON.stringify(sheet.getRange(saved, 1, 1, width).getDisplayValues()[0].map(retryNorm_)) !== JSON.stringify(row.map(retryNorm_))) throw entryError_('storage', '花道の追加情報の保存を確認できませんでした。', true);
 }
+/* ---------- 誓約書（core/pledge.ts と同じ決まり。tests/gasPledge.test.ts が、同じ答えになることを確かめる） ---------- */
+/** 文の置き場のタブ。A2〜A9＝項目（最大8個・1項目120字まで）、B2＝保護者（連帯責任者）の同意の文、C2＝団体・ジム責任者の同意の文。文の合計は700字まで（長さは length で数える） */
+const PLEDGE_TAB = '誓約書';
+const PLEDGE_LIMITS_ = { items: 8, item: 120, total: 700 };
+const PLEDGE_GYM_NAME_MAX_ = 40;
+/**
+ * 「誓約書」タブをはじめて作るときだけ入れる文。owner が原本から貼った文字（2026-10-22）のまま。AIが書いた文ではない。直さない（「することし」も貼られたまま）。
+ * すでにタブがあるときは、1マスも触らない。会長が原本と見比べて、タブの上で直す。
+ */
+const PLEDGE_INITIAL_ITEMS = [
+  '上記大会出場に関して万が一事故が発生した場合は、主催者に対し一切の責任や賠償を求めないこと',
+  '勝敗に関する一切の判断を主催者に一任し、本大会のルールと規定に従うこと',
+  '大会中に撮影した写真や動画等の著作権は主催者に帰属することし、自己の判断でSNS等に転載しない事',
+  '試合に際し、身体的な接触により相手もしくは関係者に病気を媒介するような感染症を持っていないこと',
+  '上記申し込み事項や誓約事項に虚偽がないこと'
+];
+const PLEDGE_INITIAL_GUARDIAN = '上記のものが本試合に出場すること、上記誓約内容に同意致します。';
+const PLEDGE_INITIAL_GYM = '上記の者が試合に出場することに同意し、上記誓約内容に同意致します。';
+const PLEDGE_HEADINGS_ = ['誓約書の項目（原本のとおりに、1項目ずつ。1マス＝1項目）', '保護者（連帯責任者）の同意の文', '団体・ジム責任者の同意の文'];
+const PLEDGE_MEMO_ = 'この文は、owner が原本から貼った文字です（2026-10-22）。会長が原本と見比べて、まちがいがあれば直してください。直したら、「設定」タブの「誓約書の文の確認」を「済み」にして、新しい申し込みリンクを作ってください。';
+/** 誓約の記録の見出し（この順）。ほかの人（ジム責任者）の個人情報が入るので、OS取込用・名簿ZIP・申込原本には出さない */
+const PLEDGE_HEADERS_ = ['受付番号', '申込日時', '選手名', '確認した項目', '保護者の同意', 'ジム責任者の名前', 'ジム責任者の電話', '許可の念押し', '同意した文', '文の指紋'];
+/** 誓約の記録の別タブ（本番とテスト）。「誓約書」が「あり」のときだけ、① が作る。3つ目の true＝全マスを文字の形にする */
+const PLEDGE_TABLES_ = [['誓約記録', PLEDGE_HEADERS_, true], ['テスト誓約記録', PLEDGE_HEADERS_, true]];
+/** 申し込みページが送る誓約書の鍵（「なし」のときは1つも付いてこない） */
+const PLEDGE_POST_KEYS_ = ['pledge', 'pledgeItems', 'pledgeGuardian', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode'];
+/** ジム名が「無所属」の言い方（全角・半角をそろえ、空白を取ったあと）。core/pledge.ts の UNAFFILIATED_NAMES と同じ */
+const PLEDGE_UNAFFILIATED_ = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し'];
+const PLEDGE_YES_ = 'はい';
+const PLEDGE_NO_NEED_ = '不要';
+const PLEDGE_UNAFFILIATED_LABEL_ = '（無所属）';
+const PLEDGE_ITEMS_BAD_ = '誓約書の確認（✔）が、すべてそろっていません。申し込みページにもどって、各項目の□に✔を入れてください。';
+const PLEDGE_GUARDIAN_BAD_ = '保護者（連帯責任者）の同意の確認（✔）が入っていません。申し込みページにもどって、✔を入れてください。';
+const PLEDGE_CHANGED_ = '誓約書の設定が、リンクを作ったあとで変わりました。主催者から、新しい申し込みリンクをもらってください。';
+const PLEDGE_OLD_ = '誓約書の文が、リンクを作ったあとで変わりました。主催者から、新しい申し込みリンクをもらってください。';
+const PLEDGE_UNCONFIRMED_ = '主催者が、誓約書の文をまだ確認していません。送れません。';
+const PLEDGE_GYM_CHECK_ = 'ジム責任者の同意の確認（✔）が入っていません。申し込みページにもどって、✔を入れてください。';
+const PLEDGE_GYM_NAME_ = 'ジム責任者のお名前を、40文字までで入れてください。';
+const PLEDGE_GYM_PHONE_ = 'ジム責任者の携帯電話を、ハイフンなしの11けたで入れてください（070・080・090で始まる番号です）。';
+const PLEDGE_PERMISSION_ = 'ジム責任者の許可をとっているか、確認のチェックが必要です。';
+/** 「誓約書」タブを読む（2行目から60行目まで）。タブが無ければ null。空のマスは飛ばす。rows＝項目が書いてあった行の番号（直すマスを言うため） */
+function readPledgeTab_(book) {
+  const sheet = book.getSheetByName(PLEDGE_TAB);
+  if (!sheet) return null;
+  const last = typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : 2;
+  const cells = sheet.getRange(2, 1, Math.max(1, Math.min(60, last) - 1), 3).getDisplayValues(), items = [], rows = [];
+  cells.forEach(function (row, i) { const text = norm_(row[0]); if (text) { items.push(text); rows.push(i + 2); } });
+  return { items: items, rows: rows, guardian: norm_(cells[0][1]), gym: norm_(cells[0][2]) };
+}
+/** 「誓約書」＝あり で、タブがまだ無いときだけ、タブを作って初期の文を入れる。すでにタブがあるときは、1マスも触らない（空でも・直してあっても） */
+function ensurePledgeSheet_(book) {
+  if (!S_().pledge || book.getSheetByName(PLEDGE_TAB)) return;
+  const sheet = book.insertSheet(PLEDGE_TAB);
+  textFormatTab_(sheet, 5);
+  sheet.getRange(1, 1, 1, 3).setValues([PLEDGE_HEADINGS_]).setFontWeight('bold');
+  sheet.getRange(2, 1, PLEDGE_INITIAL_ITEMS.length, 1).setValues(PLEDGE_INITIAL_ITEMS.map(function (text) { return [text]; }));
+  sheet.getRange(2, 2, 1, 1).setValues([[PLEDGE_INITIAL_GUARDIAN]]);
+  sheet.getRange(2, 3, 1, 1).setValues([[PLEDGE_INITIAL_GYM]]);
+  sheet.getRange(1, 5, 2, 1).setValues([['メモ'], [PLEDGE_MEMO_]]);
+  try {
+    [380, 320, 320, 40, 420].forEach(function (width, i) { sheet.setColumnWidth(i + 1, width); });
+    sheet.getRange(1, 1, 12, 5).setWrap(true);
+    sheet.setFrozenRows(1);
+  } catch (_) { /* 見た目が付けられなくても、文は読める */ }
+  SETUP_NOTES_.push('「誓約書」タブを作りました。タブの文を原本と見比べて、まちがいがなければ、「設定」タブの「誓約書の文の確認」を「済み」にしてください。');
+}
+/** 文のひとまとめ（JSON の文字）。ping の pledgeCanon。指紋はこの文字から作る */
+function pledgeCanon_(s) { const tab = s.pledgeTab; return JSON.stringify({ items: tab.items, guardian: tab.guardian, gym: tab.gym }); }
+/** 文の指紋：いまの pledgeCanon の SHA-256（16進の小文字64字）。リンクの plf と、送られた pledgeHash を比べる（会長が文を直したら、古いリンクでは申し込めない） */
+function pledgeHash_(s) { return hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, pledgeCanon_(s), Utilities.Charset.UTF_8)); }
+function pledgeAge_(age) {
+  const text = String(age == null ? '' : age).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').trim();
+  if (!/^\d{1,3}$/.test(text)) return 0;
+  const n = Number(text);
+  return n >= 1 && n <= 120 ? n : 0;
+}
+/** 保護者の同意が要るか：なし→要らない／全員→要る／18歳未満のみ→年齢が18未満のとき。年齢が空・読めない・121以上は「要る」（安全側）。core/pledge.ts の guardianNeeded と同じ */
+function guardianNeeded_(mode, age) {
+  if (mode === 'none') return false;
+  if (mode === 'all') return true;
+  const n = pledgeAge_(age);
+  return n === 0 || n < 18;
+}
+/** ジム責任者の携帯電話を、数字だけの形にする（全角・ハイフン・空白はOK）。070／080／090で始まる11けたでなければ ''。core/pledge.ts の gymPhoneNormal と同じ */
+function gymPhoneNormal_(raw) {
+  const d = String(raw == null ? '' : raw).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').trim().replace(/[\s\-ー－―‐‑–—−]/g, '');
+  return /^0[789]0\d{8}$/.test(d) ? d : '';
+}
+function gymPhoneOk_(raw) { return gymPhoneNormal_(raw) !== ''; }
+/** ジム名が「無所属」の言い方か（core/pledge.ts の isUnaffiliated と同じ） */
+function isUnaffiliated_(gym) {
+  return PLEDGE_UNAFFILIATED_.indexOf(String(gym == null ? '' : gym).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').replace(/\s+/g, '')) >= 0;
+}
+/**
+ * リンクを作ったあとで、「保護者の同意」「ジム責任者の同意」が厳しくなっていないか。ページが送る pledgeGuardianMode・pledgeGymMode は、リンクの plg・plm と同じ値。
+ * 「いまの設定は✔を求めるのに、このリンクのページには、その欄が出ない」ときだけ true（古いページには✔を入れる場所が無い。「✔を入れてください」と言っても行き止まり）。
+ * ゆるくなった分は、ページに余分な欄があるだけなので、true にしない。鍵が付いてこない・読めないときは、調べない（false）
+ */
+function pledgeLinkStale_(p, s) {
+  const mode = String(p.pledgeGuardianMode == null ? '' : p.pledgeGuardianMode).trim(), gymMode = String(p.pledgeGymMode == null ? '' : p.pledgeGymMode).trim();
+  if ((mode === 'none' || mode === 'under18' || mode === 'all') && guardianNeeded_(s.guardianMode, p.age) && !guardianNeeded_(mode, p.age)) return true;
+  return gymMode === 'off' && s.gymMode && !isUnaffiliated_(p.gym);
+}
+/** 誓約書の鍵が1つでも（空でなく）付いてきたか */
+function pledgeKeysSent_(p) { return PLEDGE_POST_KEYS_.some(function (key) { return String(p[key] == null ? '' : p[key]).trim() !== ''; }); }
+/** 記録に残す「同意した文」：そのとき✔した文。項目（番号つき）と、✔した保護者・ジム責任者の文 */
+function pledgeAgreedText_(tab, guardian, gym) {
+  return tab.items.map(function (text, i) { return (i + 1) + '. ' + text; }).concat(guardian ? ['【保護者の同意】' + tab.guardian] : [], gym ? ['【ジム責任者の同意】' + tab.gym] : []).join('\n');
+}
+/**
+ * 新しい申込の、誓約書の検査。保存の前（鍵の確認・カウンター・写真の前）に呼ぶ。投げたら、何も書かれない。
+ * 「なし」のとき：誓約書の鍵が付いてきたら断る（古いリンク。誓約したつもりで記録が無い事故を防ぐ）。付いてこなければ null（今までと同じ）。
+ * 「あり」のとき：本番で文の確認が「まだ」→ pledgeconfirm／文の指紋がちがう→ pledgeold／✔の漏れ→ pledge／ジム責任者の欄→ gym・permission。記録に書く内容を返す。
+ */
+function pledgeCheck_(p) {
+  const s = S_();
+  if (!s.pledge) { if (pledgeKeysSent_(p)) throw entryError_('pledge', PLEDGE_CHANGED_, false); return null; }
+  if (p.mode === 'live' && !s.pledgeConfirmed) throw entryError_('pledgeconfirm', PLEDGE_UNCONFIRMED_, false);
+  const tab = s.pledgeTab;
+  if (!tab || !tab.items.length || tab.items.length > PLEDGE_LIMITS_.items) throw adminError_('setup', '「誓約書」タブの文を確認してください。「① 最初の設定」を押してください。');
+  const hash = pledgeHash_(s);
+  if (String(p.pledgeHash == null ? '' : p.pledgeHash) !== hash) throw entryError_('pledgeold', PLEDGE_OLD_, false);
+  if (pledgeLinkStale_(p, s)) throw entryError_('pledgeold', PLEDGE_CHANGED_, false);
+  const expected = tab.items.map(function (_, i) { return String(i + 1); }).join(',');
+  if (String(p.pledge == null ? '' : p.pledge) !== 'yes' || String(p.pledgeItems == null ? '' : p.pledgeItems) !== expected) throw entryError_('pledge', PLEDGE_ITEMS_BAD_, false);
+  const guardian = guardianNeeded_(s.guardianMode, p.age);
+  if (guardian && p.pledgeGuardian !== 'yes') throw entryError_('pledge', PLEDGE_GUARDIAN_BAD_, false);
+  // ジム責任者の欄は、「ジム責任者の同意」が「あり」で、ジム名が「無所属」ではないときだけ求める
+  const unaffiliated = isUnaffiliated_(p.gym), asked = s.gymMode && !unaffiliated;
+  let gymName = unaffiliated ? PLEDGE_UNAFFILIATED_LABEL_ : '', gymPhone = '';
+  if (asked) {
+    gymName = norm_(p.gymName); gymPhone = gymPhoneNormal_(p.gymPhone);
+    if (p.pledgeGym !== 'yes') throw entryError_('gym', PLEDGE_GYM_CHECK_, false);
+    if (!gymName || gymName.length > PLEDGE_GYM_NAME_MAX_) throw entryError_('gym', PLEDGE_GYM_NAME_, false);
+    if (!gymPhone) throw entryError_('gym', PLEDGE_GYM_PHONE_, false);
+    if (p.gymPermission !== 'yes') throw entryError_('permission', PLEDGE_PERMISSION_, false);
+  }
+  return { items: expected, guardian: guardian, gymName: gymName, gymPhone: gymPhone, asked: asked, hash: hash, text: pledgeAgreedText_(tab, guardian, asked) };
+}
+/** 自動テストの1件が誓約書に答えるときの、架空の✔・名前・電話（付けないと、赤い失敗になる）。「なし」のときは何も付けない */
+function selfTestPledge_(s) {
+  if (!s.pledge || !s.pledgeTab) return {};
+  const out = { pledge: 'yes', pledgeItems: s.pledgeTab.items.map(function (_, i) { return String(i + 1); }).join(','), pledgeHash: pledgeHash_(s), pledgeGuardianMode: s.guardianMode, pledgeGymMode: s.gymMode ? 'on' : 'off' };
+  if (guardianNeeded_(s.guardianMode, '20')) out.pledgeGuardian = 'yes';
+  if (s.gymMode) { out.pledgeGym = 'yes'; out.gymName = '自動テスト'; out.gymPhone = '09000000000'; out.gymPermission = 'yes'; }
+  return out;
+}
+/** 誓約の記録に1行書く。同じ受付番号の行があれば、何もしない（再送で行を増やさない）。ジム責任者の名前・電話があるので、ログには出さない */
+function savePledgeRow_(sheet, values, rec) {
+  if (findRow_(sheet, 1, values[0])) return;
+  const width = PLEDGE_HEADERS_.length;
+  const row = [values[0], values[1], values[4], rec.items, rec.guardian ? PLEDGE_YES_ : PLEDGE_NO_NEED_, rec.gymName, rec.gymPhone, rec.asked ? PLEDGE_YES_ : PLEDGE_NO_NEED_, rec.text, rec.hash].map(function (value) { return clean_(value, 2000); });
+  const newRow = sheet.getLastRow() + 1;
+  sheet.getRange(newRow, 1, 1, width).setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, width).setValues([row]);
+  SpreadsheetApp.flush();
+  const saved = findRow_(sheet, 1, values[0]);
+  if (!saved || JSON.stringify(sheet.getRange(saved, 1, 1, width).getDisplayValues()[0].map(retryNorm_)) !== JSON.stringify(row.map(retryNorm_))) throw entryError_('storage', '誓約書の記録の保存を確認できませんでした。', true);
+}
 /** 選手（保護者）に見せる文。見出しやタブの名前は、主催者だけが直せるので、選手には言わない。 */
 const PUBLIC_PROBLEM = 'ただいま受付に問題があります。主催者へご連絡ください。';
 function columnLetter_(index) { let n = index + 1, out = ''; while (n > 0) { const r = (n - 1) % 26; out = String.fromCharCode(65 + r) + out; n = Math.floor((n - 1) / 26); } return out; }
@@ -423,7 +630,7 @@ function adminError_(code, message, detail) { const error = entryError_(code, me
 /** 見出しの問題を、タブの名前・直すマス・あるべき文字つきの文にする。 */
 function headerProblemError_(check) {
   const name = check.name, quoted = '「' + name + '」タブ';
-  const real = name === TABLES[0][0] || name === TABLES[1][0] || name === HANAMICHI_TABLES_[0][0];
+  const real = name === TABLES[0][0] || name === TABLES[1][0] || name === HANAMICHI_TABLES_[0][0] || name === PLEDGE_TABLES_[0][0];
   if (check.state === 'missing') return adminError_('missing', quoted + 'が見つからない（または、空になっている）ので、受付を止めています。「① 最初の設定」を押すと、見出しだけの新しいタブを作ります。' + (real ? '申込が入っていたタブを消したときは、先にジムの担当者に聞いてください。' : ''), { tab: name });
   const letter = columnLetter_(check.index), cell = letter + '1';
   const shown = check.actual === '' ? '（空）' : '「' + check.actual.slice(0, 20) + '」';
@@ -446,6 +653,9 @@ function setupTournament() {
     const fresh = !book.getSheetByName('設定');
     SETTINGS_REBUILT_ = false; SETUP_NOTES_ = [];
     ensureSettingsSheet_(book);
+    SETTINGS_CACHE_ = null;
+    // 「誓約書」＝あり で、タブがまだ無いときだけ、初期の文つきで作る（先に作らないと、「タブがありません」という直しもので止まってしまう）
+    ensurePledgeSheet_(book);
     SETTINGS_CACHE_ = null;
     const problems = settingsProblems_(S_());
     if (problems.length) throw new Error('シートの「設定」タブを直してください。' + problems.join('。') + '。直したら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : SETTINGS_REBUILT_ ? '（「設定」タブが空だったので、作り直しました）' : ''));
@@ -495,7 +705,7 @@ function selfTest_() {
   const resources = checkResources_();
   if (testComplete_(resources.book)) return true;
   const s = S_();
-  saveEntry_(Object.assign({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG }, selfTestHanamichi_(s)));
+  saveEntry_(Object.assign({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG }, selfTestHanamichi_(s), selfTestPledge_(s)));
   if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
   return true;
 }
@@ -542,8 +752,12 @@ function statusInfo_() {
     if (s.logo) info.logo = true;
     if (s.weights.enabled) { info.weightMode = true; info.weights = { enabled: true, divisions: s.weights.divisions.map(function (d) { return { name: d.name, classes: d.classes.slice() }; }) }; }
     if (s.classes.enabled) { info.classMode = true; info.classes = { enabled: true, upper: { name: s.classes.upper.name, condition: s.classes.upper.condition, rule: s.classes.upper.rule }, lower: { name: s.classes.lower.name, condition: s.classes.lower.condition, rule: s.classes.lower.rule }, upperMinWins: s.classes.upperMinWins }; }
+    // 花道のルール：クラス分けが「あり」で、花道の区分があり、問題がないときだけ、1行の文を足す（選手に見せる文。ほかのときは鍵が増えない）
+    if (hanamichiRuleApplies_(s)) info.hanamichiRule = String(s.hanamichiRule).trim();
     // 花道の追加情報が「あり」で、問題がないときだけ、印を1つ足す（個人情報・項目名は返さない）
     if (s.hanamichi) info.hanamichiMode = true;
+    // 誓約書が「あり」で、問題がないときだけ、印と文を足す（文は選手に見せるもの。「なし」のときは鍵が1つも増えない）
+    if (s.pledge) { info.pledgeMode = true; info.pledgeCanon = pledgeCanon_(s); info.pledgeHash = pledgeHash_(s); info.guardianMode = s.guardianMode; info.gymMode = s.gymMode; info.pledgeChecked = s.pledgeConfirmed; }
   }
   return info;
 }
@@ -632,8 +846,13 @@ function doPost(e){
   try{return resultPage_(saveEntry_(p),'',null,p);}
   catch(error){console.error('Tournament OS受付: '+(error.code||'storage'));return resultPage_('',error.code?(error.publicMessage||error.message):'Googleへの保存を最後まで確認できませんでした。',error,p);}
 }
-/** 送られた「upper／lower」の印から、設定タブの今の名前を返す。送られた文字そのものは保存しない。 */
-function classLabel_(p){const c=S_().classes;if(!c.enabled)return'';return p.fighterClass==='upper'?c.upper.name:c.lower.name;}
+/**
+ * 花道の区分を選んだ申込か：クラス分けが「あり」で、選ばれた区分（設定タブにある名前）に「花道」が入っているとき。
+ * 花道の選手には、クラス（A/B）を聞かない：求めない・調べない・送られてきても捨てて、保存するクラスは空にする。
+ */
+function classFree_(p){if(!S_().classes.enabled||!S_().hanamichiRuleRow)return false;const d=findDivision_(norm_(p.division));return Boolean(d)&&isHanamichiName_(d.name);}
+/** 送られた「upper／lower」の印から、設定タブの今の名前を返す。送られた文字そのものは保存しない。花道の区分のときは、送られていても空 */
+function classLabel_(p){const c=S_().classes;if(!c.enabled||classFree_(p))return'';return p.fighterClass==='upper'?c.upper.name:c.lower.name;}
 /** 見えない文字（向きの印・幅ゼロの空白など）を取り、改行を \n にそろえ、前後の空白を取る。画面（申し込みページ）の決まりと同じ。フォームの送信は、改行を \r\n にするので、そろえないと文字数が1つずつ増える。 */
 function norm_(value){return String(value==null?'':value).replace(/\r\n?/g,'\n').replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g,'').trim();}
 const FIELD_JA_={gym:'ジム名',name:'選手名',height:'身長',weight:'体重',record:'戦績',grade:'学年',age:'年齢',comment:'意気込み',musicUrl:'入場曲のリンク',contactName:'お名前',contactPhone:'電話番号',contactEmail:'メールアドレス',photoDataUrl:'写真',requestId:'申込を確認する番号'};
@@ -650,12 +869,13 @@ function emailOk_(v){
 /** クラスが選ばれているか。新しい申込のときだけ調べる（保存ずみの申込の再送は、設定が変わっていても確認だけする）。 */
 function checkClass_(p){
   const cs=S_().classes;
-  if(cs.enabled&&p.fighterClass!=='upper'&&p.fighterClass!=='lower')throw entryError_('class','クラスが選ばれていません。申込ページを開き直して、'+cs.upper.name+'か'+cs.lower.name+'を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
+  if(cs.enabled&&!classFree_(p)&&p.fighterClass!=='upper'&&p.fighterClass!=='lower')throw entryError_('class','クラスが選ばれていません。申込ページを開き直して、'+cs.upper.name+'か'+cs.lower.name+'を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
 }
 /** 保存ずみの申込の再送で、クラスが「変わった」と言うのは、保存した名前がいまも設定にあって、選んだ印とちがうときだけ。 */
 function classRetryOk_(stored,p){
   const c=S_().classes;
-  if(!c.enabled||!stored)return true;
+  // 花道の区分は、クラスを保存しない（送られていても捨てる）ので、くらべるものがない
+  if(!c.enabled||!stored||classFree_(p))return true;
   if(stored!==c.upper.name&&stored!==c.lower.name)return true;
   checkClass_(p);
   return stored===classLabel_(p);
@@ -671,7 +891,7 @@ function findDivision_(name){
 function weightPick_(p){
   if(!S_().weights.enabled)return{division:'',weightClass:''};
   const d=findDivision_(norm_(p.division));
-  if(!d)throw entryError_('weight','区分が選ばれていません。申込ページを開き直して、区分を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
+  if(!d)throw entryError_('weight','出場区分が選ばれていません。申込ページを開き直して、出場区分を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
   if(!d.classes.length)return{division:d.name,weightClass:''};
   const canon=weightCanon_(norm_(p.weightClass)).toLowerCase();
   const found=canon?d.classes.filter(function(c){return c.toLowerCase()===canon;})[0]:'';
@@ -700,7 +920,7 @@ function phoneOk_(raw){
 }
 function validateEntry_(p){
   // 見えない文字・改行（\r\n）をそろえてから調べる。あとで保存する値も、同じそろえかたになる
-  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','division','weightClass'].forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
+  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','division','weightClass'].concat(PLEDGE_POST_KEYS_).forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
   if((p.protocol!=='2'&&p.protocol!=='3')||p.eventId!==S_().eventId||(p.mode!=='test'&&p.mode!=='live'))throw entryError_('event','大会の申し込みリンクが違います。主催者から新しいリンクをもらってください。',false);
   if(p.website)throw entryError_('spam','送信を受け付けられませんでした。',false);
   if(p.consent!=='yes')throw entryError_('consent','個人情報の取扱いへの同意が必要です。申込ページにもどって、同意のチェックを入れてください。',false);
@@ -725,6 +945,9 @@ function saveEntry_(p){
     // 花道の追加情報（設定が「あり」で、花道の区分のときだけ）。タブが無ければ、何も書かずに止まる
     const hn=hanamichiApplies_(p),hnSheet=hn?resources.book.getSheetByName(HANAMICHI_TABLES_[isTest?1:0][0]):null;
     if(hn&&!hnSheet)throw adminError_('setup','花道プロフィールのタブが見つかりません。「① 最初の設定」を押してください。');
+    // 誓約書（「あり」のときだけ）。誓約の記録のタブが無ければ、何も書かずに止まる
+    const plSheet=S_().pledge?resources.book.getSheetByName(PLEDGE_TABLES_[isTest?1:0][0]):null;let pledgeRec=null;
+    if(S_().pledge&&!plSheet)throw adminError_('setup','誓約記録のタブが見つかりません。「① 最初の設定」を押してください。');
     // 本番の受付中に、設定タブが壊れたら（空にされた・名前が同じになった等）、新しい申込を受けない。選手には「少し待って」と言う
     if(!isTest&&settingsProblems_(S_()).length)throw entryError_('setup','ただいま受付を調整しています。少し待ってからもう一度送ってください。',true);
     const existing=findRow_(sheet,18,requestId);let values;
@@ -732,14 +955,19 @@ function saveEntry_(p){
       values=sheet.getRange(existing,1,1,PRIVATE_HEADERS.length).getDisplayValues()[0];
       // 保存のときに付く守りの「'」や、改行の形（CRLF／LF）のちがいは、「変わった」ではない。両方を同じ形にそろえてくらべる
       const same=function(a,b){return JSON.stringify(a.map(retryNorm_))===JSON.stringify(b.map(retryNorm_));};
-      const expected=[String(p.gym).trim(),String(p.name).trim(),S_().grade==='off'?'':String(p.grade||'').trim(),S_().age==='off'?'':String(p.age||'').trim(),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),S_().comment==='off'?'':String(p.comment||'').trim(),S_().music?String(p.musicUrl||'').trim():''];
+      // いまの設定が「なし」の項目（学年・年齢・意気込み・入場曲）は、くらべない（保存したあとに、会長が「なし」に変えても、同じ内容の再送を「変わった」と断らない）。「なし」の項目は、保存したままの値と同じとして扱う
+      const kept=function(off,index,text){return off?String(values[3+index]||''):text;};
+      const expected=[String(p.gym).trim(),String(p.name).trim(),kept(S_().grade==='off',2,String(p.grade||'').trim()),kept(S_().age==='off',3,String(p.age||'').trim()),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),kept(S_().comment==='off',7,String(p.comment||'').trim()),kept(!S_().music,8,String(p.musicUrl||'').trim())];
       if(!same(values.slice(3,12),expected)||!same(values.slice(13,17),[String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p)||!weightRetryOk_(String(values[19]||''),String(values[20]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
       const photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),values[0],p.photoDataUrl,true);
       if(photoUrl!==values[12])throw entryError_('photo','保存済みの写真と申込表が一致しません。主催者へご連絡ください。',false);
+      // 前の送信が、誓約の記録の前で止まっていたら、再送で記録を足す（誓約書の鍵が付いているときだけ。記録がすでにあれば、何もしない）
+      if(plSheet&&!findRow_(plSheet,1,values[0])&&pledgeKeysSent_(p))pledgeRec=pledgeCheck_(p);
     }
     else{
       checkClass_(p);
       const weightChoice=weightPick_(p);
+      pledgeRec=pledgeCheck_(p);
       if(!isTest&&(props.getProperty('accepting')!=='true'||Date.now()>deadlineTime_()))throw entryError_('closed','現在、申し込みを受け付けていません。主催者へご連絡ください。',false);
       if(sheet.getLastRow()>3000)throw entryError_('capacity','受付件数が上限に達しました。主催者へご連絡ください。',false);
       const minute=String(Math.floor(Date.now()/60000)),count=props.getProperty('rateMinute')===minute?Number(props.getProperty('rateCount')||0):0;
@@ -765,6 +993,8 @@ function saveEntry_(p){
     if(!savedRow||JSON.stringify(os.getRange(savedRow,1,1,OS_HEADERS.length).getDisplayValues()[0])!==JSON.stringify(osValuesOf_(values)))throw entryError_('storage','大会用の名簿の保存を確認できませんでした。',true);
     // 既存の行を書いたあとに、花道プロフィールへ1行（同じ受付番号の行があれば、何もしない）
     if(hn)saveHanamichiRow_(hnSheet,values,p);
+    // 誓約の記録は、その次に1行（同じ受付番号の行があれば、何もしない）
+    if(plSheet&&pledgeRec)savePledgeRow_(plSheet,values,pledgeRec);
     if(isTest){props.setProperty('lastTestBuild',RECEPTION_BUILD);props.setProperty('lastTestRequest',requestId);}
     return values[0];
   });
@@ -797,7 +1027,7 @@ function escape_(value){return String(value==null?'':value).replace(/[&<>"']/g,f
 function resultPage_(receiptNo,message,error,p){
   const success=Boolean(receiptNo),retry=!success&&(!error||error.retryable!==false);
   // まだ保存されていないと言い切れる失敗だけ「送れませんでした」。保存ずみかもしれない失敗（再送・写真）は、確認が必要と言う
-  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','weight','hanamichi','closed','capacity','setup','headers','missing','sharing','owner','folder'].indexOf(error.code)>=0;
+  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','weight','hanamichi','closed','capacity','setup','headers','missing','sharing','owner','folder','pledge','pledgeconfirm','pledgeold','gym','permission'].indexOf(error.code)>=0;
   // 色と言葉の約束：成功は緑と ✓、失敗は赤と ✕、確認が必要なのは黄色と ⚠（色だけで伝えない）
   const tone=success?'ok':notSaved?'bad':'warn';
   const mark=success?'✓ ':notSaved?'✕ ':'⚠ ';
@@ -810,7 +1040,9 @@ function resultPage_(receiptNo,message,error,p){
     const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','fighterClass','division','weightClass','photoDataUrl'];
     // 花道の追加情報を聞く申込のときだけ、花道の12項目も、そのまま送り直す（なしのときは、これまでと同じ鍵だけ）
     let hnFields=[];try{if(hanamichiApplies_(p))hnFields=HANAMICHI_ITEMS_.map(function(item){return item.key;});}catch(_){hnFields=[];}
-    retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ内容で、保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.concat(hnFields).map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
+    // 誓約書が「あり」のときだけ、誓約書の鍵も、そのまま送り直す（なしのときは、これまでと同じ鍵だけ）
+    let plFields=[];try{if(S_().pledge)plFields=PLEDGE_POST_KEYS_;}catch(_){plFields=[];}
+    retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ内容で、保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.concat(hnFields,plFields).map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
   const guide=success?'受付番号が出ています。この画面の写真をとってください。この画面は閉じて大丈夫です。':notSaved?'受付番号は出ていません。直せるときは、ブラウザの「戻る」で申込ページにもどって直し、もう一度送ります。直せないときは、下の問い合わせ先へご連絡ください。':'受付番号が出るまで完了ではありません。解決しない場合は、下の問い合わせ先へご連絡ください。';
   const contactLine=contact?'<p>問い合わせ：'+escape_(contact)+'</p>':'';
   return HtmlService.createHtmlOutput('<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:32px 16px;background:#f1f5f9;color:#0f172a;text-align:center}.box{max-width:540px;margin:auto;border:4px solid '+frame+';border-radius:24px;padding:28px;background:'+fill+'}h1{font-size:26px}b{display:block;margin:20px 0;font-size:20px;overflow-wrap:anywhere}button{font-size:18px;font-weight:bold;padding:18px;border:0;border-radius:14px;background:#1d4ed8;color:white}p{line-height:1.8}</style></head><body><main class="box"><h1>'+mark+title+'</h1><b>'+escape_(detail)+'</b>'+retryForm+'<p>'+guide+'</p>'+contactLine+'</main></body></html>').setTitle(title).addMetaTag('viewport','width=device-width,initial-scale=1');
