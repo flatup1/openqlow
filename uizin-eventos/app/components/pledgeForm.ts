@@ -3,7 +3,7 @@
  * 誓約・同意の「文」は、ここにも1字も無い。文はリンクの plt から来る（会長が Google の「誓約書」タブで原本と見比べて直す）。
  * ここにあるのは、操作の言葉（□に✔を入れてください、など）と、いま何が足りないかの数え方だけ。
  */
-import { GYM_NAME_MAX, guardianNeeded, gymPhoneNormal, gymPhoneOk, isUnaffiliated, type GuardianMode, type PledgeConfig } from '../../core/pledge.ts';
+import { GYM_NAME_MAX, guardianNeeded, gymPhoneNormal, gymPhoneOk, type GuardianMode, type PledgeConfig } from '../../core/pledge.ts';
 
 /** ジム責任者の欄の「許可をとっている」念押しのチェックの文字（操作の言葉。会長が直す前提の案）。必ず✔してもらう */
 export const GYM_PERMISSION_LABEL = 'ジム責任者の許可を得て、名前と電話番号を入れています';
@@ -25,8 +25,6 @@ export type PledgePlan = {
   n: number;
   /** 保護者の同意の欄を出す（年齢で決まる。年齢が空・読めないときは出す） */
   guardian: boolean;
-  /** ジム名が「無所属」の言い方（このとき、ジム責任者の欄は出さない・求めない） */
-  unaffiliated: boolean;
   /** ジム責任者の欄を出す */
   gym: boolean;
   /** 本番（live）なのに、会長がまだ文を確認していない：送れない */
@@ -36,13 +34,12 @@ export type PledgePlan = {
   linkGymMode?: boolean;
 };
 
-/** age・gym は、画面の「年齢」「ジム名」の入力（整えたもの）。mode はリンクの mode */
-export function pledgePlan(pledge: PledgeConfig | undefined, age: string, gym: string, mode: 'test' | 'live' | undefined): PledgePlan {
-  if (!pledge) return { on: false, n: 0, guardian: false, unaffiliated: false, gym: false, blocked: false };
-  const unaffiliated = isUnaffiliated(gym);
+/** age は、画面の「年齢」の入力（整えたもの）。mode はリンクの mode。ジム名では変わらない（ジムに入っていない人は、ジム名の欄で断るので、ここまで来ない） */
+export function pledgePlan(pledge: PledgeConfig | undefined, age: string, mode: 'test' | 'live' | undefined): PledgePlan {
+  if (!pledge) return { on: false, n: 0, guardian: false, gym: false, blocked: false };
   return {
-    on: true, n: pledge.items.length, guardian: guardianNeeded(pledge.mode, age), unaffiliated,
-    gym: pledge.gymMode && !unaffiliated, blocked: mode === 'live' && !pledge.confirmed, linkMode: pledge.mode, linkGymMode: pledge.gymMode,
+    on: true, n: pledge.items.length, guardian: guardianNeeded(pledge.mode, age),
+    gym: pledge.gymMode, blocked: mode === 'live' && !pledge.confirmed, linkMode: pledge.mode, linkGymMode: pledge.gymMode,
   };
 }
 

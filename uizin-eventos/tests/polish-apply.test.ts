@@ -354,7 +354,7 @@ test('r2-3 / r2-5 / r2-10 / r2-11 / r2-12 / r2-13 / r2-14 / r2-15 / r2-80 / r2-9
   // r2-14 / r2-15
   assert.match(page, /weight: \{ hint: '試合に出る体重（kg）です。わからない時は、今の体重を入れてください。'/);
   assert.doesNotMatch(page, /試合に出る体重です（わからない時は、今の体重）/, '同じ説明を2回出さない');
-  assert.match(page, /通っているジム・道場の名前です。通っていない時は「無所属」と入れてください。/);
+  assert.match(page, /通っているジム・道場の名前です。ジムに所属していない人は、参加できません。/);
   // r2-93: 「使い道」は見出しとして実在する
   assert.match(page, /<Fold id="privacy-fold" title="使い道" sub="どんな情報を、何のために使いますか？">/);
   assert.match(page, /下の「使い道」と「困ったとき」も、読んでください/);

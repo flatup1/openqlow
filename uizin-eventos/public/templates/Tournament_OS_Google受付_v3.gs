@@ -43,7 +43,7 @@ const SETTING_ROWS = [
   // 誓約書の行（花道の行のあと。既存の行の位置は動かさない）。文は「誓約書」タブに書く（「① 最初の設定」が、「あり」のときにタブを作る）
   ['誓約書', 'なし', 'なし／あり。「あり」にすると、申し込みの最後に、誓約書の□が出ます。選手が□ぜんぶに✔を入れないと、先へ進めません。文は「誓約書」タブに書きます（▼から選びます）'],
   ['保護者の同意', '18歳未満のみ', '18歳未満のみ／全員／なし。「誓約書」が「あり」のときだけ意味があります。「18歳未満のみ」のときは、「年齢」を「必須」か「任意」にしてください（年齢が分からない人には、保護者の同意を求めます）'],
-  ['ジム責任者の同意', 'あり', 'あり／なし。「誓約書」が「あり」のときだけ意味があります。「あり」だと、ジム名が「無所属」ではない選手に、ジム責任者のお名前・携帯電話・許可の確認を入れてもらいます'],
+  ['ジム責任者の同意', 'あり', 'あり／なし。「誓約書」が「あり」のときだけ意味があります。「あり」だと、選手に、ジム責任者のお名前・携帯電話・許可の確認を入れてもらいます'],
   ['誓約書の文の確認', 'まだ', 'まだ／済み。「誓約書」タブの文を、原本と見比べて、まちがいがなければ「済み」にします。「まだ」のあいだは、本番の申し込みを受け付けません（テスト用は動きます）。文を直したら、新しい申し込みリンクを作ってください'],
   // 花道のルールの行（誓約書の行のあと。既存の行の位置は動かさない）。▼の選択欄は無い（長い文を1つ書く）。クラス分けが「あり」で、花道の区分があるときだけ使う
   ['花道のルール', HANAMICHI_RULE_INITIAL, '原本から写した仮の文です。会長が確認してください。クラス分けが「あり」で、区分の名前に「花道」が入っているときだけ使います。花道の選手には、クラスを選ばせず、この1行だけを見せます。120文字までです']
@@ -450,11 +450,13 @@ const PLEDGE_HEADERS_ = ['受付番号', '申込日時', '選手名', '確認し
 const PLEDGE_TABLES_ = [['誓約記録', PLEDGE_HEADERS_, true], ['テスト誓約記録', PLEDGE_HEADERS_, true]];
 /** 申し込みページが送る誓約書の鍵（「なし」のときは1つも付いてこない） */
 const PLEDGE_POST_KEYS_ = ['pledge', 'pledgeItems', 'pledgeGuardian', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode'];
-/** ジム名が「無所属」の言い方（全角・半角をそろえ、空白を取ったあと）。core/pledge.ts の UNAFFILIATED_NAMES と同じ */
-const PLEDGE_UNAFFILIATED_ = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し'];
+/** ジムに入っていない人の言い方（全角・半角をそろえ、空白を取ったあと）。そのもの＝_ ／ ふくむ＝_PHRASES_。core/pledge.ts の UNAFFILIATED_NAMES・UNAFFILIATED_PHRASES と同じ。ジムに所属していない人は参加できないので、断る */
+const PLEDGE_UNAFFILIATED_ = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'ない', '無', 'フリー', '個人'];
+const PLEDGE_UNAFFILIATED_PHRASES_ = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', '所属無し', 'しょぞくなし', 'ショゾクナシ', '所属してない', '所属していない', '所属してません', '所属していません', '所属しておりません', 'ジムなし', 'ジム無し', '道場なし', '道場無し', '通ってない', '通っていない'];
+/** 断る言葉（core/pledge.ts の UNAFFILIATED_TEXT と同じ。あとに「申込ページにもどって」を足す） */
+const UNAFFILIATED_TEXT_ = 'ジムに所属していない人は、参加できません。通っているジム・道場の名前を入れてください。';
 const PLEDGE_YES_ = 'はい';
 const PLEDGE_NO_NEED_ = '不要';
-const PLEDGE_UNAFFILIATED_LABEL_ = '（無所属）';
 const PLEDGE_ITEMS_BAD_ = '誓約書の確認（✔）が、すべてそろっていません。申し込みページにもどって、各項目の□に✔を入れてください。';
 const PLEDGE_GUARDIAN_BAD_ = '保護者（連帯責任者）の同意の確認（✔）が入っていません。申し込みページにもどって、✔を入れてください。';
 const PLEDGE_CHANGED_ = '誓約書の設定が、リンクを作ったあとで変わりました。主催者から、新しい申し込みリンクをもらってください。';
@@ -513,9 +515,10 @@ function gymPhoneNormal_(raw) {
   return /^0[789]0\d{8}$/.test(d) ? d : '';
 }
 function gymPhoneOk_(raw) { return gymPhoneNormal_(raw) !== ''; }
-/** ジム名が「無所属」の言い方か（core/pledge.ts の isUnaffiliated と同じ） */
+/** ジム名が「ジムに入っていない」の言い方か（core/pledge.ts の isUnaffiliated と同じ） */
 function isUnaffiliated_(gym) {
-  return PLEDGE_UNAFFILIATED_.indexOf(String(gym == null ? '' : gym).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').replace(/\s+/g, '')) >= 0;
+  const key = String(gym == null ? '' : gym).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').replace(/\s+/g, '');
+  return PLEDGE_UNAFFILIATED_.indexOf(key) >= 0 || PLEDGE_UNAFFILIATED_PHRASES_.some(function (phrase) { return key.indexOf(phrase) >= 0; });
 }
 /**
  * リンクを作ったあとで、「保護者の同意」「ジム責任者の同意」が厳しくなっていないか。ページが送る pledgeGuardianMode・pledgeGymMode は、リンクの plg・plm と同じ値。
@@ -525,7 +528,7 @@ function isUnaffiliated_(gym) {
 function pledgeLinkStale_(p, s) {
   const mode = String(p.pledgeGuardianMode == null ? '' : p.pledgeGuardianMode).trim(), gymMode = String(p.pledgeGymMode == null ? '' : p.pledgeGymMode).trim();
   if ((mode === 'none' || mode === 'under18' || mode === 'all') && guardianNeeded_(s.guardianMode, p.age) && !guardianNeeded_(mode, p.age)) return true;
-  return gymMode === 'off' && s.gymMode && !isUnaffiliated_(p.gym);
+  return gymMode === 'off' && s.gymMode;
 }
 /** 誓約書の鍵が1つでも（空でなく）付いてきたか */
 function pledgeKeysSent_(p) { return PLEDGE_POST_KEYS_.some(function (key) { return String(p[key] == null ? '' : p[key]).trim() !== ''; }); }
@@ -551,9 +554,9 @@ function pledgeCheck_(p) {
   if (String(p.pledge == null ? '' : p.pledge) !== 'yes' || String(p.pledgeItems == null ? '' : p.pledgeItems) !== expected) throw entryError_('pledge', PLEDGE_ITEMS_BAD_, false);
   const guardian = guardianNeeded_(s.guardianMode, p.age);
   if (guardian && p.pledgeGuardian !== 'yes') throw entryError_('pledge', PLEDGE_GUARDIAN_BAD_, false);
-  // ジム責任者の欄は、「ジム責任者の同意」が「あり」で、ジム名が「無所属」ではないときだけ求める
-  const unaffiliated = isUnaffiliated_(p.gym), asked = s.gymMode && !unaffiliated;
-  let gymName = unaffiliated ? PLEDGE_UNAFFILIATED_LABEL_ : '', gymPhone = '';
+  // ジム責任者の欄は、「ジム責任者の同意」が「あり」のときだけ求める（ジムに入っていない人は、申込の時点で断っている）
+  const asked = s.gymMode;
+  let gymName = '', gymPhone = '';
   if (asked) {
     gymName = norm_(p.gymName); gymPhone = gymPhoneNormal_(p.gymPhone);
     if (p.pledgeGym !== 'yes') throw entryError_('gym', PLEDGE_GYM_CHECK_, false);
@@ -927,6 +930,8 @@ function validateEntry_(p){
   const request=text_(p,'requestId',100,true);if(!/^[\w-]{32,100}$/.test(request))throw entryError_('input','申込を確認する番号が正しくありません。',false);
   const limits={gym:120,name:80,height:10,weight:10,record:300,contactName:100,contactPhone:30,contactEmail:200,photoDataUrl:1800100};
   Object.keys(limits).forEach(function(key){text_(p,key,limits[key],true);});
+  // ジムに所属していない人は参加できない（「無所属」「なし」などの言い方を断る。画面でも同じ言葉で断っている）
+  if(isUnaffiliated_(p.gym))throw entryError_('input','申込ページにもどって、ジム名を直してください。'+UNAFFILIATED_TEXT_,false);
   const height=Number(p.height),weight=Number(p.weight);
   if(!Number.isFinite(height)||height<50||height>250||!Number.isFinite(weight)||weight<10||weight>250||!phoneOk_(p.contactPhone)||!emailOk_(p.contactEmail))throw entryError_('input','身長・体重・電話番号・メールアドレスを確認してください。',false);
   if(p.age&&(!/^\d{1,3}$/.test(p.age)||Number(p.age)<1||Number(p.age)>120))throw entryError_('input','年齢を確認してください。',false);

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkPledgeTexts, GYM_NAME_MAX, guardianNeeded, gymPhoneNormal, gymPhoneOk, isUnaffiliated, packPledge, parsePledgeCanon, PLEDGE_ERROR_CODES, PLEDGE_LIMITS, PLEDGE_LINK_KEYS, PLEDGE_POST_KEYS, UNAFFILIATED_NAMES, unpackPledge, type GuardianMode, type PledgeConfig } from '../core/pledge.ts';
+import { checkPledgeTexts, GYM_NAME_MAX, guardianNeeded, gymPhoneNormal, gymPhoneOk, isUnaffiliated, packPledge, parsePledgeCanon, PLEDGE_ERROR_CODES, PLEDGE_LIMITS, PLEDGE_LINK_KEYS, PLEDGE_POST_KEYS, UNAFFILIATED_NAMES, UNAFFILIATED_PHRASES, UNAFFILIATED_TEXT, unpackPledge, type GuardianMode, type PledgeConfig } from '../core/pledge.ts';
 
 const ITEMS = ['テスト用の文です1', 'テスト用の文です2', 'テスト用の文です3'];
 /** 文字列を、packPledge と同じ詰め方（'u' + base64url(UTF-16BE)）にする。Node の道具で作るので、core の実装とは別の道 */
@@ -130,13 +130,16 @@ test('gymPhoneOk: 携帯（070・080・090で始まる11けた）。全角・ハ
   for (const s of no) assert.equal(gymPhoneNormal(s), '', JSON.stringify(s));
 });
 
-test('isUnaffiliated: 無所属／むしょぞく／ムショゾク／所属なし／なし／無し（全角・半角・空白・見えない文字をそろえたあと）。ふつうのジム名は違う', () => {
-  assert.deepEqual([...UNAFFILIATED_NAMES], ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し']);
-  const yes = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', ' 無所属 ', '\u3000無所属\u3000', '無 所 属', '無\u3000所属', '無\u200B所属', '\u202E無所属', 'ﾑｼｮｿﾞｸ', 'む しょ ぞく', '所属 なし', '無\n所属', 'ムショゾク\t'];
-  const no = ['', ' ', '無所属ジム', 'ジム無所属', '無所属です', '無所属。', '所属', '所属無し', 'しょぞくなし', 'ショゾクナシ', 'なしジム', '架空ジムA', 'ＡＢＣ', 'none', '無所属1', '無職'];
+test('isUnaffiliated: ジムに入っていない言い方（無所属／むしょぞく／所属なし／なし／フリー／個人／ジムなし／通っていない など）。全角・半角・空白・見えない文字をそろえたあと。ふつうのジム名は違う', () => {
+  assert.deepEqual([...UNAFFILIATED_NAMES], ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'ない', '無', 'フリー', '個人']);
+  assert.ok(UNAFFILIATED_PHRASES.includes('無所属') && UNAFFILIATED_PHRASES.includes('通っていない'));
+  const yes = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'ない', '無', 'フリー', '個人', ' 無所属 ', '\u3000無所属\u3000', '無 所 属', '無\u3000所属', '無\u200B所属', '\u202E無所属', 'ﾑｼｮｿﾞｸ', 'む しょ ぞく', '所属 なし', '無\n所属', 'ムショゾク\t',
+    '無所属ジム', 'ジム無所属', '無所属です', '無所属。', '所属無し', 'しょぞくなし', 'ショゾクナシ', '所属してない', '所属していません', 'ジムなし', 'ジム無し', '道場なし', '通っていない', '通ってないです', '無所属1'];
+  const no = ['', ' ', '所属', 'なしジム', '架空ジムA', 'ＡＢＣ', 'none', '無職', 'フラットアップジム', 'ナイスジム', '個人レッスンジム'];
   for (const s of yes) assert.equal(isUnaffiliated(s), true, JSON.stringify(s));
   for (const s of no) assert.equal(isUnaffiliated(s), false, JSON.stringify(s));
   for (const s of [undefined, null, 5] as unknown as string[]) assert.equal(isUnaffiliated(s), false);
+  assert.equal(UNAFFILIATED_TEXT, 'ジムに所属していない人は、参加できません。通っているジム・道場の名前を入れてください。');
 });
 
 test('文のきまり: core/pledge.ts と、アプリのコード（app・core・tests・scripts）は、誓約・同意の文を持たない。文は .gs の初期値と docs だけ', () => {

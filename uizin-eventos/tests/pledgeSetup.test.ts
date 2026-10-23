@@ -78,7 +78,7 @@ test('鎖: 3つの設定（保護者の同意・ジム責任者の同意・確�
 
 test('鎖（全部の組み合わせ）: 申し込みページの plan が「全部✔・入力ずみ」と言うとき、本物の .gs は保存する。記録の「保護者の同意」「ジム責任者」「許可の念押し」は、ページの plan と同じ', () => {
   const ages = ['17', '18', '1', '120', ''];
-  const gyms = ['架空ジムA', '無所属', 'ﾑｼｮｿﾞｸ', '　所属　なし　', 'なし'];
+  const gyms = ['架空ジムA', '架空ジムB', 'ＡＢＣジム', '　架空　ジムC　', 'ナイスジム'];
   let saved = 0;
   for (const guardian of ['18歳未満のみ', '全員', 'なし']) {
     for (const gymSetting of ['あり', 'なし']) {
@@ -86,7 +86,7 @@ test('鎖（全部の組み合わせ）: 申し込みページの plan が「全
         for (const gym of gyms) {
           const h = live({ 年齢: '任意', [R.guardian]: guardian, [R.gym]: gymSetting });
           const config = publicEntryConfig(hashOf(h));
-          const plan = pledgePlan(config.pledge, age, gym, config.mode);
+          const plan = pledgePlan(config.pledge, age, config.mode);
           const answers = complete(plan);
           assert.equal(pledgeLockReason(plan, answers), '', '全部✔なら止めない');
           const label = [guardian, gymSetting, age, gym].join(' / ');
@@ -95,7 +95,7 @@ test('鎖（全部の組み合わせ）: 申し込みページの plan が「全
           const row = json(h.rows(REC).at(-1));
           assert.equal(row[0], receipt);
           assert.equal(row[4], plan.guardian ? 'はい' : '不要', label + '：保護者の同意はページの plan と同じ');
-          assert.equal(row[5], plan.gym ? GYM_NAME : plan.unaffiliated ? '（無所属）' : '', label + '：ジム責任者の名前');
+          assert.equal(row[5], plan.gym ? GYM_NAME : '', label + '：ジム責任者の名前');
           assert.equal(row[6], plan.gym ? GYM_PHONE : '', label + '：ジム責任者の電話');
           assert.equal(row[7], plan.gym ? 'はい' : '不要', label + '：許可の念押し');
           assert.equal(row[9], config.pledgeHash, label + '：記録の指紋はリンクの指紋');
@@ -123,11 +123,11 @@ test('鎖（止まる側）: 申し込みページが「🔒 止める」と言�
   ];
   let ran = 0;
   for (const [label, damage, applies, code] of cases) {
-    for (const [age, gym] of [['17', '架空ジムA'], ['20', '架空ジムA'], ['', '架空ジムA'], ['17', '無所属']]) {
+    for (const [age, gym] of [['17', '架空ジムA'], ['20', '架空ジムA'], ['', '架空ジムA'], ['17', '架空ジムB']]) {
       const h = live({ 年齢: '任意', [R.guardian]: '全員' });
       h.setSetting(R.guardian, age === '20' ? '18歳未満のみ' : '全員');
       const config = publicEntryConfig(hashOf(h));
-      const plan = pledgePlan(config.pledge, age, gym, config.mode);
+      const plan = pledgePlan(config.pledge, age, config.mode);
       if (!applies(plan)) continue;
       const answers = damage(complete(plan), plan);
       // ページが止める道は2つ：押せない（🔒＋理由）か、押すと赤い✕が欄を指す（長すぎは、入れたすぐあとに赤い）。どちらもあれば、送られない
@@ -147,7 +147,7 @@ test('鎖: 会長の確認が「まだ」→ ping の pledgeChecked が false �
   assert.equal(pingOf(h).pledgeChecked, false);
   const liveConfig = publicEntryConfig(hashOf(h, 'live')), testConfig = publicEntryConfig(hashOf(h, 'test'));
   assert.equal(liveConfig.pledge!.confirmed, false);
-  const livePlan = pledgePlan(liveConfig.pledge, '20', '架空ジムA', 'live'), testPlan = pledgePlan(testConfig.pledge, '20', '架空ジムA', 'test');
+  const livePlan = pledgePlan(liveConfig.pledge, '20', 'live'), testPlan = pledgePlan(testConfig.pledge, '20', 'test');
   assert.equal(livePlan.blocked, true); assert.equal(testPlan.blocked, false);
   const error = thrown(() => h.call('saveEntry_', { ...h.params('live', { age: '20' }), ...pledgePost(livePlan, complete(livePlan), liveConfig.pledgeHash!) }));
   assert.equal(error.code, 'pledgeconfirm'); assert.equal(error.retryable, false);
@@ -157,7 +157,7 @@ test('鎖: 会長の確認が「まだ」→ ping の pledgeChecked が false �
   assert.equal(h.rows(REC_TEST).length, 3, '自動テストの1件と、いまのテストの1件');
   // 会長が「済み」にして、新しいリンクを作ると、本番も通る
   h.setSetting(R.confirm, '済み');
-  const fresh = publicEntryConfig(hashOf(h, 'live')), plan = pledgePlan(fresh.pledge, '20', '架空ジムA', 'live');
+  const fresh = publicEntryConfig(hashOf(h, 'live')), plan = pledgePlan(fresh.pledge, '20', 'live');
   assert.equal(plan.blocked, false);
   assert.ok(h.call('saveEntry_', { ...h.params('live', { age: '20' }), ...pledgePost(plan, complete(plan), fresh.pledgeHash!) }));
 });
@@ -167,30 +167,31 @@ test('鎖: 会長が「誓約書」タブの文を直すと、指紋が変わる
   const oldConfig = publicEntryConfig(hashOf(h)), oldHash = pingOf(h).pledgeHash;
   fillTab(h, [...ITEMS.slice(0, 4), 'テスト用の文です5（直した）']);
   assert.notEqual(pingOf(h).pledgeHash, oldHash);
-  const plan = pledgePlan(oldConfig.pledge, '20', '架空ジムA', 'live');
+  const plan = pledgePlan(oldConfig.pledge, '20', 'live');
   const before = JSON.stringify([...h.book.sheets.entries()].map(([n, s]: [string, any]) => [n, s.rows]));
   const error = thrown(() => h.call('saveEntry_', { ...h.params('live', { age: '20' }), ...pledgePost(plan, complete(plan), oldConfig.pledgeHash!) }));
   assert.equal(error.code, 'pledgeold'); assert.equal(error.message, '誓約書の文が、リンクを作ったあとで変わりました。主催者から、新しい申し込みリンクをもらってください。');
   assert.equal(JSON.stringify([...h.book.sheets.entries()].map(([n, s]: [string, any]) => [n, s.rows])), before);
   const fresh = publicEntryConfig(hashOf(h));
   assert.equal(fresh.pledgeHash, pingOf(h).pledgeHash); assert.equal(fresh.pledge!.items[4], 'テスト用の文です5（直した）');
-  const plan2 = pledgePlan(fresh.pledge, '20', '架空ジムA', 'live');
+  const plan2 = pledgePlan(fresh.pledge, '20', 'live');
   assert.ok(h.call('saveEntry_', { ...h.params('live', { age: '20' }), ...pledgePost(plan2, complete(plan2), fresh.pledgeHash!) }));
 });
 
 test('鎖: ページが送る鍵は、core の PLEDGE_POST_KEYS の順の部分集合で、本物の .gs がぜんぶ読む鍵。「なし」のリンクでは、ページは鍵を1つも足さない', () => {
   const h = live();
-  const config = publicEntryConfig(hashOf(h)), plan = pledgePlan(config.pledge, '17', '架空ジムA', 'live');
+  const config = publicEntryConfig(hashOf(h)), plan = pledgePlan(config.pledge, '17', 'live');
   const keys = Object.keys(pledgePost(plan, complete(plan), config.pledgeHash!));
   assert.deepEqual(keys, [...PLEDGE_POST_KEYS], '保護者もジム責任者も要るときは10こ全部、この順');
-  const needLess = pledgePlan(config.pledge, '20', '無所属', 'live');
-  const less = Object.keys(pledgePost(needLess, complete(needLess), config.pledgeHash!));
+  const lessLive = live({ [R.gym]: 'なし' }), lessConfig = publicEntryConfig(hashOf(lessLive));
+  const needLess = pledgePlan(lessConfig.pledge, '20', 'live');
+  const less = Object.keys(pledgePost(needLess, complete(needLess), lessConfig.pledgeHash!));
   assert.deepEqual(less, ['pledge', 'pledgeItems', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode'], '要らない欄の鍵は、鍵ごと無い（リンクの設定を返す2つは、いつも付く）');
   for (const key of PLEDGE_POST_KEYS) assert.ok(script.includes("'" + key + "'"), key + ' は .gs の鍵の一覧にある');
   const off = harness(); off.ready({ 階級分け: 'あり' }); off.call('openEntries');
   const offConfig = publicEntryConfig(publicEntryHash(entryConfigFromPing(readPing(off), ENDPOINT, 'live')));
   assert.equal(offConfig.pledge, undefined); assert.equal(offConfig.pledgeHash, undefined);
-  assert.deepEqual(pledgePost(pledgePlan(offConfig.pledge, '17', '架空ジムA', 'live'), blankPledgeAnswers(), ''), {});
+  assert.deepEqual(pledgePost(pledgePlan(offConfig.pledge, '17', 'live'), blankPledgeAnswers(), ''), {});
 });
 
 test('鎖: 「なし」（初期値）→ ping に鍵が無い → リンクに pl で始まる鍵が無い → 診断に何も足さない。誓約書の記録のタブも無い', () => {
@@ -368,7 +369,7 @@ test('文書: 説明書に、会長の手順（3-3の手順13の4）と、選手
   // 画面の赤い✕の文は、core の定数と1字も違わない
   assert.ok(steps.includes(PLEDGE_UNCONFIRMED_ADVICE) && steps.includes(PLEDGE_BLOCKED_TEXT));
   const player = part('### 4-3の4　誓約書の□に✔を入れる', '### 4-4　');
-  for (const word of ['それぞれの□に、✔を入れてください。ぜんぶ入れないと、先へ進めません。', '無所属', '許可の□', PLEDGE_BLOCKED_TEXT, '「誓約記録」', '全部の□に✔を入れるまで、先へ進めません']) assert.ok(player.includes(word), word);
+  for (const word of ['それぞれの□に、✔を入れてください。ぜんぶ入れないと、先へ進めません。', 'ジムに入っていない人は、参加できません', '許可の□', PLEDGE_BLOCKED_TEXT, '「誓約記録」', '全部の□に✔を入れるまで、先へ進めません']) assert.ok(player.includes(word), word);
   assert.ok(manual.includes('  - 4-3の4　誓約書の□に✔を入れる\n'), 'もくじ');
   assert.equal((manual.match(/^### 4-3の4　/gm) ?? []).length, 1);
   assert.ok(manual.includes('B2からB35まで、**34行**') && !/B2からB30まで|\*\*29行\*\*|A列に29行/.test(manual), '設定タブの行の数');

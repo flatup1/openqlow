@@ -2,7 +2,7 @@
  * Browser checks for the 誓約書 (pledge) card on the public apply page (/apply/):
  * the card sits after 連絡先 and only appears when the link carries pl=on; N required boxes (id f-pledgeN, the text exactly as in the link,
  * no numbers added); the guardian box comes and goes with the age; the gym-representative box (read-only gym name, name, mobile phone,
- * the permission tick, the consent tick) comes and goes with the gym name and is not asked for 「無所属」; the review button is grey 🔒 with a reason
+ * the permission tick, the consent tick) is asked of everyone (a gym name like 「無所属」 is refused in the gym field: people with no gym cannot take part); the review button is grey 🔒 with a reason
  * until every box is ticked; exactly one 👉 per state; the review rows; the POST keys exist only when they apply; on a live link that the
  * chairman has not confirmed (plc=off) the send is blocked (red ✕ + grey 🔒). With the setting OFF (no pl key) the page and its POST are the old ones.
  * Local-only: every request that leaves 127.0.0.1 is aborted and counted as a violation, except the apply form's POST to the
@@ -422,7 +422,7 @@ await scenario('E', 'guardian box: shown under 18 or when the age is empty / unr
 });
 
 /* ───────────────────────── F: the gym representative box ───────────────────────── */
-await scenario('F', 'gym representative: read-only gym name, name and mobile phone, the permission tick; not asked for 無所属', [DESKTOP, PHONE], async () => {
+await scenario('F', 'gym representative: read-only gym name, name and mobile phone, the permission tick', [DESKTOP, PHONE], async () => {
   const ctx = await newCtx(DESKTOP);
   const page = await openApply(ctx, hashFor());
   const box = () => page.locator('#pledge-gym-box').count();
@@ -464,35 +464,41 @@ await scenario('F', 'gym representative: read-only gym name, name and mobile pho
   await ctx.close();
 });
 
-/* ───────────────────────── G: 無所属 and the gym name changing under the box ───────────────────────── */
-await scenario('G', '無所属 is not asked for the gym box; changing the gym name shows/hides the box at once and drops what was typed', [DESKTOP, PHONE], async () => {
+/* ───────────────────────── G: people with no gym cannot take part ───────────────────────── */
+await scenario('G', '無所属 and the like are refused in the gym field (red ✕, cannot be reviewed or sent); the gym box stays; a real gym name works again at once', [DESKTOP, PHONE], async () => {
   const ctx = await newCtx(DESKTOP);
   const page = await openApply(ctx, hashFor());
   await fillBase(page, { gym: '架空ジム', age: '45' });
   await fillPledge(page);
   check((await page.locator('#pledge-gym-box').count()) === 1 && (await ticked(page, 'gymPermission')), 'G the gym box is filled and ticked');
   const gymInput = page.getByLabel('ジム名 必須', { exact: true });
-  for (const name of ['無所属', ' 無所属 ', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', '無所属']) {
+  const REFUSAL = 'ジムに所属していない人は、参加できません。通っているジム・道場の名前を入れてください。';
+  check(!(await bodyText(page)).includes('無所属'), 'G the page never invites 「無所属」 (no such word on the page)');
+  for (const name of ['無所属', ' 無所属 ', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'フリー', 'ジムなし', '通っていない']) {
     await gymInput.fill('架空ジム');
     await gymInput.fill(name);
-    check((await page.locator('#pledge-gym-box').count()) === 0, 'G gym "' + name.trim() + '": the box is gone at once');
-    check((await page.locator('#f-gymName').count()) === 0 && (await page.locator('#f-gymPhone').count()) === 0, 'G gym "' + name.trim() + '": no name/phone field');
+    await page.locator('#f-name').focus();
+    await settle(150);
+    const err = await textOf(page, '#f-gym-err');
+    check(err.includes('✕') && err.includes(REFUSAL), 'G gym "' + name.trim() + '": red ✕ with the refusal (' + short(err, 50) + ')');
+    check((await page.locator('#pledge-gym-box').count()) === 1 && (await page.locator('#f-gymName').count()) === 1, 'G gym "' + name.trim() + '": the gym box stays (it does not depend on the gym name)');
   }
-  const lock = await reviewLock(page);
-  check(lock && !lock.locked && lock.reason === '', 'G 無所属: nothing more is asked, not locked (' + (lock && lock.reason) + ')');
-  check(!(await page.locator('#f-consent-note').innerText()).includes('ジム責任者'), 'G 無所属: the sentence about what is collected no longer names the gym representative');
-  // back to a normal gym: the box is back and EMPTY (what was typed is gone)
-  await gymInput.fill('架空ジム');
-  check((await page.locator('#pledge-gym-box').count()) === 1, 'G a normal gym again: the box is back');
-  check((await page.locator('#f-gymName').inputValue()) === '' && (await page.locator('#f-gymPhone').inputValue()) === '' && !(await ticked(page, 'gymPermission')) && !(await ticked(page, 'pledgeGym')), 'G … and empty: name, phone and both ticks were dropped');
-  check((await reviewLock(page)).locked, 'G the review is locked again until the gym box is filled');
-  // 無所属 → send: no gym key, none of the dropped values
+  // what was typed in the gym box is NOT dropped by a wrong gym name
   await gymInput.fill('無所属');
+  check((await page.locator('#f-gymName').inputValue()) === GYM_NAME && (await ticked(page, 'gymPermission')) && (await ticked(page, 'pledgeGym')), 'G the box keeps what was typed while the gym name is wrong');
+  // review is refused: stays on the form, red ✕ points at the gym field, nothing is sent
+  const sent = ctx.__posts.length;
+  await pressReview(page);
+  await settle(300);
+  check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'G with 無所属 the review screen does not open');
+  check((await textOf(page, '#f-gym-err')).includes(REFUSAL), 'G … and the refusal is still on the gym field');
+  check(ctx.__posts.length === sent, 'G … and nothing was sent');
+  // back to a real gym: the red goes, review opens, the POST has the gym keys
+  await gymInput.fill('架空ジム');
+  await settle(150);
+  check((await page.locator('#f-gym-err').count()) === 0, 'G a real gym name: the red ✕ is gone at once');
   const post = await sendIt(page, ctx);
-  const body = ctx.__postBodies[ctx.__postBodies.length - 1] || '';
-  check(post && !post.has('gymName') && !post.has('gymPhone') && !post.has('gymPermission') && !post.has('pledgeGym'), '無所属 POST has no gym key (' + pledgeKeysOf(post).join(',') + ')');
-  check(!body.includes(encodeURIComponent(GYM_NAME)) && !body.includes(GYM_PHONE), 'G the typed name and phone are not in the POST');
-  check(post && post.get('pledge') === 'yes' && post.get('pledgeItems') === '1,2,3,4,5', 'G the pledge itself is still sent');
+  check(post && post.get('gym') === '架空ジム' && post.get('gymName') === GYM_NAME && post.get('gymPhone') === GYM_PHONE && post.get('gymPermission') === 'yes' && post.get('pledgeGym') === 'yes', 'G the POST has the gym keys (' + pledgeKeysOf(post).join(',') + ')');
   await ctx.close();
   // plm=off: no gym box at all, no gym key
   const ctx2 = await newCtx(DESKTOP);
@@ -788,11 +794,11 @@ await scenario('R5', 'the guardian box that appears only because the age is empt
   await ctx2.close();
 });
 
-await scenario('R6', 'the header number is the number NOW; a link whose count can change says so (出場区分・年齢・ジム名). A link with none of it says nothing extra', [PHONE, SMALL], async (vp) => {
+await scenario('R6', 'the header number is the number NOW; a link whose count can change says so (出場区分・年齢). A link with none of it says nothing extra', [PHONE, SMALL], async (vp) => {
   const variants = [
-    ['pledge under18 + gym', hashFor(), ['年齢', 'ジム名']],
+    ['pledge under18 + gym', hashFor(), ['年齢']],
     ['pledge all, no gym', hashFor({}, { mode: 'all', gymMode: false }), []],
-    ['pledge none, gym', hashFor({}, { mode: 'none' }), ['ジム名']],
+    ['pledge none, gym', hashFor({}, { mode: 'none' }), []],
     ['pledge none, no gym', hashFor({}, { mode: 'none', gymMode: false }), []],
     ['花道 + weights', publicEntryHash({ ...baseCfg, weights: WEIGHTS, hanamichi: true }), ['出場区分']],
     ['old link (nothing new)', plainHash(), []],

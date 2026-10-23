@@ -26,7 +26,7 @@
 import assert from 'node:assert/strict';
 import { DRAFT_FIELDS, DRAFT_TTL_MS, NEVER_STORED, NEXT_NEVER_STORED, NEXT_TTL_MS } from '../core/applyDraft.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
-import { HANAMICHI_KEYS } from '../core/hanamichi.ts';
+import { HANAMICHI_ASKED_ITEMS } from '../core/hanamichi.ts';
 import { publicEntryHash } from '../core/publicEntry.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -120,9 +120,11 @@ async function fillAthlete(page, a = ATHLETE, { division = '一般男子', weigh
   }
   await page.getByLabel('戦績 必須', { exact: true }).fill(a.record);
   if (cls) await page.locator('input[type="radio"][name="fighterClass"][value="' + cls + '"]').check();
-  await page.getByLabel('学年 必須', { exact: true }).fill(a.grade);
-  await page.getByLabel('年齢 必須', { exact: true }).fill(a.age);
-  await page.getByLabel('意気込み 必須', { exact: true }).fill(a.comment);
+  // 花道の区分では、学年・年齢・意気込みは画面に出ない（花道のときは、生年月日・メッセージから作る）
+  for (const [label, value] of [['学年 必須', a.grade], ['年齢 必須', a.age], ['意気込み 必須', a.comment]]) {
+    const field = page.getByLabel(label, { exact: true });
+    if ((await field.count()) > 0) await field.fill(value);
+  }
   await page.getByLabel('入場曲のリンク 必須', { exact: true }).fill(a.musicUrl);
 }
 async function fillContact(page, c = CONTACT, { consent = true } = {}) {
@@ -143,7 +145,8 @@ async function fillAll(page, over = {}) {
   await settle(150);
 }
 async function fillHn(page) {
-  for (const key of HANAMICHI_KEYS) { if (key !== 'hnBirth' && SECRET_HN[key] !== undefined) await page.locator('#f-' + key).fill(SECRET_HN[key]); }
+  // リングネーム・そのフリガナは、選手名から作る（欄は無い）。残りの花道の欄だけ入れる
+  for (const key of HANAMICHI_ASKED_ITEMS.map((item) => item.key)) { if (key !== 'hnBirth' && SECRET_HN[key] !== undefined) await page.locator('#f-' + key).fill(SECRET_HN[key]); }
   await page.locator('#f-hnBirth').selectOption('1971');
   await page.locator('#f-hnBirthM').selectOption('3');
   await page.locator('#f-hnBirthD').selectOption('9');
@@ -310,7 +313,10 @@ await scenario('B', '消す deletes the draft; reload shows no banner', [DESKTOP
   await fillAthlete(page);
   await settle(900);
   check((await readKey(page, DRAFT())) !== null, 'B typed again: a draft');
-  for (const label of ['ジム名 必須', '選手名 必須', '身長（cm）必須', '体重（kg）必須', '戦績 必須', '学年 必須', '年齢 必須', '意気込み 必須', '入場曲のリンク 必須']) await page.getByLabel(label, { exact: true }).fill('');
+  for (const label of ['ジム名 必須', '選手名 必須', '身長（cm）必須', '体重（kg）必須', '戦績 必須', '学年 必須', '年齢 必須', '意気込み 必須', '入場曲のリンク 必須']) {
+    const field = page.getByLabel(label, { exact: true });
+    if ((await field.count()) > 0) await field.fill('');
+  }
   await page.locator('#f-division').selectOption('');
   await settle(900);
   check((await readKey(page, DRAFT())) === null || (JSON.parse((await readKey(page, DRAFT())) || '{}').f || {}).fighterClass === 'upper', 'B everything erased by hand -> the draft is removed (only the class radio, which cannot be unchecked, may remain)');
@@ -527,7 +533,7 @@ await scenario('H', 'type EVERYTHING (花道, pledge, guardian, gym representati
   await addPhoto(page);
   await fillPledge(page);
   await settle(900);
-  check((await page.locator('#hn-card').count()) === 1 && (await page.locator('#pledge-card').count()) === 1 && (await page.locator('#pledge-guardian-box').count()) === 1 && (await page.locator('#pledge-gym-box').count()) === 1, 'H the form is fully filled: 花道 card, pledge card, guardian box and gym representative box all there');
+  check((await page.locator('#hn-card').count()) === 1 && (await page.locator('#pledge-card').count()) === 1 && (await page.locator('#pledge-guardian-box').count()) === 0 && (await page.locator('#pledge-gym-box').count()) === 1, 'H the form is fully filled: 花道 card, pledge card, no guardian box (adult from the birth date) and gym representative box all there');
   const s = await dump(page);
   check(same(Object.keys(s), [DRAFT()]), 'H sessionStorage holds exactly one key, the draft (' + Object.keys(s).join(',') + ')');
   const text = s[DRAFT()] || '';
@@ -547,17 +553,17 @@ await scenario('H', 'type EVERYTHING (花道, pledge, guardian, gym representati
   check(same(await localDump(page), {}) && (await page.evaluate(() => document.cookie)) === '', 'H localStorage and cookies are empty while typing');
   check((await page.evaluate(() => location.hash)) === '#' + fullHash().slice(1) && !/ZQX|09012345678|kakuu/.test(await page.evaluate(() => location.href + document.title)), 'H the link and the title carry none of it');
   // a phone number or a mail typed into a free-text field is not stored (that field only)
-  await page.getByLabel('意気込み 必須', { exact: true }).fill('連絡は090-1234-5678まで');
+  await page.locator('#f-hnMessage').fill('連絡は090-1234-5678まで');
   await settle(900);
   const f2 = JSON.parse((await readKey(page, DRAFT())) || '{}').f || {};
   check(f2.comment === '' && f2.name === '架空選手' && f2.record === '3勝1敗', 'H a phone number typed into 意気込み is not stored; the other fields are');
-  await page.getByLabel('意気込み 必須', { exact: true }).fill('メールは a@example.com です');
+  await page.locator('#f-hnMessage').fill('メールは a@example.com です');
   await settle(900);
   check(((JSON.parse((await readKey(page, DRAFT())) || '{}').f || {}).comment) === '', 'H neither is an e-mail address');
-  await page.getByLabel('意気込み 必須', { exact: true }).fill('う'.repeat(5000));
+  await page.locator('#f-hnMessage').fill('う'.repeat(5000));
   await settle(900);
   check((((JSON.parse((await readKey(page, DRAFT())) || '{}').f || {}).comment) || '').length <= 1000, 'H a 5000-character text is cut (<= 1000)');
-  await page.getByLabel('意気込み 必須', { exact: true }).fill(ATHLETE.comment);
+  await page.locator('#f-hnMessage').fill(ATHLETE.comment);
   await settle(900);
   // send: draft gone; the kit holds the contact and the gym representative, and nothing of the athlete
   const post = await sendIt(page, ctx);

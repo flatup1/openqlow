@@ -135,3 +135,14 @@ test('R4 入場曲：新しい設定タブではじめから「なし」（黄�
   const gs = read('public/templates/Tournament_OS_Google受付_v3.gs');
   assert.match(gs, /const WRITE_LABELS = \['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切'\];/);
 });
+
+/* ───────── 追加（owner 2026-10-23）：エントリーは本名だけ。あだ名は無し ───────── */
+
+test('本名だけ：選手名の説明は「本名で入れてください。あだ名・リングネームは、入れないでください。」。「あだ名でもOK」は、どこにも残らない（花道のリングネーム欄の説明は別）', () => {
+  const page = read('app/apply/page.tsx');
+  assert.ok(page.includes("name: { hint: '本名で入れてください。あだ名・リングネームは、入れないでください。', example: ['山田 太郎'] },"));
+  assert.ok(!/試合で呼ばれる名前です。本名でも、あだ名でもOK/.test(page), '選手名の古い説明が残っていない');
+  const manual = read('docs/TOURNAMENT_OS_使い方マニュアル.md');
+  assert.ok(manual.includes('選手名（本名で入れてください。あだ名・リングネームは、入れないでください。例：山田 太郎）'));
+  assert.ok(!manual.includes('選手名（試合で呼ばれる名前です'), '説明書の選手名の説明も新しい文');
+});

@@ -20,7 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
-import { HANAMICHI_KEYS } from '../core/hanamichi.ts';
+import { HANAMICHI_ASKED_ITEMS, HANAMICHI_KEYS } from '../core/hanamichi.ts';
 import { publicEntryHash } from '../core/publicEntry.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -98,7 +98,8 @@ async function fillBase(page, { division = '一般男子', weightClass = '60kg�
   if (consent) await page.getByRole('checkbox').check();
 }
 async function fillHn(page) {
-  for (const key of HANAMICHI_KEYS) {
+  // リングネーム・そのフリガナは、選手名から作る（欄は無い）
+  for (const key of HANAMICHI_ASKED_ITEMS.map((item) => item.key)) {
     if (key === 'hnBirth' || HN_GOOD[key] === undefined) continue;
     await page.locator('#f-' + key).fill(HN_GOOD[key]);
   }

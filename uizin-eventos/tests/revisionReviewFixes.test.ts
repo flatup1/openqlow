@@ -46,7 +46,7 @@ test('F-badge-room: 黄色の札（👉）は□の上に浮かぶ。上の文�
 });
 
 test('F-gym-phone: 入れたが携帯電話の形ではない電話は、「まだです」ではなく「直す」。👉は「…を直す」、赤い帯は「直す所」、🔒の理由は「携帯電話の番号になっていません」', () => {
-  const plan = pledgePlan(FAKE, '15', '架空ジム', 'live');
+  const plan = pledgePlan(FAKE, '15', 'live');
   const all = { ...blankPledgeAnswers(), ticks: [true, true], guardian: true, gymName: '架空 責任者', gymPermission: true, gymConsent: true };
   // 電話が空と、入れたが形がちがう：順の上ではどちらも「まだ」。問題の empty が分ける
   const wrong = { ...all, gymPhone: '0312345678' }, empty = { ...all, gymPhone: '' };
@@ -81,8 +81,8 @@ test('F-guardian-age: 年齢が空・読めないために保護者の欄が出�
   // 保護者の欄が出る（安全側）のは、ageKnown が false のとき。出る理由を、画面が分けて言える
   for (const age of ['', 'あ', '121']) assert.ok(guardianNeeded('under18', age) && !ageKnown(age));
   assert.ok(guardianNeeded('under18', '17') && ageKnown('17'), '17歳は、年齢が分かっていて、欄が出る（このときは言わない）');
-  assert.match(PAGE_CODE, /const guardianAgeUnknown = plan\.guardian && config\.pledge\?\.mode === 'under18' && config\.age !== 'off' && !ageKnown\(nf\.age\);/);
-  assert.match(PAGE, /\{guardianAgeUnknown \? <Note id="pledge-guardian-age-note" className="mt-3">年齢を入れると、18歳以上の方は、この欄が出なくなります。<\/Note> : null\}/);
+  assert.match(PAGE_CODE, /const guardianAgeUnknown = plan\.guardian && config\.pledge\?\.mode === 'under18' && config\.age !== 'off' && !ageKnown\(ageStr\);/, '花道では、生年月日から出した年齢で見る（画面に年齢の欄が無いため）');
+  assert.match(PAGE, /\{guardianAgeUnknown \? <Note id="pledge-guardian-age-note" className="mt-3">\{hanamichiOn \? '生年月日を選ぶと' : '年齢を入れると'\}、18歳以上の方は、この欄が出なくなります。<\/Note> : null\}/, '花道は「生年月日を選ぶと」、ふつうは「年齢を入れると」');
 });
 
 test('F-count-note: 「入力は全部で◯個」は「いま」の数。花道の区分・年齢で出る保護者の欄・ジム責任者の欄があるリンクだけ、「…によって、入力の数が変わることがあります。」を1行そえる（昔のリンクは、見た目が今のまま）', () => {
@@ -90,8 +90,8 @@ test('F-count-note: 「入力は全部で◯個」は「いま」の数。花道
   assert.match(PAGE_CODE, /\{endpointReady && countMayChange \? <p id="count-note"/);
   const block = PAGE_CODE.slice(PAGE_CODE.indexOf('const countMayChange = ['), PAGE_CODE.indexOf('const kitExtra'));
   assert.match(block, /config\.hanamichi && weights && weights\.divisions\.some\(\(d\) => isHanamichiDivision\(d\.name\)\) \? DIVISION_LABEL : ''/);
-  assert.match(block, /config\.pledge\?\.mode === 'under18' && config\.age !== 'off' \? '年齢' : ''/);
-  assert.match(block, /config\.pledge\?\.gymMode \? 'ジム名' : ''/);
+  assert.match(block, /config\.pledge\?\.mode === 'under18' && config\.age !== 'off' \? \(hanamichiOn \? '生年月日' : '年齢'\) : ''/);
+  assert.doesNotMatch(block, /ジム名/, 'ジムに入っていない人は申し込めないので、ジム名で入力の数は変わらない');
   assert.doesNotMatch(block, /config\.weights\b|config\.classes\b/, '花道・誓約書が無い昔のリンクでは、いつも空（見た目が今のまま）');
 });
 

@@ -14,7 +14,7 @@
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
 import assert from 'node:assert/strict';
-import { HANAMICHI_ITEMS, HANAMICHI_KEYS } from '../core/hanamichi.ts';
+import { HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, HANAMICHI_ITEMS, HANAMICHI_KEYS, hanamichiAgeFrom, jstDateText } from '../core/hanamichi.ts';
 import { publicEntryHash } from '../core/publicEntry.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -39,6 +39,7 @@ const short = (s, n = 160) => String(s).replace(/\s+/g, ' ').slice(0, n);
 /** 花道の区分は2つ（階級あり／なし）。花道でない区分も2つ（階級あり／なし） */
 const WEIGHTS = { enabled: true, divisions: [{ name: '一般男子', classes: ['60kg以下', '60kgをこえる'] }, { name: '花道男子', classes: ['無差別'] }, { name: '花道女子', classes: [] }, { name: '小学生', classes: [] }] };
 const baseCfg = { endpoint: ENDPOINT, eventId: 'hanamichi-apply', title: '架空テスト大会', organizer: '架空主催', date: '2027年10月3日', venue: '架空体育館', venueUrl: '', deadline: '2099-11-30', contact: '架空連絡先 02-0000-0000', music: false, grade: 'off', age: 'off', comment: 'off', protocol: '3', mode: 'live', weights: WEIGHTS };
+const textOf = async (p, selector) => ((await p.locator(selector).count()) ? p.locator(selector).first().innerText() : '');
 const hashFor = (over = {}) => publicEntryHash({ ...baseCfg, hanamichi: true, ...over });
 /** the POST keys of the old form, in order (setting OFF must send exactly these) */
 const OLD_KEYS = ['protocol', 'entryKey', 'mode', 'website', 'eventId', 'requestId', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'fighterClass', 'division', 'weightClass', 'comment', 'musicUrl', 'contactName', 'contactPhone', 'contactEmail', 'consent', 'photoDataUrl'];
@@ -98,7 +99,8 @@ async function fillBirth(page, { y, m, d }) {
 async function fillHn(page, over = {}, birth = BIRTH_GOOD) {
   const values = { ...HN_GOOD, ...over };
   for (const key of HANAMICHI_KEYS) {
-    if (key === 'hnBirth' || values[key] === undefined) continue;
+    // リングネーム・そのフリガナは、選手名から作る（欄は無い）
+    if (key === 'hnBirth' || HANAMICHI_DERIVED_KEYS.includes(key) || values[key] === undefined) continue;
     await page.locator('#f-' + key).fill(values[key]);
   }
   if (birth) await fillBirth(page, birth);
@@ -174,11 +176,10 @@ await scenario('A', 'choosing a 花道 division shows the card with the 12 items
   const [filled0, totalHn] = await counter(page);
   // 必須は10項目。リングネームのフリガナは、リングネームを入れるまで数えない（まだ要らない）
   const required = HANAMICHI_ITEMS.filter((i) => i.required).length;
-  check(filled0 === 1 && totalHn - totalNoClass === required - 1, 'A the counter counts the ' + (required - 1) + ' required 花道 items that are due now (入力 ' + filled0 + '/' + totalHn + ', before ' + totalNoClass + ', ordinary ' + totalOrdinary + ')');
-  await page.locator('#f-hnRing').fill('架空のタイガー');
-  const [filled1, totalRing] = await counter(page);
-  check(filled1 === 2 && totalRing === totalHn + 1, 'A typing the ring name makes its reading due: one more to fill (入力 ' + filled1 + '/' + totalRing + ')');
-  await page.locator('#f-hnRing').fill('');
+  check(filled0 === 1 && totalHn - totalNoClass <= required, 'A the counter counts only the 花道 items that are due now (入力 ' + filled0 + '/' + totalHn + ', before ' + totalNoClass + ', ordinary ' + totalOrdinary + ')');
+  // リングネームは、選手名から作る（欄は出ない）。ふつうの欄（学年・年齢・意気込み）も、花道では出ない
+  check((await page.locator('#f-hnRing').count()) === 0 && (await page.locator('#f-hnRingKana').count()) === 0, 'A the ring name and its reading are not asked (they come from 選手名 and フリガナ)');
+  check((await page.locator('#f-grade,#f-age,#f-comment').count()) === 0, 'A grade, age and message are not asked in the 花道 card or above it');
   await page.locator('#f-division').selectOption('花道男子');
   const text = await page.locator('#hn-card').innerText();
   check(/花道の追加の質問/.test(text) && text.includes('花道の紹介の質問です。アナウンスで使います。'), 'A the heading and the sentence "花道の紹介の質問です。アナウンスで使います。" are there (' + short(text, 90) + ')');
@@ -193,13 +194,13 @@ await scenario('A', 'choosing a 花道 division shows the card with the 12 items
   check(order.photoBeforeCard && order.cardBeforeContact, 'A the card sits between the photo and the 連絡先 card');
   // the 12 items: one field each, in the table's order, labelled with the table's words and 必須/任意
   const ids = await page.evaluate(() => [...document.querySelectorAll('#hn-card [id^="f-hn"]')].map((e) => e.id).filter((id) => !/-(hint|ex|err|note)$/.test(id)));
-  const expectIds = HANAMICHI_KEYS.flatMap((key) => (key === 'hnBirth' ? ['f-hnBirth', 'f-hnBirthM', 'f-hnBirthD'] : ['f-' + key]));
+  const expectIds = HANAMICHI_ASKED_ITEMS.map((item) => item.key).flatMap((key) => (key === 'hnBirth' ? ['f-hnBirth', 'f-hnBirthM', 'f-hnBirthD'] : ['f-' + key]));
   check(JSON.stringify(ids) === JSON.stringify(expectIds), 'A the 12 items come in the table order (birth = 3 selects) (' + short(ids.join(','), 200) + ')');
-  for (const item of HANAMICHI_ITEMS) {
+  for (const item of HANAMICHI_ASKED_ITEMS) {
     const label = (await page.locator('#hn-card label[for="f-' + item.key + '"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
     check(label.startsWith(item.label) && label.includes(item.required ? '必須' : '任意'), 'A "' + item.label + '" is labelled ' + (item.required ? '必須' : '任意') + ' (' + short(label, 50) + ')');
   }
-  check(await page.locator('#hn-card').getByText('（空でもOK）').count() === HANAMICHI_ITEMS.filter((i) => !i.required).length, 'A the two optional items say （空でもOK）');
+  check(await page.locator('#hn-card').getByText('（空でもOK）').count() === HANAMICHI_ASKED_ITEMS.filter((i) => !i.required).length, 'A the two optional items say （空でもOK）');
   // no double asking: nothing for the items the ordinary form already has
   const labels = await page.locator('#hn-card label').allInnerTexts();
   check(!labels.some((l) => /^(ジム名|選手名|身長|体重|戦績)/.test(l.trim())), 'A the card does not ask the gym, name, height, weight or record a second time');
@@ -245,28 +246,20 @@ await scenario('C', 'required 花道 answers empty: no send, the reasons show, t
   check(ctx.__posts.length === 0, 'C nothing is sent');
   const top = await page.locator('#apply-msg').innerText().catch(() => '');
   check(/足りない所が\d+か所あります/.test(top) && top.includes('✕'), 'C the red band says how many places are missing (' + short(top, 80) + ')');
-  const needed = HANAMICHI_KEYS.filter((k) => !['hnOther', 'hnJob', 'hnRingKana'].includes(k));
+  const needed = HANAMICHI_ASKED_ITEMS.map((item) => item.key).filter((k) => !['hnOther', 'hnJob'].includes(k));
   for (const key of needed) {
     const line = await page.locator('#f-' + key + '-err').innerText().catch(() => '');
     check(line.includes('✕') && line.length > 3, 'C ' + key + ' has a red ✕ line (' + short(line, 60) + ')');
   }
   check((await page.locator('#f-hnOther-err').count()) === 0 && (await page.locator('#f-hnJob-err').count()) === 0, 'C the two optional items are not marked');
-  check((await page.locator('#f-hnRingKana-err').count()) === 0, 'C the ring name reading is not asked while the ring name is empty');
+  check((await page.locator('#f-hnRingKana-err').count()) === 0, 'C the ring name reading is not asked (it is not a field)');
   check((await activeId(page)) === 'f-hnNameKana', 'C the cursor goes to the first missing 花道 item (' + (await activeId(page)) + ')');
   const mark = await oneMark(page, 'C after the failed try');
   check(mark.includes('氏名のフリガナ'), 'C the marker stays on the first missing item (' + mark + ')');
   const aria = await page.locator('#f-hnNameKana').getAttribute('aria-invalid');
   check(aria === 'true', 'C the field says aria-invalid');
-  // now the ring name is typed: its reading becomes required
-  await fillHn(page, { hnRingKana: '' });
-  await reviewBtn(page).click();
-  await settle(400);
-  const ringErr = await page.locator('#f-hnRingKana-err').innerText().catch(() => '');
-  check(ringErr.includes('✕') && /フリガナ/.test(ringErr), 'C once the ring name is typed, its reading is required (' + short(ringErr, 60) + ')');
-  check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'C still blocked');
-  await page.locator('#f-hnRingKana').fill(HN_GOOD.hnRingKana);
-  await settle(200);
-  check((await page.locator('#f-hnRingKana-err').count()) === 0, 'C typing clears the red line');
+
+  await fillHn(page);
   await page.locator('#hn-card h2').click(); // leave the field: the marker stays on a field while the cursor is in it
   await settle(300);
   const done = await oneMark(page, 'C all answered');
@@ -303,7 +296,7 @@ await scenario('D', 'changing away from 花道 removes the card and discards the
     await page.locator('#f-division').selectOption('小学生');
     await page.locator('#f-division').selectOption('花道男子');
     await page.locator('#f-weightClass').selectOption('無差別');
-    const values = await page.evaluate((keys) => keys.filter((k) => k !== 'hnBirth').map((k) => document.getElementById('f-' + k).value), HANAMICHI_KEYS);
+    const values = await page.evaluate((keys) => keys.filter((k) => k !== 'hnBirth').map((k) => document.getElementById('f-' + k).value), HANAMICHI_ASKED_ITEMS.map((item) => item.key));
     const birth = await page.evaluate(() => ['f-hnBirth', 'f-hnBirthM', 'f-hnBirthD'].map((id) => document.getElementById(id).value));
     check(values.every((v) => v === '') && birth.every((v) => v === ''), 'D coming back to a 花道 division: every answer is empty again (' + short(values.join('|') + '/' + birth.join('|'), 80) + ')');
     const errs = await page.locator('#hn-card .tos-error').count();
@@ -445,8 +438,9 @@ await scenario('I', 'full flow: review block, then the POST with the 12 keys aft
   await toReview(page);
   const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
   check(review.includes('花道の追加の質問'), 'I the review has a 花道 block');
-  for (const item of HANAMICHI_ITEMS) check(review.includes(item.label), 'I the review lists "' + item.label + '"');
-  for (const value of [HN_GOOD.hnNameKana, HN_GOOD.hnRing, HN_GOOD.hnHobby, '1975年8月20日', HN_GOOD.hnReason]) check(review.includes(value), 'I the review shows the answer "' + value + '"');
+  for (const item of HANAMICHI_ASKED_ITEMS) check(review.includes(item.label), 'I the review lists "' + item.label + '"');
+  check(!review.includes('リングネーム'), 'I the review does not list リングネーム (it is 選手名 now)');
+  for (const value of [HN_GOOD.hnNameKana, '架空選手', HN_GOOD.hnHobby, '1975年8月20日', HN_GOOD.hnReason]) check(review.includes(value), 'I the review shows the answer "' + value + '"');
   check(/職業\s*（書いていません）/.test(review) && /他格闘歴\s*（書いていません）/.test(review), 'I an empty optional answer says （書いていません）, not a mistake');
   await oneMark(page, 'I review screen');
   // "直す" goes back to the first 花道 field
@@ -459,7 +453,8 @@ await scenario('I', 'full flow: review block, then the POST with the 12 keys aft
   const post = ctx.__posts.at(-1);
   const keys = post ? [...post.keys()] : [];
   check(JSON.stringify(keys) === JSON.stringify([...OLD_KEYS, ...HANAMICHI_KEYS]), 'I the POST keys: the old ones, then the 12 in table order (' + short(keys.slice(-13).join(','), 200) + ')');
-  const expect = { ...HN_GOOD, hnBirth: '1975-08-20' };
+  // リングネーム＝選手名（架空選手）、そのフリガナ＝氏名のフリガナ。ほかは、入れたとおり
+  const expect = { ...HN_GOOD, hnBirth: '1975-08-20', hnRing: '架空選手', hnRingKana: HN_GOOD.hnNameKana };
   const wrong = HANAMICHI_KEYS.filter((k) => post && post.get(k) !== expect[k]);
   check(post && wrong.length === 0, 'I every answer is posted as typed (wrong: ' + wrong.map((k) => k + '=' + (post && post.get(k))).join(',') + ')');
   check(post && post.get('division') === '花道男子' && post.get('weightClass') === '無差別' && post.get('gym') === '架空ジム', 'I the ordinary values are still posted (division, weightClass, gym)');
@@ -657,7 +652,7 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
     const page = await openApply(ctx, hashFor());
     await fillBase(page);
     const seen = [];
-    for (const item of HANAMICHI_ITEMS) {
+    for (const item of HANAMICHI_ASKED_ITEMS) {
       const g = await hnBadge(page);
       if (g) {
         seen.push(g.id + ':' + g.h + '/' + g.overlap);
@@ -670,12 +665,6 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
       await settle(250);
     }
     check(seen.length >= 10, 'N2 the 👉 was seen on the ' + seen.length + ' required items (' + short(seen.join(' '), 200) + ')');
-    // the "fix" wording of the longest name must also fit
-    await page.locator('#f-hnRingKana').fill('ア'.repeat(61));
-    await page.locator('#hn-card h2').click();
-    await settle(300);
-    const g = await hnBadge(page);
-    check(g && g.id === 'f-hnRingKana' && g.text.includes('を直す') && g.h <= 66 && g.overlap <= 12, 'N2 ring-name reading, "fix" state: still 2 lines, off the text above (' + (g ? g.text + ' ' + g.h + 'px/' + g.overlap : 'no mark') + ')');
     await ctx.close();
   }
 
@@ -724,6 +713,91 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
     await page.locator('#f-division').selectOption('一般男子');
     const plain = await page.locator('#privacy-fold').evaluate((el) => el.textContent.replace(/\s+/g, ' '));
     check(!plain.includes('花道') && plain.includes('集めるもの：選手の情報・顔写真・連絡先（名前・電話・メール・写真）見る人：'), 'N4 an ordinary division: the fold is the old one, with no 花道 word');
+    await ctx.close();
+  }
+});
+
+/* P: fewer questions (owner 2026-10-23): the ring name is the 選手名; the age comes from the birth date; grade / age / message are not asked in the 花道 card; the shortcuts; the 60-character name */
+await scenario('P', '花道: リングネームは選手名、年齢は生年月日から。学年・年齢・意気込みは出さない。近道の「選手名と同じ」・60字の選手名', [DESKTOP, PHONE], async (vp) => {
+  const today = jstDateText();
+  const expectAge = hanamichiAgeFrom('1975-08-20', today);
+  {
+    // 年齢・学年・意気込みの設定が「必須」のリンク：花道では画面に出さず、送る値は生年月日・「社会人」・花道のメッセージ
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor({ age: 'required', grade: 'required', comment: 'required' }));
+    await fillBase(page, { division: '花道男子', weightClass: '無差別' });
+    await fillHn(page, {}, null);
+    await fillBirth(page, BIRTH_GOOD);
+    await settle(200);
+    check((await page.locator('#f-grade,#f-age,#f-comment').count()) === 0, 'P a 花道 division: no grade, age or message field on the page');
+    check((await page.locator('#f-hnRing').count()) === 0 && (await page.locator('#f-hnRingKana').count()) === 0, 'P no ring-name field (リングネーム is 選手名)');
+    await toReview(page);
+    const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
+    check(review.includes('年齢（生年月日から自動）') && review.includes(expectAge), 'P the review shows the age from the birth date (' + expectAge + ')');
+    await page.getByRole('button', { name: '花道の追加の質問を直す', exact: true }).click();
+    await settle(300);
+    // the post: ring name = 選手名; age = from the birth date
+    await toReview(page);
+    await sendBtn(page).click();
+    await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+    const post = ctx.__posts.at(-1);
+    check(post && post.get('age') === expectAge, 'P the POST age is the one from the birth date (' + (post && post.get('age')) + ')');
+    check(post && post.get('grade') === '社会人' && post.get('comment') === HN_GOOD.hnMessage, 'P the POST grade is 社会人 and the comment is the 花道 message (' + (post && post.get('grade')) + ')');
+    check(post && post.get('hnRing') === '架空選手' && post.get('hnRingKana') === HN_GOOD.hnNameKana, 'P the POST ring name is 選手名 and its reading is 氏名のフリガナ');
+    await ctx.close();
+  }
+  {
+    // 設定が「なし」（今の基本の設定）：年齢も学年も意気込みも、送らず、確認にも出さない
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page, { division: '花道男子', weightClass: '無差別' });
+    await fillHn(page, {}, null);
+    await fillBirth(page, BIRTH_GOOD);
+    await toReview(page);
+    const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
+    check(!review.includes('年齢（生年月日から自動）') && !review.includes('学年（自動）'), 'P settings off: the review shows no automatic grade or age');
+    await sendBtn(page).click();
+    await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+    const post = ctx.__posts.at(-1);
+    check(post && post.get('age') === '' && post.get('grade') === '' && post.get('comment') === '', 'P settings off: nothing is posted for age, grade or message');
+    await ctx.close();
+  }
+  {
+    // birth this year, 1 January: age 0 is not accepted; the birth-date field says so (no dead end)
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page, { division: '花道男子', weightClass: '無差別' });
+    await fillHn(page, {}, null);
+    const thisYear = today.slice(0, 4);
+    await fillBirth(page, { y: thisYear, m: '1', d: '1' });
+    await reviewBtn(page).click();
+    await settle(400);
+    const err = await textOf(page, '#f-hnBirth-err');
+    check(err.includes('0歳や、120歳をこえる年は、入れられません'), 'P age 0: the birth-date field says why (' + short(err, 80) + ')');
+    await ctx.close();
+  }
+  {
+    // 選手名 longer than 60 (it is the ring name now): red at once on the name field
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page, { division: '花道男子', weightClass: '無差別' });
+    await page.getByLabel('選手名 必須', { exact: true }).fill('あ'.repeat(61));
+    await settle(200);
+    const nameErr = await textOf(page, '#f-name-err');
+    check(nameErr.includes('花道のときは、選手名は60字までです'), 'P a 61-character 選手名 in 花道 is red at once (' + short(nameErr, 80) + ')');
+    await ctx.close();
+  }
+  {
+    // shortcut: 連絡先のお名前 = 選手名
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page, { division: '花道男子', weightClass: '無差別', consent: false });
+    await page.getByLabel('連絡先のお名前 必須', { exact: true }).fill('');
+    const btn = page.getByRole('button', { name: '選手名と同じにする', exact: true });
+    check((await btn.count()) === 1, 'P the grey shortcut 「選手名と同じにする」 is there while the contact name is empty');
+    await btn.click();
+    await settle(150);
+    check((await page.getByLabel('連絡先のお名前 必須', { exact: true }).inputValue()) === '架空選手', 'P the shortcut fills the contact name with 選手名');
     await ctx.close();
   }
 });

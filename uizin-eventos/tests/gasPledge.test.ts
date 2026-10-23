@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { harness, script } from './helpers/gasV3Harness.ts';
-import { guardianNeeded, GYM_NAME_MAX, gymPhoneNormal, gymPhoneOk, isUnaffiliated, parsePledgeCanon, PLEDGE_ERROR_CODES, PLEDGE_LIMITS, PLEDGE_POST_KEYS, UNAFFILIATED_NAMES, unpackPledge, packPledge } from '../core/pledge.ts';
+import { guardianNeeded, GYM_NAME_MAX, gymPhoneNormal, gymPhoneOk, isUnaffiliated, parsePledgeCanon, PLEDGE_ERROR_CODES, PLEDGE_LIMITS, PLEDGE_POST_KEYS, UNAFFILIATED_NAMES, UNAFFILIATED_PHRASES, unpackPledge, packPledge } from '../core/pledge.ts';
 import { diagnose, parsePing, settingLines } from '../core/setupV3.ts';
 
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
@@ -92,7 +92,7 @@ test('設定の行: 誓約書の4行は、花道の行(B30)のあとの、いち
   const desc = (label: string) => rows.find((r) => r[0] === label)![2] as string;
   assert.match(desc(R.pledge), /誓約書」タブ/); assert.match(desc(R.pledge), /先へ進めません/);
   assert.match(desc(R.guardian), /「誓約書」が「あり」のときだけ意味があります/); assert.match(desc(R.guardian), /年齢/);
-  assert.match(desc(R.gym), /無所属/); assert.match(desc(R.confirm), /原本と見比べて/); assert.match(desc(R.confirm), /テスト用は動きます/);
+  assert.match(desc(R.gym), /ジム責任者のお名前・携帯電話・許可の確認/); assert.doesNotMatch(desc(R.gym), /無所属/); assert.match(desc(R.confirm), /原本と見比べて/); assert.match(desc(R.confirm), /テスト用は動きます/);
   for (const row of rows.slice(-5, -1)) assert.equal(row.length, 3);
 });
 
@@ -457,19 +457,19 @@ test('保存: ジム責任者の同意＝なし → ジム責任者の欄は求�
   assert.ok(!JSON.stringify(h.rows(REC)).includes(GYM_NAME));
 });
 
-test('保存: ジム名が「無所属」の人は、ジム責任者の欄を求めない（行き止まりを作らない）。記録の名前は「（無所属）」。全角・半角・空白をそろえて見る。ふつうのジム名は求める', () => {
+test('保存: ジム名が「無所属」などの人は、ジム責任者の欄の免除ではなく、受付が断る（ジムに入っていない人は参加できない）。ふつうのジム名（「個人レッスンジム」も）は、ジム責任者の欄を求める', () => {
   const h = live();
-  for (const gym of ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', ' 無 所 属 ', 'ﾑｼｮｿﾞｸ', '無\u200B所属']) {
-    const keys = { pledgeGym: undefined, gymName: undefined, gymPhone: undefined, gymPermission: undefined };
-    assert.ok(h.call('saveEntry_', entry(h, 'live', { gym }, keys)), gym);
-    assert.deepEqual(json(h.rows(REC).at(-1)).slice(4, 8), ['不要', '（無所属）', '', '不要'], gym); assert.equal(json(h.rows(REC).at(-1))[8], agreed(false, false));
+  for (const gym of ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', ' 無 所 属 ', 'ﾑｼｮｿﾞｸ', '無\u200B所属', '無所属ジム', 'ジム無所属']) {
+    const rows = h.rows(REC).length;
+    const error = thrown(() => h.call('saveEntry_', entry(h, 'live', { gym })));
+    assert.equal(error.code, 'input', gym); assert.match(error.message, /ジムに所属していない人は、参加できません/);
+    assert.equal(h.rows(REC).length, rows, gym + ': 何も書かれていない');
   }
-  // 無所属のときに、ジム責任者の値が付いてきても、記録しない
-  h.call('saveEntry_', entry(h, 'live', { gym: '無所属' })); assert.deepEqual(json(h.rows(REC).at(-1)).slice(5, 8), ['（無所属）', '', '不要']); assert.ok(!JSON.stringify(h.rows(REC)).includes(GYM_NAME));
-  // ふつうのジム名は求める（「無所属ジム」も）
-  for (const gym of ['架空ジムA', '無所属ジム', 'ジム無所属']) assert.equal(thrown(() => h.call('saveEntry_', entry(h, 'live', { gym }, { pledgeGym: undefined }))).code, 'gym', gym);
-  // ジム責任者の同意＝なし のときも、無所属なら名前の欄は「（無所属）」（ジム名が無所属だったことを残す）。ふつうのジム名なら空
-  const off = live(); off.setSetting(R.gym, 'なし'); off.call('saveEntry_', entry(off, 'live', { gym: '無所属' })); assert.deepEqual(json(off.rows(REC).at(-1)).slice(5, 8), ['（無所属）', '', '不要']);
+  // ふつうのジム名は求める（ジム責任者の鍵が無ければ gym）
+  for (const gym of ['架空ジムA', '個人レッスンジム']) assert.equal(thrown(() => h.call('saveEntry_', entry(h, 'live', { gym }, { pledgeGym: undefined }))).code, 'gym', gym);
+  // ジム責任者の同意＝なし のときは、ジム責任者の欄は空（ジム名が無所属なら、そもそも断る）
+  const off = live(); off.setSetting(R.gym, 'なし');
+  assert.equal(thrown(() => off.call('saveEntry_', entry(off, 'live', { gym: '無所属' }))).code, 'input');
   off.call('saveEntry_', entry(off, 'live')); assert.deepEqual(json(off.rows(REC).at(-1)).slice(5, 8), ['', '', '不要']);
 });
 
@@ -519,7 +519,6 @@ test('保存（古いリンク）: リンクを作ったあとで「保護者の
   assert.ok(h.call('saveEntry_', entry(h, 'live', { age: '30' }, stale())), '30歳は要らないので、古いリンクでも通る（行き止まりではない）');
   h.setSetting(R.guardian, 'なし'); h.setSetting(R.gym, 'あり');
   const g = thrown(() => h.call('saveEntry_', entry(h, 'live', { age: '30' }, stale()))); assert.equal(g.code, 'pledgeold'); assert.match(g.message, /新しい申し込みリンクをもらってください/);
-  assert.ok(h.call('saveEntry_', entry(h, 'live', { age: '30', gym: '無所属' }, stale())), 'ジム名が無所属の人は、ジム責任者の欄を求められないので通る');
   // 断ったあとは、何も書かれていない
   const rows = h.rows(PRIVATE).length; thrown(() => h.call('saveEntry_', entry(h, 'live', { age: '30' }, stale()))); assert.equal(h.rows(PRIVATE).length, rows); assert.equal(h.rows(REC).length, rows);
   // 画面：保存していない、と言い切る赤の ✕。再送ボタンは出さない
@@ -730,11 +729,12 @@ test('自動テスト: 「あり」でも通る（架空の✔・名前・電話
 
 /* ───────── .gs と core/pledge.ts は、同じ答え ───────── */
 
-test('同じ答え: 上限・鍵の一覧・エラーコード・無所属の表・名前の上限は、core/pledge.ts と .gs で1字も違わない', () => {
+test('同じ答え: 上限・鍵の一覧・エラーコード・ジムに入っていない言い方の表・名前の上限は、core/pledge.ts と .gs で1字も違わない', () => {
   const h = harness();
   assert.deepEqual(json(vm.runInContext('PLEDGE_LIMITS_', h.api)), { ...PLEDGE_LIMITS });
   assert.deepEqual(json(vm.runInContext('PLEDGE_POST_KEYS_', h.api)), [...PLEDGE_POST_KEYS]);
   assert.deepEqual(json(vm.runInContext('PLEDGE_UNAFFILIATED_', h.api)), [...UNAFFILIATED_NAMES]);
+  assert.deepEqual(json(vm.runInContext('PLEDGE_UNAFFILIATED_PHRASES_', h.api)), [...UNAFFILIATED_PHRASES]);
   assert.equal(vm.runInContext('PLEDGE_GYM_NAME_MAX_', h.api), GYM_NAME_MAX);
   assert.deepEqual(json(vm.runInContext('PLEDGE_TABLES_.map(function (t) { return t[0]; })', h.api)), [REC, REC_TEST]);
   assert.deepEqual(json(vm.runInContext('PLEDGE_HEADERS_', h.api)), REC_HEADERS);
@@ -750,7 +750,7 @@ test('同じ答え: guardianNeeded・gymPhoneOk・isUnaffiliated は、書き方
   for (const mode of ['none', 'all', 'under18']) for (const age of ages) assert.equal(h.api.guardianNeeded_(mode, age), guardianNeeded(mode as any, age as any), mode + JSON.stringify(age));
   const phones = ['09000000000', '09012345678', '080-1234-5678', '０９０１２３４５６７８', '０９０－１２３４－５６７８', '090ー1234ー5678', '  090 1234 5678 ', '05012345678', '0312345678', '090123456789', '0901234567', '', 'abc', '+819012345678', '090‐1234‐5678', '090−1234−5678', '\u200B09012345678', '06012345678', '0901234567８', undefined, null];
   for (const s of phones) { assert.equal(h.api.gymPhoneOk_(s), gymPhoneOk(s as any), JSON.stringify(s)); assert.equal(h.api.gymPhoneNormal_(s), gymPhoneNormal(s as any), JSON.stringify(s)); }
-  const gyms = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', ' 無所属 ', '\u3000無所属\u3000', '無 所 属', '無\u200B所属', 'ﾑｼｮｿﾞｸ', '', ' ', '無所属ジム', 'ジム無所属', '架空ジムA', 'ＡＢＣ', '無所属です', '所属', undefined, null];
+  const gyms = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'ない', '無', 'フリー', '個人', ' 無所属 ', '\u3000無所属\u3000', '無 所 属', '無\u200B所属', 'ﾑｼｮｿﾞｸ', '', ' ', '無所属ジム', 'ジム無所属', '架空ジムA', 'ＡＢＣ', '無所属です', '所属', 'しょぞくなし', 'ショゾクナシ', '所属してない', '所属していません', 'ジムなし', '通っていない', '個人レッスンジム', 'なしジム', 'ナイスジム', undefined, null];
   for (const s of gyms) assert.equal(h.api.isUnaffiliated_(s), isUnaffiliated(s as any), JSON.stringify(s));
 });
 

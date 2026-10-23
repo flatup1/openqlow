@@ -5,8 +5,8 @@ import { agoText, draftKey, draftIsEmpty, fitDraftToLink, linkMode, nextKey, pac
 import { classMismatch, CLASS_NEUTRAL_NOTE, suggestClass, suggestText } from '../../core/classRules.ts';
 import { formatDateInput } from '../../core/dateInput.ts';
 import { emailFormOk, entryErrors, lowerLinkHost, MUSIC_URL_FORM, phoneFormOk, stripInvisible, type EntryFighter } from '../../core/entryPackage.ts';
-import { hanamichiBirthText, hanamichiClean, HANAMICHI_ITEMS, HANAMICHI_KEYS, isHanamichiDivision, isRealPastDate, validateHanamichi, type HanamichiItem, type HanamichiKey } from '../../core/hanamichi.ts';
-import { ageKnown, gymPhoneNormal, PLEDGE_LIMITS } from '../../core/pledge.ts';
+import { HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, hanamichiAgeFrom, hanamichiBirthText, hanamichiClean, HANAMICHI_ITEMS, HANAMICHI_KEYS, isHanamichiDivision, isRealPastDate, jstDateText, ringFromName, validateHanamichi, type HanamichiItem, type HanamichiKey } from '../../core/hanamichi.ts';
+import { ageKnown, gymPhoneNormal, isUnaffiliated, PLEDGE_LIMITS, UNAFFILIATED_TEXT } from '../../core/pledge.ts';
 import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
 import { DIVISION_LABEL, findDivision, isDivisionError, noClassReviewValue, NO_CLASS_NOTE_APPLY, normalizeWeightClass, weightChoiceError, weightClassLabel } from '../../core/weightClass.ts';
 import { BirthDateSelect, type BirthParts } from '../components/BirthDateSelect.tsx';
@@ -69,8 +69,8 @@ const isHnKey = (key: Key): key is HanamichiKey => key in HN_BY_KEY;
 const HN_UI: Record<HanamichiKey, { hint: string; example: string[] }> = {
   hnNameKana: { hint: '上の「選手名」のフリガナです。カタカナで入れてください。', example: ['カクウ ハナミチイチロウ'] },
   hnGymKana: { hint: '上の「ジム名」のフリガナです。カタカナで入れてください。', example: ['カクウジムエー'] },
-  hnRing: { hint: 'アナウンスで呼ばれる名前です。本名でも、あだ名でもOK', example: ['架空のタイガー'] },
-  hnRingKana: { hint: '上の「リングネーム」のフリガナです。カタカナで入れてください。', example: ['カクウノタイガー'] },
+  hnRing: { hint: 'アナウンスで呼ばれる名前です。本名で入れてください。あだ名は、入れないでください。', example: ['架空 花道一郎'] },
+  hnRingKana: { hint: '上の「リングネーム」のフリガナです。カタカナで入れてください。', example: ['ヤマダ タロウ'] },
   hnBirth: { hint: '西暦で、年・月・日の3つを選んでください。年のとなりの（ ）は、和暦です。', example: ['1975年 8月 20日'] },
   hnKickYears: { hint: 'キックを始めてから何年か、数字だけ入れてください。1年に満たない時は 0 と入れてください。', example: ['5'] },
   hnPerWeek: { hint: '1週間に何回くらい練習するか、数字だけ入れてください。', example: ['3'] },
@@ -143,6 +143,9 @@ function telDigits(contact: string): string {
   return match ? match[0].replace(/\D/g, '') : '';
 }
 
+/** 花道のとき、選手名はリングネームになる（花道プロフィールの欄は60字まで）。長いときの文 */
+const HN_NAME_MAX = 60;
+const hnNameLongText = (name: string): string => `花道のときは、選手名は${HN_NAME_MAX}字までです（いま${name.trim().length}字）。短くしてください。`;
 const CORE_KEYS: [string, Key][] = [['ジム名', 'gym'], ['選手名', 'name'], ['身長', 'height'], ['体重', 'weight'], ['戦績', 'record'], ['学年', 'grade'], ['年齢', 'age'], ['試合への意気込み', 'comment'], ['入場曲', 'musicUrl'], ['選手の写真', 'photo']];
 
 function friendly(key: Key): string {
@@ -168,7 +171,7 @@ function friendly(key: Key): string {
 function problemFor(key: Key, nf: EntryFighter, contact: ContactNow, config: PublicEntryConfig): Problem | null {
   const tooLong = (value: string, max: number): Problem | null => (value.trim().length > max ? { text: `長すぎます（いま${value.trim().length}字／${max}字まで）`, early: true } : null);
   switch (key) {
-    case 'gym': return tooLong(nf.gym, 120);
+    case 'gym': return tooLong(nf.gym, 120) ?? (isUnaffiliated(nf.gym) ? { text: UNAFFILIATED_TEXT, early: false } : null);
     case 'name': return tooLong(nf.name, 80);
     case 'record': return tooLong(nf.record, 300);
     case 'comment': return config.comment === 'off' ? null : tooLong(nf.comment, 500);
@@ -282,6 +285,8 @@ function validate(nf: EntryFighter, hasPhoto: boolean, config: PublicEntryConfig
     const p = problemFor(key, nf, { name: contact.name, phone: contact.phone, email: contact.email }, config);
     if (p) { if (!fields[key]) errors.push(p.text); fields[key] = p.text; }
   }
+  // 花道のとき、選手名がリングネームになる。60字をこえると、花道プロフィールに入らないので、選手名の欄で直してもらう
+  if (hanamichi && !fields.name && nf.name.trim().length > HN_NAME_MAX) { const text = hnNameLongText(nf.name); errors.push(text); put('name', text); }
   // 階級分け（シートの設定が「あり」のときだけ）。区分→階級の順に選ぶ。選んでいないと送れない。階級のない区分（小学生以下など）は、階級を選ばなくてよい
   if (config.weights) {
     const picked = weightChoiceError(division, weightClass, config.weights);
@@ -618,13 +623,31 @@ export default function PublicApply() {
   const classMismatchText = useMemo(() => (classes && chosenClass ? classMismatch(fighter.record, classes[chosenClass].name, classes) : ''), [classes, chosenClass, fighter.record]);
   // 花道の追加の質問：リンクに hn=on があって、花道の区分を選んだときだけ出る（区分を選ぶので、階級分けも要る）。それ以外は、何も出さず、何も送らない
   const hanamichiOn = Boolean(config.hanamichi) && Boolean(weights) && isHanamichiDivision(division);
-  const hnNf = useMemo(() => hnNormalize(hn, birth), [hn, birth]);
-  const hnProblems = useMemo<HnIssues>(() => (hanamichiOn ? hnIssues(hnNf, birth) : {}), [hanamichiOn, hnNf, birth]);
+  // 花道の「自動で入る」項目（画面に出さない）：リングネーム＝選手名、そのフリガナ＝氏名のフリガナ。今日（日本時間）は、読み込んだときに1回だけ決める（送り直しで年齢が変わらないように）
+  const [todayJst] = useState(() => jstDateText());
+  const hnNf = useMemo(() => { const base = hnNormalize(hn, birth); return hanamichiOn ? hanamichiClean({ ...base, hnRing: ringFromName(nf.name), hnRingKana: base.hnNameKana }) : base; }, [hn, birth, hanamichiOn, nf.name]);
+  /** 年齢。花道のときは生年月日から（1〜120のときだけ。それ以外は ''）。ふつうは、画面の年齢の欄 */
+  const ageStr = hanamichiOn ? hanamichiAgeFrom(hnNf.hnBirth, todayJst) : nf.age;
+  const hnProblems = useMemo<HnIssues>(() => {
+    if (!hanamichiOn) return {};
+    // リングネーム・そのフリガナは、選手名から作る（画面に出さない）。その欄の赤は、ない（選手名の欄で出す）
+    const out: HnIssues = { ...hnIssues(hnNf, birth) };
+    for (const key of HANAMICHI_DERIVED_KEYS) delete out[key];
+    // 生年月日は正しい日でも、年齢が1〜120にならなければ（0歳＝今年の誕生日がまだ、など）送れない。生年月日の欄で直してもらう
+    if (!out.hnBirth && hnNf.hnBirth && !ageStr) out.hnBirth = { text: '生まれた年・月・日を、もう一度見てください（0歳や、120歳をこえる年は、入れられません）', empty: false, early: false };
+    return out;
+  }, [hanamichiOn, hnNf, birth, ageStr]);
   const hanamichiPost: Record<string, string> = hanamichiOn ? Object.fromEntries(HANAMICHI_KEYS.map((key) => [key, hnNf[key]])) : {};
   // 誓約書：リンクに pl=on があるときだけ。年齢で保護者の欄が、ジム名でジム責任者の欄が、出る・消える（入れ直すと、すぐ変わる。消えた欄の✔と入力は、送らない）
-  const plan = pledgePlan(config.pledge, nf.age, nf.gym, config.mode);
+  /** 送る値（画面に出さない欄は、ここで決める）。花道のとき：学年は「社会人」（学年が必須のリンクだけ）、意気込みは花道のメッセージ（意気込みが必須のリンクだけ）。ほかは、画面の欄のとおり */
+  const postGrade = hanamichiOn ? (config.grade === 'required' ? '社会人' : '') : (config.grade === 'off' ? '' : nf.grade);
+  const postAge = config.age === 'off' ? '' : ageStr;
+  const postComment = hanamichiOn ? (config.comment === 'required' ? hnNf.hnMessage : '') : (config.comment === 'off' ? '' : nf.comment);
+  /** 画面で聞く設定。花道のときは、学年・年齢・意気込みを画面に出さない（ここで出さない欄は、調べず・数えず・赤くしない） */
+  const uiCfg: PublicEntryConfig = hanamichiOn ? { ...config, grade: 'off', age: 'off', comment: 'off' } : config;
+  const plan = pledgePlan(config.pledge, postAge, config.mode);
   /** 保護者の欄が出ているのは、年齢がまだ入っていない（読めない）から。18歳以上の方が、欄の消し方を分かるように、1行そえる */
-  const guardianAgeUnknown = plan.guardian && config.pledge?.mode === 'under18' && config.age !== 'off' && !ageKnown(nf.age);
+  const guardianAgeUnknown = plan.guardian && config.pledge?.mode === 'under18' && config.age !== 'off' && !ageKnown(ageStr);
   const gymPhoneNow = useMemo(() => normalizePhone(gymPhoneRaw), [gymPhoneRaw]);
   const pa: PledgeAnswers = { ticks: pledgeAns.ticks, guardian: plan.guardian && pledgeAns.guardian, gymName: plan.gym ? trimAll(gymNameRaw) : '', gymPhone: plan.gym ? gymPhoneNow : '', gymPermission: plan.gym && pledgeAns.gymPermission, gymConsent: plan.gym && pledgeAns.gymConsent };
   const pledgeStates = pledgeOrder(plan, pa);
@@ -633,18 +656,17 @@ export default function PublicApply() {
   const pledgeReason = pledgeLockReason(plan, pa);
   /** 誓約書の欄に、何か入れたが、形がまちがっている（携帯電話の形ではない、など）。「足りない」ではなく「直す」 */
   const typedWrong = (key: Key): boolean => isPledgeKey(key) && pledgeProblems[key]?.empty === false;
-  /** 入力の数が、選び方で変わるリンクか。変わる理由の言葉（区分・年齢・ジム名）を返す。変わらないリンクは ''（花道・誓約書が無い昔のリンクは、いつも '' で、見た目は今のまま） */
+  /** 入力の数が、選び方で変わるリンクか。変わる理由の言葉（区分・年齢）を返す。変わらないリンクは ''（花道・誓約書が無い昔のリンクは、いつも '' で、見た目は今のまま） */
   const countMayChange = [
     config.hanamichi && weights && weights.divisions.some((d) => isHanamichiDivision(d.name)) ? DIVISION_LABEL : '',
-    config.pledge?.mode === 'under18' && config.age !== 'off' ? '年齢' : '',
-    config.pledge?.gymMode ? 'ジム名' : '',
+    config.pledge?.mode === 'under18' && config.age !== 'off' ? (hanamichiOn ? '生年月日' : '年齢') : '',
   ].filter(Boolean).join('・');
   /** 入力の途中では覚えない物（正直に言う）。このリンクにある物だけ名前を出す：花道の質問が出ているとき＝花道の答え／誓約書のリンク＝誓約書の✔／ジム責任者の欄があるリンク＝ジム責任者の欄。誓約書も花道も無いリンクには、その言葉を出さない（見た目が今のまま） */
   const keptNot = ['連絡先', '写真', '同意のチェック', ...(hanamichiOn ? ['花道の答え'] : []), ...(config.pledge ? ['誓約書の✔'] : []), ...(config.pledge?.gymMode ? ['ジム責任者の欄'] : [])].join('・');
   /** 「次の人のために60分だけ覚える」物のうち、「ジム名と連絡先」のほかにあるもの（正直に言う）。ジム責任者の名前・電話は、誓約書でジム責任者の欄があるリンクだけ */
   const kitExtra = (config.pledge?.gymMode ? '個人情報の同意のチェックと、ジム責任者の名前・電話' : '個人情報の同意のチェック') + 'も、いっしょに覚えます。';
   const thisYear = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
-  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), ...(plan.on ? [JSON.stringify(pledgeNow)] : [])]);
+  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, postGrade, postAge, postComment, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), ...(plan.on ? [JSON.stringify(pledgeNow)] : [])]);
   const contactNow: ContactNow = { name: cname, phone, email };
   const athleteInput = [fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl].some((v) => v.trim()) || Boolean(photo) || Boolean(chosenClass) || Boolean(division) || HANAMICHI_KEYS.some((key) => hn[key].trim()) || Boolean(birth.y || birth.m || birth.d)
     || pledgeAns.ticks.some(Boolean) || pledgeAns.guardian || pledgeAns.gymPermission || pledgeAns.gymConsent;
@@ -657,13 +679,13 @@ export default function PublicApply() {
   const hasInput = athleteInput || (gymContactInput && !kitOnly);
   hasInputRef.current = hasInput;
   // 確認の画面は、中身が本当に変わったときだけ閉じる（前後の空白を消すだけの自動なおしでは、閉じない）
-  const reviewKey = JSON.stringify([trimAll(fighter.gym), trimAll(fighter.name), trimAll(fighter.grade), nf.age, nf.height, nf.weight, trimAll(fighter.record), trimAll(fighter.comment), nf.musicUrl, trimAll(contactName), phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), consent, ...(plan.on ? [JSON.stringify(pledgeNow)] : [])]);
+  const reviewKey = JSON.stringify([trimAll(fighter.gym), trimAll(fighter.name), trimAll(fighter.grade), nf.age, postGrade, postAge, postComment, nf.height, nf.weight, trimAll(fighter.record), trimAll(fighter.comment), nf.musicUrl, trimAll(contactName), phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), consent, ...(plan.on ? [JSON.stringify(pledgeNow)] : [])]);
   useEffect(() => {
     if (reviewingRef.current) say('内容を直したので、もう一度「入力内容を確認する →」を押してください。', 'warn');
     setReviewing(false);
   }, [reviewKey, config]);
   useEffect(() => {
-    // 年齢を入れ直して保護者の欄が消えたら、✔も捨てる。ジム名を「無所属」などに書きかえて、ジム責任者の欄が消えたら、入れた名前・電話・✔も捨てる（送らない）
+    // 年齢を入れ直して保護者の欄が消えたら、✔も捨てる。ジム責任者の欄が消えたら（設定で「なし」にされたとき）、入れた名前・電話・✔も捨てる（送らない）
     const drop: Key[] = [];
     if (!plan.guardian && pledgeAns.guardian) { setPledgeAns((old) => ({ ...old, guardian: false })); drop.push('pledgeGuardian'); }
     if (!plan.gym && (pledgeAns.gymPermission || pledgeAns.gymConsent || gymNameRaw || gymPhoneRaw)) {
@@ -740,6 +762,12 @@ export default function PublicApply() {
   /** 誓約書の□を1つ✔／はずす。項目は番号（0から）で持つ */
   const tickItem = (i: number, on: boolean) => { setPledgeAns((old) => { const ticks = old.ticks.slice(); ticks[i] = on; return { ...old, ticks }; }); clearError(('pledge' + (i + 1)) as Key); };
   const tickOne = (field: 'guardian' | 'gymPermission' | 'gymConsent', key: Key, on: boolean) => { setPledgeAns((old) => ({ ...old, [field]: on })); clearError(key); };
+  /** 「ぜんぶの□に✔」：誓約書の項目と、保護者の✔だけ。ジム責任者の「許可」と「同意」、個人情報の同意は、本人が自分で✔する */
+  const tickAllPledge = () => {
+    setPledgeAns((old) => ({ ...old, ticks: Array.from({ length: plan.n }, () => true), guardian: plan.guardian ? true : old.guardian }));
+    for (let i = 1; i <= plan.n; i++) clearError(('pledge' + i) as Key);
+    if (plan.guardian) clearError('pledgeGuardian');
+  };
   const dropHanamichi = () => {
     setHn(blankHn()); setBirth(blankBirth());
     setFieldErrors(withoutHn); setNotes(withoutHn); setTouched(withoutHn);
@@ -808,14 +836,14 @@ export default function PublicApply() {
   };
 
   // 花道の追加の質問の「必須」の項目（画面の順）。リングネームが空のあいだは、そのフリガナは まだ要らない（数えない）
-  const hnOrder: Array<[Key, boolean]> = hanamichiOn ? HANAMICHI_ITEMS.filter((item) => item.required && (!item.needs || Boolean(hnNf[item.needs]))).map((item): [Key, boolean] => [item.key, Boolean(hnNf[item.key])]) : [];
+  const hnOrder: Array<[Key, boolean]> = hanamichiOn ? HANAMICHI_ASKED_ITEMS.filter((item) => item.required && (!item.needs || Boolean(hnNf[item.needs]))).map((item): [Key, boolean] => [item.key, Boolean(hnNf[item.key])]) : [];
   // 「次はここ」を決める順番には、任意の項目（職業・他格闘歴）も入れる。空でもよいので、いつも「できた」。赤いまちがい（長すぎ）が出たときだけ、黄色がそこへ行く。入力 N/M の数には入れない（hnOrder のまま）
-  const hnTodoOrder: Array<[Key, boolean]> = hanamichiOn ? HANAMICHI_ITEMS.filter((item) => !item.required || !item.needs || Boolean(hnNf[item.needs])).map((item): [Key, boolean] => [item.key, item.required ? Boolean(hnNf[item.key]) : true]) : [];
+  const hnTodoOrder: Array<[Key, boolean]> = hanamichiOn ? HANAMICHI_ASKED_ITEMS.filter((item) => !item.required || !item.needs || Boolean(hnNf[item.needs])).map((item): [Key, boolean] => [item.key, item.required ? Boolean(hnNf[item.key]) : true]) : [];
   const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight],
     ...(weights ? [['division', !!pickedDivision] as [Key, boolean]] : []), ...(needClass ? [['weightClass', classPicked] as [Key, boolean]] : []),
     ['record', !!nf.record],
     ...(classes ? [['fighterClass', !!chosenClass] as [Key, boolean]] : []),
-    ...(config.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(config.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(config.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
+    ...(uiCfg.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(uiCfg.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(uiCfg.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
     ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo],
     ...hnTodoOrder,
     ['contactName', !!cname], ['contactPhone', !!phone], ['contactEmail', !!email], ['consent', consent],
@@ -828,7 +856,7 @@ export default function PublicApply() {
     if (confirmed && !reviewing && !resend) return;
     // 本番なのに、主催者が誓約書の文をまだ確認していない：送らない（サーバーも断る）
     if (confirmed && plan.blocked) { say(PLEDGE_BLOCKED_TEXT, 'error'); return; }
-    const { errors, fields } = validate(nf, Boolean(photo), config, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass, division, weightClass, hanamichiOn ? hnProblems : null, plan.on ? pledgeProblems : null, classFree);
+    const { errors, fields } = validate(nf, Boolean(photo), uiCfg, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass, division, weightClass, hanamichiOn ? hnProblems : null, plan.on ? pledgeProblems : null, classFree);
     if (errors.length) {
       setReviewing(false);
       setAttempted(true);
@@ -924,7 +952,7 @@ export default function PublicApply() {
     if (!parsed) { safeRemove(store, nextKey(link)); return; }
     const k = parsed.kit;
     const now = trimAll(gymNow);
-    const withManager = (!now || now === trimAll(k.gym)) && pledgePlan(config.pledge, '', now || k.gym, config.mode).gym;
+    const withManager = (!now || now === trimAll(k.gym)) && pledgePlan(config.pledge, '', config.mode).gym;
     setFighter((old) => (old.gym.trim() ? old : { ...old, gym: k.gym }));
     setContactName((old) => (old.trim() ? old : k.contactName));
     setContactPhone((old) => (old.trim() ? old : k.contactPhone));
@@ -988,7 +1016,7 @@ export default function PublicApply() {
   const infoItems = [nf.gym, nf.name, nf.height, nf.weight, nf.record, photo,
     ...(weights ? [pickedDivision?.name ?? ''] : []), ...(needClass ? [classPicked ? weightClass : ''] : []),
     ...(classes ? [chosenClass] : []),
-    ...(config.grade === 'required' ? [nf.grade] : []), ...(config.age === 'required' ? [nf.age] : []), ...(config.comment === 'required' ? [nf.comment] : []), ...(config.music ? [nf.musicUrl] : []), ...hnOrder.map(([, ok]) => ok)].map(Boolean);
+    ...(uiCfg.grade === 'required' ? [nf.grade] : []), ...(uiCfg.age === 'required' ? [nf.age] : []), ...(uiCfg.comment === 'required' ? [nf.comment] : []), ...(config.music ? [nf.musicUrl] : []), ...hnOrder.map(([, ok]) => ok)].map(Boolean);
   const contactItems = [cname, phone, email, consent ? 'yes' : '', ...pledgeStates.map(([, ok]) => ok)].map(Boolean);
   const filled = [...infoItems, ...contactItems].filter(Boolean).length;
   const total = infoItems.length + contactItems.length;
@@ -1004,14 +1032,15 @@ export default function PublicApply() {
     if (isHnKey(key)) { const p = hnProblems[key]; return p && !p.empty && (p.early || touched[key]) ? p.text : ''; }
     // 誓約書：✔が入っていない（empty）は、送ろうとしたときに赤にする。ジム責任者の名前が長すぎるのは、すぐ赤。電話の形は、欄を出た後に赤
     if (isPledgeKey(key)) { const p = pledgeProblems[key]; return p && !p.empty && (p.early || touched[key]) ? p.text : ''; }
-    const p = problemFor(key, nf, contactNow, config);
+    if (key === 'name' && hanamichiOn && nf.name.trim().length > HN_NAME_MAX) return hnNameLongText(nf.name);
+    const p = problemFor(key, nf, contactNow, uiCfg);
     return p && (p.early || touched[key]) ? p.text : '';
   };
   const shown = (key: Key) => fieldErrors[key] || live(key);
   const suspect = emailSuspect(email);
   const emailAsk = Boolean(suspect) && emailOk !== email && !live('contactEmail') && Boolean(touched.contactEmail || fieldErrors.contactEmail);
   const contactAt = TEXT_KEYS.indexOf('contactName');
-  const badKeys = [...(hanamichiOn ? [...TEXT_KEYS.slice(0, contactAt), ...HANAMICHI_KEYS, ...TEXT_KEYS.slice(contactAt)] : TEXT_KEYS), ...(plan.gym ? (['gymName', 'gymPhone'] as Key[]) : [])].filter((key) => live(key));
+  const badKeys = [...(hanamichiOn ? [...TEXT_KEYS.slice(0, contactAt), ...HANAMICHI_ASKED_ITEMS.map((item) => item.key), ...TEXT_KEYS.slice(contactAt)] : TEXT_KEYS), ...(plan.gym ? (['gymName', 'gymPhone'] as Key[]) : [])].filter((key) => live(key));
   // 「次はここ」は、いつも1つだけ。入っていない欄・直す欄のうち、画面でいちばん上のもの
   const todoKey: Key | null = order.find(([key, ok]) => !ok || shown(key) || (key === 'photo' && photoError && !photo) || (key === 'contactEmail' && emailAsk))?.[0] ?? null;
   todoKeyRef.current = todoKey;
@@ -1056,8 +1085,8 @@ export default function PublicApply() {
   const fieldProps = (key: Key) => ({ error: shown(key) || undefined, note: notes[key], next: markKey === key ? nextLabel(key) : undefined, nextPrefix: prefix });
 
   const META: Record<'gym' | 'name' | 'height' | 'weight' | 'record' | 'grade' | 'age' | 'comment' | 'musicUrl' | 'contactName' | 'contactPhone' | 'contactEmail', { hint: string; example: string[] }> = {
-    gym: { hint: '通っているジム・道場の名前です。通っていない時は「無所属」と入れてください。', example: ['フラットアップジム'] },
-    name: { hint: '試合で呼ばれる名前です。本名でも、あだ名でもOK', example: ['山田 太郎'] },
+    gym: { hint: '通っているジム・道場の名前です。ジムに所属していない人は、参加できません。', example: ['フラットアップジム'] },
+    name: { hint: '本名で入れてください。あだ名・リングネームは、入れないでください。', example: ['山田 太郎'] },
     height: { hint: '数字だけ入れてください。「cm」は書かなくてもOK', example: ['170'] },
     weight: { hint: '試合に出る体重（kg）です。わからない時は、今の体重を入れてください。', example: ['55'] },
     record: { hint: '試合の成績です。はじめてなら「初試合」と書いてください', example: ['初試合', '3勝1敗', '空手3年'] },
@@ -1081,8 +1110,8 @@ export default function PublicApply() {
     extra={<><p className="mt-2 text-[1.0625rem] font-bold text-slate-700">{commentLeft >= 0 ? `あと${commentLeft}文字（500文字まで）` : ''}</p><Caution className="mt-2">会場の画面に出ます。住所や電話番号は書かない</Caution></>}>
     <textarea {...ids('comment', { hint: true, example: true })} rows={3} className={look('comment')} value={fighter.comment} autoComplete="off" onChange={(e) => change('comment', e.target.value)} onBlur={() => leaveSoon('comment')} />
   </Field>;
-  const requiredExtra = [config.grade === 'required' ? gradeField() : null, config.age === 'required' ? ageField() : null, config.comment === 'required' ? commentField() : null];
-  const optionalExtra = [config.grade === 'optional' ? gradeField() : null, config.age === 'optional' ? ageField() : null, config.comment === 'optional' ? commentField() : null].filter(Boolean);
+  const requiredExtra = [uiCfg.grade === 'required' ? gradeField() : null, uiCfg.age === 'required' ? ageField() : null, uiCfg.comment === 'required' ? commentField() : null];
+  const optionalExtra = [uiCfg.grade === 'optional' ? gradeField() : null, uiCfg.age === 'optional' ? ageField() : null, uiCfg.comment === 'optional' ? commentField() : null].filter(Boolean);
 
   // 階級分け（シートの設定が「あり」のときだけ出る）。ふつうの「選ぶ欄」を2つ：区分 → 階級。
   // 区分を選ぶと、その区分の階級だけが出る。階級のない区分（小学生以下など）は、階級の欄のかわりに灰色の説明を出す。選んでいないと送れない（赤い ✕）
@@ -1155,7 +1184,7 @@ export default function PublicApply() {
     if (item.kind === 'longtext') {
       const left = item.max - hnNf[key].length;
       return <Field key={key} id={'f-' + key} label={label} hint={ui.hint} example={ui.example} {...fieldProps(key)}
-        extra={<p className="mt-2 text-[1.0625rem] font-bold text-slate-700">{left >= 0 ? `あと${left}文字（${item.max}文字まで）` : ''}</p>}>
+        extra={<><p className="mt-2 text-[1.0625rem] font-bold text-slate-700">{left >= 0 ? `あと${left}文字（${item.max}文字まで）` : ''}</p>{key === 'hnMessage' && config.comment === 'required' ? <Note id="f-hnMessage-screen" className="mt-2">この文は、意気込みとして、会場の画面にも出ます。</Note> : null}</>}>
         <textarea {...ids(key, { hint: true, example: true })} rows={3} className={look(key)} value={hn[key]} autoComplete="off" aria-required={item.required ? true : undefined} onChange={(e) => changeHn(key, e.target.value)} onBlur={() => leaveSoon(key)} />
       </Field>;
     }
@@ -1329,7 +1358,7 @@ export default function PublicApply() {
       <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">{config.organizer ? '主催：' + config.organizer : '選手のみなさん、申し込みを待っています'}</p>
       {/* 測っていない所要時間は言わない。事実だけ：用意するもの（写真）と、入力の数（下の「入力 N/M」の M と同じ数。リンクの設定で変わるので、計算して出す） */}
       {endpointReady ? <p className="mt-1 text-[1.0625rem] font-bold text-slate-200">{`用意するもの：顔写真1枚。入力は全部で${total}個です。`}</p> : null}
-      {/* 上の数は「いま」の数。選ぶ区分・年齢・ジム名で、出る欄が変わるリンクのときだけ、そう言う（言い切って、うそにならないように） */}
+      {/* 上の数は「いま」の数。選ぶ区分・年齢で、出る欄が変わるリンクのときだけ、そう言う（言い切って、うそにならないように） */}
       {endpointReady && countMayChange ? <p id="count-note" className="mt-1 text-[1.0625rem] font-bold text-slate-200">{countMayChange}によって、入力の数が変わることがあります。</p> : null}
       {endpointReady || config.date || config.venue || config.deadline ? <dl className="mt-3 divide-y divide-white/20 rounded-2xl bg-white/10 px-3">
         {showRow(config.date) ? <div className="flex min-h-12 items-center gap-3 py-1.5"><dt className="w-20 shrink-0 text-[1.0625rem] text-slate-200">開催日</dt><dd className="min-w-0 text-lg font-bold">{dateText || '未定'}</dd></div> : null}
@@ -1407,7 +1436,7 @@ export default function PublicApply() {
         <p className="mt-3 text-lg font-bold">花道の紹介の質問です。アナウンスで使います。</p>
         <Caution className="mt-3">住所や電話番号は書かないでください。</Caution>
         <p className="mt-3 text-[1.0625rem] text-slate-700">「必須」のところは、ぜんぶ入れてください。</p>
-        <div className="tos-badge-room grid gap-8">{HANAMICHI_ITEMS.map((item) => hnField(item))}</div>
+        <div className="tos-badge-room grid gap-8">{HANAMICHI_ASKED_ITEMS.map((item) => hnField(item))}</div>
       </section> : null}
       <section className={cardNow} hidden={!endpointReady}>
         <h2 className="flex items-center gap-3 text-2xl font-black"><span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-700 text-xl text-white">2</span>連絡先</h2>
@@ -1417,7 +1446,7 @@ export default function PublicApply() {
           <span className="mt-1 block">送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。{kitExtra}共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。</span>
         </Note>
         <div id="contact-fields" className="tos-badge-room grid scroll-mt-24 gap-8">
-          <Field id="f-contactName" label="連絡先のお名前 必須" hint={META.contactName.hint} example={META.contactName.example} {...fieldProps('contactName')}><input {...ids('contactName', { hint: true, example: true })} className={look('contactName')} value={contactName} autoComplete="name" enterKeyHint="next" onChange={(e) => { setContactName(e.target.value); clearError('contactName'); }} onBlur={() => leaveSoon('contactName')} /></Field>
+          <Field id="f-contactName" label="連絡先のお名前 必須" hint={META.contactName.hint} example={META.contactName.example} extra={!cname && nf.name ? <button type="button" onClick={() => { setContactName(nf.name); clearError('contactName'); }} className={greyBtn + ' mt-2'}>選手名と同じにする</button> : undefined} {...fieldProps('contactName')}><input {...ids('contactName', { hint: true, example: true })} className={look('contactName')} value={contactName} autoComplete="name" enterKeyHint="next" onChange={(e) => { setContactName(e.target.value); clearError('contactName'); }} onBlur={() => leaveSoon('contactName')} /></Field>
           <Field id="f-contactPhone" label="電話番号 必須" hint={META.contactPhone.hint} example={META.contactPhone.example} {...fieldProps('contactPhone')}><input {...ids('contactPhone', { hint: true, example: true })} className={look('contactPhone')} type="tel" inputMode="tel" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="tel" enterKeyHint="next" value={contactPhone} onChange={(e) => { setContactPhone(e.target.value); clearError('contactPhone'); }} onBlur={() => leaveSoon('contactPhone')} /></Field>
           <Field id="f-contactEmail" label="メールアドレス 必須" hint={META.contactEmail.hint} example={META.contactEmail.example} {...fieldProps('contactEmail')}
             extra={emailAsk && suspect ? <Caution className="mt-2"><span className="block">「{suspect.bad}」になっています。「{suspect.good}」ではありませんか？</span><span className="mt-2 flex flex-wrap gap-3"><button type="button" onClick={() => { setContactEmail(suspect.fixed); setEmailOk(suspect.fixed); clearError('contactEmail'); }} className={darkBtn}>直す</button><button type="button" onClick={() => { setEmailOk(email); clearError('contactEmail'); }} className={greyBtn}>このまま使う</button></span></Caution> : undefined}>
@@ -1435,6 +1464,7 @@ export default function PublicApply() {
         <p className="mt-3 text-[1.0625rem] text-slate-700">上の「2 連絡先」の続きです。</p>
         {plan.blocked ? <ErrorLine id="pledge-unconfirmed" alert className="mt-3">{PLEDGE_BLOCKED_TEXT}</ErrorLine> : null}
         <p className="mt-3 text-lg font-bold">それぞれの□に、✔を入れてください。ぜんぶ入れないと、先へ進めません。</p>
+        {Array.from({ length: plan.n }, (_, i) => Boolean(pledgeAns.ticks[i])).some((on) => !on) || (plan.guardian && !pledgeAns.guardian) ? <button type="button" onClick={tickAllPledge} className={greyBtn + ' mt-3'}>ぜんぶの□に、✔を入れる</button> : null}
         {/* 黄色の札（👉 次はここ）は□の上に浮かぶ。細い画面では2行（約62px）になるので、上の文にかぶらないよう、□の上を広くあけておく（guardian・gym の箱も同じ） */}
         <div role="group" aria-label="誓約書の項目" className="mt-16 grid gap-8">
           {config.pledge.items.map((text, i) => tickBox(('pledge' + (i + 1)) as PledgeKey, Boolean(pa.ticks[i]), (on) => tickItem(i, on), text))}
@@ -1442,13 +1472,13 @@ export default function PublicApply() {
         {plan.guardian ? <div id="pledge-guardian-box" className="mt-8 rounded-2xl border-2 border-slate-400 bg-white p-4">
           <h3 id="pledge-guardian-title" className="text-xl font-black">保護者（連帯責任者）の同意</h3>
           <p id="pledge-guardian-text" className="mt-2 whitespace-pre-wrap break-words text-lg font-bold">{config.pledge.guardian}</p>
-          {guardianAgeUnknown ? <Note id="pledge-guardian-age-note" className="mt-3">年齢を入れると、18歳以上の方は、この欄が出なくなります。</Note> : null}
+          {guardianAgeUnknown ? <Note id="pledge-guardian-age-note" className="mt-3">{hanamichiOn ? '生年月日を選ぶと' : '年齢を入れると'}、18歳以上の方は、この欄が出なくなります。</Note> : null}
           <div className="mt-16">{tickBox('pledgeGuardian', pa.guardian, (on) => tickOne('guardian', 'pledgeGuardian', on), 'ここに✔を入れる', 'pledge-guardian-title pledge-guardian-text')}</div>
         </div> : null}
         {plan.gym ? <div id="pledge-gym-box" className="mt-8 rounded-2xl border-2 border-slate-400 bg-white p-4">
           <h3 id="pledge-gym-title" className="text-xl font-black">団体・ジム責任者の同意</h3>
           <p id="pledge-gym-text" className="mt-2 whitespace-pre-wrap break-words text-lg font-bold">{config.pledge.gym}</p>
-          <dl className="mt-4"><dt className="text-[1.0625rem] text-slate-600">ジム・道場名</dt><dd id="pledge-gym-name" className="break-words text-lg font-bold">{nf.gym || '（上の「ジム名」を入れると、ここに出ます）'}</dd><dd className="mt-1 text-[1.0625rem] text-slate-700">上の「ジム名」に入れた名前です。ここでは直せません。</dd></dl>
+          <dl className="mt-4"><dt className="text-[1.0625rem] text-slate-600">ジム・道場名</dt><dd id="pledge-gym-name" className="break-words text-lg font-bold">{nf.gym || '（上の「ジム名」を入れると、ここに出ます）'}</dd><dd className="mt-1 text-[1.0625rem] text-slate-700">上の「ジム名」に入れた名前です。ここでは直せません。</dd></dl>{!gymNameRaw.trim() && !gymPhoneRaw.trim() && cname && phone ? <button type="button" onClick={() => { setGymNameRaw(cname); setGymPhoneRaw(phone); clearError('gymName'); clearError('gymPhone'); }} className={greyBtn + ' mt-4'}>連絡先のお名前と電話を、ここにも入れる</button> : null}
           <div className="mt-16 grid gap-8">
             <Field id="f-gymName" label="責任者のお名前 必須" hint="この団体・ジムの責任者の名前です。" example={['架空 責任者']} {...fieldProps('gymName')}>
               <input {...ids('gymName', { hint: true, example: true })} className={look('gymName')} value={gymNameRaw} autoComplete="off" enterKeyHint="next" onChange={(e) => { setGymNameRaw(e.target.value); clearError('gymName'); }} onBlur={() => leaveSoon('gymName')} />
@@ -1463,7 +1493,7 @@ export default function PublicApply() {
       </section> : null}
     </fieldset>
     <form ref={formRef} action={endpointReady ? config.endpoint : undefined} method="post" target="_self" className="hidden">
-      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: config.grade === 'off' ? '' : nf.grade, age: config.age === 'off' ? '' : nf.age, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', ...(weights ? { division, weightClass: needClass ? weightClass : '' } : {}), comment: config.comment === 'off' ? '' : nf.comment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo, ...hanamichiPost }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: postGrade, age: postAge, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', ...(weights ? { division, weightClass: needClass ? weightClass : '' } : {}), comment: postComment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo, ...hanamichiPost }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {Object.entries(pledgeNow).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
     </form>
     {reviewing ? <section aria-label="送る前の確認" className="my-6 rounded-3xl border-2 border-indigo-700 bg-white p-4 sm:p-6">
@@ -1478,12 +1508,12 @@ export default function PublicApply() {
             ...(weights ? [[DIVISION_LABEL, division], ['階級', noClass ? noClassReviewValue() : weightClass ? weightClassLabel(weightClass) : '']] : []),
             ['戦績', nf.record],
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
-            ...(config.grade !== 'off' ? [['学年', nf.grade]] : []), ...(config.age !== 'off' ? [['年齢', nf.age]] : []), ...(config.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
+            ...(uiCfg.grade !== 'off' ? [['学年', nf.grade]] : []), ...(uiCfg.age !== 'off' ? [['年齢', nf.age]] : []), ...(uiCfg.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(hanamichiOn ? [...(postAge ? [['年齢（生年月日から自動）', postAge]] : []), ...(postGrade ? [['学年（自動）', postGrade]] : []), ...(postComment ? [['意気込み（メッセージと同じ）', postComment]] : [])] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>
         {classMismatchText ? <><ErrorLine icon="⚠" className="mt-3"><span className="min-w-0">{classMismatchText} 合っていれば、そのまま送れます。</span></ErrorLine><button type="button" onClick={() => fix('fighterClass')} className={greyBtn + ' mt-2 w-full'}>クラスを選び直す</button></> : null}</div>
       {hanamichiOn ? <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">花道の追加の質問</h3><button type="button" aria-label="花道の追加の質問を直す" onClick={() => fix('hnNameKana')} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>
         <dl className="mt-2 grid gap-3">
-          {HANAMICHI_ITEMS.map((item) => { const value = item.key === 'hnBirth' ? birthText : hnNf[item.key]; return <div key={item.key} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{item.label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : item.required ? '（未入力）' : '（書いていません）'}</dd></div>; })}
+          {HANAMICHI_ASKED_ITEMS.map((item) => { const value = item.key === 'hnBirth' ? birthText : hnNf[item.key]; return <div key={item.key} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{item.label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : item.required ? '（未入力）' : '（書いていません）'}</dd></div>; })}
         </dl></div> : null}
       <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">顔写真</h3><button type="button" aria-label="写真を直す" onClick={() => fix('photo')} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>{photo ? <img src={photo} alt="" className="mt-2 h-28 w-24 rounded-xl bg-slate-100 object-contain" /> : <p className="mt-2 text-[1.0625rem] text-slate-600">（未入力）</p>}</div>
       <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">連絡先</h3><button type="button" aria-label="連絡先を直す" onClick={fixContact} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>

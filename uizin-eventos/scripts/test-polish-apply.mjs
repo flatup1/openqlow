@@ -716,7 +716,7 @@ await scenario('P21', 'photo error, weight hint, gym hint, map link, 使い道',
   check((weightBox.match(/試合に出る体重/g) || []).length === 1, 'P21 the weight field says it once (' + short(weightBox, 100) + ')');
   check(/試合に出る体重（kg）です。わからない時は、今の体重を入れてください。/.test(weightBox), 'P21 the one weight sentence includes 「わからない時は、今の体重」');
   const gymBox = await page.locator('#f-gym').evaluate((e) => e.closest('[class*="relative"]').innerText.replace(/\s+/g, ' '));
-  check(/通っていない時は「無所属」と入れてください/.test(gymBox), 'P21 the gym field says what to write with no gym (' + short(gymBox, 100) + ')');
+  check(/ジムに所属していない人は、参加できません。/.test(gymBox) && !/無所属/.test(gymBox), 'P21 the gym field says people with no gym cannot take part (' + short(gymBox, 100) + ')');
   const link = page.locator('a', { hasText: '架空体育館' });
   const box = await link.boundingBox();
   check(box && box.height >= 44, 'P21 the map link is at least 44px tall (' + (box && box.height) + ')');

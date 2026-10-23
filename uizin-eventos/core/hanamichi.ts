@@ -5,6 +5,7 @@
  * 会長が「必須／任意」を変えたいときは、下の表（HANAMICHI_ITEMS）の required を、1行ずつ直すだけ。
  * 本体の申し込みと重なる所属ジム・氏名・身長・体重・戦績は、二重に聞かない（本体の値を使う）ので、この表には無い。
  * ここの値は個人情報（生年月日・職業など）。Googleの「花道プロフィール」タブにだけ残し、画面・ログ・リンク・名簿には出さない。
+ * 例外：「意気込み」が必須の大会では、花道の「メッセージ」を意気込みとして送る（同じことを2回聞かないため）。そのときは、メッセージの欄に「会場の画面にも出ます」と書いてある。
  */
 
 /** 区分の名前に、この文字が入っているときだけ、花道の追加の質問を出す */
@@ -49,6 +50,40 @@ export const HANAMICHI_ITEMS: readonly HanamichiItem[] = [
   { key: 'hnReason', label: '始めた理由・良かった所', required: true, max: 300, kind: 'longtext' },
   { key: 'hnMessage', label: 'メッセージ', required: true, max: 300, kind: 'longtext' },
 ];
+
+/**
+ * 画面に出さず、選手の答えから作る項目（リングネーム＝選手名、そのフリガナ＝氏名のフリガナ）。送る値（POST・花道プロフィール）には入るが、質問としては出さない。
+ * リングネームは、アナウンスで呼ぶ名前。本名だけにしたので、選手名と同じになる（重複する質問を、なくす）。
+ */
+export const HANAMICHI_DERIVED_KEYS: readonly HanamichiKey[] = ['hnRing', 'hnRingKana'];
+
+/** 画面で聞く項目（画面の順）。POSTの鍵の一覧（HANAMICHI_KEYS）からは、作る項目を除く */
+export const HANAMICHI_ASKED_ITEMS: readonly HanamichiItem[] = HANAMICHI_ITEMS.filter((item) => !HANAMICHI_DERIVED_KEYS.includes(item.key));
+
+/** 選手名をリングネームにする（本名だけ）。長さの上限（60字）は、選手名の欄で守る。ここでは切らない（切ると、名前が違って保存される） */
+export function ringFromName(name: unknown): string {
+  return hanamichiText(name, 'text');
+}
+
+/** 今日の日付（日本時間）を yyyy-mm-dd で返す。now を渡すと、その時刻で計算する（試験のため） */
+export function jstDateText(now: number = Date.now()): string {
+  const jst = new Date(now + 9 * 3600 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return jst.getUTCFullYear() + '-' + pad(jst.getUTCMonth() + 1) + '-' + pad(jst.getUTCDate());
+}
+
+/**
+ * 生年月日（yyyy-mm-dd）と今日（yyyy-mm-dd）から、満年齢を出す。誕生日の日は、その年に1つ年を取る。
+ * 1〜120の整数でなければ ''（受付の .gs が受ける年齢と、同じ範囲）。日付の形がちがうときも ''。
+ */
+export function hanamichiAgeFrom(birth: string, today: string): string {
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(birth ?? ''));
+  const t = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(today ?? ''));
+  if (!b || !t) return '';
+  let age = Number(t[1]) - Number(b[1]);
+  if (Number(t[2]) < Number(b[2]) || (Number(t[2]) === Number(b[2]) && Number(t[3]) < Number(b[3]))) age -= 1;
+  return Number.isInteger(age) && age >= 1 && age <= 120 ? String(age) : '';
+}
 
 /** POSTの鍵（この順）。申し込みページと試験が、同じ一覧を使う */
 export const HANAMICHI_KEYS: readonly HanamichiKey[] = HANAMICHI_ITEMS.map((item) => item.key);

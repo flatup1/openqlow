@@ -216,9 +216,16 @@ export function gymPhoneNormal(s: string): string {
   return /^0[789]0\d{8}$/.test(d) ? d : '';
 }
 
-/** ジム名が「無所属」の言い方か：全角・半角をそろえ（NFKC）、空白を取ったあと、無所属／むしょぞく／ムショゾク／所属なし／なし／無し のどれか。.gs にも同じ表がある */
-export const UNAFFILIATED_NAMES: readonly string[] = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し'];
+/**
+ * ジム名が「ジムに入っていない」の言い方か。ジムに所属していない人は参加できないので、申込の画面と受付（.gs）が、この言い方を断る。
+ * 全角・半角をそろえ（NFKC）、空白を取ったあと、(1) 無所属／むしょぞく／ムショゾク／所属なし／なし／無し／ない／無／フリー／個人 のどれかそのもの、
+ * または (2) 無所属・所属なし・ジムなし・通っていない などの言葉をふくむ。.gs にも同じ表がある
+ */
+export const UNAFFILIATED_NAMES: readonly string[] = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'ない', '無', 'フリー', '個人'];
+export const UNAFFILIATED_PHRASES: readonly string[] = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', '所属無し', 'しょぞくなし', 'ショゾクナシ', '所属してない', '所属していない', '所属してません', '所属していません', '所属しておりません', 'ジムなし', 'ジム無し', '道場なし', '道場無し', '通ってない', '通っていない'];
 export function isUnaffiliated(gym: string): boolean {
   const key = String(gym == null ? '' : gym).replace(INVISIBLE, '').normalize('NFKC').replace(/\s+/g, '');
-  return UNAFFILIATED_NAMES.includes(key);
+  return UNAFFILIATED_NAMES.includes(key) || UNAFFILIATED_PHRASES.some((phrase) => key.includes(phrase));
 }
+/** ジムに入っていない人を断る言葉（申込の画面と受付で同じ）。受付は、あとに「申込ページにもどって」を足す */
+export const UNAFFILIATED_TEXT = 'ジムに所属していない人は、参加できません。通っているジム・道場の名前を入れてください。';

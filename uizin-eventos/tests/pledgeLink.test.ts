@@ -207,9 +207,9 @@ test('部品: 欄の鍵の判定（pledge1…は項目、ほかの5つは名前�
   for (const key of ['gym', 'name', 'consent', 'hnNameKana', 'contactPhone', 'pledge', 'pledgeItems', 'pledgeHash']) assert.equal(isPledgeKey(key), false, key);
 });
 
-test('部品: 計画。保護者の欄は年齢で、ジム責任者の欄はジム名で、すぐ変わる。無所属は求めない', () => {
-  const plan = (pledge: PledgeConfig | undefined, age: string, gym: string, mode: 'test' | 'live' | undefined = 'live') => pledgePlan(pledge, age, gym, mode);
-  assert.deepEqual(plan(undefined, '15', '架空ジム'), { on: false, n: 0, guardian: false, unaffiliated: false, gym: false, blocked: false }, '誓約書なしは、ぜんぶ false');
+test('部品: 計画。保護者の欄は年齢で、すぐ変わる。ジム責任者の欄は、ジム名では変わらない（ジムに入っていない人は、ジム名の欄で断る）', () => {
+  const plan = (pledge: PledgeConfig | undefined, age: string, gym: string, mode: 'test' | 'live' | undefined = 'live') => pledgePlan(pledge, age, mode);
+  assert.deepEqual(plan(undefined, '15', '架空ジム'), { on: false, n: 0, guardian: false, gym: false, blocked: false }, '誓約書なしは、ぜんぶ false');
   assert.equal(plan(FAKE, '', '架空ジム').n, 5);
   // 保護者の同意
   for (const [age, need] of [['15', true], ['17', true], ['18', false], ['45', false], ['', true], ['あ', true], ['121', true], ['0', true], ['１７', true], ['１８', false]] as const) assert.equal(plan(FAKE, age, '架空ジム').guardian, need, 'under18 age=' + age);
@@ -218,17 +218,16 @@ test('部品: 計画。保護者の欄は年齢で、ジム責任者の欄はジ
   // ジム責任者の欄
   assert.equal(plan(FAKE, '15', '架空ジム').gym, true);
   assert.equal(plan({ ...FAKE, gymMode: false }, '15', '架空ジム').gym, false, 'plm=off');
-  for (const name of ['無所属', ' 無所属 ', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', '無 所 属']) { const p = plan(FAKE, '15', name); assert.equal(p.unaffiliated, true, name); assert.equal(p.gym, false, name + ': 求めない'); }
-  for (const name of ['', '架空ジム', '無所属ジム', 'なしなし']) assert.equal(plan(FAKE, '15', name).unaffiliated, false, name);
+  for (const name of ['', '架空ジム', '無所属', 'なし', '無 所 属']) { const p = plan(FAKE, '15', name); assert.equal(p.gym, true, name + ': ジム名では変わらない（欄は全員に出る）'); assert.ok(!('unaffiliated' in p), '無所属の印は、もう無い'); }
   // 本番で、会長がまだ確認していない
   assert.equal(plan({ ...FAKE, confirmed: false }, '15', 'x', 'live').blocked, true);
   assert.equal(plan({ ...FAKE, confirmed: false }, '15', 'x', 'test').blocked, false, 'テストは動く');
-  assert.equal(pledgePlan({ ...FAKE, confirmed: false }, '15', 'x', undefined).blocked, false, 'mode が無いときは、止めない（そもそも送れないリンク）');
+  assert.equal(pledgePlan({ ...FAKE, confirmed: false }, '15', undefined).blocked, false, 'mode が無いときは、止めない（そもそも送れないリンク）');
   assert.equal(plan(FAKE, '15', 'x', 'live').blocked, false);
 });
 
 test('部品: 欄の順と進み具合（□の✔・保護者・ジム責任者）', () => {
-  const plan = pledgePlan(FAKE, '15', '架空ジム', 'live');
+  const plan = pledgePlan(FAKE, '15', 'live');
   const order = pledgeOrder(plan, ans());
   assert.deepEqual(order.map(([key]) => key), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5', 'pledgeGuardian', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym']);
   assert.ok(order.every(([, ok]) => ok === false));
@@ -240,13 +239,13 @@ test('部品: 欄の順と進み具合（□の✔・保護者・ジム責任者
   assert.equal(pledgeOrder(plan, ans({ gymPhone: '05012345678' })).find(([key]) => key === 'gymPhone')?.[1], false, '050 は携帯でない');
   assert.equal(pledgeOrder(plan, ans({ gymPhone: '０９０００００００００' })).find(([key]) => key === 'gymPhone')?.[1], true, '全角でもよい');
   // 欄が出ないときは、順にも入らない
-  assert.deepEqual(pledgeOrder(pledgePlan(FAKE, '45', 'ジム', 'live'), ans()).map(([key]) => key), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym'], '18歳以上は保護者なし');
-  assert.deepEqual(pledgeOrder(pledgePlan(FAKE, '45', '無所属', 'live'), ans()).map(([key]) => key), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5'], '無所属はジム責任者なし');
-  assert.deepEqual(pledgeOrder(pledgePlan(undefined, '45', 'ジム', 'live'), ans()), [], '誓約書なしは空');
+  assert.deepEqual(pledgeOrder(pledgePlan(FAKE, '45', 'live'), ans()).map(([key]) => key), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym'], '18歳以上は保護者なし');
+  assert.deepEqual(pledgeOrder(pledgePlan({ ...FAKE, gymMode: false }, '45', 'live'), ans()).map(([key]) => key), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5'], 'ジム責任者の同意＝なし は、ジム責任者の欄なし');
+  assert.deepEqual(pledgeOrder(pledgePlan(undefined, '45', 'live'), ans()), [], '誓約書なしは空');
 });
 
 test('部品: 止める理由の数え方', () => {
-  const plan = pledgePlan(FAKE, '15', '架空ジム', 'live');
+  const plan = pledgePlan(FAKE, '15', 'live');
   const left = (a: PledgeAnswers) => pledgeLockReason(plan, a);
   assert.equal(left(ans()), '誓約書の□が、あと8つ残っています。ジム責任者の名前と電話が、まだです');
   assert.equal(left(ans({ ticks: [true, true, false, false, false] })), '誓約書の□が、あと6つ残っています。ジム責任者の名前と電話が、まだです');
@@ -258,15 +257,15 @@ test('部品: 止める理由の数え方', () => {
   assert.equal(left(ans({ ...allTicks, guardian: true, gymPhone: '0312345678', gymPermission: true, gymConsent: true })), 'ジム責任者の名前が、まだです。ジム責任者の電話が、携帯電話の番号になっていません');
   assert.equal(left(ans({ ...allTicks, guardian: true, gymName: '架空 責任者', gymPermission: true, gymConsent: true })), 'ジム責任者の名前と電話が、まだです', '電話が空');
   assert.equal(left(ans({ ...allTicks, guardian: true, gymPhone: '09000000000', gymPermission: true, gymConsent: true })), 'ジム責任者の名前と電話が、まだです', '名前が空・電話は正しい（今までの言い方）');
-  assert.equal(pledgeLockReason(pledgePlan(undefined, '', '', 'live'), ans()), '', '誓約書なしは、止めない');
+  assert.equal(pledgeLockReason(pledgePlan(undefined, '', 'live'), ans()), '', '誓約書なしは、止めない');
   // 保護者もジム責任者も要らないとき
-  const small = pledgePlan({ ...FAKE, mode: 'none', gymMode: false }, '15', 'x', 'live');
+  const small = pledgePlan({ ...FAKE, mode: 'none', gymMode: false }, '15', 'live');
   assert.equal(pledgeLockReason(small, ans({ ticks: [true, true, true, true, false] })), '誓約書の□が、あと1つ残っています');
   assert.equal(pledgeLockReason(small, ans(allTicks)), '');
 });
 
 test('部品: 赤い問題。✔が無い欄は empty（送ろうとしたときに赤）、長すぎは early（すぐ赤）、電話の形は文を選ぶ', () => {
-  const plan = pledgePlan(FAKE, '15', '架空ジム', 'live');
+  const plan = pledgePlan(FAKE, '15', 'live');
   const issues = pledgeIssues(plan, ans());
   assert.deepEqual(Object.keys(issues), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5', 'pledgeGuardian', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym']);
   assert.ok(Object.values(issues).every((issue) => issue && issue.empty && !issue.early && issue.text.length > 5));
@@ -283,26 +282,26 @@ test('部品: 赤い問題。✔が無い欄は empty（送ろうとしたとき
   assert.ok([phone('090000'), phone('05012345678'), phone('abc')].every((issue) => issue && !issue.empty && !issue.early), '電話の形は、欄を出た後に赤');
   assert.match(phone('090000')?.text || '', /例：09000000000/);
   // 欄が出ないときは、問題にも入らない
-  assert.deepEqual(Object.keys(pledgeIssues(pledgePlan(FAKE, '45', '無所属', 'live'), ans())), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5']);
-  assert.deepEqual(pledgeIssues(pledgePlan(undefined, '', '', 'live'), ans()), {});
+  assert.deepEqual(Object.keys(pledgeIssues(pledgePlan({ ...FAKE, gymMode: false }, '45', 'live'), ans())), ['pledge1', 'pledge2', 'pledge3', 'pledge4', 'pledge5']);
+  assert.deepEqual(pledgeIssues(pledgePlan(undefined, '', 'live'), ans()), {});
 });
 
 const pick = (post: Record<string, string>) => ({ pledgeGuardianMode: post.pledgeGuardianMode, pledgeGymMode: post.pledgeGymMode });
 test('部品: POST の鍵。誓約書なしは {}、ありは PLEDGE_POST_KEYS の順。要らない欄の鍵は、鍵ごと無い', () => {
-  const full = pledgePlan(FAKE, '15', '架空ジム', 'live');
-  assert.deepEqual(pledgePost(pledgePlan(undefined, '15', 'x', 'live'), ans(), HASH), {}, '誓約書なしは、鍵を1つも足さない');
+  const full = pledgePlan(FAKE, '15', 'live');
+  assert.deepEqual(pledgePost(pledgePlan(undefined, '15', 'live'), ans(), HASH), {}, '誓約書なしは、鍵を1つも足さない');
   const done = ans({ ...allTicks, guardian: true, gymName: '架空 責任者', gymPhone: '０９０００００００００', gymPermission: true, gymConsent: true });
   const post = pledgePost(full, done, HASH);
   assert.deepEqual(Object.keys(post), [...PLEDGE_POST_KEYS], 'この順');
   assert.deepEqual(post, { pledge: 'yes', pledgeItems: '1,2,3,4,5', pledgeGuardian: 'yes', gymName: '架空 責任者', gymPhone: '09000000000', gymPermission: 'yes', pledgeGym: 'yes', pledgeHash: HASH, pledgeGuardianMode: 'under18', pledgeGymMode: 'on' });
   // 18歳以上：保護者の鍵が無い
-  assert.deepEqual(Object.keys(pledgePost(pledgePlan(FAKE, '45', '架空ジム', 'live'), done, HASH)), ['pledge', 'pledgeItems', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode']);
-  // 無所属・plm=off：ジム責任者の鍵が無い
-  assert.deepEqual(Object.keys(pledgePost(pledgePlan(FAKE, '15', '無所属', 'live'), done, HASH)), ['pledge', 'pledgeItems', 'pledgeGuardian', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode']);
-  assert.deepEqual(Object.keys(pledgePost(pledgePlan({ ...FAKE, gymMode: false, mode: 'none' }, '15', '架空ジム', 'live'), done, HASH)), ['pledge', 'pledgeItems', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode']);
+  assert.deepEqual(Object.keys(pledgePost(pledgePlan(FAKE, '45', 'live'), done, HASH)), ['pledge', 'pledgeItems', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode']);
+  // plm=off：ジム責任者の鍵が無い
+  assert.deepEqual(Object.keys(pledgePost(pledgePlan({ ...FAKE, gymMode: false }, '15', 'live'), done, HASH)), ['pledge', 'pledgeItems', 'pledgeGuardian', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode']);
+  assert.deepEqual(Object.keys(pledgePost(pledgePlan({ ...FAKE, gymMode: false, mode: 'none' }, '15', 'live'), done, HASH)), ['pledge', 'pledgeItems', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode']);
   // 最後の2つは、このリンクの設定（plg／plm）をそのまま返す。サーバーが、リンクを作ったあとの設定の変更に気づくため
-  assert.deepEqual(pick(pledgePost(pledgePlan({ ...FAKE, gymMode: false, mode: 'none' }, '15', '架空ジム', 'live'), done, HASH)), { pledgeGuardianMode: 'none', pledgeGymMode: 'off' });
-  assert.deepEqual(pick(pledgePost(pledgePlan({ ...FAKE, gymMode: true, mode: 'all' }, '45', '無所属', 'live'), done, HASH)), { pledgeGuardianMode: 'all', pledgeGymMode: 'on' }, '欄が出ない人にも、リンクの設定を返す（欄が出ない理由は、年齢とジム名）');
+  assert.deepEqual(pick(pledgePost(pledgePlan({ ...FAKE, gymMode: false, mode: 'none' }, '15', 'live'), done, HASH)), { pledgeGuardianMode: 'none', pledgeGymMode: 'off' });
+  assert.deepEqual(pick(pledgePost(pledgePlan({ ...FAKE, gymMode: false, mode: 'under18' }, '45', 'live'), done, HASH)), { pledgeGuardianMode: 'under18', pledgeGymMode: 'off' }, '欄が出ない人にも、リンクの設定を返す（欄が出ない理由は、年齢とジム責任者の同意の設定）');
   // ✔した項目の番号だけ（欠けたままは送らせないが、鍵の値はうそをつかない）
   assert.equal(pledgePost(full, ans({ ticks: [true, false, true, false, true] }), HASH).pledgeItems, '1,3,5');
   assert.equal(pledgePost(full, ans(), HASH).pledgeItems, '');
