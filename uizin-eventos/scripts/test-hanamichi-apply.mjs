@@ -14,7 +14,7 @@
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
 import assert from 'node:assert/strict';
-import { HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, HANAMICHI_ITEMS, HANAMICHI_KEYS, hanamichiAgeFrom, jstDateText } from '../core/hanamichi.ts';
+import { HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, HANAMICHI_HOBBY_MERGED, HANAMICHI_ITEMS, HANAMICHI_KEYS, hanamichiAgeFrom, jstDateText } from '../core/hanamichi.ts';
 import { publicEntryHash } from '../core/publicEntry.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -39,6 +39,8 @@ const short = (s, n = 160) => String(s).replace(/\s+/g, ' ').slice(0, n);
 /** 花道の区分は2つ（階級あり／なし）。花道でない区分も2つ（階級あり／なし） */
 const WEIGHTS = { enabled: true, divisions: [{ name: '一般男子', classes: ['60kg以下', '60kgをこえる'] }, { name: '花道男子', classes: ['無差別'] }, { name: '花道女子', classes: [] }, { name: '小学生', classes: [] }] };
 const baseCfg = { endpoint: ENDPOINT, eventId: 'hanamichi-apply', title: '架空テスト大会', organizer: '架空主催', date: '2027年10月3日', venue: '架空体育館', venueUrl: '', deadline: '2099-11-30', contact: '架空連絡先 02-0000-0000', music: false, grade: 'off', age: 'off', comment: 'off', protocol: '3', mode: 'live', weights: WEIGHTS };
+/** 画面での欄の名前（趣味・特技は、始めた理由の欄にまとめた） */
+const screenLabel = (item) => (item.key === 'hnReason' ? '趣味・特技と、始めた理由' : item.label);
 const textOf = async (p, selector) => ((await p.locator(selector).count()) ? p.locator(selector).first().innerText() : '');
 const hashFor = (over = {}) => publicEntryHash({ ...baseCfg, hanamichi: true, ...over });
 /** the POST keys of the old form, in order (setting OFF must send exactly these) */
@@ -98,9 +100,9 @@ async function fillBirth(page, { y, m, d }) {
 }
 async function fillHn(page, over = {}, birth = BIRTH_GOOD) {
   const values = { ...HN_GOOD, ...over };
-  for (const key of HANAMICHI_KEYS) {
-    // リングネーム・そのフリガナは、選手名から作る（欄は無い）
-    if (key === 'hnBirth' || HANAMICHI_DERIVED_KEYS.includes(key) || values[key] === undefined) continue;
+  // 画面で聞くのは必須の7項目だけ（ジムのフリガナ・リングネーム・そのフリガナは自動、職業・他格闘歴は聞かない）
+  for (const key of HANAMICHI_ASKED_ITEMS.map((item) => item.key)) {
+    if (key === 'hnBirth' || values[key] === undefined) continue;
     await page.locator('#f-' + key).fill(values[key]);
   }
   if (birth) await fillBirth(page, birth);
@@ -198,7 +200,7 @@ await scenario('A', 'choosing a 花道 division shows the card with the 12 items
   check(JSON.stringify(ids) === JSON.stringify(expectIds), 'A the 12 items come in the table order (birth = 3 selects) (' + short(ids.join(','), 200) + ')');
   for (const item of HANAMICHI_ASKED_ITEMS) {
     const label = (await page.locator('#hn-card label[for="f-' + item.key + '"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
-    check(label.startsWith(item.label) && label.includes(item.required ? '必須' : '任意'), 'A "' + item.label + '" is labelled ' + (item.required ? '必須' : '任意') + ' (' + short(label, 50) + ')');
+    check(label.startsWith(screenLabel(item)) && label.includes(item.required ? '必須' : '任意'), 'A "' + screenLabel(item) + '" is labelled ' + (item.required ? '必須' : '任意') + ' (' + short(label, 50) + ')');
   }
   check(await page.locator('#hn-card').getByText('（空でもOK）').count() === HANAMICHI_ASKED_ITEMS.filter((i) => !i.required).length, 'A the two optional items say （空でもOK）');
   // no double asking: nothing for the items the ordinary form already has
@@ -304,9 +306,9 @@ await scenario('D', 'changing away from 花道 removes the card and discards the
     const mark = await oneMark(page, 'D coming back');
     check(mark.includes('氏名のフリガナ'), 'D coming back: the marker is on the first 花道 item (' + mark + ')');
     // from a 花道 division to another 花道 division: the answers stay
-    await page.locator('#f-hnHobby').fill(MARK);
+    await page.locator('#f-hnReason').fill(MARK);
     await page.locator('#f-division').selectOption('花道女子');
-    check((await cardCount(page)) === 1 && (await page.locator('#f-hnHobby').inputValue()) === MARK, 'D between two 花道 divisions the answers stay');
+    check((await cardCount(page)) === 1 && (await page.locator('#f-hnReason').inputValue()) === MARK, 'D between two 花道 divisions the answers stay');
     await ctx.close();
   }
 });
@@ -438,10 +440,10 @@ await scenario('I', 'full flow: review block, then the POST with the 12 keys aft
   await toReview(page);
   const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
   check(review.includes('花道の追加の質問'), 'I the review has a 花道 block');
-  for (const item of HANAMICHI_ASKED_ITEMS) check(review.includes(item.label), 'I the review lists "' + item.label + '"');
+  for (const item of HANAMICHI_ASKED_ITEMS) check(review.includes(screenLabel(item)), 'I the review lists "' + screenLabel(item) + '"');
   check(!review.includes('リングネーム'), 'I the review does not list リングネーム (it is 選手名 now)');
-  for (const value of [HN_GOOD.hnNameKana, '架空選手', HN_GOOD.hnHobby, '1975年8月20日', HN_GOOD.hnReason]) check(review.includes(value), 'I the review shows the answer "' + value + '"');
-  check(/職業\s*（書いていません）/.test(review) && /他格闘歴\s*（書いていません）/.test(review), 'I an empty optional answer says （書いていません）, not a mistake');
+  for (const value of [HN_GOOD.hnNameKana, '架空選手', '1975年8月20日', HN_GOOD.hnReason]) check(review.includes(value), 'I the review shows the answer "' + value + '"');
+  check(!review.includes('職業') && !review.includes('他格闘歴'), 'I the review has no 職業 / 他格闘歴 (they are not asked any more)');
   await oneMark(page, 'I review screen');
   // "直す" goes back to the first 花道 field
   await page.getByRole('button', { name: '花道の追加の質問を直す', exact: true }).click();
@@ -454,7 +456,7 @@ await scenario('I', 'full flow: review block, then the POST with the 12 keys aft
   const keys = post ? [...post.keys()] : [];
   check(JSON.stringify(keys) === JSON.stringify([...OLD_KEYS, ...HANAMICHI_KEYS]), 'I the POST keys: the old ones, then the 12 in table order (' + short(keys.slice(-13).join(','), 200) + ')');
   // リングネーム＝選手名（架空選手）、そのフリガナ＝氏名のフリガナ。ほかは、入れたとおり
-  const expect = { ...HN_GOOD, hnBirth: '1975-08-20', hnRing: '架空選手', hnRingKana: HN_GOOD.hnNameKana };
+  const expect = { ...HN_GOOD, hnBirth: '1975-08-20', hnGymKana: '架空ジム', hnRing: '架空選手', hnRingKana: HN_GOOD.hnNameKana, hnOther: '', hnJob: '', hnHobby: HANAMICHI_HOBBY_MERGED };
   const wrong = HANAMICHI_KEYS.filter((k) => post && post.get(k) !== expect[k]);
   check(post && wrong.length === 0, 'I every answer is posted as typed (wrong: ' + wrong.map((k) => k + '=' + (post && post.get(k))).join(',') + ')');
   check(post && post.get('division') === '花道男子' && post.get('weightClass') === '無差別' && post.get('gym') === '架空ジム', 'I the ordinary values are still posted (division, weightClass, gym)');
@@ -538,7 +540,7 @@ await scenario('M', 'typing: numbers are tidied (green note), a wrong number or 
   const note = await page.locator('#f-hnKickYears-note').innerText().catch(() => '');
   check(note.includes('✓') && note.includes('自動で直しました'), 'M the change is told in green with ✓ (' + short(note, 50) + ')');
   await page.locator('#f-hnPerWeek').fill('週3回');
-  await page.locator('#f-hnHobby').click();
+  await page.locator('#f-hnReason').click();
   await settle(500);
   check((await page.locator('#f-hnPerWeek').inputValue()) === '3', 'M "週3回" becomes 3');
   // a number that is not a number, or too big: red after leaving the field
@@ -556,13 +558,8 @@ await scenario('M', 'typing: numbers are tidied (green note), a wrong number or 
   await page.locator('#f-hnPerWeek').click();
   await settle(300);
   check((await page.locator('#f-hnKickYears-err').count()) === 0, 'M 0 is allowed (less than a year)');
-  // too long: red at once, counted
-  await page.locator('#f-hnHobby').fill('あ'.repeat(61));
-  await settle(200);
-  err = await page.locator('#f-hnHobby-err').innerText().catch(() => '');
-  check(err.includes('✕') && err.includes('長すぎます（いま61字／60字まで）'), 'M 61 characters in a 60-character item: red at once (' + short(err, 60) + ')');
-  await page.locator('#f-hnHobby').fill('あ'.repeat(60));
-  check((await page.locator('#f-hnHobby-err').count()) === 0, 'M exactly 60 is fine');
+  // 趣味・特技の欄は無い（始めた理由の欄にまとめた）
+  check((await page.locator('#f-hnHobby').count()) === 0, 'M no separate hobby field');
   const left = async (id) => (await page.locator('#' + id).locator('xpath=ancestor::*[contains(@class,"relative")][1]').innerText()).replace(/\s+/g, ' ');
   await page.locator('#f-hnMessage').fill('あ'.repeat(100));
   check((await left('f-hnMessage')).includes('あと200文字（300文字まで）'), 'M the long answer shows how many characters are left (あと200文字)');
@@ -570,11 +567,8 @@ await scenario('M', 'typing: numbers are tidied (green note), a wrong number or 
   await settle(200);
   err = await page.locator('#f-hnReason-err').innerText().catch(() => '');
   check(err.includes('長すぎます（いま301字／300字まで）'), 'M 301 characters in a 300-character item: red');
-  // spaces only is empty
-  await page.locator('#f-hnJob').fill('   ');
-  await page.locator('#f-hnOther').click();
-  await settle(300);
-  check((await page.locator('#f-hnJob-err').count()) === 0, 'M the optional job may be empty or spaces');
+  // 任意の2項目（職業・他格闘歴）と、ジムのフリガナは、画面に無い（必要最低限）
+  check((await page.locator('#f-hnJob, #f-hnOther, #f-hnGymKana').count()) === 0, 'M job, other fighting history and the gym reading are not asked');
   await ctx.close();
 });
 
@@ -601,48 +595,15 @@ const hnBand = (p) => p.evaluate(() => {
   return { id, bandBottom: band ? Math.round(r(band).bottom) : -1, labelTop: label ? Math.round(r(label).top) : -1, labelBottom: label ? Math.round(r(label).bottom) : -1, badgeTop: badge ? Math.round(r(badge).top) : -1, inputTop: input ? Math.round(r(input).top) : -1, vh: window.innerHeight };
 });
 await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines at 320px; the label is not under the band; one privacy sentence', [{ width: 390, height: 844 }, SMALL], async (vp) => {
-  /* N1 (job / other-fighting history, both optional): a red ✕ and a yellow 「confirm」 must never be shown together */
-  for (const [key, label] of [['hnJob', '職業'], ['hnOther', '他格闘歴']]) {
-    const ctx = await newCtx(vp);
-    const page = await openApply(ctx, hashFor());
-    await fillBase(page);
-    await fillHn(page);
-    const okMark = await oneMark(page, 'N1 ' + key + ' everything filled');
-    check(okMark.includes('確認のボタン'), 'N1 ' + key + ': all good → the 👉 is on the confirm button (' + okMark + ')');
-    const [f0, t0] = await counter(page);
-    await page.locator('#f-' + key).fill('あ'.repeat(61));
-    await page.locator('#hn-card h2').click();
-    await settle(400);
-    const err = await page.locator('#f-' + key + '-err').innerText().catch(() => '');
-    check(err.includes('✕') && err.includes('長すぎます（いま61字／60字まで）'), 'N1 ' + key + ': the red ✕ line is shown (' + short(err, 60) + ')');
-    const mark = await oneMark(page, 'N1 ' + key + ' too long');
-    check(mark.includes(label + 'を直す') && !mark.includes('確認のボタン'), 'N1 ' + key + ': the one 👉 points at the field to fix, not at the confirm button (' + mark + ')');
-    const [f1, t1] = await counter(page);
-    check(f1 === f0 && t1 === t0, 'N1 ' + key + ': the 入力 N/M counter is unchanged by an optional answer (' + f0 + '/' + t0 + ' → ' + f1 + '/' + t1 + ')');
-    await reviewBtn(page).click();
-    await settle(500);
-    const band = await page.locator('#apply-msg').innerText().catch(() => '');
-    check(band.includes('直す所：' + label) && !/足りない所/.test(band), 'N1 ' + key + ': the blocked send says 直す所：' + label + ' (' + short(band, 70) + ')');
-    check((await activeId(page)) === 'f-' + key && ctx.__posts.length === 0, 'N1 ' + key + ': the cursor jumps to the field, nothing is sent');
-    const after = await oneMark(page, 'N1 ' + key + ' after the blocked send');
-    check(after.includes(label + 'を直す'), 'N1 ' + key + ': after the blocked send the 👉 still points at the field (' + after + ')');
-    await page.locator('#f-' + key).fill('あ'.repeat(60));
-    await page.locator('#hn-card h2').click();
-    await settle(400);
-    const fixed = await oneMark(page, 'N1 ' + key + ' fixed');
-    check(fixed.includes('確認のボタン'), 'N1 ' + key + ': once fixed the 👉 goes back to the confirm button (' + fixed + ')');
-    await ctx.close();
-  }
-  /* N1b both optional answers too long: the upper one (table order) gets the 👉 */
+  /* N1: 任意の項目は、もう聞かない。全部入れたら、👉 は確認のボタン */
   {
     const ctx = await newCtx(vp);
     const page = await openApply(ctx, hashFor());
     await fillBase(page);
-    await fillHn(page, { hnOther: 'あ'.repeat(61), hnJob: 'い'.repeat(61) });
-    await page.locator('#hn-card h2').click();
-    await settle(400);
-    const mark = await oneMark(page, 'N1b both too long');
-    check(mark.includes('他格闘歴を直す'), 'N1b both too long: the 👉 is on the upper one, 他格闘歴 (' + mark + ')');
+    await fillHn(page);
+    const okMark = await oneMark(page, 'N1 everything filled');
+    check(okMark.includes('確認のボタン'), 'N1 all good → the 👉 is on the confirm button (' + okMark + ')');
+    check((await page.locator('#hn-card').getByText('（空でもOK）').count()) === 0, 'N1 no optional item in the 花道 card');
     await ctx.close();
   }
 
@@ -664,7 +625,7 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
       await page.locator('#hn-card h2').click();
       await settle(250);
     }
-    check(seen.length >= 10, 'N2 the 👉 was seen on the ' + seen.length + ' required items (' + short(seen.join(' '), 200) + ')');
+    check(seen.length >= HANAMICHI_ASKED_ITEMS.length, 'N2 the 👉 was seen on the ' + seen.length + ' required items (' + short(seen.join(' '), 200) + ')');
     await ctx.close();
   }
 

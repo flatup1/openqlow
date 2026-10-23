@@ -27,7 +27,8 @@ test('F-lock-17px: 灰色の🔒の理由（.tos-locked-reason）は17px以上�
 });
 
 test('F-badge-room: 黄色の札（👉）は□の上に浮かぶ。上の文にかぶらないよう、誓約書の最初の□・保護者の□・ジム責任者の最初の欄の上は、広くあけてある（mt-16）', () => {
-  assert.match(PAGE, /<div role="group" aria-label="誓約書の項目" className="mt-16 grid gap-8">/);
+  // 誓約書の項目は、文の一覧のあとに□1つ（owner 2026-10-23）。その□の上を広くあける
+  assert.match(PAGE, /<div className="mt-16">\{tickBox\('pledge1'/);
   assert.match(PAGE, /<div className="mt-16">\{tickBox\('pledgeGuardian'/);
   assert.match(PAGE, /<div className="mt-16 grid gap-8">\s*<Field id="f-gymName"/);
   // 札が2行（約62px）になる細い画面で、ふつうの欄の上の文にもかぶっていた（ジム名の上の「必須のところは…」・写真の上の注意・連絡先の上の注意・確認ボタンの上の「ぜんぶ入りました」）。手書きCSSの .tos-badge-room（広い画面 2rem／560px以下 4rem）を使う

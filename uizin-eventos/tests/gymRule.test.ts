@@ -55,8 +55,10 @@ test('文言: ジム名の説明は「ジムに所属していない人は、参
 });
 
 test('本名だけ（あだ名は不可）: 選手名・花道のリングネームの説明に「あだ名でもOK」が無い。入力の説明は本名をすすめる', () => {
-  assert.match(PAGE, /name: \{ hint: '本名で入れてください。あだ名・リングネームは、入れないでください。', example: \['山田 太郎'\] \}/);
-  assert.match(PAGE, /hnRing: \{ hint: 'アナウンスで呼ばれる名前です。本名で入れてください。あだ名は、入れないでください。', example: \['架空 花道一郎'\] \}/);
+  assert.match(PAGE, /name: \{ hint: '本名を入れてください。', example: \['山田 太郎'\] \}/);
+  // 画面に「あだ名」という言葉を出さない（owner 2026-10-23「あだ名の表記を完全に消して」）。コメントは除いて調べる
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+  assert.ok(!code.includes('あだ名'), '画面のコードに「あだ名」が無い');
   for (const text of [PAGE, MANUAL]) {
     assert.ok(!text.includes('あだ名でもOK'), 'あだ名でもOK は、どこにも無い');
     assert.ok(!text.includes('本名でも、あだ名でも'), '本名でも、あだ名でも は、どこにも無い');

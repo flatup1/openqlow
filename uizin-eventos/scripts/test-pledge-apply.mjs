@@ -94,7 +94,8 @@ async function fillBase(page, { gym = '架空ジム', age = '15', consent = true
 }
 const tick = (page, key) => page.locator('#f-' + key).check();
 const ticked = (page, key) => page.locator('#f-' + key).isChecked();
-async function tickItems(page, n = ITEMS.length) { for (let i = 1; i <= n; i++) await tick(page, 'pledge' + i); }
+/** 誓約書の項目の□は1つ（owner 2026-10-23）。✔で全部の項目に✔が入る */
+async function tickItems(page) { await tick(page, 'pledge1'); }
 async function fillGym(page, name = GYM_NAME, phone = GYM_PHONE) {
   await page.locator('#f-gymName').fill(name);
   await page.locator('#f-gymPhone').fill(phone);
@@ -103,7 +104,7 @@ async function fillGym(page, name = GYM_NAME, phone = GYM_PHONE) {
 async function fillPledge(page, { guardian = true, gym = true } = {}) {
   await tickItems(page);
   if (guardian && (await page.locator('#f-pledgeGuardian').count())) await tick(page, 'pledgeGuardian');
-  if (gym && (await page.locator('#f-gymName').count())) { await fillGym(page); await tick(page, 'gymPermission'); await tick(page, 'pledgeGym'); }
+  if (gym && (await page.locator('#f-gymName').count())) { await fillGym(page); await tick(page, 'pledgeGym'); } // 許可の念押しも、同意の□といっしょ
   await settle(120);
 }
 const reviewBtn = (p) => p.getByRole('button', { name: '入力内容を確認する →', exact: true });
@@ -185,7 +186,7 @@ await scenario('A', 'the 誓約書 card shows after 連絡先 with one box per i
   check((await cardCount(page)) === 1, 'A the card is there');
   const text = await cardText(page);
   check((await page.locator('#pledge-card h2').allInnerTexts()).join('|').replace(/\s+/g, '') === '＋誓約書', 'A the heading is 誓約書 (' + short(text, 40) + ')');
-  check(text.includes('それぞれの□に、✔を入れてください。ぜんぶ入れないと、先へ進めません。'), 'A the one-line how-to is there');
+  check(text.includes('下の文を読んで、□に✔を入れてください。✔を入れないと、先へ進めません。'), 'A the one-line how-to is there');
   const order = await page.evaluate(() => {
     const contact = document.getElementById('contact-fields'), consent = document.getElementById('f-consent-box'), card = document.getElementById('pledge-card');
     const after = (a, b) => Boolean(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
@@ -195,8 +196,11 @@ await scenario('A', 'the 誓約書 card shows after 連絡先 with one box per i
   // one checkbox per item, id f-pledgeN, with the item's text beside it, nothing added (no numbers, no bullets)
   const boxes = await page.evaluate(() => [...document.querySelectorAll('#pledge-card [id^="f-pledge"][type="checkbox"]')].map((e) => ({ id: e.id, label: (e.closest('label')?.innerText || '').replace(/\s+/g, ' ').trim(), checked: e.checked })));
   const itemBoxes = boxes.filter((b) => /^f-pledge\d+$/.test(b.id));
-  check(JSON.stringify(itemBoxes.map((b) => b.id)) === JSON.stringify(ITEMS.map((_, i) => 'f-pledge' + (i + 1))), 'A one box per item, ids f-pledge1…f-pledge' + ITEMS.length + ' (' + itemBoxes.map((b) => b.id).join(',') + ')');
-  check(itemBoxes.every((b, i) => b.label === ITEMS[i]), 'A each box is labelled with the link\'s sentence, nothing added: ' + itemBoxes.map((b) => b.label).join(' / '));
+  // 項目の文は一覧で全部見せ、□は1つ（owner 2026-10-23「誓約書の5つの□を1つにまとめる」）
+  check(JSON.stringify(itemBoxes.map((b) => b.id)) === JSON.stringify(['f-pledge1']), 'A one box for all items, id f-pledge1 (' + itemBoxes.map((b) => b.id).join(',') + ')');
+  check(itemBoxes[0] && itemBoxes[0].label.startsWith('上の' + ITEMS.length + 'つに、すべて同意します'), 'A the box says 上の' + ITEMS.length + 'つに、すべて同意します (' + (itemBoxes[0] && itemBoxes[0].label) + ')');
+  const listed = await page.locator('#pledge-items li').allInnerTexts();
+  check(JSON.stringify(listed.map((t) => t.trim())) === JSON.stringify(ITEMS), 'A every item sentence is listed exactly as in the link, nothing added: ' + listed.join(' / '));
   check(itemBoxes.every((b) => !b.checked) && boxes.every((b) => !b.checked), 'A nothing is ticked at the start');
   check(!/(^|\s)[1-9１-９][.．)）、]\s*テスト用/.test(text) && !/[①②③④⑤]/.test(text), 'A no numbering is added to the sentences');
   // the guardian box (age 15 / empty age → shown) and the gym box
@@ -208,10 +212,10 @@ await scenario('A', 'the 誓約書 card shows after 連絡先 with one box per i
   await page.locator('#f-pledge1').focus();
   await page.keyboard.press('Space');
   check(await ticked(page, 'pledge1'), 'A Space ticks the focused box');
+  await page.keyboard.press('Space');
+  check(!(await ticked(page, 'pledge1')), 'A Space again un-ticks it');
   await page.keyboard.press('Tab');
-  check((await activeId(page)) === 'f-pledge2', 'A Tab goes to the next box (' + (await activeId(page)) + ')');
-  await page.keyboard.press('Space'); await page.keyboard.press('Space');
-  check(!(await ticked(page, 'pledge2')), 'A Space twice un-ticks again');
+  check((await activeId(page)) === 'f-pledgeGuardian', 'A Tab goes to the next box, the guardian box (' + (await activeId(page)) + ')');
   // size rules
   const sz = await smallThings(page);
   check(sz.small.length === 0, 'A every text in the card is 17px or bigger (' + sz.small.slice(0, 3).join(' | ') + ')');
@@ -263,7 +267,7 @@ await scenario('C', 'the review button stays locked with a reason until every bo
   const [filled1, total1] = await counter(page);
   check(total1 === total0 && total1 > filled1, 'C the total includes the pledge boxes from the start, before anything is typed (入力 ' + filled1 + '/' + total1 + ', at the start /' + total0 + ')');
   const base = await (async () => { const plain = await newCtx(vp); const p = await openApply(plain, plainHash()); await fillBase(p); const c = await counter(p); await plain.close(); return c; })();
-  check(total1 - base[1] === ITEMS.length + 1 + 4, 'C 5 items + guardian + gym name + gym phone + permission + consent = ' + (ITEMS.length + 1 + 4) + ' more (' + (total1 - base[1]) + ')');
+  check(total1 - base[1] === 1 + 1 + 3, 'C one items box + guardian + gym name + gym phone + gym consent = 5 more (' + (total1 - base[1]) + ')');
   // base filled + privacy consent ticked: the next step is the first pledge box
   let mark = await oneMark(page, 'C base filled');
   check(mark.includes('この□に✔を入れる'), 'C the 👉 is on the first pledge box (' + mark + ')');
@@ -271,7 +275,7 @@ await scenario('C', 'the review button stays locked with a reason until every bo
   let lock = await reviewLock(page);
   check(lock && lock.locked && lock.ariaDisabled === 'true' && lock.height >= 48, 'C the review button is grey (tos-locked, aria-disabled, ≥48px)');
   check(lock && lock.reason.includes('🔒') && /誓約書の□が、あと\d+つ残っています/.test(lock.reason), 'C the reason is printed with a 🔒: ' + (lock && lock.reason));
-  check(lock && /あと8つ/.test(lock.reason) && lock.reason.includes('ジム責任者の名前と電話が、まだです'), 'C the count: 5 + guardian + permission + consent = 8, and the gym name and phone are still missing (' + (lock && lock.reason) + ')');
+  check(lock && /あと3つ/.test(lock.reason) && lock.reason.includes('ジム責任者の名前と電話が、まだです'), 'C the count: items box + guardian + gym consent = 3, and the gym name and phone are still missing (' + (lock && lock.reason) + ')');
   // pressing it anyway: nothing opens, a red ✕ points at the first box, the cursor goes there
   await pressReview(page);
   await settle(400);
@@ -279,30 +283,23 @@ await scenario('C', 'the review button stays locked with a reason until every bo
   check(ctx.__posts.length === 0, 'C nothing is sent');
   const top = await textOf(page, '#apply-msg');
   check(top.includes('✕') && /足りない所が\d+か所あります/.test(top), 'C the red band says how many places are missing (' + short(top, 70) + ')');
-  for (let i = 1; i <= ITEMS.length; i++) {
-    const line = await textOf(page, '#f-pledge' + i + '-err');
-    check(line.includes('✕') && line.includes('✔'), 'C pledge' + i + ' has a red ✕ line (' + short(line, 40) + ')');
-  }
-  for (const key of ['pledgeGuardian', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym']) check((await page.locator('#f-' + key + '-err').count()) === 1, 'C ' + key + ' is marked red');
+  const line1 = await textOf(page, '#f-pledge1-err');
+  check(line1.includes('✕') && line1.includes('✔'), 'C the items box has a red ✕ line (' + short(line1, 40) + ')');
+  check((await page.locator('#f-pledge2').count()) === 0 && (await page.locator('#f-gymPermission').count()) === 0, 'C there is no second items box and no separate permission box');
+  for (const key of ['pledgeGuardian', 'gymName', 'gymPhone', 'pledgeGym']) check((await page.locator('#f-' + key + '-err').count()) === 1, 'C ' + key + ' is marked red');
   check((await activeId(page)) === 'f-pledge1', 'C the cursor goes to the first box (' + (await activeId(page)) + ')');
   check((await page.locator('#f-pledge1').getAttribute('aria-invalid')) === 'true', 'C the first box says aria-invalid');
   mark = await oneMark(page, 'C after the failed try');
   check(mark.includes('この□に✔を入れる'), 'C still one 👉, on a box');
-  // ticking clears its red line, the count goes down, the 👉 moves on one by one
-  for (let i = 1; i <= ITEMS.length; i++) {
-    await tick(page, 'pledge' + i);
-    check((await page.locator('#f-pledge' + i + '-err').count()) === 0, 'C ticking pledge' + i + ' clears its red line');
-    await page.locator('#pledge-card h2').click();
-    await settle(120);
-    const m = await oneMark(page, 'C after pledge' + i);
-    if (i < ITEMS.length) check(await page.evaluate((n) => Boolean(document.querySelector('[data-tos-next] #f-pledge' + n)), i + 1), 'C the 👉 moved to pledge' + (i + 1) + ' (' + m + ')');
-    if (vp.width === 320) {
-      const h = await page.evaluate(() => Math.round(document.querySelector('[data-tos-next] .tos-next-badge').getBoundingClientRect().height));
-      check(h <= 66, 'C at 320px the 👉 marker is at most 2 lines (' + h + 'px)');
-    }
-  }
+  // ticking the one items box clears its red line and ticks every item; the 👉 moves on to the guardian box
+  await tick(page, 'pledge1');
+  check((await page.locator('#f-pledge1-err').count()) === 0, 'C ticking the items box clears its red line');
+  await page.locator('#pledge-card h2').click();
+  await settle(120);
+  const m1 = await oneMark(page, 'C after the items box');
+  check(await page.evaluate(() => Boolean(document.querySelector('[data-tos-next] #f-pledgeGuardian'))), 'C the 👉 moved to the guardian box (' + m1 + ')');
   // after the items: the guardian box, then the gym name, the gym phone, the permission, the consent
-  const seq = [['pledgeGuardian', async () => tick(page, 'pledgeGuardian')], ['gymName', async () => page.locator('#f-gymName').fill(GYM_NAME)], ['gymPhone', async () => page.locator('#f-gymPhone').fill(GYM_PHONE)], ['gymPermission', async () => tick(page, 'gymPermission')], ['pledgeGym', async () => tick(page, 'pledgeGym')]];
+  const seq = [['pledgeGuardian', async () => tick(page, 'pledgeGuardian')], ['gymName', async () => page.locator('#f-gymName').fill(GYM_NAME)], ['gymPhone', async () => page.locator('#f-gymPhone').fill(GYM_PHONE)], ['pledgeGym', async () => tick(page, 'pledgeGym')]];
   for (const [key, act] of seq) {
     const here = await page.evaluate((k) => Boolean(document.querySelector('[data-tos-next] #f-' + k)), key);
     check(here, 'C the 👉 is on ' + key);
@@ -322,12 +319,12 @@ await scenario('C', 'the review button stays locked with a reason until every bo
   const [f2, t2] = await counter(page);
   check(f2 === t2, 'C the counter is full (入力 ' + f2 + '/' + t2 + ')');
   // un-tick one box: locked again, with "あと1つ"
-  await page.locator('#f-pledge3').uncheck();
+  await page.locator('#f-pledge1').uncheck();
   await settle(120);
   lock = await reviewLock(page);
   check(lock && lock.locked && /あと1つ残っています/.test(lock.reason) && !lock.reason.includes('ジム責任者'), 'C un-ticking one box locks again: ' + (lock && lock.reason));
   mark = await oneMark(page, 'C one box un-ticked');
-  check(await page.evaluate(() => Boolean(document.querySelector('[data-tos-next] #f-pledge3'))), 'C the 👉 comes back to the un-ticked box (' + mark + ')');
+  check(await page.evaluate(() => Boolean(document.querySelector('[data-tos-next] #f-pledge1'))), 'C the 👉 comes back to the un-ticked box (' + mark + ')');
   await ctx.close();
 });
 
@@ -436,7 +433,7 @@ await scenario('F', 'gym representative: read-only gym name, name and mobile pho
   check((await page.locator('label[for="f-gymName"]').innerText()).replace(/\s+/g, ' ').startsWith('責任者のお名前') && (await page.locator('label[for="f-gymName"]').innerText()).includes('必須'), 'F the name field is 責任者のお名前 必須');
   check((await page.locator('label[for="f-gymPhone"]').innerText()).replace(/\s+/g, ' ').startsWith('責任者の携帯電話（ハイフンなし）') && (await page.locator('label[for="f-gymPhone"]').innerText()).includes('必須'), 'F the phone field is 責任者の携帯電話（ハイフンなし） 必須');
   check((await page.locator('#f-gymPhone-ex').innerText()).includes('09000000000'), 'F the example is the fake 09000000000');
-  check((await page.locator('label:has(#f-gymPermission)').innerText()).trim() === 'ジム責任者の許可を得て、名前と電話番号を入れています', 'F the permission tick has the label constant GYM_PERMISSION_LABEL');
+  check((await page.locator('#f-gymPermission').count()) === 0 && (await textOf(page, '#pledge-gym-permission-note')).includes('ジム責任者の許可を得てから、名前と電話番号を入れて、下の□に✔を入れてください。'), 'F no separate permission box; the one-line reminder above the consent box');
   check((await page.locator('#pledge-gym-box').innerText()).match(/印|署名|サイン/) === null, 'F no seal or signature');
   // the phone: bad shapes are red after leaving the field; good shapes (full-width, hyphens) are fixed to digits and green
   const phoneErr = () => textOf(page, '#f-gymPhone-err');
@@ -470,7 +467,7 @@ await scenario('G', '無所属 and the like are refused in the gym field (red �
   const page = await openApply(ctx, hashFor());
   await fillBase(page, { gym: '架空ジム', age: '45' });
   await fillPledge(page);
-  check((await page.locator('#pledge-gym-box').count()) === 1 && (await ticked(page, 'gymPermission')), 'G the gym box is filled and ticked');
+  check((await page.locator('#pledge-gym-box').count()) === 1 && (await ticked(page, 'pledgeGym')), 'G the gym box is filled and ticked');
   const gymInput = page.getByLabel('ジム名 必須', { exact: true });
   const REFUSAL = 'ジムに所属していない人は、参加できません。通っているジム・道場の名前を入れてください。';
   check(!(await bodyText(page)).includes('無所属'), 'G the page never invites 「無所属」 (no such word on the page)');
@@ -485,7 +482,7 @@ await scenario('G', '無所属 and the like are refused in the gym field (red �
   }
   // what was typed in the gym box is NOT dropped by a wrong gym name
   await gymInput.fill('無所属');
-  check((await page.locator('#f-gymName').inputValue()) === GYM_NAME && (await ticked(page, 'gymPermission')) && (await ticked(page, 'pledgeGym')), 'G the box keeps what was typed while the gym name is wrong');
+  check((await page.locator('#f-gymName').inputValue()) === GYM_NAME && (await ticked(page, 'pledgeGym')) && (await ticked(page, 'pledgeGym')), 'G the box keeps what was typed while the gym name is wrong');
   // review is refused: stays on the form, red ✕ points at the gym field, nothing is sent
   const sent = ctx.__posts.length;
   await pressReview(page);
@@ -557,10 +554,11 @@ await scenario('I', 'no sideways scroll at 320/390/1280: 8 items, long sentences
   const ctx = await newCtx(vp);
   const page = await openApply(ctx, hashFor({}, { items: items.map((t) => t.slice(0, 120)), guardian: 'テスト用の保護者の文です。' + 'あ'.repeat(40), gym: 'テスト用のジムの文です。' + 'W'.repeat(40) }));
   const ids = await page.locator('#pledge-card input[type=checkbox]').evaluateAll((els) => els.map((e) => e.id));
-  check(ids.filter((id) => /^f-pledge\d+$/.test(id)).length === 8 && ids.includes('f-pledgeGuardian') && ids.includes('f-pledgeGym') && ids.includes('f-gymPermission'), 'I 8 item boxes + the guardian box + the two gym boxes (' + ids.join(',') + ')');
+  check(ids.filter((id) => /^f-pledge\d+$/.test(id)).length === 1 && ids.includes('f-pledgeGuardian') && ids.includes('f-pledgeGym') && !ids.includes('f-gymPermission'), 'I one items box (8 sentences listed) + the guardian box + the gym consent box (' + ids.join(',') + ')');
+  check((await page.locator('#pledge-items li').count()) === 8, 'I the 8 sentences are listed');
   let s = await sideways(page);
   check(s.sw <= s.cw, 'I the card opens with no sideways scroll (' + s.sw + ' vs ' + s.cw + ')');
-  const label7 = await page.locator('label:has(#f-pledge6)').innerText();
+  const label7 = await page.locator('#pledge-items li').nth(5).innerText();
   check(label7.includes('1行目') && label7.includes('2行目の文です') && /1行目\s*\n\s*2行目/.test(label7), 'I a line break inside a sentence is kept (' + short(label7, 40) + ')');
   await fillBase(page, { age: '45' });
   await pressReview(page);
@@ -662,11 +660,10 @@ await scenario('R1', 'the yellow 👉 never covers text at any step of the pledg
     if (o) seen.push(o.height);
   };
   await probe('first box (just under the how-to line)');
-  for (let i = 1; i <= ITEMS.length; i++) { await tick(page, 'pledge' + i); await probe('after box ' + i + ' (👉 on the next one)'); }
+  await tick(page, 'pledge1'); await probe('after the items box (👉 on the next one)');
   await tick(page, 'pledgeGuardian'); await probe('after the guardian tick (👉 on the gym name)');
   await page.locator('#f-gymName').fill(GYM_NAME); await page.locator('#f-gymName').blur(); await probe('gym name typed');
   await page.locator('#f-gymPhone').fill(GYM_PHONE); await page.locator('#f-gymPhone').blur(); await probe('gym phone typed');
-  await tick(page, 'gymPermission'); await probe('permission ticked');
   await tick(page, 'pledgeGym'); await probe('everything done');
   // the same walk with the badge ON the guardian tick and on the gym name (the two places the reviewers saw covered)
   const page2 = await openApply(await newCtx(vp), hashFor());
@@ -686,7 +683,7 @@ await scenario('R2', 'every sentence of the pledge gate is 17px or more, includi
   const page = await openApply(ctx, hashFor());
   await fillBase(page, { age: '15' });
   const lock = await reviewLock(page);
-  check(lock && lock.locked && /あと8つ残っています/.test(lock.reason), 'R2 the lock reason with the count is there (' + (lock && lock.reason) + ')');
+  check(lock && lock.locked && /あと3つ残っています/.test(lock.reason), 'R2 the lock reason with the count is there (' + (lock && lock.reason) + ')');
   const sizes = await page.evaluate(() => [...document.querySelectorAll('.tos-locked-reason')].map((e) => parseFloat(getComputedStyle(e).fontSize)));
   check(sizes.length >= 1 && sizes.every((px) => px >= 16.99), 'R2 the 🔒 reason is 17px or more (' + sizes.join(',') + ')');
   // the blocked send lock on the review screen too (plc=off)
@@ -705,7 +702,7 @@ await scenario('R3', 'a gym phone that is typed but is not a mobile number is �
   await fillBase(page, { age: '45' });
   await tickItems(page);
   await page.locator('#f-gymName').fill(GYM_NAME);
-  await tick(page, 'gymPermission'); await tick(page, 'pledgeGym');
+  await tick(page, 'pledgeGym');
   await page.locator('#f-gymPhone').fill('0312345678');
   await page.locator('#f-gymPhone').blur();
   await settle(200);
@@ -838,7 +835,7 @@ await scenario('R7', 'what the page says it remembers is what it really remember
   const banner = await textOf(page, '#next-banner');
   check(banner.includes('さっきと同じジム名・連絡先を入れました。') && banner.includes('個人情報の同意のチェックも入っています。') && banner.includes('ジム責任者の名前・電話も入っています。'), 'R7 the banner names what came back (' + short(banner, 120) + ')');
   check((await page.locator('#f-consent').isChecked()) && (await page.locator('#f-gymName').inputValue()) === GYM_NAME && (await page.locator('#f-gymPhone').inputValue()) === GYM_PHONE, 'R7 and they really are in (consent, name, phone)');
-  check(!(await ticked(page, 'gymPermission')) && !(await ticked(page, 'pledge1')) && !(await ticked(page, 'pledgeGym')), 'R7 the permission tick and the pledge ticks are NOT back (asked again every time)');
+  check(!(await ticked(page, 'pledgeGym')) && !(await ticked(page, 'pledge1')) && !(await ticked(page, 'pledgeGym')), 'R7 the permission tick and the pledge ticks are NOT back (asked again every time)');
   // a link without the gym box: no gym clause
   const ctx2 = await newCtx(DESKTOP);
   const plain = await openApply(ctx2, hashFor({}, { gymMode: false }));

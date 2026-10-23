@@ -53,7 +53,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /* ───────────────────────── links and fake data ───────────────────────── */
 const EVENT = 'draft-apply';
-const WEIGHTS = { enabled: true, divisions: [{ name: '一般男子', classes: ['60kg以下', '60kgをこえる'] }, { name: '花道男子', classes: ['無差別'] }, { name: '小学生', classes: [] }] };
+const WEIGHTS = { enabled: true, divisions: [{ name: '中学・一般男子', classes: ['60kg以下', '60kgをこえる'] }, { name: '花道男子', classes: ['無差別'] }, { name: '小学生', classes: [] }] };
 const baseCfg = { endpoint: ENDPOINT, eventId: EVENT, title: '架空テスト大会', organizer: '架空主催', date: '2027年10月3日', venue: '架空体育館', venueUrl: '', deadline: '2099-11-30', contact: '架空連絡先 02-0000-0000', music: true, grade: 'required', age: 'required', comment: 'required', protocol: '3', mode: 'live', weights: WEIGHTS, classes: DEFAULT_CLASS_SETTINGS };
 const ITEMS = ['テスト用の文です1', 'テスト用の文です2', 'テスト用の文です3'];
 const PLEDGE = { items: ITEMS, guardian: 'テスト用の保護者の文です', gym: 'テスト用のジムの文です', mode: 'under18', gymMode: true, confirmed: true };
@@ -109,7 +109,7 @@ async function reload(page) {
   await settle(250);
 }
 const val = (p, selector) => p.locator(selector).inputValue();
-async function fillAthlete(page, a = ATHLETE, { division = '一般男子', weightClass = '60kgをこえる', cls = 'upper' } = {}) {
+async function fillAthlete(page, a = ATHLETE, { division = '中学・一般男子', weightClass = '60kgをこえる', cls = 'upper' } = {}) {
   await gymBox(page).fill(a.gym);
   await page.getByLabel('選手名 必須', { exact: true }).fill(a.name);
   await page.getByLabel('身長（cm）必須', { exact: true }).fill(a.height);
@@ -152,13 +152,13 @@ async function fillHn(page) {
   await page.locator('#f-hnBirthD').selectOption('9');
 }
 async function fillPledge(page) {
-  for (let i = 1; i <= ITEMS.length; i++) await page.locator('#f-pledge' + i).check();
+  // 誓約書の項目の□は1つ（owner 2026-10-23）
+  await page.locator('#f-pledge1').check();
   if (await page.locator('#f-pledgeGuardian').count()) await page.locator('#f-pledgeGuardian').check();
   if (await page.locator('#f-gymName').count()) {
     await page.locator('#f-gymName').fill(GYM_REP.name);
     await page.locator('#f-gymPhone').fill(GYM_REP.phone);
-    await page.locator('#f-gymPermission').check();
-    await page.locator('#f-pledgeGym').check();
+    await page.locator('#f-pledgeGym').check(); // 許可の念押しも、この□といっしょ
   }
   await settle(150);
 }
@@ -192,7 +192,7 @@ const localDump = (p) => p.evaluate(() => { const out = {}; for (let i = 0; i < 
 const kitRecord = (k, savedAt, id = EVENT, mode = 'live') => ({ v: 1, eventId: id, mode, savedAt, k });
 const draftRecord = (f, savedAt, id = EVENT, mode = 'live') => ({ v: 1, eventId: id, mode, savedAt, f });
 const KIT_K = { gym: 'キット架空ジム', contactName: 'キット連絡', contactPhone: '09033334444', contactEmail: 'kit@example.com', consent: true, gymName: '', gymPhone: '' };
-const FIELD_VALUES = { gym: '架空ジムA', name: '架空選手', height: '170', weight: '65', division: '一般男子', weightClass: '60kgをこえる', fighterClass: 'upper', record: '3勝1敗', grade: '中2', age: '14', comment: '全力でがんばります', musicUrl: 'https://music.apple.com/jp/album/x/1234567890' };
+const FIELD_VALUES = { gym: '架空ジムA', name: '架空選手', height: '170', weight: '65', division: '中学・一般男子', weightClass: '60kgをこえる', fighterClass: 'upper', record: '3勝1敗', grade: '中2', age: '14', comment: '全力でがんばります', musicUrl: 'https://music.apple.com/jp/album/x/1234567890' };
 /** what the form shows now (the twelve athlete fields + the contact fields + the consent) */
 const formState = (p) => p.evaluate(() => {
   const v = (id) => { const e = document.getElementById(id); return e ? e.value : '(none)'; };
@@ -583,7 +583,7 @@ await scenario('H', 'type EVERYTHING (花道, pledge, guardian, gym representati
   // the form after reopening: the gym representative is filled (same gym), the ticks are NOT
   const rep = await page.evaluate(() => ({ name: document.getElementById('f-gymName')?.value ?? '(none)', phone: document.getElementById('f-gymPhone')?.value ?? '(none)', perm: document.getElementById('f-gymPermission')?.checked, gymTick: document.getElementById('f-pledgeGym')?.checked, items: [...document.querySelectorAll('input[id^="f-pledge"][type="checkbox"]')].filter((e) => e.checked).length }));
   check(rep.name === GYM_REP.name && rep.phone === GYM_REP.phone, 'H reopened: the gym representative name and phone are filled (' + JSON.stringify(rep) + ')');
-  check(rep.perm === false && rep.gymTick === false && rep.items === 0, 'H but the 許可 tick, the gym consent tick and every pledge tick are empty again');
+  check(!rep.perm && rep.gymTick === false && rep.items === 0, 'H but the 許可 tick, the gym consent tick and every pledge tick are empty again');
   const local = await localDump(page);
   check(Object.keys(local).every((k) => k === 'tos-apply-sent-v1') && !/ZQX|架空|09/.test(JSON.stringify(local)), 'H localStorage holds only the sent-mark');
   check(!consoleLines.filter((c) => c.scenario === cur).some((c) => /ZQX|09012345678|09000000000|kakuu@|data:image/.test(c.text)), 'H nothing personal was written to the console');
@@ -645,12 +645,12 @@ await scenario('K', '戻す only puts back what the link offers', [DESKTOP], asy
   await settle(250);
   let st = await formState(page);
   check(st.division === '' && st.weightClass === '(none)' && st.name === '架空選手' && st.fighterClass === 'upper', 'K a division the link does not have is not put back; the rest is (' + short(JSON.stringify(st), 120) + ')');
-  await writeKey(page, DRAFT(), draftRecord({ ...FIELD_VALUES, division: '一般男子', weightClass: '999kg以下' }, now - MIN));
+  await writeKey(page, DRAFT(), draftRecord({ ...FIELD_VALUES, division: '中学・一般男子', weightClass: '999kg以下' }, now - MIN));
   await reload(page);
   await page.getByRole('button', { name: '戻す', exact: true }).click();
   await settle(250);
   st = await formState(page);
-  check(st.division === '一般男子' && st.weightClass === '', 'K a class that is not in the division is not put back (the division is)');
+  check(st.division === '中学・一般男子' && st.weightClass === '', 'K a class that is not in the division is not put back (the division is)');
   await writeKey(page, DRAFT(), draftRecord({ ...FIELD_VALUES, division: '小学生', weightClass: '60kg以下' }, now - MIN));
   await reload(page);
   await page.getByRole('button', { name: '戻す', exact: true }).click();
@@ -665,7 +665,7 @@ await scenario('K', '戻す only puts back what the link offers', [DESKTOP], asy
   await settle(250);
   st = await formState(page2);
   const radios = await page2.locator('input[type="radio"][name="fighterClass"]').count();
-  check(radios === 0 && st.name === '架空選手' && st.division === '一般男子', 'K a link without classes: no class box, the rest is put back (' + radios + ' radios, ' + short(JSON.stringify(st), 140) + ')');
+  check(radios === 0 && st.name === '架空選手' && st.division === '中学・一般男子', 'K a link without classes: no class box, the rest is put back (' + radios + ' radios, ' + short(JSON.stringify(st), 140) + ')');
   // a link that hides 学年 / 年齢 / 意気込み / 入場曲: those are not put back
   const page3 = await openApply(ctx, hashFor({ grade: 'off', age: 'off', comment: 'off', music: false }));
   await writeKey(page3, DRAFT(), draftRecord(FIELD_VALUES, now - MIN));

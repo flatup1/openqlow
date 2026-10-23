@@ -52,13 +52,24 @@ export const HANAMICHI_ITEMS: readonly HanamichiItem[] = [
 ];
 
 /**
- * 画面に出さず、選手の答えから作る項目（リングネーム＝選手名、そのフリガナ＝氏名のフリガナ）。送る値（POST・花道プロフィール）には入るが、質問としては出さない。
- * リングネームは、アナウンスで呼ぶ名前。本名だけにしたので、選手名と同じになる（重複する質問を、なくす）。
+ * 画面に出さず、選手の答えから作る項目（送る値・花道プロフィールには入るが、質問としては出さない。同じことを2回聞かない）。
+ * 所属ジムのフリガナ＝ジム名（60字まで）、リングネーム＝選手名（本名だけ）、そのフリガナ＝氏名のフリガナ。
  */
-export const HANAMICHI_DERIVED_KEYS: readonly HanamichiKey[] = ['hnRing', 'hnRingKana'];
+export const HANAMICHI_DERIVED_KEYS: readonly HanamichiKey[] = ['hnGymKana', 'hnRing', 'hnRingKana', 'hnHobby'];
+/** 趣味・特技は、「始めた理由・良かった所」の欄にまとめて書いてもらう（owner 2026-10-23「まとめてひとつにして」）。趣味・特技の列には、この1行を入れる */
+export const HANAMICHI_HOBBY_MERGED = '「始めた理由・良かった所」の欄に、まとめてあります';
+/** 聞かない任意の項目（必要最低限に絞る。owner 2026-10-23）。送る値は空 */
+export const HANAMICHI_SKIPPED_KEYS: readonly HanamichiKey[] = ['hnOther', 'hnJob'];
 
-/** 画面で聞く項目（画面の順）。POSTの鍵の一覧（HANAMICHI_KEYS）からは、作る項目を除く */
-export const HANAMICHI_ASKED_ITEMS: readonly HanamichiItem[] = HANAMICHI_ITEMS.filter((item) => !HANAMICHI_DERIVED_KEYS.includes(item.key));
+/** 画面で聞く項目（画面の順）。POSTの鍵の一覧（HANAMICHI_KEYS）からは、作る項目と、聞かない任意の項目を除く */
+export const HANAMICHI_ASKED_ITEMS: readonly HanamichiItem[] = HANAMICHI_ITEMS.filter((item) => !HANAMICHI_DERIVED_KEYS.includes(item.key) && !HANAMICHI_SKIPPED_KEYS.includes(item.key));
+
+/** ジム名を「所属ジムのフリガナ」の欄に入れる形にする（60字まで。半端な文字を作らない） */
+export function gymKanaFromName(gym: unknown): string {
+  let text = hanamichiText(gym, 'text');
+  if (text.length > 60) { text = text.slice(0, 60); if (/[\ud800-\udbff]$/.test(text)) text = text.slice(0, -1); }
+  return text;
+}
 
 /** 選手名をリングネームにする（本名だけ）。長さの上限（60字）は、選手名の欄で守る。ここでは切らない（切ると、名前が違って保存される） */
 export function ringFromName(name: unknown): string {

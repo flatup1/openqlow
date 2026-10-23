@@ -2,12 +2,17 @@
 // 架空の日付・名前だけを使う。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, HANAMICHI_KEYS, hanamichiAgeFrom, jstDateText, ringFromName } from '../core/hanamichi.ts';
+import { gymKanaFromName, HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, HANAMICHI_HOBBY_MERGED, HANAMICHI_KEYS, HANAMICHI_SKIPPED_KEYS, hanamichiAgeFrom, jstDateText, ringFromName } from '../core/hanamichi.ts';
 
-test('画面で聞く項目は、リングネーム・そのフリガナを外した10項目。送る鍵は12のまま（古い受付の鍵が、そろう）', () => {
-  assert.deepEqual([...HANAMICHI_DERIVED_KEYS], ['hnRing', 'hnRingKana']);
-  assert.equal(HANAMICHI_ASKED_ITEMS.length, 10);
-  assert.ok(!HANAMICHI_ASKED_ITEMS.some((item) => item.key === 'hnRing' || item.key === 'hnRingKana'));
+test('画面で聞く項目は、必須だけの6項目（ジムのフリガナ・リングネーム・そのフリガナは自動、職業・他格闘歴は聞かない）。送る鍵は12のまま（古い受付の鍵が、そろう）', () => {
+  assert.deepEqual([...HANAMICHI_DERIVED_KEYS], ['hnGymKana', 'hnRing', 'hnRingKana', 'hnHobby']);
+  assert.ok(HANAMICHI_HOBBY_MERGED.length > 0 && HANAMICHI_HOBBY_MERGED.length <= 60, '趣味・特技の列に入れる1行は、60字まで（古い受付でも通る）');
+  assert.deepEqual([...HANAMICHI_SKIPPED_KEYS], ['hnOther', 'hnJob']);
+  assert.deepEqual(HANAMICHI_ASKED_ITEMS.map((item) => item.key), ['hnNameKana', 'hnBirth', 'hnKickYears', 'hnPerWeek', 'hnReason', 'hnMessage']);
+  assert.ok(HANAMICHI_ASKED_ITEMS.every((item) => item.required), '聞くのは必須だけ');
+  assert.equal(gymKanaFromName(' 架空ジム '), '架空ジム');
+  assert.equal(gymKanaFromName('あ'.repeat(70)).length, 60, '60字まで');
+  assert.equal(gymKanaFromName('あ'.repeat(59) + '😀').length, 59, '半端な文字を作らない');
   assert.equal(HANAMICHI_KEYS.length, 12);
 });
 

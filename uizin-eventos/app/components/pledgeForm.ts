@@ -7,6 +7,8 @@ import { GYM_NAME_MAX, guardianNeeded, gymPhoneNormal, gymPhoneOk, type Guardian
 
 /** ジム責任者の欄の「許可をとっている」念押しのチェックの文字（操作の言葉。会長が直す前提の案）。必ず✔してもらう */
 export const GYM_PERMISSION_LABEL = 'ジム責任者の許可を得て、名前と電話番号を入れています';
+/** 許可の□は無くした（同意の□1つで、許可の念押しもいっしょ）。かわりに、同意の□の上に、この1行を出す */
+export const GYM_PERMISSION_NOTE = 'ジム責任者の許可を得てから、名前と電話番号を入れて、下の□に✔を入れてください。';
 
 /** 誓約書の項目の欄の鍵。pledge1 から pledgeN まで（欄の id は f- を付けて f-pledge1） */
 export type PledgeItemKey = `pledge${number}`;
@@ -49,14 +51,17 @@ export type PledgeAnswers = { ticks: boolean[]; guardian: boolean; gymName: stri
 export const blankPledgeAnswers = (): PledgeAnswers => ({ ticks: [], guardian: false, gymName: '', gymPhone: '', gymPermission: false, gymConsent: false });
 
 const tickAt = (a: PledgeAnswers, i: number): boolean => Boolean(a.ticks[i]);
+/** 誓約書の項目に、ぜんぶ✔が入っているか（画面の□は1つ。✔を入れると、全部の項目に✔が入る） */
+export const allTicked = (plan: PledgePlan, a: PledgeAnswers): boolean => Array.from({ length: plan.n }, (_, i) => tickAt(a, i)).every(Boolean);
 
 /** 欄の順（画面の上から）。ok＝その欄が済んでいるか */
 export function pledgeOrder(plan: PledgePlan, a: PledgeAnswers): Array<[PledgeKey, boolean]> {
   if (!plan.on) return [];
   const out: Array<[PledgeKey, boolean]> = [];
-  for (let i = 0; i < plan.n; i++) out.push([`pledge${i + 1}`, tickAt(a, i)]);
+  // 誓約書の項目は、□1つ（pledge1）でまとめて同意する。ジム責任者は、同意の□1つで、許可の念押しもいっしょ（owner 2026-10-23）
+  if (plan.n > 0) out.push(['pledge1', allTicked(plan, a)]);
   if (plan.guardian) out.push(['pledgeGuardian', a.guardian]);
-  if (plan.gym) out.push(['gymName', Boolean(a.gymName)], ['gymPhone', gymPhoneOk(a.gymPhone)], ['gymPermission', a.gymPermission], ['pledgeGym', a.gymConsent]);
+  if (plan.gym) out.push(['gymName', Boolean(a.gymName)], ['gymPhone', gymPhoneOk(a.gymPhone)], ['pledgeGym', a.gymConsent && a.gymPermission]);
   return out;
 }
 
@@ -83,26 +88,25 @@ function phoneText(phone: string): string {
 export function pledgeIssues(plan: PledgePlan, a: PledgeAnswers): PledgeIssues {
   const out: PledgeIssues = {};
   if (!plan.on) return out;
-  for (let i = 0; i < plan.n; i++) if (!tickAt(a, i)) out[`pledge${i + 1}`] = { text: PLEDGE_TICK_TEXT, empty: true, early: false };
+  if (plan.n > 0 && !allTicked(plan, a)) out.pledge1 = { text: PLEDGE_TICK_TEXT, empty: true, early: false };
   if (plan.guardian && !a.guardian) out.pledgeGuardian = { text: PLEDGE_GUARDIAN_TEXT, empty: true, early: false };
   if (plan.gym) {
     if (!a.gymName) out.gymName = { text: '責任者のお名前がまだです。入力してください。', empty: true, early: false };
     else if (a.gymName.length > GYM_NAME_MAX) out.gymName = { text: `長すぎます（いま${a.gymName.length}字／${GYM_NAME_MAX}字まで）`, empty: false, early: true };
     if (!a.gymPhone) out.gymPhone = { text: '責任者の携帯電話がまだです。数字だけ入力してください。例：09000000000', empty: true, early: false };
     else if (!gymPhoneOk(a.gymPhone)) out.gymPhone = { text: phoneText(a.gymPhone), empty: false, early: false };
-    if (!a.gymPermission) out.gymPermission = { text: PLEDGE_PERMISSION_TEXT, empty: true, early: false };
-    if (!a.gymConsent) out.pledgeGym = { text: PLEDGE_GYM_TEXT, empty: true, early: false };
+    if (!a.gymConsent || !a.gymPermission) out.pledgeGym = { text: PLEDGE_GYM_TEXT, empty: true, early: false };
   }
   return out;
 }
 
-/** □の✔があと何個か（項目・保護者・ジム責任者の2つ） */
+/** □の✔があと何個か（項目の□1つ・保護者・ジム責任者の同意） */
 export function pledgeTicksLeft(plan: PledgePlan, a: PledgeAnswers): number {
   if (!plan.on) return 0;
   let left = 0;
-  for (let i = 0; i < plan.n; i++) if (!tickAt(a, i)) left++;
+  if (plan.n > 0 && !allTicked(plan, a)) left++;
   if (plan.guardian && !a.guardian) left++;
-  if (plan.gym) left += (a.gymPermission ? 0 : 1) + (a.gymConsent ? 0 : 1);
+  if (plan.gym && !(a.gymConsent && a.gymPermission)) left++;
   return left;
 }
 

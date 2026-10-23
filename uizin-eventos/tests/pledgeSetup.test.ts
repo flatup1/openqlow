@@ -369,7 +369,7 @@ test('文書: 説明書に、会長の手順（3-3の手順13の4）と、選手
   // 画面の赤い✕の文は、core の定数と1字も違わない
   assert.ok(steps.includes(PLEDGE_UNCONFIRMED_ADVICE) && steps.includes(PLEDGE_BLOCKED_TEXT));
   const player = part('### 4-3の4　誓約書の□に✔を入れる', '### 4-4　');
-  for (const word of ['それぞれの□に、✔を入れてください。ぜんぶ入れないと、先へ進めません。', 'ジムに入っていない人は、参加できません', '許可の□', PLEDGE_BLOCKED_TEXT, '「誓約記録」', '全部の□に✔を入れるまで、先へ進めません']) assert.ok(player.includes(word), word);
+  for (const word of ['下の文を読んで、□に✔を入れてください。✔を入れないと、先へ進めません。', 'ジムに入っていない人は、参加できません', '許可の□は、同意の□といっしょ', PLEDGE_BLOCKED_TEXT, '「誓約記録」', '全部の□に✔を入れるまで、先へ進めません']) assert.ok(player.includes(word), word);
   assert.ok(manual.includes('  - 4-3の4　誓約書の□に✔を入れる\n'), 'もくじ');
   assert.equal((manual.match(/^### 4-3の4　/gm) ?? []).length, 1);
   assert.ok(manual.includes('B2からB35まで、**34行**') && !/B2からB30まで|\*\*29行\*\*|A列に29行/.test(manual), '設定タブの行の数');
