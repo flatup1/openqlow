@@ -14,7 +14,7 @@ import { CkaLogo } from '../components/CkaLogo.tsx';
 import { allTicked, blankPledgeAnswers, GYM_PERMISSION_NOTE, isPledgeItemKey, isPledgeKey, pledgeIssues, pledgeLockReason, pledgeOrder, pledgePlan, pledgePost, PLEDGE_BLOCKED_TEXT, type PledgeAnswers, type PledgeIssues, type PledgeKey } from '../components/pledgeForm.ts';
 import { photoToDataUrl } from '../lib/privateStore.ts';
 import { kickFromRecordText, kickRecordText, packRecordDetail, recordDetailProblems } from '../../core/recordDetail.ts';
-import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, recordProblems, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
+import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, RECORD_LOSS_NOTE, recordProblems, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
 import { RecordDetailFields } from '../components/RecordDetailFields.tsx';
 
 /*
@@ -1557,6 +1557,7 @@ export default function PublicApply() {
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
             ...(uiCfg.grade !== 'off' ? [['学年', nf.grade]] : []), ...(uiCfg.age !== 'off' ? [['年齢', nf.age]] : []), ...(uiCfg.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(gradeAuto && postGrade ? [['学年（自動）', postGrade]] : []), ...(hanamichiOn ? [...(postAge ? [['年齢（生年月日から自動）', postAge]] : []), ...(postComment ? [['意気込み（メッセージと同じ）', postComment]] : [])] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>
+        {recordOn && (detailNow.kick.games > 0 || detailNow.others.length > 0) ? <p id="review-record-note" className="mt-2 text-[1.0625rem] text-slate-700">{RECORD_LOSS_NOTE}</p> : null}
         {classMismatchText ? <><ErrorLine icon="⚠" className="mt-3"><span className="min-w-0">{classMismatchText} 合っていれば、そのまま送れます。</span></ErrorLine><button type="button" onClick={() => fix('fighterClass')} className={greyBtn + ' mt-2 w-full'}>クラスを選び直す</button></> : null}</div>
       {hanamichiOn ? <div className="mt-3 rounded-2xl border-2 border-slate-300 p-3"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">花道の追加の質問</h3><button type="button" aria-label="花道の追加の質問を直す" onClick={() => fix('hnNameKana')} className="min-h-12 shrink-0 rounded-xl border-2 border-slate-500 px-4 text-lg font-bold">直す</button></div>
         <dl className="mt-2 grid gap-3">

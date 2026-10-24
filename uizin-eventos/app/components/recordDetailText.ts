@@ -83,12 +83,20 @@ export function kickTextOf(kick: KickRecord): KickText {
   return { games: String(kick.games), win: String(kick.win) };
 }
 
-/** 送る前の確認に出す行（見出しと中身）。キック・他の格闘技・タイトルの順 */
+/** 戦績の言い方「5戦3勝2敗」（2026-10-24 owner：確認の画面を ○戦○勝○敗 で出したい）。聞くのは試合数と勝ちだけなので、敗＝試合数−勝ち（引き分けも「敗」に入る） */
+export function recordLine(games: number, win: number): string {
+  return games + '戦' + win + '勝' + (games - win) + '敗';
+}
+
+/** 「敗」の意味（確認の画面に、小さく出す一言）。試合数と勝ちから決めた数なので、引き分けのある人が驚かないように言う */
+export const RECORD_LOSS_NOTE = '「敗」は、試合数から勝ちを引いた数です（引き分けも入ります）。';
+
+/** 送る前の確認に出す行（見出しと中身）。キック・他の格闘技・タイトルの順。キックと他の格闘技は「5戦3勝2敗」の形 */
 export function recordReviewPairs(detail: RecordDetail): [string, string][] {
   const out: [string, string][] = [];
   const k = detail.kick;
-  out.push(['キックボクシング', k.games === 0 ? '未経験（試合数 0）' : '試合 ' + k.games + '・勝ち ' + k.win]);
-  for (const o of detail.others) out.push(['他の格闘技：' + o.sport, '試合 ' + o.games + '・勝ち ' + o.win]);
+  out.push(['キックボクシング', k.games === 0 ? '未経験（試合数 0）' : recordLine(k.games, k.win)]);
+  for (const o of detail.others) out.push(['他の格闘技：' + o.sport, recordLine(o.games, o.win)]);
   for (const t of detail.titles) out.push(['タイトル・入賞：' + t.event, t.year + '年・' + t.class + '・' + t.result]);
   return out;
 }

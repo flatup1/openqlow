@@ -1,6 +1,7 @@
 // くわしい戦績の決まり（core/recordDetail.ts）と、申し込みリンクの鍵（rd=on）・シートの版の判定。
 // 名前・大会名・ジム名は、ぜんぶ架空。
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   EMPTY_KICK, RECORD_DETAIL_HEADERS, RECORD_DETAIL_LIMITS, RECORD_KIND,
@@ -9,7 +10,7 @@ import {
 } from '../core/recordDetail.ts';
 import { LINK_END_KEY, publicEntryConfig, publicEntryHash, type PublicEntryConfig } from '../core/publicEntry.ts';
 import { ACCEPTED_RECEPTION_BUILDS, EXPECTED_RECEPTION_BUILD, supportsRecordDetail } from '../core/setupV3.ts';
-import { detailFromText, countOf, kickTextOf, recordProblems, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
+import { detailFromText, countOf, kickTextOf, RECORD_LOSS_NOTE, recordLine, recordProblems, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
 
 const full = (over: Partial<RecordDetail> = {}): RecordDetail => ({
   v: 1,
@@ -141,14 +142,32 @@ test('直す所の言葉：画面には勝ちしか無いので、「負け・�
   assert.ok(recordProblems({ games: '0', win: '' }, Array.from({ length: 6 }, () => ({ sport: '空手', games: '1', win: '1' })), []).some((text) => text.includes('他の格闘技は、5つまでです')));
 });
 
-test('確認の行：キック・他の格闘技・タイトルの順に、見出しと中身を出す。出すのは試合数と勝ちだけ', () => {
+test('確認の行：キック・他の格闘技・タイトルの順に、見出しと中身を出す。「4戦3勝1敗」の形（2026-10-24 owner。敗＝試合数−勝ち）', () => {
   const pairs = recordReviewPairs(full());
   assert.equal(pairs[0][0], 'キックボクシング');
-  assert.equal(pairs[0][1], '試合 4・勝ち 3');
+  assert.equal(pairs[0][1], '4戦3勝1敗');
   assert.ok(pairs[1][0].startsWith('他の格闘技：空手'));
-  assert.equal(pairs[1][1], '試合 3・勝ち 1');
+  assert.equal(pairs[1][1], '3戦1勝2敗', '敗は、試合数−勝ち（引き分け・勝敗なしも入る）。表の「負け」の数ではない');
   assert.ok(pairs[2][0].startsWith('タイトル・入賞：'));
   assert.equal(recordReviewPairs(full({ kick: EMPTY_KICK, others: [], titles: [] }))[0][1], '未経験（試合数 0）');
+  // 画面が作る形（試合数と勝ちだけ）から通しで：試合数5・勝ち3 → 5戦3勝2敗
+  const typed = recordReviewPairs(detailFromText({ games: '5', win: '3' }, [{ sport: '柔道', games: '12', win: '7' }], []));
+  assert.deepEqual(typed.map((pair) => pair[1]), ['5戦3勝2敗', '12戦7勝5敗']);
+});
+
+test('recordLine：○戦○勝○敗。敗＝試合数−勝ち。全勝は0敗、全敗は0勝', () => {
+  assert.equal(recordLine(5, 3), '5戦3勝2敗');
+  assert.equal(recordLine(1, 1), '1戦1勝0敗');
+  assert.equal(recordLine(2, 0), '2戦0勝2敗');
+  assert.equal(recordLine(999, 0), '999戦0勝999敗');
+});
+
+test('「敗」の一言：試合数から勝ちを引いた数で、引き分けも入る、と言う。確認の画面は、戦に出る行があるときだけ出す', () => {
+  assert.equal(RECORD_LOSS_NOTE, '「敗」は、試合数から勝ちを引いた数です（引き分けも入ります）。');
+  const page = readFileSync(new URL('../app/apply/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /\{recordOn && \(detailNow\.kick\.games > 0 \|\| detailNow\.others\.length > 0\) \? <p id="review-record-note" className="mt-2 text-\[1\.0625rem\] text-slate-700">\{RECORD_LOSS_NOTE\}<\/p> : null\}/, '新しいリンクで、戦に出る行があるときだけ');
+  // 送る形・シート・準備の画面は、変えていない（出す場所は確認の画面だけ）
+  assert.equal(kickRecordText({ games: 4, win: 3, loss: 1, draw: 0 }), '3勝1敗', 'シートの戦績の一行は、これまでどおり');
 });
 
 test('申し込みリンク：rd=on は、protocol 3 のときだけ読む。付けないリンク（古いリンク）には、rd が無い', () => {

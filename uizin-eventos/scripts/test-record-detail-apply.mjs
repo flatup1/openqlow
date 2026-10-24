@@ -243,7 +243,7 @@ await scenario('M3', 'new link: after a failed send the red lines name the row t
 /* ───────── 最後まで入れて送る（確認の画面と、送る中身。Googleの受付は、これまでと同じ形で受ける） ───────── */
 for (const vp of [PHONE, SMALL]) {
   cur = 'E1';
-  console.log('== E1 new link (' + vp.width + 'px): fill everything; the review says 試合数・勝ち only; the sent recordDetail keeps the old shape (負け = 試合数 − 勝ち)');
+  console.log('== E1 new link (' + vp.width + 'px): fill everything; the review says ○戦○勝○敗 (敗 = 試合数 − 勝ち) and what 敗 means; the sent recordDetail keeps the old shape');
   const mobile = vp.width < 800;
   const ctx = await browser.newContext({ viewport: vp, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 1 });
   const posts = [];
@@ -285,19 +285,51 @@ for (const vp of [PHONE, SMALL]) {
     await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).click();
     await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
     const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
-    check(review.includes('試合 4・勝ち 3'), 'the review shows the kick as 試合 4・勝ち 3');
-    check(review.includes('試合 12・勝ち 7'), 'the review shows 柔道 as 試合 12・勝ち 7');
+    // 2026-10-24 owner：確認の画面は ○戦○勝○敗 で出す（敗＝試合数−勝ち。引き分けも入る）。シートの戦績の一行・準備の画面は、そのまま
+    check(review.includes('4戦3勝1敗'), 'the review shows the kick as 4戦3勝1敗');
+    check(review.includes('12戦7勝5敗'), 'the review shows 柔道 as 12戦7勝5敗');
     check(review.includes('架空カップ'), 'the review shows the title');
-    check(!/負け|引き分け|勝敗なし/.test(review), 'the review never says 負け・引き分け・勝敗なし');
-    check(!review.includes('3勝1敗'), 'the review does not show the derived 3勝1敗 line (the fighter did not type a 負け)');
+    check(!/試合 4・勝ち 3|試合 12・勝ち 7/.test(review), 'the old 試合 4・勝ち 3 wording is gone from the review');
+    check(!/勝敗なし/.test(review), 'the review never says 勝敗なし (there is no such input any more)');
+    const note = page.locator('#review-record-note');
+    check((await note.count()) === 1 && (await note.innerText()) === '「敗」は、試合数から勝ちを引いた数です（引き分けも入ります）。', 'the review says what 敗 means, once');
+    const noteFont = await note.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    check(noteFont >= 17, 'the note is 17px or bigger (' + noteFont + 'px)');
+    check(!(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)), 'no sideways scroll on the review');
     await page.getByRole('button', { name: 'この内容で送信する', exact: true }).click();
     await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
     check(posts.length === 1, 'exactly one POST was sent (' + posts.length + ')');
     const sent = posts[0];
-    check(sent && sent.get('record') === '3勝1敗', 'record is 3勝1敗 (the same one line the Google receiver stores)');
+    check(sent && sent.get('record') === '3勝1敗', 'record is still 3勝1敗 (the same one line the Google receiver stores; the sheet is not changed)');
     const expected = '{"v":1,"kick":{"games":4,"win":3,"loss":1,"draw":0},"others":[{"sport":"柔道","games":12,"win":7,"loss":5,"draw":0,"noResult":0}],"titles":[{"event":"架空カップ","year":2025,"class":"-60kg","result":"優勝"}]}';
     check(sent && sent.get('recordDetail') === expected, 'recordDetail keeps the old shape the Google receiver accepts: ' + (sent ? String(sent.get('recordDetail')).slice(0, 200) : 'no post'));
   } catch (e) { failures.push('[E1] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); console.log('  FAIL [E1] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); }
+  await ctx.close();
+}
+
+/* ───────── 未経験（試合数0）：確認の画面は「未経験（試合数 0）」。戦に出る行が無いので、「敗」の一言は出ない ───────── */
+for (const vp of [PHONE]) {
+  cur = 'E2';
+  console.log('== E2 new link (' + vp.width + 'px): 試合数 0 -> the review says 未経験 and shows no 敗 note');
+  const ctx = await browser.newContext({ viewport: vp, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  await ctx.route('**/*', (route) => (route.request().url().startsWith(base + '/') ? route.continue() : route.abort()));
+  const page = await ctx.newPage();
+  page.on('dialog', (d) => d.dismiss().catch(() => {}));
+  page.on('pageerror', (e) => pageErrors.push({ scenario: cur, message: e.message }));
+  try {
+    await open(page, NEW_LINK);
+    for (const [label, value] of [['ジム名 必須', '架空ジム'], ['選手名 必須', '架空選手'], ['身長（cm）必須', '170'], ['体重（kg）必須', '65'], ['連絡先のお名前 必須', '架空連絡先'], ['電話番号 必須', '09012345678'], ['メールアドレス 必須', 'test@example.com']]) await page.getByLabel(label, { exact: true }).fill(value);
+    await page.locator('#rd-kick-games').fill('0');
+    const jpeg = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 120; c.height = 160; const x = c.getContext('2d'); x.fillStyle = '#2563eb'; x.fillRect(0, 0, 120, 160); return c.toDataURL('image/jpeg').split(',')[1]; }), 'base64');
+    await page.locator('input[type=file]').setInputFiles({ name: 'test.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+    await page.getByAltText('選んだ写真').waitFor();
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).click();
+    await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
+    const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
+    check(review.includes('未経験（試合数 0）'), 'the review says 未経験（試合数 0）');
+    check(!/[0-9]戦[0-9]+勝/.test(review) && (await page.locator('#review-record-note').count()) === 0, 'no ○戦○勝○敗 line and no 敗 note for a fighter with no matches');
+  } catch (e) { failures.push('[E2] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); console.log('  FAIL [E2] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); }
   await ctx.close();
 }
 
