@@ -98,7 +98,7 @@ async function fillBase(page, { division = '一般男子', weightClass = '60kg�
   if (consent) await page.getByRole('checkbox').check();
 }
 async function fillHn(page) {
-  // リングネーム・そのフリガナは、選手名から作る（欄は無い）
+  // リングネーム（任意）は入れない（空のままなら、選手名と氏名のフリガナが入る）
   for (const key of HANAMICHI_ASKED_ITEMS.map((item) => item.key)) {
     if (key === 'hnBirth' || HN_GOOD[key] === undefined) continue;
     await page.locator('#f-' + key).fill(HN_GOOD[key]);

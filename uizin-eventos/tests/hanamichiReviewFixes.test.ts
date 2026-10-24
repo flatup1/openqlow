@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { HANAMICHI_ITEMS } from '../core/hanamichi.ts';
+import { HANAMICHI_ITEMS, hanamichiAskRequired, hanamichiFormItems } from '../core/hanamichi.ts';
 
 /*
   花道の追加の質問：点検で見つかった5つの直しの、ソースの約束。
@@ -22,16 +22,33 @@ test('直し1: 設定の画面は、古い版（3.20261019.6 など）に、花�
   assert.equal((SETUP.match(/\{classCaution \?\? weightCaution\}/g) ?? []).length, 2, '黄色の注意は、前と同じ2つの並びだけ');
 });
 
-test('直し2: 任意の項目（職業・他格闘歴）に赤いまちがいが出たら、黄色の「次はここ」はそこへ行く。入力 N/M の数は変えない', () => {
+test('直し2: 任意の項目（画面で聞くのはリングネーム。職業・他格闘歴は、いまは聞かない）に赤いまちがいが出たら、黄色の「次はここ」はそこへ行く。入力 N/M の数は変えない', () => {
   const todo = PAGE.slice(PAGE.indexOf('const hnTodoOrder'), PAGE.indexOf(';\n', PAGE.indexOf('const hnTodoOrder')) + 2);
-  assert.match(todo, /item\.required \? Boolean\(hnNf\[item\.key\]\) : true/, '任意の項目は、空でも「できた」。まちがいが出たときだけ、黄色が行く');
-  assert.match(todo, /!item\.required \|\| /, '任意の項目は、いつも順番に入る');
+  assert.match(todo, /hanamichiAskRequired\(item\) \? Boolean\(hnNf\[item\.key\]\) : true/, '任意の項目は、空でも「できた」。まちがいが出たときだけ、黄色が行く');
+  assert.match(todo, /!hanamichiAskRequired\(item\) \|\| /, '任意の項目は、いつも順番に入る');
   assert.match(PAGE, /\.\.\.hnTodoOrder,\s*\n\s*\['contactName'/, '「次はここ」を決める順番(order)には、任意も入れる');
   const info = PAGE.slice(PAGE.indexOf('const infoItems'), PAGE.indexOf('const contactItems'));
   assert.match(info, /\.\.\.hnOrder\.map/, '入力 N/M の数は、必須だけの hnOrder のまま');
   assert.doesNotMatch(info, /hnTodoOrder/);
   const optional = HANAMICHI_ITEMS.filter((item) => !item.required).map((item) => item.key);
-  assert.deepEqual(optional, ['hnOther', 'hnJob'], '任意は、この2つ（表を変えたら、この試験と画面の試験 N を見直す）');
+  assert.deepEqual(optional, ['hnOther', 'hnJob'], '表の上で任意は、この2つ（表を変えたら、この試験と画面の試験 N を見直す）');
+  // 画面で聞く任意は、リングネームだけ（2026-10-24。表の required は、受付が求める形のまま。空のときは、選手名が入る）
+  assert.deepEqual(hanamichiFormItems(true).filter((item) => !hanamichiAskRequired(item)).map((item) => item.key), ['hnRing'], '画面で任意なのは、リングネームだけ');
+});
+
+test('リングネーム（2026-10-24）: 画面は表の項目から作る。説明・確認の言い方・送る値の作り方を固定する（画面のふるまいは scripts/test-hanamichi-apply.mjs の R）', () => {
+  assert.match(PAGE, /const hnItems = useMemo\(\(\) => hanamichiFormItems\(ringTyped\), \[ringTyped\]\);/, '画面の項目は、リングネームを入れたかで決まる');
+  assert.match(PAGE, /const ringTyped = hanamichiOn && hnBase\.hnRing !== '';/, '「入れた」とは、前後の空白・見えない文字を取った値が空でないこと');
+  assert.match(PAGE, /hanamichiFill\(hnBase, nf\.gym, nf\.name\)/, '送る値は、hanamichiFill（空のときは選手名・氏名のフリガナ）で作る');
+  assert.ok(PAGE.includes("hnRing: { hint: 'リングネームがある人だけ、入れてください。ない人は、空のままで大丈夫です（選手名が入ります）。アナウンスで使います。'"), 'リングネームの説明：ない人は空でよい');
+  assert.ok(PAGE.includes("hnRingKana: { hint: '上の「リングネーム」のフリガナです。カタカナで入れてください。'"), 'そのフリガナの説明');
+  assert.ok(PAGE.includes("'（書いていません。選手名で呼びます）'"), '確認の画面：書いていない人への言い方');
+  // 欄の見出しの「必須／任意」は、画面での必須（hanamichiAskRequired）で決める（表の required そのままではない）
+  assert.match(PAGE, /hnLabel\(item\) \+ \(hanamichiAskRequired\(item\) \? ' 必須' : ' 任意'\)/);
+  assert.doesNotMatch(PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), /ringFromName|gymKanaFromName|HANAMICHI_HOBBY_MERGED/, '送る値の作り方は core の hanamichiFill 1か所（画面に同じ式を持たない）');
+  // 表の「必須」は変えていない（受付の決まり）。リングネームが画面で任意なのは、空のとき選手名を入れて送るから
+  assert.equal(HANAMICHI_ITEMS.find((item) => item.key === 'hnRing')?.required, true);
+  assert.equal(hanamichiAskRequired(HANAMICHI_ITEMS.find((item) => item.key === 'hnRing')!), false);
 });
 
 test('直し3: 「次はここ」の札は、320pxで2行におさまる長さ。長い名前（リングネームのフリガナ・趣味・特技と始めた理由）だけ短くする。見出しとほかの文は、そのまま', () => {

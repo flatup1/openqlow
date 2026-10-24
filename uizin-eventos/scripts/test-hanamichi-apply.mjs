@@ -1,6 +1,6 @@
 /**
  * Browser checks for the 花道 (Hanamichi) extra questions on the public apply page (/apply/):
- * the card appears only for a division whose name contains 花道 (and only when the link carries hn=on), 12 items in the table's order,
+ * the card appears only for a division whose name contains 花道 (and only when the link carries hn=on), the questions in the table's order (リングネーム is optional: typing one asks for its reading; left empty, the 選手名 is sent as before),
  * three select boxes for the birth date, required items block the send with a reason, changing the division discards the answers,
  * no sideways scroll at 320px, one 👉 marker per state, nothing leaves the page except the apply form's POST, and nothing personal
  * is kept in the link, storage or the console. With the setting OFF (no hn=on) the page and its POST are exactly the old ones.
@@ -100,11 +100,14 @@ async function fillBirth(page, { y, m, d }) {
 }
 async function fillHn(page, over = {}, birth = BIRTH_GOOD) {
   const values = { ...HN_GOOD, ...over };
-  // 画面で聞くのは必須の7項目だけ（ジムのフリガナ・リングネーム・そのフリガナは自動、職業・他格闘歴は聞かない）
+  // いつも入れるのは、必須の6項目（ジムのフリガナは自動、職業・他格闘歴は聞かない）。リングネーム（任意）は、over に入れたときだけ入れる。
+  // 入れたときだけ、そのフリガナの欄が出る（フリガナも over に入れたときだけ入れる）
+  if (over.hnRing !== undefined) await page.locator('#f-hnRing').fill(over.hnRing);
   for (const key of HANAMICHI_ASKED_ITEMS.map((item) => item.key)) {
     if (key === 'hnBirth' || values[key] === undefined) continue;
     await page.locator('#f-' + key).fill(values[key]);
   }
+  if (over.hnRingKana !== undefined && String(over.hnRing || '').trim() !== '') await page.locator('#f-hnRingKana').fill(over.hnRingKana);
   if (birth) await fillBirth(page, birth);
 }
 const reviewBtn = (p) => p.getByRole('button', { name: '入力内容を確認する →', exact: true });
@@ -179,8 +182,8 @@ await scenario('A', 'choosing a 花道 division shows the card with the 12 items
   // 必須は10項目。リングネームのフリガナは、リングネームを入れるまで数えない（まだ要らない）
   const required = HANAMICHI_ITEMS.filter((i) => i.required).length;
   check(filled0 === 1 && totalHn - totalNoClass <= required, 'A the counter counts only the 花道 items that are due now (入力 ' + filled0 + '/' + totalHn + ', before ' + totalNoClass + ', ordinary ' + totalOrdinary + ')');
-  // リングネームは、選手名から作る（欄は出ない）。ふつうの欄（学年・年齢・意気込み）も、花道では出ない
-  check((await page.locator('#f-hnRing').count()) === 0 && (await page.locator('#f-hnRingKana').count()) === 0, 'A the ring name and its reading are not asked (they come from 選手名 and フリガナ)');
+  // リングネームは聞く（任意）。そのフリガナは、リングネームを入れるまで出ない。ふつうの欄（学年・年齢・意気込み）は、花道では出ない
+  check((await page.locator('#f-hnRing').count()) === 1 && (await page.locator('#f-hnRingKana').count()) === 0, 'A the ring name is asked (optional); its reading is not asked until a ring name is typed');
   check((await page.locator('#f-grade,#f-age,#f-comment').count()) === 0, 'A grade, age and message are not asked in the 花道 card or above it');
   await page.locator('#f-division').selectOption('花道男子');
   const text = await page.locator('#hn-card').innerText();
@@ -196,13 +199,19 @@ await scenario('A', 'choosing a 花道 division shows the card with the 12 items
   check(order.photoBeforeCard && order.cardBeforeContact, 'A the card sits between the photo and the 連絡先 card');
   // the 12 items: one field each, in the table's order, labelled with the table's words and 必須/任意
   const ids = await page.evaluate(() => [...document.querySelectorAll('#hn-card [id^="f-hn"]')].map((e) => e.id).filter((id) => !/-(hint|ex|err|note)$/.test(id)));
-  const expectIds = HANAMICHI_ASKED_ITEMS.map((item) => item.key).flatMap((key) => (key === 'hnBirth' ? ['f-hnBirth', 'f-hnBirthM', 'f-hnBirthD'] : ['f-' + key]));
-  check(JSON.stringify(ids) === JSON.stringify(expectIds), 'A the 12 items come in the table order (birth = 3 selects) (' + short(ids.join(','), 200) + ')');
+  // 氏名のフリガナの次がリングネーム。そのフリガナは、入れるまで無い。生年月日は3つの選ぶ欄
+  const expectIds = ['f-hnNameKana', 'f-hnRing', 'f-hnBirth', 'f-hnBirthM', 'f-hnBirthD', 'f-hnKickYears', 'f-hnPerWeek', 'f-hnReason', 'f-hnMessage'];
+  check(JSON.stringify(ids) === JSON.stringify(expectIds), 'A the questions come in this order: 氏名のフリガナ, リングネーム, 生年月日 (3 selects), キック歴, 練習頻度, 趣味・特技と理由, メッセージ (' + short(ids.join(','), 200) + ')');
   for (const item of HANAMICHI_ASKED_ITEMS) {
     const label = (await page.locator('#hn-card label[for="f-' + item.key + '"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
     check(label.startsWith(screenLabel(item)) && label.includes(item.required ? '必須' : '任意'), 'A "' + screenLabel(item) + '" is labelled ' + (item.required ? '必須' : '任意') + ' (' + short(label, 50) + ')');
   }
-  check(await page.locator('#hn-card').getByText('（空でもOK）').count() === HANAMICHI_ASKED_ITEMS.filter((i) => !i.required).length, 'A the two optional items say （空でもOK）');
+  // リングネームだけが任意（札は「任意」。「（空でもOK）」の一言も付く）
+  const ringLabel = (await page.locator('#hn-card label[for="f-hnRing"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(ringLabel.startsWith('リングネーム') && ringLabel.includes('任意') && !ringLabel.includes('必須'), 'A "リングネーム" is labelled 任意, not 必須 (' + short(ringLabel, 50) + ')');
+  check(await page.locator('#hn-card').getByText('（空でもOK）').count() === 1, 'A only the ring name says （空でもOK）');
+  const ringHint = await textOf(page, '#f-hnRing-hint');
+  check(ringHint.includes('ない人は、空のままで大丈夫です'), 'A the ring name hint says an empty box is fine (' + short(ringHint, 80) + ')');
   // no double asking: nothing for the items the ordinary form already has
   const labels = await page.locator('#hn-card label').allInnerTexts();
   check(!labels.some((l) => /^(ジム名|選手名|身長|体重|戦績)/.test(l.trim())), 'A the card does not ask the gym, name, height, weight or record a second time');
@@ -254,7 +263,7 @@ await scenario('C', 'required 花道 answers empty: no send, the reasons show, t
     check(line.includes('✕') && line.length > 3, 'C ' + key + ' has a red ✕ line (' + short(line, 60) + ')');
   }
   check((await page.locator('#f-hnOther-err').count()) === 0 && (await page.locator('#f-hnJob-err').count()) === 0, 'C the two optional items are not marked');
-  check((await page.locator('#f-hnRingKana-err').count()) === 0, 'C the ring name reading is not asked (it is not a field)');
+  check((await page.locator('#f-hnRing-err').count()) === 0 && (await page.locator('#f-hnRingKana').count()) === 0, 'C the ring name (optional) is not marked, and its reading is not asked until a ring name is typed');
   check((await activeId(page)) === 'f-hnNameKana', 'C the cursor goes to the first missing 花道 item (' + (await activeId(page)) + ')');
   const mark = await oneMark(page, 'C after the failed try');
   check(mark.includes('氏名のフリガナ'), 'C the marker stays on the first missing item (' + mark + ')');
@@ -441,7 +450,7 @@ await scenario('I', 'full flow: review block, then the POST with the 12 keys aft
   const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
   check(review.includes('花道の追加の質問'), 'I the review has a 花道 block');
   for (const item of HANAMICHI_ASKED_ITEMS) check(review.includes(screenLabel(item)), 'I the review lists "' + screenLabel(item) + '"');
-  check(!review.includes('リングネーム'), 'I the review does not list リングネーム (it is 選手名 now)');
+  check(review.includes('リングネーム') && review.includes('（書いていません。選手名で呼びます）') && !review.includes('リングネームのフリガナ'), 'I the review lists リングネーム as "not written, called by the 選手名", and no reading line');
   for (const value of [HN_GOOD.hnNameKana, '架空選手', '1975年8月20日', HN_GOOD.hnReason]) check(review.includes(value), 'I the review shows the answer "' + value + '"');
   check(!review.includes('職業') && !review.includes('他格闘歴'), 'I the review has no 職業 / 他格闘歴 (they are not asked any more)');
   await oneMark(page, 'I review screen');
@@ -603,7 +612,7 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
     await fillHn(page);
     const okMark = await oneMark(page, 'N1 everything filled');
     check(okMark.includes('確認のボタン'), 'N1 all good → the 👉 is on the confirm button (' + okMark + ')');
-    check((await page.locator('#hn-card').getByText('（空でもOK）').count()) === 0, 'N1 no optional item in the 花道 card');
+    check((await page.locator('#hn-card').getByText('（空でもOK）').count()) === 1, 'N1 the only optional item in the 花道 card is the ring name');
     await ctx.close();
   }
 
@@ -678,8 +687,8 @@ await scenario('N', 'optional answer too long gets the 👉; the 👉 is 2 lines
   }
 });
 
-/* P: fewer questions (owner 2026-10-23): the ring name is the 選手名; the age comes from the birth date; grade / age / message are not asked in the 花道 card; the shortcuts; the 60-character name */
-await scenario('P', '花道: リングネームは選手名、年齢は生年月日から。学年・年齢・意気込みは出さない。近道の「選手名と同じ」・60字の選手名', [DESKTOP, PHONE], async (vp) => {
+/* P: fewer questions (owner 2026-10-23): the ring name is the 選手名 unless one is typed (owner 2026-10-24); the age comes from the birth date; grade / age / message are not asked in the 花道 card; the shortcuts; the 60-character name */
+await scenario('P', '花道: リングネームが空なら選手名、年齢は生年月日から。学年・年齢・意気込みは出さない。近道の「選手名と同じ」・60字の選手名', [DESKTOP, PHONE], async (vp) => {
   const today = jstDateText();
   const expectAge = hanamichiAgeFrom('1975-08-20', today);
   {
@@ -691,20 +700,20 @@ await scenario('P', '花道: リングネームは選手名、年齢は生年月
     await fillBirth(page, BIRTH_GOOD);
     await settle(200);
     check((await page.locator('#f-grade,#f-age,#f-comment').count()) === 0, 'P a 花道 division: no grade, age or message field on the page');
-    check((await page.locator('#f-hnRing').count()) === 0 && (await page.locator('#f-hnRingKana').count()) === 0, 'P no ring-name field (リングネーム is 選手名)');
+    check((await page.locator('#f-hnRing').count()) === 1 && (await page.locator('#f-hnRingKana').count()) === 0, 'P the ring name box is there (left empty), and no reading box');
     await toReview(page);
     const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
     check(review.includes('年齢（生年月日から自動）') && review.includes(expectAge), 'P the review shows the age from the birth date (' + expectAge + ')');
     await page.getByRole('button', { name: '花道の追加の質問を直す', exact: true }).click();
     await settle(300);
-    // the post: ring name = 選手名; age = from the birth date
+    // the post: ring name left empty → 選手名; age = from the birth date
     await toReview(page);
     await sendBtn(page).click();
     await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
     const post = ctx.__posts.at(-1);
     check(post && post.get('age') === expectAge, 'P the POST age is the one from the birth date (' + (post && post.get('age')) + ')');
     check(post && post.get('grade') === '社会人' && post.get('comment') === HN_GOOD.hnMessage, 'P the POST grade is 社会人 and the comment is the 花道 message (' + (post && post.get('grade')) + ')');
-    check(post && post.get('hnRing') === '架空選手' && post.get('hnRingKana') === HN_GOOD.hnNameKana, 'P the POST ring name is 選手名 and its reading is 氏名のフリガナ');
+    check(post && post.get('hnRing') === '架空選手' && post.get('hnRingKana') === HN_GOOD.hnNameKana, 'P the POST ring name (left empty) is 選手名 and its reading is 氏名のフリガナ');
     await ctx.close();
   }
   {
@@ -738,7 +747,7 @@ await scenario('P', '花道: リングネームは選手名、年齢は生年月
     await ctx.close();
   }
   {
-    // 選手名 longer than 60 (it is the ring name now): red at once on the name field
+    // 選手名 longer than 60 (it is the ring name when none is typed): red at once on the name field
     const ctx = await newCtx(vp);
     const page = await openApply(ctx, hashFor());
     await fillBase(page, { division: '花道男子', weightClass: '無差別' });
@@ -760,6 +769,200 @@ await scenario('P', '花道: リングネームは選手名、年齢は生年月
     await settle(150);
     check((await page.getByLabel('連絡先のお名前 必須', { exact: true }).inputValue()) === '架空選手', 'P the shortcut fills the contact name with 選手名');
     await ctx.close();
+  }
+});
+
+/* ───────────────────────── R: リングネーム（owner 2026-10-24「花道の詳細を追加する部分にリングネームを追加したい」）───────────────────────── */
+/* 任意。入れた人にだけ、そのフリガナ（必須）も聞く。空・空白だけなら聞かず、これまでと同じに選手名と氏名のフリガナを送る。送る鍵は増えない */
+await scenario('R', 'リングネーム: 入れるとフリガナ（必須）が出る。空・空白だけなら選手名を送る。消したら前のフリガナは送らない。長すぎは赤', [PHONE, SMALL, DESKTOP], async (vp) => {
+  const RING = '架空ライオン', RING_KANA = 'カクウライオン';
+  const reviewOf = (p) => p.locator('section[aria-label="送る前の確認"]').innerText();
+  const labelOf = async (p, id) => (await p.locator('#hn-card label[for="' + id + '"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+
+  /* R1: typing a ring name makes its reading appear right under it (required); the counter asks for one more; the 👉 goes to the reading; the POST carries what was typed */
+  {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    const [f0, t0] = await counter(page);
+    await page.locator('#f-hnRing').fill(RING);
+    await settle(250);
+    check((await page.locator('#f-hnRingKana').count()) === 1, 'R1 typing a ring name makes the reading box appear');
+    const [f1, t1] = await counter(page);
+    check(t1 === t0 + 1 && f1 === f0, 'R1 the counter asks for one more answer (入力 ' + f0 + '/' + t0 + ' → ' + f1 + '/' + t1 + ')');
+    const kl = await labelOf(page, 'f-hnRingKana');
+    check(kl.startsWith('リングネームのフリガナ') && kl.includes('必須') && !kl.includes('任意'), 'R1 the reading box is labelled 必須 (' + short(kl, 60) + ')');
+    const tops = await page.evaluate(() => ['f-hnNameKana', 'f-hnRing', 'f-hnRingKana', 'f-hnBirth'].map((id) => { const el = document.getElementById(id); return el ? Math.round(el.getBoundingClientRect().top + scrollY) : -1; }));
+    check(tops.every((v, i) => v > 0 && (i === 0 || v > tops[i - 1])), 'R1 on the page: 氏名のフリガナ, リングネーム, そのフリガナ, 生年月日 (tops ' + tops.join(',') + ')');
+    // every other answer in, the reading still empty → the one 👉 is on the reading
+    await fillHn(page, { hnRing: RING });
+    await page.locator('#hn-card h2').click();
+    await settle(300);
+    const mark = await oneMark(page, 'R1 ring name typed, reading empty');
+    check(mark.includes('フリガナを入れる') && !mark.includes('氏名'), 'R1 the 👉 asks for the reading (' + mark + ')');
+    // 確認 is refused: a red line on the reading box, and the cursor goes there
+    await reviewBtn(page).click();
+    await settle(400);
+    check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0 && ctx.__posts.length === 0, 'R1 the review does not open and nothing is sent');
+    const err = await textOf(page, '#f-hnRingKana-err');
+    check(err.includes('✕') && err.length > 3, 'R1 the reading box has a red ✕ line (' + short(err, 60) + ')');
+    check((await activeId(page)) === 'f-hnRingKana', 'R1 the cursor goes to the reading box (' + (await activeId(page)) + ')');
+    check((await page.locator('#f-hnRing-err').count()) === 0, 'R1 the ring name itself is not marked');
+    // the reading in → the confirm button is next; the review shows both; the POST carries what was typed (not 氏名のフリガナ)
+    await page.locator('#f-hnRingKana').fill(RING_KANA);
+    await page.locator('#hn-card h2').click();
+    await settle(250);
+    const done = await oneMark(page, 'R1 reading typed');
+    check(done.includes('確認のボタン'), 'R1 the 👉 is on the confirm button (' + done + ')');
+    await toReview(page);
+    const review = await reviewOf(page);
+    check(review.includes(RING) && review.includes('リングネームのフリガナ') && review.includes(RING_KANA) && !review.includes('（書いていません。選手名で呼びます）'), 'R1 the review shows the ring name and its reading');
+    await sendBtn(page).click();
+    await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+    const post = ctx.__posts.at(-1);
+    check(post && JSON.stringify([...post.keys()]) === JSON.stringify([...OLD_KEYS, ...HANAMICHI_KEYS]), 'R1 the POST keys are the old ones, then the 12 in table order (nothing new)');
+    check(post && post.get('hnRing') === RING && post.get('hnRingKana') === RING_KANA && post.get('hnNameKana') === HN_GOOD.hnNameKana, 'R1 the POST carries the typed ring name and reading, and 氏名のフリガナ stays (' + (post && [post.get('hnRing'), post.get('hnRingKana'), post.get('hnNameKana')].join('/')) + ')');
+    check(post && post.get('name') === '架空選手', 'R1 選手名 stays the real name (' + (post && post.get('name')) + ')');
+    await ctx.close();
+  }
+
+  /* R2: left empty, or only spaces (also the wide space) → no reading box, the counter is full, the POST is the old shape (選手名 / 氏名のフリガナ) */
+  for (const [name, typed] of [['empty', ''], ['spaces only', ' 　 ']]) {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    const [, t0] = await counter(page);
+    if (typed) await page.locator('#f-hnRing').fill(typed);
+    await fillHn(page);
+    await page.locator('#hn-card h2').click();
+    await settle(250);
+    const [f1, t1] = await counter(page);
+    check((await page.locator('#f-hnRingKana').count()) === 0 && t1 === t0 && f1 === t1, 'R2 ' + name + ': no reading box and the counter is full (入力 ' + f1 + '/' + t1 + ', before ' + t0 + ')');
+    const done = await oneMark(page, 'R2 ' + name);
+    check(done.includes('確認のボタン'), 'R2 ' + name + ': the 👉 is on the confirm button (' + done + ')');
+    const post = await sendIt(page, ctx);
+    check(post && post.get('hnRing') === '架空選手' && post.get('hnRingKana') === HN_GOOD.hnNameKana, 'R2 ' + name + ': the POST ring name is 選手名 and its reading is 氏名のフリガナ (' + (post && post.get('hnRing') + '/' + post.get('hnRingKana')) + ')');
+    check(post && JSON.stringify([...post.keys()]) === JSON.stringify([...OLD_KEYS, ...HANAMICHI_KEYS]), 'R2 ' + name + ': the POST keys are the old ones, then the 12 in table order');
+    await ctx.close();
+  }
+
+  /* R3: typed with its reading, then cleared → the reading box goes away and the old reading is NOT sent; 選手名 / 氏名のフリガナ are sent */
+  {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    const [, t0] = await counter(page);
+    await fillHn(page, { hnRing: RING, hnRingKana: RING_KANA });
+    const [, t1] = await counter(page);
+    check(t1 === t0 + 1, 'R3 with a ring name the counter has one more answer (' + t0 + ' → ' + t1 + ')');
+    await page.locator('#f-hnRing').fill('');
+    await settle(250);
+    check((await page.locator('#f-hnRingKana').count()) === 0, 'R3 clearing the ring name removes the reading box');
+    const [f2, t2] = await counter(page);
+    check(t2 === t0 && f2 === t2, 'R3 the counter is back to the old total and full (入力 ' + f2 + '/' + t2 + ')');
+    await toReview(page);
+    const review = await reviewOf(page);
+    check(!review.includes(RING) && !review.includes(RING_KANA) && review.includes('（書いていません。選手名で呼びます）'), 'R3 the review shows neither the old ring name nor its reading');
+    await sendBtn(page).click();
+    await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
+    const post = ctx.__posts.at(-1);
+    const body = ctx.__postBodies.at(-1) || '';
+    check(post && post.get('hnRing') === '架空選手' && post.get('hnRingKana') === HN_GOOD.hnNameKana, 'R3 the POST ring name is 選手名 and its reading is 氏名のフリガナ (' + (post && post.get('hnRing') + '/' + post.get('hnRingKana')) + ')');
+    check(!body.includes(encodeURIComponent(RING)) && !body.includes(encodeURIComponent(RING_KANA)), 'R3 the cleared ring name and its reading are nowhere in the POST');
+    await ctx.close();
+  }
+
+  /* R4: 61 characters is red at once on the ring name and blocks the send; 60 is fine (then the reading is asked) */
+  {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    await fillHn(page);
+    await page.locator('#f-hnRing').fill('あ'.repeat(61));
+    await settle(250);
+    const err = await textOf(page, '#f-hnRing-err');
+    check(err.includes('✕') && err.includes('長すぎます（いま61字／60字まで）'), 'R4 61 characters: red at once (' + short(err, 80) + ')');
+    check((await page.locator('#f-hnRing').getAttribute('aria-invalid')) === 'true', 'R4 the ring name box says aria-invalid');
+    await page.locator('#hn-card h2').click();
+    await settle(250);
+    const mark = await oneMark(page, 'R4 too long');
+    check(mark.includes('リングネームを直す'), 'R4 the 👉 says リングネームを直す (' + mark + ')');
+    await reviewBtn(page).click();
+    await settle(400);
+    check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0 && ctx.__posts.length === 0, 'R4 a too-long ring name blocks the send');
+    check((await activeId(page)) === 'f-hnRing', 'R4 the cursor goes to the ring name (' + (await activeId(page)) + ')');
+    await page.locator('#f-hnRing').fill('あ'.repeat(60));
+    await settle(250);
+    check((await page.locator('#f-hnRing-err').count()) === 0 && (await page.locator('#f-hnRingKana').count()) === 1, 'R4 60 characters is fine, and now the reading is asked');
+    await ctx.close();
+  }
+
+  /* R5: with a ring name typed (both boxes show, long unbroken text): nothing sticks out, text is 17px+, boxes are 48px+, also on the review */
+  {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    await fillHn(page, { hnRing: 'あ'.repeat(59), hnRingKana: 'W'.repeat(59) });
+    await settle(250);
+    let s = await sideways(page);
+    check(s.sw <= s.cw, 'R5 no sideways scroll with a long ring name and reading (' + s.sw + ' vs ' + s.cw + ')');
+    const out = await page.evaluate(() => { const w = document.documentElement.clientWidth; return [...document.querySelectorAll('#hn-card *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > w + 0.5 || r.left < -0.5); }).map((e) => (e.id || e.tagName) + ':' + Math.round(e.getBoundingClientRect().right)).slice(0, 4); });
+    check(out.length === 0, 'R5 nothing in the card reaches outside the screen (' + out.join(',') + ')');
+    const sz = await smallThings(page);
+    check(sz.small.length === 0 && sz.short.length === 0, 'R5 text 17px+ and boxes 48px+ with both boxes showing (' + sz.small.concat(sz.short).slice(0, 3).join(' | ') + ')');
+    for (const id of ['f-hnRing', 'f-hnRingKana']) {
+      const hint = await textOf(page, '#' + id + '-hint');
+      check(hint.length > 5, 'R5 ' + id + ' has its hint (' + short(hint, 50) + ')');
+    }
+    await toReview(page);
+    s = await sideways(page);
+    check(s.sw <= s.cw, 'R5 the review with a long ring name: no sideways scroll (' + s.sw + ' vs ' + s.cw + ')');
+    await ctx.close();
+  }
+
+  /* R7: blocked on the reading, then the ring name is cleared → no red line or band is left over; the 👉 goes to the confirm button; the review opens */
+  {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    await fillHn(page, { hnRing: RING });
+    await page.locator('#hn-card h2').click();
+    await reviewBtn(page).click();
+    await settle(400);
+    check((await page.locator('#f-hnRingKana-err').count()) === 1 && (await page.locator('#apply-msg').count()) === 1, 'R7 the blocked send shows the red band and the red line on the reading');
+    await page.locator('#f-hnRing').fill('');
+    await settle(400);
+    check((await page.locator('#f-hnRingKana').count()) === 0 && (await page.locator('#apply-msg').count()) === 0, 'R7 clearing the ring name removes the reading box and the red band');
+    check(!/直す所：|あと\d+か所/.test(await bodyText(page)), 'R7 no leftover "直す所" or "あと…か所" text');
+    const mark = await oneMark(page, 'R7 ring name cleared');
+    check(mark.includes('確認のボタン'), 'R7 the 👉 is on the confirm button (' + mark + ')');
+    await toReview(page);
+    check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 1, 'R7 the review opens');
+    await ctx.close();
+  }
+
+  /* R6: changing to an ordinary division throws the ring name away (nothing 花道 is sent); coming back finds the boxes empty */
+  {
+    const ctx = await newCtx(vp);
+    const page = await openApply(ctx, hashFor());
+    await fillBase(page);
+    await fillHn(page, { hnRing: RING, hnRingKana: RING_KANA });
+    await page.locator('#f-division').selectOption('一般男子');
+    await page.locator('#f-weightClass').selectOption('60kg以下');
+    check((await cardCount(page)) === 0 && (await page.locator('#f-hnRing, #f-hnRingKana').count()) === 0, 'R6 an ordinary division: the card and both boxes are gone');
+    const post = await sendIt(page, ctx);
+    const body = ctx.__postBodies.at(-1) || '';
+    check(post && ![...post.keys()].some((k) => k.startsWith('hn')) && !body.includes(encodeURIComponent(RING)), 'R6 the POST has no 花道 key and no ring name');
+    await ctx.close();
+    const ctx2 = await newCtx(vp);
+    const page2 = await openApply(ctx2, hashFor());
+    await fillBase(page2);
+    await fillHn(page2, { hnRing: RING, hnRingKana: RING_KANA });
+    await page2.locator('#f-division').selectOption('一般男子');
+    await page2.locator('#f-division').selectOption('花道男子');
+    await page2.locator('#f-weightClass').selectOption('無差別');
+    check((await page2.locator('#f-hnRing').inputValue()) === '' && (await page2.locator('#f-hnRingKana').count()) === 0, 'R6 coming back to 花道: the ring name is empty again and no reading box shows');
+    await ctx2.close();
   }
 });
 

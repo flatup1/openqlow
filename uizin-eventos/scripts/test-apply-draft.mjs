@@ -145,7 +145,9 @@ async function fillAll(page, over = {}) {
   await settle(150);
 }
 async function fillHn(page) {
-  // リングネーム・そのフリガナは、選手名から作る（欄は無い）。残りの花道の欄だけ入れる
+  // リングネーム（任意）とそのフリガナも入れる（リングネームを入れると、フリガナの欄が出る）。下書き・保存・リンクに残らないことを、ほかの花道の欄と同じに見る
+  await page.locator('#f-hnRing').fill(SECRET_HN.hnRing);
+  await page.locator('#f-hnRingKana').fill(SECRET_HN.hnRingKana);
   for (const key of HANAMICHI_ASKED_ITEMS.map((item) => item.key)) { if (key !== 'hnBirth' && SECRET_HN[key] !== undefined) await page.locator('#f-' + key).fill(SECRET_HN[key]); }
   await page.locator('#f-hnBirth').selectOption('1971');
   await page.locator('#f-hnBirthM').selectOption('3');

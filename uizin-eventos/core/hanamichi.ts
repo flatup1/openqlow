@@ -53,7 +53,9 @@ export const HANAMICHI_ITEMS: readonly HanamichiItem[] = [
 
 /**
  * 画面に出さず、選手の答えから作る項目（送る値・花道プロフィールには入るが、質問としては出さない。同じことを2回聞かない）。
- * 所属ジムのフリガナ＝ジム名（60字まで）、リングネーム＝選手名（本名だけ）、そのフリガナ＝氏名のフリガナ。
+ * 所属ジムのフリガナ＝ジム名（60字まで）。リングネーム・そのフリガナは、リングネームの欄（任意。2026-10-24 から画面で聞く。下の hanamichiFormItems）に
+ * 答えがないときだけ、選手名・氏名のフリガナから作る（hanamichiFill）。そのため、この一覧には残し、「必ず聞く項目」（HANAMICHI_ASKED_ITEMS）には入れない。
+ * 画面に出す項目の一覧（hanamichiFormItems）が、リングネームの2つを足す。
  */
 export const HANAMICHI_DERIVED_KEYS: readonly HanamichiKey[] = ['hnGymKana', 'hnRing', 'hnRingKana', 'hnHobby'];
 /** 趣味・特技は、「始めた理由・良かった所」の欄にまとめて書いてもらう（owner 2026-10-23「まとめてひとつにして」）。趣味・特技の列には、この1行を入れる */
@@ -61,7 +63,7 @@ export const HANAMICHI_HOBBY_MERGED = '「始めた理由・良かった所」�
 /** 聞かない任意の項目（必要最低限に絞る。owner 2026-10-23）。送る値は空 */
 export const HANAMICHI_SKIPPED_KEYS: readonly HanamichiKey[] = ['hnOther', 'hnJob'];
 
-/** 画面で聞く項目（画面の順）。POSTの鍵の一覧（HANAMICHI_KEYS）からは、作る項目と、聞かない任意の項目を除く */
+/** いつも画面で聞く項目（画面の順。必須の6つ）。作る項目と、聞かない任意の項目を除く。リングネーム（任意）は、ここに入れない：画面に出す項目の一覧は、下の hanamichiFormItems */
 export const HANAMICHI_ASKED_ITEMS: readonly HanamichiItem[] = HANAMICHI_ITEMS.filter((item) => !HANAMICHI_DERIVED_KEYS.includes(item.key) && !HANAMICHI_SKIPPED_KEYS.includes(item.key));
 
 /** ジム名を「所属ジムのフリガナ」の欄に入れる形にする（60字まで。半端な文字を作らない） */
@@ -71,9 +73,50 @@ export function gymKanaFromName(gym: unknown): string {
   return text;
 }
 
-/** 選手名をリングネームにする（本名だけ）。長さの上限（60字）は、選手名の欄で守る。ここでは切らない（切ると、名前が違って保存される） */
+/** 選手名をリングネームにする（リングネームの欄が空のときの代わり）。長さの上限（60字）は、選手名の欄で守る。ここでは切らない（切ると、名前が違って保存される） */
 export function ringFromName(name: unknown): string {
   return hanamichiText(name, 'text');
+}
+
+/**
+ * リングネーム（owner 2026-10-24「花道の詳細を追加する部分にリングネームを追加したい」）：画面で聞く。ただし、任意。
+ * 表（HANAMICHI_ITEMS）の required は、受付（Googleの .gs）が求める形のまま：リングネームが空のままでは、受付が断る。
+ * だから、聞いても空のとき（ない人）は、これまでと同じに、選手名（そのフリガナは氏名のフリガナ）を入れて送る（hanamichiFill）。
+ * 入れた人にだけ、そのフリガナ（必須）も聞く。受付・表の列・名簿・A3は、1つも変えない。
+ */
+export const HANAMICHI_RING_KEY: HanamichiKey = 'hnRing';
+export const HANAMICHI_RING_KANA_KEY: HanamichiKey = 'hnRingKana';
+
+/** 画面での「必須」：リングネーム（任意）のほかは、表の required のとおり */
+export function hanamichiAskRequired(item: HanamichiItem): boolean {
+  return item.required && item.key !== HANAMICHI_RING_KEY;
+}
+
+/**
+ * 画面に出す項目（画面の順）。聞く項目（HANAMICHI_ASKED_ITEMS）の、氏名のフリガナの次に、リングネームを足す。
+ * そのフリガナは、リングネームを入れたとき（ringTyped）だけ、その次に出す。
+ */
+export function hanamichiFormItems(ringTyped: boolean): HanamichiItem[] {
+  const ring = HANAMICHI_ITEMS.find((item) => item.key === HANAMICHI_RING_KEY);
+  const kana = HANAMICHI_ITEMS.find((item) => item.key === HANAMICHI_RING_KANA_KEY);
+  const at = HANAMICHI_ASKED_ITEMS.findIndex((item) => item.key === 'hnNameKana') + 1;
+  return [...HANAMICHI_ASKED_ITEMS.slice(0, at), ...(ring ? [ring] : []), ...(ringTyped && kana ? [kana] : []), ...HANAMICHI_ASKED_ITEMS.slice(at)];
+}
+
+/**
+ * 画面の入力（hnNormalize のあとの値）から、送る12項目を作る。画面に出さない欄と、リングネームが空のときの代わりの値を入れる：
+ * 所属ジムのフリガナ＝ジム名、リングネーム＝（入れていれば、それ。空なら）選手名、そのフリガナ＝（リングネームを入れていれば、それ。空なら）氏名のフリガナ、
+ * 他格闘歴・職業＝空、趣味・特技＝「始めた理由」の欄にまとめた、の1行。
+ */
+export function hanamichiFill(base: Record<HanamichiKey, string>, gym: unknown, name: unknown): Record<HanamichiKey, string> {
+  const ringTyped = hanamichiText(base.hnRing, 'text') !== '';
+  return hanamichiClean({
+    ...base,
+    hnGymKana: gymKanaFromName(gym),
+    hnRing: ringTyped ? base.hnRing : ringFromName(name),
+    hnRingKana: ringTyped ? base.hnRingKana : base.hnNameKana,
+    hnOther: '', hnJob: '', hnHobby: HANAMICHI_HOBBY_MERGED,
+  });
 }
 
 /** 今日の日付（日本時間）を yyyy-mm-dd で返す。now を渡すと、その時刻で計算する（試験のため） */
