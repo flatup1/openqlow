@@ -125,10 +125,10 @@ test('古い選手（くわしい戦績が無い人）の表示に使う値は�
   assert.equal(same.name, '架空R-001'); assert.equal(same.record, '2勝1敗'); assert.equal(same.weight, '60'); assert.equal(same.gym, 'テストジム');
 });
 
-test('くわしい戦績の文: キックは必ず1行（未経験は「試合数 0」）。他の格闘技・タイトルは、あるものだけ', () => {
+test('くわしい戦績の文: キックは必ず1行（未経験は「試合数 0」）。他の格闘技・タイトルは、あるものだけ。出すのは試合数と勝ちだけ（負け・引き分け・勝敗なしは、表にあっても出さない）', () => {
   const lines = recordDetailLines(detail);
-  assert.equal(lines.kick, 'キックボクシング：試合数 4・勝ち 3・負け 1・引き分け 0');
-  assert.deepEqual(lines.others, ['ムエタイ（他の格闘技）：試合数 2・勝ち 1・負け 0・引き分け 0・勝敗なし 1']);
+  assert.equal(lines.kick, 'キックボクシング：試合数 4・勝ち 3');
+  assert.deepEqual(lines.others, ['ムエタイ（他の格闘技）：試合数 2・勝ち 1']);
   assert.deepEqual(lines.titles, ['タイトル・入賞：架空カップ（2026年・ライト級）・優勝']);
   assert.deepEqual(recordDetailLines({ v: 1, kick: { games: 0, win: 0, loss: 0, draw: 0 }, others: [], titles: [] }), { kick: 'キックボクシング：未経験（試合数 0）', others: [], titles: [] });
 });

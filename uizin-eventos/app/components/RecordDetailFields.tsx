@@ -35,13 +35,12 @@ type Props = {
 /** 戦績の3つの欄と、下の赤い注意。試合の経験がある人だけ、くわしい欄が出る */
 export function RecordDetailFields(p: Props): ReactNode {
   const games = countOf(p.kick.games);
-  // 経験があるときだけ、勝ち・負け・引き分けを出す（未経験は試合数0で、入力は完了）
+  // 経験があるときだけ、勝ちを出す（未経験は試合数0で、入力は完了）。聞くのは、試合数と勝ちだけ
   const showKickDetail = games > 0;
-  const sumNow = countOf(p.kick.win) + countOf(p.kick.loss) + countOf(p.kick.draw);
-  const sumAllTyped = p.kick.win.trim() !== '' && p.kick.loss.trim() !== '' && p.kick.draw.trim() !== '';
-  const sumWrong = games > 0 && sumAllTyped && sumNow !== games;
-  // 合計がちがうときは、下の赤い一行（試合数と合わせて言う）で出しているので、同じことを2回は出さない
-  const shownProblems = (p.problems ?? []).filter((text) => !(sumWrong && text.startsWith('キックボクシングの勝ち・負け・引き分けの合計')));
+  const kickWin = countOf(p.kick.win);
+  const winOver = games > 0 && Number.isInteger(kickWin) && kickWin > games;
+  // 勝ちが試合数より多いときは、下の赤い一行（試合数と合わせて言う）で出しているので、同じことを2回は出さない
+  const shownProblems = (p.problems ?? []).filter((text) => !(winOver && text.startsWith('キックボクシングの勝ちが、試合数')));
   const numberField = (id: string, text: string, onText: (v: string) => void, name: string, hint?: string) => (
     <div className="min-w-0">
       <label htmlFor={id} className={label}>{name}</label>
@@ -78,12 +77,8 @@ export function RecordDetailFields(p: Props): ReactNode {
         <h3 id="rd-kick-title" className="text-lg font-black">【キックボクシングの戦績】</h3>
         <div className="mt-3 grid gap-4">
           {numberField('rd-kick-games', p.kick.games, (v) => p.setKick({ ...p.kick, games: v }), '試合数 必須', 'スパーリング大会も、試合数に入れてください。未経験の人は「0」と入れると、入力は完了です。')}
-          {showKickDetail ? <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {numberField('rd-kick-win', p.kick.win, (v) => p.setKick({ ...p.kick, win: v }), '勝ち 必須')}
-            {numberField('rd-kick-loss', p.kick.loss, (v) => p.setKick({ ...p.kick, loss: v }), '負け 必須')}
-            {numberField('rd-kick-draw', p.kick.draw, (v) => p.setKick({ ...p.kick, draw: v }), '引き分け 必須')}
-          </div> : null}
-          {sumWrong ? <p className="text-[1.0625rem] font-bold text-red-700">勝ち・負け・引き分けの合計が、試合数（{games}）と合っていません。</p> : null}
+          {showKickDetail ? numberField('rd-kick-win', p.kick.win, (v) => p.setKick({ ...p.kick, win: v }), '勝ち 必須', '勝った試合の数です。') : null}
+          {winOver ? <p className="text-[1.0625rem] font-bold text-red-700">勝ちが、試合数（{games}）より多くなっています。</p> : null}
         </div>
       </section>
 
@@ -97,13 +92,9 @@ export function RecordDetailFields(p: Props): ReactNode {
             <div key={i} className="grid gap-3 rounded-xl border-2 border-slate-300 p-3">
               <p className="text-[1.0625rem] font-bold">{i + 1}つ目の競技</p>
               {textField('rd-other-sport-' + i, row.sport, (v) => setOtherAt(i, { sport: v }), '競技名 必須', undefined, '例：空手')}
-              <div className="grid grid-cols-2 gap-3">
-                {numberField('rd-other-games-' + i, row.games, (v) => setOtherAt(i, { games: v }), '試合数 必須', 'スパーリング大会も入れます')}
-                {numberField('rd-other-win-' + i, row.win, (v) => setOtherAt(i, { win: v }), '勝ち 必須')}
-                {numberField('rd-other-loss-' + i, row.loss, (v) => setOtherAt(i, { loss: v }), '負け 必須')}
-                {numberField('rd-other-draw-' + i, row.draw, (v) => setOtherAt(i, { draw: v }), '引き分け 必須')}
-              </div>
-              {numberField('rd-other-nores-' + i, row.noResult, (v) => setOtherAt(i, { noResult: v }), '勝敗なし 必須', '勝敗が付かなかった試合です。引き分けとは別に入れてください。')}
+              {/* 2つの欄は、縦に1列に並べる（横に並べると、説明の行数がちがう分、入力欄の高さがずれて見える） */}
+              {numberField('rd-other-games-' + i, row.games, (v) => setOtherAt(i, { games: v }), '試合数 必須', 'スパーリング大会も入れます')}
+              {numberField('rd-other-win-' + i, row.win, (v) => setOtherAt(i, { win: v }), '勝ち 必須', '勝った試合の数です。')}
               <button type="button" onClick={() => { const next = p.others.filter((_, j) => j !== i); p.setOthers(next); if (next.length === 0) p.setOtherOn(false); }} className={minusBtn}>この競技を消す</button>
             </div>
           ))}

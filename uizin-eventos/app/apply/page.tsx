@@ -14,7 +14,7 @@ import { CkaLogo } from '../components/CkaLogo.tsx';
 import { allTicked, blankPledgeAnswers, GYM_PERMISSION_NOTE, isPledgeItemKey, isPledgeKey, pledgeIssues, pledgeLockReason, pledgeOrder, pledgePlan, pledgePost, PLEDGE_BLOCKED_TEXT, type PledgeAnswers, type PledgeIssues, type PledgeKey } from '../components/pledgeForm.ts';
 import { photoToDataUrl } from '../lib/privateStore.ts';
 import { kickFromRecordText, kickRecordText, packRecordDetail, recordDetailProblems } from '../../core/recordDetail.ts';
-import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
+import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, recordProblems, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
 import { RecordDetailFields } from '../components/RecordDetailFields.tsx';
 
 /*
@@ -622,6 +622,8 @@ export default function PublicApply() {
   // くわしい戦績（新しいリンクだけ）。戦績の一行は、キックの数が決まりに合うときだけ入る（合わなければ空＝送れない）
   const recordOn = Boolean(config.recordDetail);
   const detailNow = useMemo(() => detailFromText(kickText, otherOn ? otherRows : [], titleOn ? titleRows : []), [kickText, otherOn, otherRows, titleOn, titleRows]);
+  /** 直す所（画面の欄の言い方）。空なら、決まりに合っている。聞くのは試合数と勝ちだけ（負け＝試合数−勝ち。recordDetailText.ts） */
+  const recordMessages = useMemo(() => recordProblems(kickText, otherOn ? otherRows : [], titleOn ? titleRows : []), [kickText, otherOn, otherRows, titleOn, titleRows]);
   const kickOk = recordDetailProblems({ v: 1, kick: detailNow.kick, others: [], titles: [] }).length === 0;
   const recordNow = recordOn && kickOk ? kickRecordText(detailNow.kick) : '';
   useEffect(() => {
@@ -867,7 +869,7 @@ export default function PublicApply() {
   const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight],
     ...(weights ? [['division', !!pickedDivision] as [Key, boolean]] : []), ...(needClass ? [['weightClass', classPicked] as [Key, boolean]] : []),
     // くわしい戦績のリンクでは、キックだけでなく、足した行もぜんぶ決まりに合うまで「まだ」。途中の行があるあいだは、黄色が戦績に残る
-    ['record', !!nf.record && (!recordOn || recordDetailProblems(detailNow).length === 0)],
+    ['record', !!nf.record && (!recordOn || recordMessages.length === 0)],
     ...(classes ? [['fighterClass', !!chosenClass] as [Key, boolean]] : []),
     ...(uiCfg.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(uiCfg.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(uiCfg.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
     ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo],
@@ -885,7 +887,7 @@ export default function PublicApply() {
     const { errors, fields } = validate(nf, Boolean(photo), uiCfg, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass, division, weightClass, hanamichiOn ? hnProblems : null, plan.on ? pledgeProblems : null, classFree);
     // くわしい戦績の決まり（キック・他の格闘技・タイトル）。決まりに合わなければ、送らない（直す所は、欄の近くに出る）
     if (recordOn) {
-      const detailErrors = recordDetailProblems(detailNow);
+      const detailErrors = recordMessages;
       if (detailErrors.length) { errors.push(...detailErrors); if (!fields.record) fields.record = detailErrors[0]; }
     }
     if (errors.length) {
@@ -1444,7 +1446,7 @@ export default function PublicApply() {
           {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}<p className="mt-2 text-[1.0625rem] font-bold text-slate-900">小学生は健康のため減量せず、普段の体重のままでご入力ください。</p></>, 'decimal')}
           {divisionField()}
           {weightClassField()}
-          {recordOn ? <NextBox on={markKey === 'record'} label={nextLabel('record')} prefix={prefix} float><RecordDetailFields kick={kickText} setKick={editRecord(setKickText)} otherOn={otherOn} setOtherOn={editRecord(setOtherOn)} others={otherRows} setOthers={editRecord(setOtherRows)} titleOn={titleOn} setTitleOn={editRecord(setTitleOn)} titles={titleRows} setTitles={editRecord(setTitleRows)} problems={attempted ? recordDetailProblems(detailNow) : []} /></NextBox> : fighterField('record', '戦績 必須', <>{nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : !nf.record ? <button type="button" onClick={() => change('record', '初試合')} className={greyBtn + ' mt-2'}>初試合なら、ここを押す</button> : null}<p className="mt-2 text-[1.0625rem] font-bold text-red-700">公平で安全なマッチメイクのため、スパーリング大会を含む戦績を正確にご申告ください。戦績の過少申告や虚偽の申告はお控えください。</p></>)}
+          {recordOn ? <NextBox on={markKey === 'record'} label={nextLabel('record')} prefix={prefix} float><RecordDetailFields kick={kickText} setKick={editRecord(setKickText)} otherOn={otherOn} setOtherOn={editRecord(setOtherOn)} others={otherRows} setOthers={editRecord(setOtherRows)} titleOn={titleOn} setTitleOn={editRecord(setTitleOn)} titles={titleRows} setTitles={editRecord(setTitleRows)} problems={attempted ? recordMessages : []} /></NextBox> : fighterField('record', '戦績 必須', <>{nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : !nf.record ? <button type="button" onClick={() => change('record', '初試合')} className={greyBtn + ' mt-2'}>初試合なら、ここを押す</button> : null}<p className="mt-2 text-[1.0625rem] font-bold text-red-700">公平で安全なマッチメイクのため、スパーリング大会を含む戦績を正確にご申告ください。戦績の過少申告や虚偽の申告はお控えください。</p></>)}
           {classField()}
           {classFree ? <Note id="f-hanamichiRule" className="min-w-0 whitespace-pre-wrap font-bold [overflow-wrap:anywhere]">{config.hanamichiRule}</Note> : null}
           {requiredExtra}
@@ -1542,7 +1544,7 @@ export default function PublicApply() {
         <dl className="mt-2 grid gap-3">
           {([['ジム名', nf.gym], ['選手名', nf.name], ['身長', nf.height ? nf.height + ' cm' : ''], ['体重', nf.weight ? nf.weight + ' kg' : ''],
             ...(weights ? [[DIVISION_LABEL, division], ['階級', noClass ? noClassReviewValue() : weightClass ? weightClassLabel(weightClass) : '']] : []),
-            ['戦績', nf.record], ...(recordOn ? recordReviewPairs(detailNow) : []),
+            ...(recordOn ? recordReviewPairs(detailNow) : [['戦績', nf.record]]),
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
             ...(uiCfg.grade !== 'off' ? [['学年', nf.grade]] : []), ...(uiCfg.age !== 'off' ? [['年齢', nf.age]] : []), ...(uiCfg.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(gradeAuto && postGrade ? [['学年（自動）', postGrade]] : []), ...(hanamichiOn ? [...(postAge ? [['年齢（生年月日から自動）', postAge]] : []), ...(postComment ? [['意気込み（メッセージと同じ）', postComment]] : [])] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>

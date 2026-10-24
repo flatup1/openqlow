@@ -9,7 +9,7 @@ import {
 } from '../core/recordDetail.ts';
 import { LINK_END_KEY, publicEntryConfig, publicEntryHash, type PublicEntryConfig } from '../core/publicEntry.ts';
 import { ACCEPTED_RECEPTION_BUILDS, EXPECTED_RECEPTION_BUILD, supportsRecordDetail } from '../core/setupV3.ts';
-import { detailFromText, countOf, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
+import { detailFromText, countOf, kickTextOf, recordProblems, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
 
 const full = (over: Partial<RecordDetail> = {}): RecordDetail => ({
   v: 1,
@@ -100,22 +100,53 @@ test('records.csv を読む：見出しが同じなら受付番号ごとにま�
   assert.ok(unknownKind.ok && unknownKind.byReceipt.size === 0, '知らない種類の行は、読まない');
 });
 
-test('画面の数字：全角も読む。読めない字は NaN（決まりの確認で直す所になる）。未経験の勝ち負けは 0 にそろえる', () => {
+test('画面の数字：全角も読む。読めない字は NaN。聞くのは試合数と勝ちだけ：負け＝試合数−勝ち、引き分け・勝敗なし＝0（2026-10-24 owner）', () => {
   assert.equal(countOf('３'), 3);
   assert.equal(countOf(' 1,000 '), 1000);
   assert.ok(Number.isNaN(countOf('ぜろ')));
   assert.ok(Number.isNaN(countOf('')));
-  const kick: KickText = { games: '0', win: '5', loss: '', draw: '' };
-  assert.deepEqual(detailFromText(kick, [], []).kick, { games: 0, win: 0, loss: 0, draw: 0 }, '未経験は、勝ち負けの入力を見ずに 0');
-  const kick2: KickText = { games: '3', win: '2', loss: '', draw: '' };
-  assert.ok(recordDetailProblems(detailFromText(kick2, [], [])).length > 0, '空の欄があれば直す');
+  const none: KickText = { games: '0', win: '5' };
+  assert.deepEqual(detailFromText(none, [], []).kick, { games: 0, win: 0, loss: 0, draw: 0 }, '未経験は、勝ちの入力を見ずに 0');
+  const three: KickText = { games: '4', win: '3' };
+  assert.deepEqual(detailFromText(three, [], []).kick, { games: 4, win: 3, loss: 1, draw: 0 }, '負け＝試合数−勝ち');
+  assert.deepEqual(recordDetailProblems(detailFromText(three, [], [])), [], '決まりに合う（Googleの受付も、そのまま受ける）');
+  for (const win of ['', 'ぜろ', '5']) assert.ok(recordDetailProblems(detailFromText({ games: '4', win }, [], [])).length > 0, '勝ち「' + win + '」（空・数でない・試合数より多い）は、直す');
+  const others = detailFromText({ games: '0', win: '' }, [{ sport: ' 空手 ', games: '12', win: '7' }], []).others;
+  assert.deepEqual(others, [{ sport: '空手', games: 12, win: 7, loss: 5, draw: 0, noResult: 0 }], '他の格闘技も、試合数と勝ちだけ');
+  assert.deepEqual(kickTextOf({ games: 4, win: 3, loss: 1, draw: 0 }), { games: '4', win: '3' }, '下書きを戻すときも、試合数と勝ちだけ');
+  // 送る JSON：Googleの受付（.gs）が、これまでと同じ決まりで受ける形（負けは試合数−勝ち、引き分け・勝敗なしは 0）
+  assert.equal(
+    packRecordDetail(detailFromText({ games: '4', win: '3' }, [{ sport: '空手', games: '3', win: '1' }], [])),
+    '{"v":1,"kick":{"games":4,"win":3,"loss":1,"draw":0},"others":[{"sport":"空手","games":3,"win":1,"loss":2,"draw":0,"noResult":0}],"titles":[]}',
+  );
 });
 
-test('確認の行：キック・他の格闘技・タイトルの順に、見出しと中身を出す', () => {
+test('直す所の言葉：画面には勝ちしか無いので、「負け・引き分け・勝敗なし」とは言わない（勝ちが数でない／試合数より多い）', () => {
+  const title = { event: '架空カップ', year: '2025', class: '-60kg', result: '優勝' };
+  assert.deepEqual(recordProblems({ games: '4', win: '3' }, [{ sport: '空手', games: '3', win: '1' }], [title]), [], '正しい入力は、問題が無い');
+  assert.deepEqual(recordProblems({ games: '0', win: '' }, [], []), [], '未経験は、勝ちを入れなくてよい');
+  assert.deepEqual(recordProblems({ games: '4', win: '' }, [], []), ['キックボクシングの勝ちを、数字で入れてください。']);
+  assert.deepEqual(recordProblems({ games: '4', win: '5' }, [], []), ['キックボクシングの勝ちが、試合数（4）より多くなっています。']);
+  assert.deepEqual(recordProblems({ games: '', win: '3' }, [], []), ['キックボクシングの試合数を、数字で入れてください（未経験は「0」）。'], '試合数が読めないときは、試合数だけ言う');
+  const many = recordProblems({ games: '0', win: '' }, [{ sport: '柔道', games: '2', win: '3' }, { sport: '', games: '2', win: '' }, { sport: '空手', games: '0', win: '1' }], [{ ...title, year: '99' }]);
+  assert.deepEqual(many, [
+    '他の格闘技の競技名を入れてください（20字まで）。',
+    '他の格闘技の試合数は、1以上の数字で入れてください。',
+    '「柔道」の勝ちが、試合数（2）より多くなっています。',
+    '他の格闘技の勝ちを、数字で入れてください。',
+    '獲得年は、4けたの数字で入れてください。',
+  ]);
+  assert.ok(many.every((text) => !/負け|引き分け|勝敗なし/.test(text)), '画面にない言葉は、使わない');
+  // 決まりの確認（core/recordDetail.ts）の言葉も、勝ちに関すること以外は、そのまま出る
+  assert.ok(recordProblems({ games: '0', win: '' }, Array.from({ length: 6 }, () => ({ sport: '空手', games: '1', win: '1' })), []).some((text) => text.includes('他の格闘技は、5つまでです')));
+});
+
+test('確認の行：キック・他の格闘技・タイトルの順に、見出しと中身を出す。出すのは試合数と勝ちだけ', () => {
   const pairs = recordReviewPairs(full());
   assert.equal(pairs[0][0], 'キックボクシング');
-  assert.ok(pairs[0][1].includes('試合 4'));
+  assert.equal(pairs[0][1], '試合 4・勝ち 3');
   assert.ok(pairs[1][0].startsWith('他の格闘技：空手'));
+  assert.equal(pairs[1][1], '試合 3・勝ち 1');
   assert.ok(pairs[2][0].startsWith('タイトル・入賞：'));
   assert.equal(recordReviewPairs(full({ kick: EMPTY_KICK, others: [], titles: [] }))[0][1], '未経験（試合数 0）');
 });

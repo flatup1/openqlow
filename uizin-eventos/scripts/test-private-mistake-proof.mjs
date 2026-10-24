@@ -1841,7 +1841,7 @@ const openApply = async (ctx, over = {}, mode = 'live', hash = null) => {
 };
 /**
  * 戦績だけは、新しい版のシートのリンク（くわしい戦績の欄）なら、キックの数に直して入れる。古い1行の欄のリンクなら、そのまま文字を入れる。
- * 『初試合』＝試合数0／『3勝1敗』＝試合数4・勝ち3・負け1／ほかの文字（<script> など）は、「他の格闘技」の競技名に入れて、文字として扱われるかを見る
+ * 『初試合』＝試合数0／『3勝1敗』＝試合数4・勝ち3（聞くのは試合数と勝ちだけ。負けは、画面が 試合数−勝ち で作る）／ほかの文字（<script> など）は、「他の格闘技」の競技名に入れて、文字として扱われるかを見る
  */
 async function fillRecordDetail(page, value) {
   const kick = value.match(/^(\d+)勝(\d+)敗(?:(\d+)分)?$/);
@@ -1849,12 +1849,12 @@ async function fillRecordDetail(page, value) {
   else if (kick) {
     const [w, l, d] = [Number(kick[1]), Number(kick[2]), Number(kick[3] ?? 0)];
     await page.locator('#rd-kick-games').fill(String(w + l + d));
-    await page.locator('#rd-kick-win').fill(String(w)); await page.locator('#rd-kick-loss').fill(String(l)); await page.locator('#rd-kick-draw').fill(String(d));
+    await page.locator('#rd-kick-win').fill(String(w));
   } else {
     await page.locator('#rd-kick-games').fill('0');
     await page.getByRole('radio', { name: 'あり', exact: true }).first().check();
     await page.locator('#rd-other-sport-0').fill(value);
-    for (const [part, v] of [['games', '1'], ['win', '1'], ['loss', '0'], ['draw', '0'], ['nores', '0']]) await page.locator('#rd-other-' + part + '-0').fill(v);
+    for (const [part, v] of [['games', '1'], ['win', '1']]) await page.locator('#rd-other-' + part + '-0').fill(v);
   }
   await page.evaluate(() => { const el = document.activeElement; if (el && el.blur) el.blur(); });
 }

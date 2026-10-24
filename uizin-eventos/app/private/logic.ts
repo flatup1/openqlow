@@ -271,12 +271,16 @@ export function recordDetailOnFighters(fighters: LocalFighter[], details: Map<st
 /** 2つのくわしい戦績が同じか（どちらも無いときは同じ） */
 export const recordDetailSame = (a: RecordDetail | undefined, b: RecordDetail | undefined): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** 準備の画面の「くわしい戦績」の文（1行ずつ）。キックは必ず1行。他の格闘技・タイトルは、あるものだけ */
+/**
+ * 準備の画面の「くわしい戦績」の文（1行ずつ）。キックは必ず1行。他の格闘技・タイトルは、あるものだけ。
+ * 出すのは「試合数」と「勝ち」だけ（2026-10-24 owner：何戦何勝かだけ知りたい）。負け・引き分け・勝敗なしは、表の中にあっても出さない
+ * （いまの申し込み画面は、試合数と勝ちだけを聞き、負け＝試合数−勝ちとして送る。前の版の申し込みには、負け・引き分けが本当の数で入っているが、ここでは出さない）
+ */
 export type RecordDetailLines = { kick: string; others: string[]; titles: string[] };
 export function recordDetailLines(detail: RecordDetail): RecordDetailLines {
   const k = detail.kick;
-  const kick = k.games === 0 ? 'キックボクシング：未経験（試合数 0）' : 'キックボクシング：試合数 ' + k.games + '・勝ち ' + k.win + '・負け ' + k.loss + '・引き分け ' + k.draw;
-  const others = detail.others.map((o) => o.sport + '（他の格闘技）：試合数 ' + o.games + '・勝ち ' + o.win + '・負け ' + o.loss + '・引き分け ' + o.draw + '・勝敗なし ' + o.noResult);
+  const kick = k.games === 0 ? 'キックボクシング：未経験（試合数 0）' : 'キックボクシング：試合数 ' + k.games + '・勝ち ' + k.win;
+  const others = detail.others.map((o) => o.sport + '（他の格闘技）：試合数 ' + o.games + '・勝ち ' + o.win);
   const titles = detail.titles.map((t) => 'タイトル・入賞：' + t.event + '（' + t.year + '年・' + t.class + '）・' + t.result);
   return { kick, others, titles };
 }
