@@ -12,7 +12,7 @@ import { Caution, ErrorLine, Hint, LockReason, NextSlot, OkLine, cx } from '../l
 /*
   A3 対戦一覧表（掲示用）。主催者が決めた対戦カードを、見やすい一覧表にして印刷（PDF）する。組み合わせは、ここでは決めない・変えない。
   読むだけの画面：保存してある大会から作る（保存データには書き込まない。覚えるのは、このブラウザの設定だけ）。順番・相手・欠場は、準備の画面で直して「保存する」→ この画面を開いたままなら自動で、閉じたなら「A3の対戦一覧表をつくる」をもう一度押すと、入れかわる。
-  載せるのは core/boutSheet.ts が通した項目だけ（氏名・所属ジム・小さな顔写真・クラス/区分/階級・試合番号・ルール）。電話・生年月日・健康・同意の記録は、載らない。
+  載せるのは core/boutSheet.ts が通した項目だけ（氏名・ジム名・小さな顔写真・クラス/区分/階級・試合番号・ルール）。電話・生年月日・健康・同意の記録は、載らない。
   印刷は、ブラウザの印刷の画面（プリンターを選ぶ欄を「PDFに保存」にするとPDF。Chromeでは「送信先」）。用紙の大きさ（A3・縦／横）は、このページから指定する。
 */
 
@@ -37,7 +37,7 @@ const clockText = (at: number): string => new Date(at).toLocaleTimeString('ja-JP
 
 function Side({ side, who, m, show, thumbs }: { side: SheetSide; who: 'red' | 'blue'; m: SheetMetrics; show: SheetShow; thumbs: Map<string, string> }) {
   const shown = side.photo ? (thumbs.get(side.photo) ?? side.photo) : '';
-  // 氏名・所属ジム・札は、枠の高さに入る大きさと行数にする（入らないときは小さく／1行に切る。あふれない）
+  // 氏名・ジム名・札は、枠の高さに入る大きさと行数にする（入らないときは小さく／1行に切る。あふれない）
   const fit = fitSide(side, m, show.photo);
   const clamp = (lines: number) => ({ WebkitLineClamp: lines });
   return <div className={cx('sheet-side', 'sheet-' + who, side.state !== 'ok' && 'sheet-state-' + side.state)} style={{ width: m.sideW + 'mm' }}>
@@ -85,7 +85,7 @@ function Checks({ notes, total, ready, pending, showPhoto, titleReal, cutBouts, 
       ? <OkLine>どの試合も、赤と青が決まっています。そのまま印刷できます。</OkLine>
       : <Hint>どの試合も、赤と青が決まっています。写真をととのえ終わると、印刷できます（あと{pending}人）。</Hint>) : null}
     {problems.map((text) => <Caution key={text} title="印刷の前に確かめてください">{text}</Caution>)}
-    {cutBouts.length > 0 ? <Caution title="印刷の前に確かめてください" id="sheet-cut-note">{numbersText(cutBouts.slice(0, 5))}{cutBouts.length > 5 ? ' ほか' + (cutBouts.length - 5) + '試合' : ''}は、名前・所属ジム・クラスの文字が長くて、紙の上で一部が「…」と切れます。1ページの試合数をへらすと、文字が大きくなって入ることがあります。それでも切れるときは、準備の画面で、書き方（名前・所属ジム）を確かめます。</Caution> : null}
+    {cutBouts.length > 0 ? <Caution title="印刷の前に確かめてください" id="sheet-cut-note">{numbersText(cutBouts.slice(0, 5))}{cutBouts.length > 5 ? ' ほか' + (cutBouts.length - 5) + '試合' : ''}は、名前・ジム名・クラスの文字が長くて、紙の上で一部が「…」と切れます。1ページの試合数をへらすと、文字が大きくなって入ることがあります。それでも切れるときは、準備の画面で、書き方（名前・ジム名）を確かめます。</Caution> : null}
     {problems.length || cutBouts.length ? <Hint>直すときは、上の「この画面を閉じる」で準備の画面にもどり、直して「保存する」を押します。そのあと、準備の画面の「A3の対戦一覧表をつくる」を、もう一度押します。</Hint> : null}
     {showPhoto && notes.noPhoto > 0 ? <Hint>写真がない選手が{notes.noPhoto}人います。その人は、名前の横が灰色の四角になります。{notes.noPhoto >= fighterCount ? '全員いないときは、「小さな顔写真」のチェックを外すと、文字だけになります。' : ''}</Hint> : null}
   </div>;
@@ -162,7 +162,7 @@ export default function BoutSheet() {
   const limit = perPageLimit(orientation);
   const model = useMemo(() => data ? buildSheet(data, { perPage, orientation, show }) : null, [data, perPage, orientation, show]);
   const m = useMemo(() => sheetMetrics(perPage, orientation, show.photo), [perPage, orientation, show.photo]);
-  // 印刷の前に知らせること：まん中の列に入らず省いた文字（ルール・体重の区分など）／紙の上で切れる、名前・所属ジム・クラスの文字
+  // 印刷の前に知らせること：まん中の列に入らず省いた文字（ルール・体重の区分など）／紙の上で切れる、名前・ジム名・クラスの文字
   const warn = useMemo(() => {
     const cut: number[] = [], rule: number[] = [], classLine: number[] = [];
     if (!model) return { cut, rule, classLine };
@@ -332,10 +332,12 @@ export default function BoutSheet() {
             <h2 className="text-lg font-black">一覧表に載せるもの</h2>
             <p className="mt-1 text-[17px]">氏名は、いつも載ります。ほかは、載せるものを選びます。</p>
             <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
-              {([['photo', '小さな顔写真'], ['gym', '所属ジム'], ['classLine', 'クラス・区分・階級'], ['rule', 'ルール']] as const).map(([key, label]) =>
+              {([['photo', '小さな顔写真'], ['gym', 'ジム名'], ['classLine', 'クラス・区分・階級'], ['rule', 'ルール']] as const).map(([key, label]) =>
                 <label key={key} className="flex min-h-[48px] items-center gap-3 text-[17px] font-bold"><input type="checkbox" checked={show[key]} onChange={() => toggle(key)} className="h-6 w-6" />{label}</label>)}
             </div>
-            <Hint className="mt-1">名前・所属ジム・顔写真は、会場に貼る紙に載ります。載せてよいかは、会長が決めます。電話番号・生年月日・健康のこと・同意の記録は、一覧表には出ません。</Hint>
+            {/* 顔写真は、はじめは「出さない」。「出す」にしたときだけ、すぐそばに黄色の1行（壁に貼る紙に載ること）。出さないときは、何も出さない */}
+            {show.photo ? <Caution id="sheet-photo-note" role="status">顔写真が、壁に貼る紙に載ります。申し込みページの『使い道』にも書いてあります。</Caution> : null}
+            <Hint className="mt-1">名前・ジム名・顔写真は、会場に貼る紙に載ります。載せてよいかは、会長が決めます。電話番号・生年月日・健康のこと・同意の記録は、一覧表には出ません。</Hint>
           </div>
         </section> : null}
 

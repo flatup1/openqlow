@@ -76,6 +76,16 @@ curl https://uizin-eventos-api.<account>.workers.dev/api/health
 # => {"ok":true,"serverNow":...,"eventId":"uizin-2026","hasSheet":true}
 ```
 
+### 短い申込URL（`SHORT_LINKS` の箱）
+
+`npm run worker:deploy` で、短い申込URLの箱（`SHORT_LINKS`。大会の状態とは別の箱）が作られます。大会の状態（`EVENT_ROOM`）は変わりません。
+
+短い申込URLは、`https://uizin-eventos-api.<account>.workers.dev/short-link` を開いて作ります。準備画面で「選手へ渡すURLをコピー」した長いURLを貼り、操作キーを入れて「短いURLを作る」を押します。できた `…/a/<コード>` をLINEで送ります。
+
+- 同じ大会・同じモードなら、作り直しても短いURLは同じままです（行き先だけが新しくなります）。
+- 今までの長いURL（`…/apply/#…`）は、そのまま使えます。
+- 準備画面（Pages）は、Googleとだけ通信する決まりのままです。操作キーは、この `/short-link` の画面だけで使います。
+
 ### 設定できるもの（`worker/wrangler.toml` の `[vars]`）
 
 | 名前 | 既定 | 意味 |

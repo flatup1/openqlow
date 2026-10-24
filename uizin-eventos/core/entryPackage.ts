@@ -156,7 +156,11 @@ export function entryClassError(fighter: EntryFighter, config: EntryFormConfig):
   return '';
 }
 
-/** 他のジム用の入力画面で、区分と階級を選ばせるときの検査。階級分けをしない大会は、何も言わない */
+/**
+ * 他のジム用の入力画面で、出場区分と階級を選ばせるときの検査。階級分けをしない大会は、何も言わない。
+ * 申し込みページ（/apply/）と同じ文の元（weightChoiceError の既定＝DIVISION_LABEL「出場区分」）を使う。
+ * 1つの画面に「出場区分」の見出しと「区分」のエラーが混ざらないよう、言い方を渡さない（保存される値・列見出しは「区分」のまま）。
+ */
 export function entryWeightError(fighter: EntryFighter, config: EntryFormConfig): string {
   if (!config.weights) return '';
   return weightChoiceError(fighter.division ?? '', fighter.weightClass ?? '', config.weights);

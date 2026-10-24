@@ -153,7 +153,7 @@ export function checkFighter(input: LocalFighter, config: EntryFormConfig, mode:
     if (!out.height) bad('height', '身長：入れてください。例：170');
     if (!out.weight) bad('weight', '体重：入れてください。例：65.5');
     if (!out.record) bad('record', '戦績：入れてください。初試合なら「初試合」');
-    if (config.grade === 'required' && !out.grade) bad('grade', '学年：入れてください。例：中2');
+    if (config.grade === 'required' && !out.grade) bad('grade', '学年：入れてください。例：小5／中2');
     if (config.age === 'required' && !out.age) bad('age', '年齢：入れてください。例：15');
     if (config.comment === 'required' && !out.comment) bad('comment', '意気込み：入れてください');
     if (config.music && !out.musicUrl) bad('musicUrl', '入場曲のリンク：入れてください（Apple Music か YouTube）');

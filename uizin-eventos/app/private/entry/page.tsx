@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DEFAULT_ENTRY_CONFIG, entryClassError, entryConfigFromSearch, entryCsv, entryErrors, entryWeightError, type EntryFighter, type EntryFormConfig } from '../../../core/entryPackage.ts';
 import { classMismatch, suggestClass, suggestText } from '../../../core/classRules.ts';
-import { findDivision, weightClassLabel, weightTag } from '../../../core/weightClass.ts';
+import { DIVISION_LABEL, findDivision, isDivisionError, NO_CLASS_NOTE_APPLY, weightClassLabel, weightTag } from '../../../core/weightClass.ts';
 import { bytesToArrayBuffer, photoToDataUrl } from '../../lib/privateStore.ts';
 import { checkNumber, fieldOfEntryError } from '../normalize.ts';
 
@@ -43,7 +43,7 @@ export default function PrivateEntry() {
       setMessage({ kind: 'error', lines: errors });
       // いちばん上の足りない所へ移る（画面の外にあると、赤い知らせの意味がわからないため）
       const first = errors[0];
-      const target = first.startsWith('区分') ? 'entry-division' : first.startsWith('階級') ? 'entry-weightClass' : first.includes('クラス') ? 'entry-class' : first.includes('写真') ? 'entry-photo' : FIELD_ID[fieldOfEntryError(first)] ?? 'entry-gym';
+      const target = isDivisionError(first) ? 'entry-division' : first.startsWith('階級') ? 'entry-weightClass' : first.includes('クラス') ? 'entry-class' : first.includes('写真') ? 'entry-photo' : FIELD_ID[fieldOfEntryError(first)] ?? 'entry-gym';
       window.setTimeout(() => document.getElementById(target)?.focus(), 0);
       return;
     }
@@ -80,9 +80,9 @@ export default function PrivateEntry() {
       {([['gym','ジム名 必須'],['name','選手名 必須'],['height','身長（cm）必須'],['weight','体重（kg）必須'],['record','戦績・競技歴 必須']] as const).map(([key,label]) => <label key={key} className="font-bold">{label}<input id={FIELD_ID[key]} className={input + ' bg-amber-50'} value={current[key]} inputMode={['height','weight'].includes(key) ? 'decimal' : undefined} onChange={(event)=>change(key,event.target.value)} /></label>)}
       {([['grade','学年',config.grade],['age','年齢',config.age],['comment','試合への意気込み',config.comment]] as const).filter(([, , mode])=>mode!=='off').map(([key,label,mode]) => <label key={key} className="font-bold">{label}{mode==='required'?' 必須':' 任意'}<input id={FIELD_ID[key]} className={input + ' bg-amber-50'} value={current[key]} inputMode={key==='age'?'numeric':undefined} onChange={(event)=>change(key,event.target.value)} /></label>)}
     </div>{config.weights ? (() => { const division = findDivision(current.division ?? '', config.weights);
-      return <fieldset id="entry-weights" className="mt-4 rounded-xl border-2 border-slate-400 bg-white p-4 text-lg"><legend className="px-1 text-lg font-bold">区分・階級 必須</legend>
-        <p className="text-lg text-slate-700">階級とは、体重で分けたグループのことです。先に区分を選ぶと、階級が出ます。迷ったら、主催者に聞きます。</p>
-        <label htmlFor="entry-division" className="mt-3 block text-lg font-bold">区分</label>
+      return <fieldset id="entry-weights" className="mt-4 rounded-xl border-2 border-slate-400 bg-white p-4 text-lg"><legend className="px-1 text-lg font-bold">{DIVISION_LABEL}・階級 必須</legend>
+        <p className="text-lg text-slate-700">階級とは、体重で分けたグループのことです。先に{DIVISION_LABEL}を選ぶと、階級が出ます。迷ったら、主催者に聞きます。</p>
+        <label htmlFor="entry-division" className="mt-3 block text-lg font-bold">{DIVISION_LABEL}</label>
         <select id="entry-division" className="mt-1 min-h-12 w-full rounded-xl border-2 border-slate-400 bg-white p-3 text-lg" value={current.division ?? ''} onChange={(event) => changeDivision(event.target.value)}>
           <option value="">選んでください</option>
           {config.weights.divisions.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
@@ -94,7 +94,7 @@ export default function PrivateEntry() {
             {division.classes.map((item) => <option key={item} value={item}>{weightClassLabel(item)}</option>)}
           </select>
         </> : null}
-        {division && !division.classes.length ? <p id="entry-weightClass-none" className="mt-3 rounded-lg bg-slate-100 p-2 text-lg font-medium text-slate-800">この区分には階級がありません。体重が近い人どうしで組みます。</p> : null}
+        {division && !division.classes.length ? <p id="entry-weightClass-none" className="mt-3 rounded-lg bg-slate-100 p-2 text-lg font-medium text-slate-800">{NO_CLASS_NOTE_APPLY}</p> : null}
       </fieldset>; })() : null}{config.classes ? <fieldset className="mt-4 rounded-xl border-2 border-slate-400 bg-white p-4 text-lg"><legend className="px-1 text-lg font-bold">クラス 必須（どちらか1つ）</legend>
       <p className="text-lg text-slate-700">自分の戦績に合うほうを選びます。迷ったら、主催者に聞きます。</p>
       <div className="mt-2 grid gap-3 sm:grid-cols-2">{([config.classes.upper, config.classes.lower]).map((side, i) => <label key={side.name} className={'block cursor-pointer rounded-xl border-2 p-3 ' + (current.fighterClass === side.name ? 'border-indigo-700 bg-indigo-50' : 'border-slate-400 bg-white')}>

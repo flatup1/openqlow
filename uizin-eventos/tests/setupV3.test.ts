@@ -166,14 +166,15 @@ test('クラス分け: 申込ページへ渡す設定にクラスが入り、読
   assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: 文が長すぎて、選手に渡すURLに入りません。「大会名」（セル B2）を短くしてください。$/);});
 
 test('クラス分け・階級分け: 古い版 3.20261004.4・3.20261010.5 も新しい版も受け付け、知らない版は古いと言う', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261019.6');
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6']);
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.1');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1']);
   assert.equal(diagnose(ping({ build: '3.20261004.4' })).stage, 'need-open');
   assert.equal(diagnose(ping({ build: '3.20261004.4', accepting: true })).stage, 'ready');
   assert.equal(diagnose(ping({ build: '3.20261004.4', ready: false })).stage, 'not-setup');
   assert.equal(diagnose(ping({ build: '3.20261010.5', accepting: true })).stage, 'ready');
   assert.equal(diagnose(ping({ build: '3.20261019.6', accepting: true })).stage, 'ready');
-  for (const build of ['3.0.0', '3.20261010.4', '3.20261019.5', '']) assert.equal(diagnose(ping({ build })).stage, 'old-build');
+  assert.equal(diagnose(ping({ build: '3.20261022.7', accepting: true })).stage, 'ready');
+  for (const build of ['3.0.0', '3.20261010.4', '3.20261019.5', '3.20261022.6', '']) assert.equal(diagnose(ping({ build })).stage, 'old-build');
   const old = entryConfigFromPing(ping({ build: '3.20261004.4', accepting: true }), endpoint, 'live');
   assert.equal('classes' in old, false);
 });
@@ -202,4 +203,18 @@ test('settingLines：階級分け・ロゴ・区分の行の直し方は、本�
     const lines = settingLines('シートの「設定」タブを直してください。' + problem);
     check(lines);
   }
+});
+
+test('花道の追加情報: ping の hanamichiMode は、診断（迷う原因の1行）を変えない。リンクには hn=on が1つ増えるだけ。印の無い版・「なし」のリンクは、今までと1字も変わらない', () => {
+  for (const over of [{}, { accepting: true }, { ready: false }, { settingsProblem: '「設定」タブの、次の欄を入れてください：会場' }, { testComplete: false }, { accepting: false, closedBy: 'deadline' }]) {
+    assert.deepEqual(diagnose(ping({ ...over, hanamichiMode: true })), diagnose(ping(over)), JSON.stringify(over));
+  }
+  const plain = publicEntryHash(entryConfigFromPing(ping({ accepting: true }), endpoint, 'live'));
+  const on = publicEntryHash(entryConfigFromPing(ping({ accepting: true, hanamichiMode: true }), endpoint, 'live'));
+  assert.equal(on.replace('&hn=on', ''), plain, 'hn=on を取りのぞくと、「なし」のリンクと同じ');
+  assert.equal(on.split('hn=on').length, 2, 'hn=on は1つだけ');
+  const old = publicEntryHash(entryConfigFromPing(ping({ build: '3.20261019.6', accepting: true, hanamichiMode: true }), endpoint, 'live'));
+  const oldPlain = publicEntryHash(entryConfigFromPing(ping({ build: '3.20261019.6', accepting: true }), endpoint, 'live'));
+  assert.equal(old, oldPlain, '印を返さない古い版（偽の印があっても）は、同じ版の「なし」のリンクと同じ（くわしい戦績の rd は、新しい版だけ付く）');
+  assert.equal(publicEntryConfig(on).hanamichi, true); assert.equal(publicEntryConfig(plain).hanamichi, undefined);
 });

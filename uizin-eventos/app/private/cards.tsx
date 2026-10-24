@@ -3,9 +3,10 @@
 import { Fragment, memo, useState } from 'react';
 import { contractWeight, gymKey, sameFighterKey, type LocalBout, type LocalFighter } from '../../core/privateTournament.ts';
 import type { EntryFormConfig } from '../../core/entryPackage.ts';
+import type { RecordDetail } from '../../core/recordDetail.ts';
 import { boutClassWarning, classKey, classMismatch, classMixMessage, classState, suggestClass, suggestText, type ClassSettings } from '../../core/classRules.ts';
-import { boutWeightWarning, cleanDivisionName, cleanWeightText, findDivision, normalizeWeightClass, weightClassLabel, weightTag, type WeightSettings } from '../../core/weightClass.ts';
-import { BOUT_TEXT_MAX, gapLevel, isBlankBout, isHalfBout, parseKg, sameClassName, weightGap, weightIssue, weightIssueText, weightTrouble, weightTroubleText } from './logic.ts';
+import { boutWeightWarning, cleanDivisionName, cleanWeightText, findDivision, NO_CLASS_NOTE, normalizeWeightClass, weightClassLabel, weightTag, type WeightSettings } from '../../core/weightClass.ts';
+import { BOUT_TEXT_MAX, gapLevel, isBlankBout, isHalfBout, parseKg, recordDetailLines, sameClassName, weightGap, weightIssue, weightIssueText, weightTrouble, weightTroubleText } from './logic.ts';
 import { FIELD_LABEL, shorten, type FieldKey } from './normalize.ts';
 import { Caution, ErrorLine, Example, LockReason, NextSlot, OkLine, Soft } from './marks.tsx';
 import { Badge, btn, Chip, cls, Fold, inputClass } from './parts.tsx';
@@ -23,7 +24,7 @@ export type FieldFixes = Partial<Record<FieldKey, string>>;
 
 /* ───────── 選手の入力欄（1人ずつ入れる / 直す で共通） ───────── */
 const EXAMPLES: Record<FieldKey, string> = {
-  name: '山田 太郎', gym: '○○ジム', grade: '小6／中2／社会人', age: '15（数字だけ）', height: '170', weight: '65.5',
+  name: '山田 太郎', gym: '○○ジム', grade: '小5／中2／社会人', age: '15（数字だけ）', height: '170', weight: '65.5',
   record: '初試合なら「初試合」', comment: '全力でがんばります', musicUrl: 'https://music.apple.com/…',
 };
 
@@ -109,7 +110,7 @@ export function FighterFields({ value, onChange, onBlurField, config, prefix, pr
       </div> : null}
     </div>
     <Soft id={divId + '-note'} className="mt-1">区分と階級を選びます。階級＝体重で分けたグループです。わからないときは「えらばない」。</Soft>
-    {divSetting && wcList.length === 0 ? <Soft className="mt-1">この区分には階級がありません。体重が近い人どうしで組みます。</Soft> : null}
+    {divSetting && wcList.length === 0 ? <Soft className="mt-1">{NO_CLASS_NOTE}</Soft> : null}
     {wIssue ? <Caution className="mt-2" role="status">{weightIssueText(wIssue, value)}</Caution> : null}
   </div> : null;
   return <div className="grid gap-4 sm:grid-cols-2">{rows.filter((row) => row.show).map((row) => {
@@ -180,7 +181,7 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
     return <option key={f.id} value={f.id} disabled={f.id === other}>{baseLabel(f) + twin + (f.absent === true ? '（欠場）' : '') + mark}</option>;
   })}</optgroup>);
   const profile = (f: LocalFighter | undefined, side: 'red' | 'blue') => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
-    <div aria-hidden="true" className="h-14 w-14 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
+    <div aria-hidden="true" className="h-28 w-28 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center sm:h-32 sm:w-32" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
     <div className="min-w-0 text-[17px] font-medium leading-snug">
       <p className="break-words text-lg font-bold">{f.name}</p>
       <p className="break-words">{kgText(f.weight)}{f.record ? '・' + f.record : ''}</p>
@@ -342,3 +343,18 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
 });
 
 export const fieldLabel = (key: FieldKey): string => FIELD_LABEL[key];
+
+/** 準備の画面の「くわしい戦績」。名簿ZIPの records.csv から付いた人だけ出す。たたんでおき、開くと出す。付いていない人（古い申し込み）には、何も出さない */
+export function RecordDetailFold({ detail }: { detail: RecordDetail }) {
+  const lines = recordDetailLines(detail);
+  return (
+    <details className="mt-2 min-w-0 rounded-lg border-2 border-slate-300 bg-slate-50 px-3">
+      <summary className="min-h-12 cursor-pointer py-2 text-[17px] font-bold focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-indigo-700">くわしい戦績</summary>
+      <ul className="mb-3 list-none space-y-2 p-0 text-[17px] font-medium [overflow-wrap:anywhere]">
+        <li>{lines.kick}</li>
+        {lines.others.map((text, index) => <li key={'other-' + index}>{text}</li>)}
+        {lines.titles.map((text, index) => <li key={'title-' + index}>{text}</li>)}
+      </ul>
+    </details>
+  );
+}

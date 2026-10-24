@@ -2,6 +2,7 @@ import { fingerprint, INVISIBLE_KEEP_JOINERS_RE, normalizeKey, pick, stripInvisi
 import type { EntryFormConfig } from './entryPackage.ts';
 import { cleanClassLabel, DEFAULT_CLASS_SETTINGS, normalizeClassLoose, parseClassSettings } from './classRules.ts';
 import { cleanDivisionName, cleanWeightText, parseWeightClass, parseWeightSettings, WEIGHT_LIMITS } from './weightClass.ts';
+import { recordDetailProblems, type RecordDetail } from './recordDetail.ts';
 
 export type LocalFighter = {
   id: string;
@@ -22,6 +23,8 @@ export type LocalFighter = {
   weightClass?: string;
   /** 欠場（出ない）。true のときだけ入る。対戦一覧表・当日の画面・準備の画面が、この人を「欠場」と言う。名簿の取り込みでも消さない */
   absent?: boolean;
+  /** くわしい戦績（キック・他の格闘技・タイトル/入賞歴）。名簿ZIPの records.csv から、受付番号（管理番号）で付く。ないときは項目ごと無い（古い申し込み） */
+  recordDetail?: RecordDetail;
 };
 
 export type LocalBout = {
@@ -289,5 +292,5 @@ export function isLocalTournament(value: unknown): value is LocalTournament {
   if (data.entryConfig?.weights !== undefined && !isStoredWeights(data.entryConfig.weights)) return false;
   if (data.entryConfig?.logo !== undefined && typeof data.entryConfig.logo !== 'boolean') return false;
   if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
-  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && (fighter.division === undefined || (typeof fighter.division === 'string' && fighter.division.length <= 40)) && (fighter.weightClass === undefined || (typeof fighter.weightClass === 'string' && fighter.weightClass.length <= 40)) && (fighter.absent === undefined || typeof fighter.absent === 'boolean') && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
+  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && (fighter.division === undefined || (typeof fighter.division === 'string' && fighter.division.length <= 40)) && (fighter.weightClass === undefined || (typeof fighter.weightClass === 'string' && fighter.weightClass.length <= 40)) && (fighter.absent === undefined || typeof fighter.absent === 'boolean') && (fighter.recordDetail === undefined || recordDetailProblems(fighter.recordDetail).length === 0) && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }

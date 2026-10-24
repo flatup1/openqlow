@@ -15,7 +15,7 @@ import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from 'node:
 import { readFile } from 'node:fs/promises';
 import { publicEntryHash } from '../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
-import { DEFAULT_WEIGHT_SETTINGS, weightClassLabel } from '../core/weightClass.ts';
+import { DEFAULT_WEIGHT_SETTINGS, noClassReviewValue, NO_CLASS_NOTE, NO_CLASS_NOTE_APPLY, weightClassLabel } from '../core/weightClass.ts';
 import { emptyTournament } from '../core/privateTournament.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -240,6 +240,11 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     const sel = DIV(page);
     check(await sel.isVisible(), 'A1 the 区分 select is on the form');
     check(/区分/.test(await page.locator('body').innerText()), 'A1 the word 区分 is on the page');
+    // R1（owner 修正願 2026-10-22）：選手に見える見出しは「出場区分」。「区分」だけの見出し・案内は残らない
+    const divHead = (await page.locator('label[for="f-division"]').innerText()).replace(/\s+/g, ' ');
+    check(/^出場区分 必須$/.test(divHead), 'A1 the heading is 出場区分 必須 (' + divHead + ')');
+    check(/出場区分を選んでください。出場区分によって、選べる階級/.test(await page.locator('#f-division-hint').innerText()), 'A1 the hint says 出場区分 (' + short(await page.locator('#f-division-hint').innerText(), 80) + ')');
+    check(((await page.locator('main').innerText()).replace(/出場区分/g, '').match(/区分/g) || []).length === 0, 'A1 no 区分 stands alone on the apply form (only 出場区分)');
     const texts = await optionTexts(sel);
     check(texts[0] === '選んでください' && texts.length === 1 + DEF.divisions.length, 'A1 first option is 選んでください, then every division (' + texts.length + ')');
     check(DEF.divisions.every((d, i) => texts[i + 1] === d.name), 'A1 the divisions are listed in the sheet order (' + short(texts.join('|'), 160) + ')');
@@ -292,7 +297,7 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     await DIV(page).selectOption('小学生以下');
     check((await WCL(page).count()) === 0, 'A2 小学生以下 has no 階級 select');
     const none = page.locator('#f-weightClass-none');
-    check((await none.count()) === 1 && /この区分には階級がありません/.test(await none.innerText()) && /体重が近い人どうし/.test(await none.innerText()), 'A2 小学生以下 shows the grey note (' + short(await none.allInnerTexts(), 100) + ')');
+    check((await none.count()) === 1 && /この出場区分には階級がありません/.test(await none.innerText()) && /小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。/.test(await none.innerText()) && (await none.innerText()).includes(NO_CLASS_NOTE_APPLY), 'A2 小学生以下 shows the grey note (' + short(await none.allInnerTexts(), 100) + ')');
     check(await noOverflow(page), 'A2 no overflow in every state');
     // back to a division with classes: the note is gone, the list is empty
     await DIV(page).selectOption('中学生女子');
@@ -309,12 +314,12 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     await fillAllW(page);
     await settle(200);
     const nm = await nextMarks(page);
-    check(nm.length === 1 && /区分を選ぶ/.test(nm[0] ?? ''), 'A3 with everything else filled, the ONE marker says 区分を選ぶ (' + nm.join(' | ') + ')');
+    check(nm.length === 1 && /出場区分を選ぶ/.test(nm[0] ?? ''), 'A3 with everything else filled, the ONE marker says 出場区分を選ぶ (' + nm.join(' | ') + ')');
     await reviewBtn(page).click();
     await settle(400);
     check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'A3 no review screen without a 区分');
     const err = page.locator('#f-division-err');
-    check((await err.count()) === 1 && /区分を選んでください/.test(await err.innerText()), 'A3 red message at the 区分 says 区分を選んでください (' + short(await err.allInnerTexts(), 80) + ')');
+    check((await err.count()) === 1 && /出場区分を選んでください/.test(await err.innerText()), 'A3 red message at the 出場区分 says 出場区分を選んでください (' + short(await err.allInnerTexts(), 80) + ')');
     check(/[✕✖]/.test(await err.innerText()) || (await err.locator('[aria-hidden]').count()) > 0, 'A3 the red message carries a mark, not only a colour');
     check((await nextMarks(page)).length === 1, 'A3 after the failed press there is still ONE marker (' + (await nextMarks(page)).join(' | ') + ')');
     check((await page.evaluate(() => document.activeElement && document.activeElement.id)) === 'f-division', 'A3 the cursor moves to the 区分 box (' + (await page.evaluate(() => document.activeElement && document.activeElement.id)) + ')');
@@ -348,7 +353,7 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     await reviewBtn(page).click();
     await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
     const review = await bodyText(page);
-    check(/区分\s*中学生男子/.test(review) && /階級\s*-40kg（40kg以下）/.test(review), 'A4 the review lists 区分 中学生男子 and 階級 -40kg（40kg以下） (' + short(review.match(/区分[\s\S]{0,60}/)?.[0] ?? '', 100) + ')');
+    check(/出場区分\s*中学生男子/.test(review) && /階級\s*-40kg（40kg以下）/.test(review), 'A4 the review lists 出場区分 中学生男子 and 階級 -40kg（40kg以下） (' + short(review.match(/区分[\s\S]{0,60}/)?.[0] ?? '', 100) + ')');
     await sendBtn(page).click();
     await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
     const f = posted(ctx);
@@ -366,7 +371,7 @@ scenario('A', 'apply form: two-step choice, required, review, send, logo', async
     check((await nextMarks(page)).length === 1 && !/区分|階級/.test((await nextMarks(page))[0] ?? ''), 'A5 小学生以下 needs no 階級: the marker has moved on (' + (await nextMarks(page)).join(' | ') + ')');
     await reviewBtn(page).click();
     await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
-    check(/階級\s*なし（体重が近い人どうしで組みます）/.test(await bodyText(page)), 'A5 the review says 階級 なし（体重が近い人どうしで組みます）');
+    check(/階級\s*なし（小学生の試合は、申し込みの体重を目安に、近い学年（1〜2年の差）・近い体重（2〜3kgの差）の選手どうしで組みます。目安なので、ちがうこともあります。）/.test(await bodyText(page)) && (await bodyText(page)).includes(noClassReviewValue()), 'A5 the review says 階級 なし（小学生の試合は、…目安なので、ちがうこともあります。）');
     await sendBtn(page).click();
     await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
     const f = posted(ctx);
@@ -645,7 +650,7 @@ scenario('C', 'prep: forms, chips, the red caution on a bout, import, save', asy
     check((await page.locator('#manual-weightClass').inputValue()) === '', 'C1 changing the division empties the 階級');
     await wbox.selectOption('小学生以下');
     check((await page.locator('#manual-weightClass').count()) === 0, 'C1 小学生以下 shows no 階級 select');
-    check(/この区分には階級がありません/.test(await page.locator('[data-tos-weights]').first().innerText()), 'C1 小学生以下 says it has no 階級');
+    check(/この区分には階級がありません/.test(await page.locator('[data-tos-weights]').first().innerText()) && (await page.locator('[data-tos-weights]').first().innerText()).includes(NO_CLASS_NOTE), 'C1 小学生以下 says it has no 階級 (the owner sentence)');
     await wbox.selectOption('中学生男子');
     await page.locator('#manual-weightClass').selectOption('43kg以下');
     await page.getByRole('button', { name: 'この選手を追加', exact: true }).click();
@@ -816,7 +821,7 @@ scenario('D', 'apply: wrong sheet values are refused, not half used', async (vp)
 scenario('F', 'setup screen: weight rows, logo row, old-sheet notes (one yellow), link carries wc / logo', async (vp) => {
   const tag = vp.mobile ? 'm' + curW : 'd';
   const SETUP_EP = 'https://script.google.com/macros/s/TOS_WEIGHT_SETUP_SIM/exec';
-  const READY = { app: 'tournament-os', protocol: 3, build: '3.20261019.6', ready: true, accepting: false, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: '架空テスト大会', date: '2099-12-01', venue: '架空体育館', venueUrl: '', organizer: '架空主催', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
+  const READY = { app: 'tournament-os', protocol: 3, build: '3.20261022.7', ready: true, accepting: false, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: '架空テスト大会', date: '2099-12-01', venue: '架空体育館', venueUrl: '', organizer: '架空主催', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
   const WEIGHTS = { enabled: true, divisions: DEF.divisions.map((d) => ({ name: d.name, classes: d.classes })) };
   const open = async (ping, id, step = 2) => {
     const ctx = await browser.newContext({ viewport: { width: curW, height: vp.mobile ? 800 : 800 }, isMobile: !!vp.mobile, hasTouch: !!vp.mobile, deviceScaleFactor: 1, permissions: ['clipboard-read', 'clipboard-write'] });
@@ -899,6 +904,67 @@ scenario('F', 'setup screen: weight rows, logo row, old-sheet notes (one yellow)
     check(/階級分け：あり（7区分）。申し込みページに出ます/.test(await bodyText(page)) && /ロゴ：あり。申し込みページと当日の画面に出ます/.test(await bodyText(page)), 'F7 the green lines say 階級分け・ロゴ are on');
     check(await noOverflow(page), 'F7 no overflow');
     await ctx.close();
+  }
+  /* F8 the build just before 花道 (3.20261019.6) with 階級分け on and the default table (it has 花道 divisions): this sheet cannot say whether 花道 is wanted,
+     so the screen must show NOTHING new about it: no ⚠, no yellow "プログラムが古いです", no "古い版" — the same as before 花道 existed (step 2 and step 3) */
+  for (const step of [2, 3]) {
+    const { ctx, page } = await open({ ...READY, build: '3.20261019.6', accepting: step === 3, weightMode: true, weights: WEIGHTS }, 'wc-f8-' + step + '-' + tag, step);
+    const body = await bodyText(page);
+    check(!/Googleのプログラムが古いです|花道の追加情報に対応していません|古い版/.test(body), 'F8 step ' + step + ': nothing about an old version for 花道 (' + short((body.match(/.{0,20}(プログラムが古い|古い版).{0,20}/) || [''])[0], 60) + ')');
+    check(!/このシートは古い版で、|このGoogleの版は、クラス分けに対応していません|階級分け・ロゴの行がありません|クラス分けの行がありません/.test(body), 'F8 step ' + step + ': none of the old-sheet yellow notes (this build is fine for 階級分け)');
+    if (step === 2) {
+      const row = await page.locator('#read-hanamichi').innerText();
+      check(/なし（追加の質問は出しません）/.test(row) && !/⚠/.test(row), 'F8 the 花道 row reads plain なし, no ⚠ (' + short(row, 60) + ')');
+    }
+    check(/あり（7区分）/.test(body), 'F8 step ' + step + ': 階級分け itself still works on this build (あり（7区分）)');
+    await ctx.close();
+  }
+  /* F9 the 花道 row (setting あり): the row says ✓ あり, nothing yellow, one marker, text 17px+, no overflow */
+  {
+    const { ctx, page } = await open({ ...READY, weightMode: true, weights: WEIGHTS, hanamichiMode: true }, 'wc-f9-' + tag);
+    const row = await page.locator('#read-hanamichi').innerText();
+    check(/花道の追加情報/.test(row) && /✓ あり（花道の区分を選んだ人にだけ、追加の質問が出ます）/.test(row), 'F9 the 花道 row says ✓ あり (' + short(row, 80) + ')');
+    check(!/古い版|プログラムが古いです/.test(await bodyText(page)), 'F9 nothing about an old version');
+    check((await page.locator('[data-tos-next]').count()) === 1, 'F9 exactly ONE yellow marker');
+    const sizes = await page.evaluate(() => ['#read-hanamichi dt', '#read-hanamichi dd'].map((q) => parseFloat(getComputedStyle(document.querySelector(q)).fontSize)));
+    check(sizes.every((n) => n >= 17), 'F9 the row text is 17px or bigger (' + sizes.join('/') + ')');
+    check(await noOverflow(page), 'F9 no overflow');
+    await ctx.close();
+  }
+  /* F10 the 花道 row (setting なし): plain なし, no ✓ */
+  {
+    const { ctx, page } = await open({ ...READY, weightMode: true, weights: WEIGHTS }, 'wc-f10-' + tag);
+    const row = await page.locator('#read-hanamichi').innerText();
+    check(/なし（追加の質問は出しません）/.test(row) && !/✓|⚠/.test(row), 'F10 the 花道 row says なし, no ✓ and no ⚠ (' + short(row, 60) + ')');
+    await ctx.close();
+  }
+  /* F11 setting あり but no 花道 division: a red "settings to fix" sentence that names the row by its NAME (no cell number) */
+  {
+    const message = '「花道の追加情報」が「あり」ですが、選べる区分に「花道」の入った名前がありません（「階級分け」を「あり」にして、区分の名前に「花道」を入れるか、A列が「花道の追加情報」の行のB列を「なし」にしてください）';
+    const { ctx, page } = await open({ ...READY, settingsProblem: message }, 'wc-f11-' + tag);
+    const body = await bodyText(page);
+    check(/A列が「花道の追加情報」の行のB列/.test(body) && !/B30/.test(body), 'F11 the place is said by the row name, with no cell number');
+    check(await noOverflow(page), 'F11 no overflow');
+    await ctx.close();
+  }
+  /* F12 step 3: the fighters' link carries hn=on (before protocol) and a green line, only when the sheet says あり */
+  {
+    const on = await open({ ...READY, accepting: true, weightMode: true, weights: WEIGHTS, hanamichiMode: true }, 'wc-f12a-' + tag, 3);
+    await settle(500);
+    const val = await on.page.locator('input[aria-label="選手に渡すURL"]').inputValue().catch(() => '');
+    check(/\/apply\/#/.test(val) && /[#&]hn=on&protocol=3&mode=live&end=1$/.test(val), 'F12 あり: the link carries hn=on just before protocol (' + short(val.slice(-60), 70) + ')');
+    check(/花道の追加情報：あり。花道の区分を選んだ人にだけ、追加の質問が出ます。/.test(await bodyText(on.page)), 'F12 あり: the green line is there');
+    await on.ctx.close();
+    const off = await open({ ...READY, accepting: true, weightMode: true, weights: WEIGHTS }, 'wc-f12b-' + tag, 3);
+    await settle(500);
+    const v2 = await off.page.locator('input[aria-label="選手に渡すURL"]').inputValue().catch(() => '');
+    check(/\/apply\/#/.test(v2) && !/hn=/.test(v2) && !/花道の追加情報：あり/.test(await bodyText(off.page)), 'F12 なし: no hn in the link, no green line');
+    await off.ctx.close();
+    const old = await open({ ...READY, build: '3.20261019.6', accepting: true, weightMode: true, weights: WEIGHTS, hanamichiMode: true }, 'wc-f12c-' + tag, 3);
+    await settle(500);
+    const v3 = await old.page.locator('input[aria-label="選手に渡すURL"]').inputValue().catch(() => '');
+    check(/\/apply\/#/.test(v3) && !/hn=/.test(v3), 'F12 an old build never makes an hn link, even if the ping claims it');
+    await old.ctx.close();
   }
 });
 

@@ -8,7 +8,7 @@ test('v3: シートを開くと「設定」タブができ、空のまま「最�
   assert.equal(h.settingsSheet(), null);
   h.call('onOpen');
   assert.ok(h.settingsSheet(), '設定タブが自動でできる');
-  assert.deepEqual(h.rows('設定').slice(1).map((r) => r[0]), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み', 'クラス分け', '上のクラスの名前', '上のクラスの条件', '上のクラスのルール', '下のクラスの名前', '下のクラスの条件', '下のクラスのルール', '上のクラスにする勝ち数', '階級分け', 'ロゴ', '階級：小学生以下', '階級：中学生女子', '階級：中学生男子', '階級：高校生・一般女子', '階級：高校生・一般男子', '階級：花道・女子（40歳以上）', '階級：花道・男子（40歳以上）']);
+  assert.deepEqual(h.rows('設定').slice(1).map((r) => r[0]), ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み', 'クラス分け', '上のクラスの名前', '上のクラスの条件', '上のクラスのルール', '下のクラスの名前', '下のクラスの条件', '下のクラスのルール', '上のクラスにする勝ち数', '階級分け', 'ロゴ', '階級：小学生以下', '階級：中学生女子', '階級：中学生男子', '階級：高校生・一般女子', '階級：高校生・一般男子', '階級：花道・女子（40歳以上）', '階級：花道・男子（40歳以上）', '花道の追加情報', '誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール']);
   assert.ok(!h.rows('設定').flat().includes('大会ID'), '大会IDは会長が入れない');
   assert.throws(() => h.call('setupTournament'), /大会名、開催日、会場、主催者名、問い合わせ先、申込締切/);
   assert.equal(h.props.get('eventId'), undefined, '足りないあいだは何も作らない');
@@ -173,21 +173,37 @@ test('v3: 公開用の設定（デプロイの初期値）は「自分で実行�
   assert.deepEqual([...manifest.oauthScopes].sort(), ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/script.container.ui', 'https://www.googleapis.com/auth/script.scriptapp', 'https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/userinfo.email']);
 });
 
-test('v3: 入場曲の「あり／なし」は、最初に必ず選ぶ（空のままでは進めない・初期値は入れない）', () => {
+// 変えた理由：owner 決定（2026-10-22「入場曲はデフォルトでなしにして」）。前は「最初に必ず選ぶ（初期値は空）」だった試験を、わざと置きかえた。
+// 変えないもの：空のマスは、今までどおり「設定の問題」（うっかり消した・古いシートを守る）。すでにあるシートの値は、1マスも書き換えない。
+test('v3: 入場曲は、新しい設定タブではじめから「なし」。空に戻すと今までどおり「入場曲」の問題。すでにある値は書き換えない', () => {
   const h = harness(); h.call('onOpen');
   const row = h.rows('設定').find((r) => r[0] === '入場曲')!;
-  assert.equal(row[1], '', '初期値は空（「なし」を勝手に入れない）');
-  h.fill({ 入場曲: '' });
-  assert.throws(() => h.call('setupTournament'), /入場曲/);
-  assert.equal(h.props.get('eventId'), undefined, '選ぶまで何も作らない');
-  h.setSetting('入場曲', 'なし'); h.call('setupTournament');
-  assert.equal(h.call('statusInfo_').music, false);
+  assert.equal(row[1], 'なし', '新しい設定タブの初期値は「なし」');
+  assert.ok(!String(row[2]).startsWith('✎ ここに書く'), '会長が必ず書く行ではなくなった（黄色の印は付けない）');
+  assert.match(String(row[2]), /はじめは「なし」/); assert.match(String(row[2]), /リンクを書いてもらうときだけ/);
+  // 入場曲のマスに何も書かなくても、ほかの6つを書けば、そのまま進める（入場曲は使わない大会になる）
+  for (const [k, v] of Object.entries({ 大会名: 'テスト大会', 開催日: '2099-12-01', 会場: '体育館', 主催者名: '主催ジム', 問い合わせ先: '0200000000', 申込締切: '2099-11-30' })) h.setSetting(k, v);
+  h.call('setupTournament');
+  assert.equal(h.call('statusInfo_').music, false, '書かなければ「なし」のまま＝入場曲の欄は出ない');
   const on = harness(); on.ready({ 入場曲: 'あり' });
   assert.equal(on.call('statusInfo_').music, true);
-  // 受付が始まったあとで空にされたら、ping は設定の間違いとして知らせ、受付も開始できない
+  // 空にされたら（うっかり消した・初期値が空だった古いシート）、今までどおり設定の間違いとして知らせ、受付も開始できない
+  const empty = harness(); empty.call('onOpen'); empty.fill({ 入場曲: '' });
+  assert.throws(() => empty.call('setupTournament'), /入場曲/);
+  assert.equal(empty.props.get('eventId'), undefined, '空のあいだは何も作らない');
   h.setSetting('入場曲', '');
   assert.match(h.call('statusInfo_').settingsProblem, /入場曲/);
   assert.throws(() => h.call('openEntries'), /入場曲/);
+  // すでにあるシートの値は、開き直しても書き換えない（空のまま・「あり」のまま）
+  h.call('onOpen'); h.call('onOpen');
+  assert.equal(h.rows('設定').find((r) => r[0] === '入場曲')![1], '', '空のマスに、勝手に「なし」を入れない');
+  on.call('onOpen');
+  assert.equal(on.rows('設定').find((r) => r[0] === '入場曲')![1], 'あり', '「あり」のシートは、そのまま');
+  // 入場曲の行そのものが無い古い表は、足す行の初期値（なし）が入る。ほかのマスは動かない
+  const old = harness(); old.call('onOpen'); old.settingsSheet().rows.splice(old.rows('設定').findIndex((r) => r[0] === '入場曲'), 1);
+  assert.ok(!old.rows('設定').some((r) => r[0] === '入場曲'), '行が無い表を用意できた');
+  old.call('onOpen');
+  assert.deepEqual(old.rows('設定').at(-1)!.slice(0, 2), ['入場曲', 'なし'], '足りない行は、いちばん下に初期値つきで足される');
 });
 
 test('v3: 入場曲・学年・年齢・意気込みは「▼から選ぶ」欄になり、ほかの文字は入れられない', () => {

@@ -5,6 +5,8 @@ import { classNameKey, classState, cleanClassLabel, DEFAULT_CLASS_SETTINGS, norm
 import { dateDigits, formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { classesFromParam, DEFAULT_ENTRY_CONFIG, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { boutWeightWarning, cleanDivisionName, cleanWeightText, divisionKey, findDivision, normalizeDivisionLoose, normalizeWeightClass, normalizeWeightClassLoose, WEIGHT_LIMITS, weightSettingsToParam, weightsFromParam, type WeightSettings } from '../../core/weightClass.ts';
+import { parseRecordDetailCsv, recordDetailProblems, RECORD_KIND, type RecordDetail } from '../../core/recordDetail.ts';
+import { toRowsIndexed } from '../../core/csv.ts';
 import { isValidEventId } from './eventId.ts';
 import { checkMusic, checkNumber, FIELD_LABEL, type FieldKey } from './normalize.ts';
 
@@ -75,6 +77,8 @@ export function sameExceptProgress(a: LocalTournament, b: LocalTournament): bool
   const fighterKeys = ['id', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl', 'photoDataUrl'] as const;
   for (let i = 0; i < a.fighters.length; i++) for (const key of fighterKeys) if (a.fighters[i][key] !== b.fighters[i][key]) return false;
   for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].fighterClass ?? '') !== (b.fighters[i].fighterClass ?? '') || (a.fighters[i].absent === true) !== (b.fighters[i].absent === true)) return false;
+  // くわしい戦績がちがうときも、「進み具合だけのちがい」とは言わない（ほかの画面の名簿の取り込みを、静かに取り込まないため）
+  for (let i = 0; i < a.fighters.length; i++) if (!recordDetailSame(a.fighters[i].recordDetail, b.fighters[i].recordDetail)) return false;
   for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].division ?? '') !== (b.fighters[i].division ?? '') || (a.fighters[i].weightClass ?? '') !== (b.fighters[i].weightClass ?? '')) return false;
   const boutKeys = ['id', 'redId', 'blueId', 'className', 'rule'] as const;
   for (let i = 0; i < a.bouts.length; i++) for (const key of boutKeys) if (a.bouts[i][key] !== b.bouts[i][key]) return false;
@@ -221,6 +225,66 @@ export function pickZipRoster(entries: ReadonlyArray<readonly [string, string]>)
   return { csv: top[0], photos };
 }
 
+/* ───────── くわしい戦績（名簿ZIPの records.csv）。無い・読めないときは、何も付けない（名簿は別に読むので、エラーにしない） ───────── */
+
+/** records.csv の大きさの上限。これより大きいものは読まない（名簿は止めない） */
+export const RECORDS_CSV_MAX_BYTES = 5 * 1024 * 1024;
+/** records.csv の名前（players.csv と同じく、いちばん外か、フォルダ1つの中。大文字・小文字は気にしない） */
+export const isRecordsCsvName = (name: string): boolean => /^(?:[^/]+\/)?records\.csv$/i.test(name);
+
+/** 名簿（players.csv）と同じフォルダにある records.csv の、ZIP の中の名前（無ければ null）。名簿のある場所に合わせる（写真と同じ決め方） */
+export function recordsCsvEntry(entries: ReadonlyArray<readonly [string, string]>, rosterRaw: string): string | null {
+  const roster = zipEntryName(rosterRaw);
+  const prefix = roster.includes('/') ? roster.slice(0, roster.indexOf('/') + 1) : '';
+  const want = (prefix + 'records.csv').toLowerCase();
+  const hit = entries.find(([, name]) => isRecordsCsvName(name) && name.toLowerCase() === want);
+  return hit ? hit[0] : null;
+}
+
+/**
+ * records.csv（UTF-8）を、受付番号ごとのくわしい戦績にする。読めないときは空（何も付けない）。
+ * 見出しが違うときは、ぜんぶ読まない。キックの1行が無い受付・決まりに合わない行がある受付は、その受付だけ付けない（一部だけ出さない）。
+ */
+export function recordDetailsFromCsv(bytes: Uint8Array | undefined): Map<string, RecordDetail> {
+  const found = new Map<string, RecordDetail>();
+  if (!bytes) return found;
+  try {
+    const text = new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
+    const parsed = parseRecordDetailCsv(text);
+    if (!parsed.ok) return found;
+    // キックの1行は、受付ごとに必ずある（受付の決まり）。キックの行が無い受付は、未経験と読まない
+    const withKick = new Set(toRowsIndexed(text).rows.filter(({ row }) => row['種類'] === RECORD_KIND.kick).map(({ row }) => row['受付番号']));
+    for (const [receipt, detail] of parsed.byReceipt) if (withKick.has(receipt) && recordDetailProblems(detail).length === 0) found.set(receipt, detail);
+  } catch { /* 読めないときは、何も付けない（名簿は別に読める） */ }
+  return found;
+}
+
+/** 受付番号（＝管理番号。前後の空白は無視）で、選手に付ける。付かなかった人は、そのまま（何も足さない） */
+export function recordDetailOnFighters(fighters: LocalFighter[], details: Map<string, RecordDetail>): LocalFighter[] {
+  if (!details.size) return fighters;
+  return fighters.map((fighter) => {
+    const detail = details.get(fighter.id.trim());
+    return detail ? { ...fighter, recordDetail: detail } : fighter;
+  });
+}
+
+/** 2つのくわしい戦績が同じか（どちらも無いときは同じ） */
+export const recordDetailSame = (a: RecordDetail | undefined, b: RecordDetail | undefined): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * 準備の画面の「くわしい戦績」の文（1行ずつ）。キックは必ず1行。他の格闘技・タイトルは、あるものだけ。
+ * 出すのは「試合数」と「勝ち」だけ（2026-10-24 owner：何戦何勝かだけ知りたい）。負け・引き分け・勝敗なしは、表の中にあっても出さない
+ * （いまの申し込み画面は、試合数と勝ちだけを聞き、負け＝試合数−勝ちとして送る。前の版の申し込みには、負け・引き分けが本当の数で入っているが、ここでは出さない）
+ */
+export type RecordDetailLines = { kick: string; others: string[]; titles: string[] };
+export function recordDetailLines(detail: RecordDetail): RecordDetailLines {
+  const k = detail.kick;
+  const kick = k.games === 0 ? 'キックボクシング：未経験（試合数 0）' : 'キックボクシング：試合数 ' + k.games + '・勝ち ' + k.win;
+  const others = detail.others.map((o) => o.sport + '（他の格闘技）：試合数 ' + o.games + '・勝ち ' + o.win);
+  const titles = detail.titles.map((t) => 'タイトル・入賞：' + t.event + '（' + t.year + '年・' + t.class + '）・' + t.result);
+  return { kick, others, titles };
+}
+
 /** 写真エラーを、次にやることつきの固定文に直す */
 export function photoErrorText(error: unknown): string {
   const text = error instanceof Error ? error.message : '';
@@ -332,6 +396,8 @@ export type MergeKeepResult = {
   classesFilled: number;
   /** 区分・階級が空だった人に、ファイルの区分・階級を足した人数（クラスと同じ。親が申し込みで選んだ値なので、黙って足してよい） */
   weightsFilled: number;
+  /** くわしい戦績を足した人の数（前からいて、くわしい戦績が無かった人だけ） */
+  recordsFilled: number;
   /** merged が今の名簿と変わるか（変わらなければ、画面を「未保存」にしない） */
   changed: boolean;
   /** 管理番号はちがうが、名前とジムが前からいる人と同じ人（管理番号の空欄で行がずれたときに起こる）。既定では足さない */
@@ -363,7 +429,7 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
   const lookalikeIds = new Set(lookalike.map((fighter) => fighter.id));
   const added = fresh.filter((fighter) => !lookalikeIds.has(fighter.id));
   const differs: FighterDiff[] = [];
-  let same = 0, photosFilled = 0, classesFilled = 0, weightsFilled = 0;
+  let same = 0, photosFilled = 0, classesFilled = 0, weightsFilled = 0, recordsFilled = 0;
   const merged = current.map((fighter) => {
     const next = incomingById.get(fighter.id);
     if (!next) return fighter;
@@ -387,11 +453,15 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
       else if (!sameWeightText(mineW, theirsW)) fields.push({ label: '階級', from: mineW, to: theirsW });
     }
     if (next.photoDataUrl && fighter.photoDataUrl && next.photoDataUrl !== fighter.photoDataUrl) fields.push({ label: '写真', from: 'あり', to: '別の写真' });
+    // くわしい戦績：前から入っている分は黙って変えない。ちがうときだけ「ちがい」に出す（書きかえを選んだときに、ファイルの分になる）
+    if (fighter.recordDetail && next.recordDetail && !recordDetailSame(fighter.recordDetail, next.recordDetail)) fields.push({ label: 'くわしい戦績', from: 'あり', to: '別の内容' });
     if (fields.length) differs.push({ name: fighter.name || '名前なし', fields }); else same++;
     let out = fighter;
     if (!fighter.photoDataUrl && next.photoDataUrl) { photosFilled++; out = { ...out, photoDataUrl: next.photoDataUrl }; }
     if (fillClass) { classesFilled++; out = { ...out, fighterClass: theirs }; }
     if (fillD || fillW) { weightsFilled++; out = { ...out, ...(fillD ? { division: theirsD } : {}), ...(fillW ? { weightClass: theirsW } : {}) }; }
+    // くわしい戦績が無かった人には、ファイルの分を足す（空欄を埋めるのと同じ。入っている分は、そのまま）
+    if (!fighter.recordDetail && next.recordDetail) { recordsFilled++; out = { ...out, recordDetail: next.recordDetail }; }
     return out;
   });
   const all = merged.concat(added);
@@ -407,9 +477,11 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
     // 区分・階級の列が無いファイルでも、前の区分・階級を消さない
     if (!(next.division ?? '').trim() && (fighter.division ?? '').trim() && !hasDivisionColumn) out.division = fighter.division;
     if (!(next.weightClass ?? '').trim() && (fighter.weightClass ?? '').trim() && !hasWeightClassColumn) out.weightClass = fighter.weightClass;
+    // くわしい戦績は、名簿のファイルには無い（records.csv は別）。ファイルに無い人は、前の戦績を消さない（欠場と同じ）
+    if (!next.recordDetail && fighter.recordDetail) out.recordDetail = fighter.recordDetail;
     return out;
   }).concat(added);
-  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, weightsFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0 || weightsFilled > 0, lookalike };
+  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, weightsFilled, recordsFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0 || weightsFilled > 0 || recordsFilled > 0, lookalike };
 }
 
 /** 書きかえで「何が変わるか」を見せる順番。このアプリで大事なもの（クラス・体重・戦績・名前）が先 */

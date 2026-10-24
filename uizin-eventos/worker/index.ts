@@ -14,8 +14,11 @@ import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
 import { normalizeEventId } from '../core/eventId.ts';
 import { normalizeEntryConfig, normalizeEntryInput, validateEntry, validateEntryConfig } from '../core/entry.ts';
+import { isShortLinkTarget, SHORT_CODE_PATTERN } from '../core/shortLink.ts';
+import { SHORT_LINK_PAGE, SHORT_LINK_PAGE_HEADERS } from './short-link-page.ts';
 
 export { EventRoom } from './event-do.ts';
+export { ShortLinks } from './short-links-do.ts';
 
 export type Env = {
   EVENT_ROOM: DurableObjectNamespace;
@@ -37,6 +40,8 @@ export type Env = {
   ENTRY_SHEET_WEBHOOK_URL?: string;
   /** Webhook本文に入れる共有秘密。公開画面には絶対に渡さない */
   ENTRY_SHEET_WEBHOOK_SECRET?: string;
+  /** 短い申込URLの行き先を置く箱（大会の部屋とは別）。未設定でも、長いURLの申込には影響しない */
+  SHORT_LINKS?: DurableObjectNamespace;
 };
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -85,6 +90,14 @@ function room(env: Env, request: Request): DurableObjectStub {
   const id = env.EVENT_ROOM.idFromName(eventId(request, env));
   return env.EVENT_ROOM.get(id);
 }
+
+/** 短い申込URLの箱。ひとつだけ（大会ごとの部屋には入れない） */
+function shortLinkStore(env: Env): DurableObjectStub | null {
+  if (!env.SHORT_LINKS) return null;
+  return env.SHORT_LINKS.get(env.SHORT_LINKS.idFromName('short-links'));
+}
+
+const TEXT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' };
 
 function forward(env: Env, request: Request, path: string, init?: RequestInit): Promise<Response> {
   return room(env, request).fetch(new Request('https://event-room' + path, init));
@@ -334,6 +347,50 @@ export default {
         request,
         env,
       );
+    }
+
+    // --- 短い申込URL（行き先だけを持つ。大会の部屋には触らない） ----------
+    // 申込は、これまでどおり長いURLでも動く。ここは、短いURLを開く・作るだけ。
+    // 短いURLを作る画面（運営用）。操作キーを扱うのは、この画面と POST だけ（準備画面は扱わない）
+    if (path === '/short-link' && request.method === 'GET') {
+      return new Response(SHORT_LINK_PAGE, { headers: SHORT_LINK_PAGE_HEADERS });
+    }
+
+    if (path.startsWith('/a/') && request.method === 'GET') {
+      const code = path.slice('/a/'.length);
+      const store = shortLinkStore(env);
+      if (!store) return new Response('短い申込URLは、まだ使えません。運営に聞いてください。', { status: 503, headers: TEXT_HEADERS });
+      const found = SHORT_CODE_PATTERN.test(code) ? await store.fetch(new Request('https://short-links/code/' + code)) : null;
+      const body = found?.ok ? ((await found.json().catch(() => ({}))) as { target?: unknown }) : {};
+      if (typeof body.target !== 'string' || !isShortLinkTarget(body.target)) {
+        return new Response('この短い申込URLは見つかりません。運営に、新しいURLを聞いてください。', { status: 404, headers: TEXT_HEADERS });
+      }
+      return new Response(null, { status: 302, headers: { location: body.target, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
+    }
+
+    if (path === '/api/short-links' && request.method === 'POST') {
+      if (!isOperator(request, env)) {
+        return withCors(json({ ok: false, reason: '操作キーが違います。この画面からは短いURLを作れません。' }, 401), request, env);
+      }
+      const store = shortLinkStore(env);
+      if (!store) return withCors(json({ ok: false, reason: '短いURLの箱が、まだ用意されていません。' }, 503), request, env);
+      const body = (await request.json().catch(() => ({}))) as { mode?: unknown; target?: unknown };
+      const mode = body.mode === 'live' || body.mode === 'test' ? body.mode : '';
+      if (!mode) return withCors(json({ ok: false, reason: 'モードが正しくありません。' }, 400), request, env);
+      const target = typeof body.target === 'string' ? body.target.trim() : '';
+      if (!isShortLinkTarget(target)) {
+        return withCors(json({ ok: false, reason: '申込ページのURLではないので、短いURLを作りません。' }, 400), request, env);
+      }
+      const saved = await store.fetch(new Request('https://short-links/slot', {
+        method: 'PUT',
+        body: JSON.stringify({ slot: eventId(request, env) + ':' + mode, target }),
+        headers: JSON_HEADERS,
+      }));
+      const result = (await saved.json().catch(() => ({}))) as { ok?: boolean; code?: unknown };
+      if (!saved.ok || typeof result.code !== 'string') {
+        return withCors(json({ ok: false, reason: '短いURLを保存できませんでした。' }, 500), request, env);
+      }
+      return withCors(json({ ok: true, mode, code: result.code, url: url.origin + '/a/' + result.code }), request, env);
     }
 
     if (path === '/ws' || path === '/api/ws') {
