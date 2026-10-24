@@ -78,13 +78,17 @@ curl https://uizin-eventos-api.<account>.workers.dev/api/health
 
 ### 短い申込URL（`SHORT_LINKS` の箱）
 
-`npm run worker:deploy` で、短い申込URLの箱（`SHORT_LINKS`。大会の状態とは別の箱）が作られます。大会の状態（`EVENT_ROOM`）は変わりません。
+`npm run worker:deploy` で、短い申込URLの箱（`SHORT_LINKS`。大会の状態とは別の箱）が作られます。大会の状態（`EVENT_ROOM`）は変わりません。`npm run worker:deploy:tournament`（`worker/wrangler.tournament.toml`）にも、同じ箱と移行（`v2`）を入れてあります。
 
-短い申込URLは、`https://uizin-eventos-api.<account>.workers.dev/short-link` を開いて作ります。準備画面で「選手へ渡すURLをコピー」した長いURLを貼り、操作キーを入れて「短いURLを作る」を押します。できた `…/a/<コード>` をLINEで送ります。
+短い申込URLは、`https://uizin-eventos-api.<account>.workers.dev/short-link` を開いて作ります。「選手の受付をつくる」の画面で「完成：選手へ渡すURLをコピー」した長いURLを貼り、操作キーを入れて「短いURLを作る」を押します。できた `…/a/<コード>` をLINEで送ります。
 
-- 同じ大会・同じモードなら、作り直しても短いURLは同じままです（行き先だけが新しくなります）。
+- どの大会の、本番かテストかは、貼った長いURLの中身（大会IDと `mode`）で決まります。画面に大会IDを入れる欄はありません。
+  - 同じ大会・同じ「本番／テスト」なら、作り直しても短いURLは同じままです（行き先だけが新しくなります）。
+  - 「テスト用の申し込みページを開く」のURLを貼ると、テスト用の短いURLになります（本番の短いURLとは別のコードです。本番の短いURLの行き先は変わりません）。画面に、赤い文で「これはテスト用です。選手には送らないでください。」と出ます。
+  - 途中で切れたURL（最後の `end=1` が無いもの）や、申込ページのURLではないものからは、作りません。
+- 短いURLの英字は、大文字で打たれても開きます。
 - 今までの長いURL（`…/apply/#…`）は、そのまま使えます。
-- 準備画面（Pages）は、Googleとだけ通信する決まりのままです。操作キーは、この `/short-link` の画面だけで使います。
+- 準備画面（Pages）は、Googleとだけ通信する決まりのままです。操作キーは、この `/short-link` の画面だけで使います。操作キーは、このタブを閉じるまでだけ覚えます（端末には残りません。Workerが「通した」と答えたあとだけ覚えます）。
 
 ### 設定できるもの（`worker/wrangler.toml` の `[vars]`）
 

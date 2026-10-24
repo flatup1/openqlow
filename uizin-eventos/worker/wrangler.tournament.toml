@@ -15,9 +15,18 @@ ALLOWED_ORIGINS = "https://tournament-os-2vx.pages.dev"
 name = "EVENT_ROOM"
 class_name = "EventRoom"
 
+# 短い申込URLの行き先だけを置く箱（大会の状態とは別。/a/コード の行き先）。wrangler.toml と同じ
+[[durable_objects.bindings]]
+name = "SHORT_LINKS"
+class_name = "ShortLinks"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EventRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ShortLinks"]
 
 [observability]
 enabled = true

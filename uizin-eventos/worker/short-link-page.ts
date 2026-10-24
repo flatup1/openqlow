@@ -4,6 +4,10 @@
  * なぜ準備画面（Pages）に作らないか：準備画面は「Googleとだけ、読むだけ」と決めてあり、鍵も送信も置かない。
  * 操作キーを扱うのは、この画面だけ（Worker と同じ場所）。準備画面の決まりは、そのまま守る。
  * 申込ページ・準備画面の外へ出る通信は、このページからの「自分（Worker）への呼び出し」だけ。
+ *
+ * 大会IDの入力欄は無い：どの大会の・本番かテストかは、貼ったURLの中身から Worker が決める（別の大会の短いURLを上書きしないため）。
+ * 操作キーは、この端末の localStorage には残さない（共用の端末で、だれでも使えてしまうため）。このタブの sessionStorage に、
+ * Worker が「通した」と答えたあとだけ入れる（タブを閉じると消える）。前の版が localStorage に残した分は、開いたときに消す。
  */
 
 export const SHORT_LINK_PAGE_HEADERS = {
@@ -33,6 +37,7 @@ export const SHORT_LINK_PAGE = `<!doctype html>
   button.primary { background: #0f172a; color: #fff; }
   .ok { color: #047857; font-weight: 700; }
   .bad { color: #b91c1c; font-weight: 700; }
+  .testwarn { color: #b91c1c; font-weight: 700; border: 3px solid #b91c1c; border-radius: 10px; padding: 10px; margin: 8px 0 0; background: #fef2f2; }
   .box { word-break: break-all; background: #fff; border: 2px solid #cbd5e1; border-radius: 10px; padding: 10px; margin-top: 8px; }
   [hidden] { display: none; }
 </style>
@@ -40,24 +45,23 @@ export const SHORT_LINK_PAGE = `<!doctype html>
 <body>
 <main>
   <h1>短い申込URLを作る（運営用）</h1>
-  <p>① 準備画面の「完成：選手へ渡すURLをコピー」を押して、長いURLをコピーします。<br>
+  <p>① 「選手の受付をつくる」の画面で、「完成：選手へ渡すURLをコピー」を押して、長いURLをコピーします。<br>
   ② 下の「長い申込URL」の欄に貼ります。<br>
   ③ 「短いURLを作る」を押します。できた短いURLを、LINEに送ります。</p>
-  <p>同じ大会なら、何度作っても、短いURLは同じままです。</p>
+  <p>同じ大会・同じ「本番／テスト」なら、何度作っても、短いURLは同じままです。大会は、貼ったURLの中身で決まります。</p>
 
-  <label for="event">大会ID（準備画面の大会IDと同じもの）</label>
-  <input id="event" autocomplete="off" spellcheck="false">
-
-  <label for="key">操作キー（操作の画面で使うもの。この端末にだけ残ります）</label>
+  <label for="key">操作キー（操作の画面で使うもの。このタブを閉じるまでだけ、覚えます）</label>
   <input id="key" type="password" autocomplete="off">
 
-  <label for="target">長い申込URL（準備画面でコピーしたもの）</label>
+  <label for="target">長い申込URL（「選手の受付をつくる」の画面でコピーしたもの）</label>
   <textarea id="target" rows="4" spellcheck="false"></textarea>
 
   <button id="make" class="primary" type="button">短いURLを作る</button>
   <p id="msg" role="status"></p>
 
   <div id="result" hidden>
+    <p id="testwarn" class="testwarn" hidden>これはテスト用です。選手には送らないでください。</p>
+    <p id="kind"></p>
     <label>短いURL（LINEに送るのは、これ）</label>
     <div id="short" class="box"></div>
     <button id="copy" type="button">短いURLをコピー</button>
@@ -66,39 +70,41 @@ export const SHORT_LINK_PAGE = `<!doctype html>
 <script>
 (function () {
   var KEY_NAME = 'uizin.shortLink.operatorKey';
-  var EVENT_NAME = 'uizin.shortLink.eventId';
+  var OLD_EVENT_NAME = 'uizin.shortLink.eventId';
   function el(id) { return document.getElementById(id); }
-  function remember(name, value) { try { localStorage.setItem(name, value); } catch (e) { /* 残せなくても、使えます */ } }
-  function recall(name) { try { return localStorage.getItem(name) || ''; } catch (e) { return ''; } }
+  // 操作キーは、このタブの間だけ（sessionStorage）。Worker が「通した」と答えたあとにだけ入れる。localStorage には、置かない
+  function keep(name, value) { try { sessionStorage.setItem(name, value); } catch (e) { /* 残せなくても、使えます */ } }
+  function recall(name) { try { return sessionStorage.getItem(name) || ''; } catch (e) { return ''; } }
+  // 前の版が localStorage に残した操作キーと大会IDは、開いたときに消す
+  try { localStorage.removeItem(KEY_NAME); localStorage.removeItem(OLD_EVENT_NAME); } catch (e) { /* 消せなくても、使えます */ }
   function say(text, ok) { el('msg').className = ok ? 'ok' : 'bad'; el('msg').textContent = text; }
 
-  el('event').value = recall(EVENT_NAME);
   el('key').value = recall(KEY_NAME);
 
   el('make').addEventListener('click', function () {
     var key = el('key').value.trim();
     var target = el('target').value.trim();
-    var eventId = el('event').value.trim();
     if (!key) { say('操作キーを入れてください。', false); return; }
     if (target.indexOf('https://') !== 0 || target.indexOf('/apply/#') < 0) {
       say('申込ページの長いURLを貼ってください（「/apply/#」が入っているURLです）。', false);
       return;
     }
-    remember(KEY_NAME, key);
-    remember(EVENT_NAME, eventId);
     say('作っています…', true);
-    var path = '/api/short-links' + (eventId ? '?event=' + encodeURIComponent(eventId) : '');
-    fetch(path, {
+    fetch('/api/short-links', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-operator-key': key },
-      body: JSON.stringify({ mode: 'live', target: target })
+      body: JSON.stringify({ target: target })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (body) { return { ok: res.ok, body: body }; });
     }).then(function (r) {
       if (r.ok && r.body && r.body.ok === true && typeof r.body.url === 'string') {
+        keep(KEY_NAME, key);
+        var test = r.body.mode === 'test';
+        el('kind').textContent = (test ? 'テスト用' : '本番用') + (typeof r.body.title === 'string' && r.body.title ? '：' + r.body.title : '');
+        el('testwarn').hidden = !test;
         el('short').textContent = r.body.url;
         el('result').hidden = false;
-        say('短いURLができました。下の「コピー」を押して、LINEに貼ってください。', true);
+        say(test ? 'テスト用の短いURLができました。選手には送らないでください。' : '短いURLができました。下の「コピー」を押して、LINEに貼ってください。', !test);
       } else {
         say((r.body && r.body.reason) || '短いURLを作れませんでした。', false);
       }

@@ -14,7 +14,7 @@ import { isAppleMusicUrl, isYouTubeUrl } from '../core/music.ts';
 import type { LinkCheck, MusicCue } from '../core/types.ts';
 import { normalizeEventId } from '../core/eventId.ts';
 import { normalizeEntryConfig, normalizeEntryInput, validateEntry, validateEntryConfig } from '../core/entry.ts';
-import { isShortLinkTarget, SHORT_CODE_PATTERN } from '../core/shortLink.ts';
+import { isShortLinkTarget, SHORT_CODE_PATTERN, shortLinkSlot } from '../core/shortLink.ts';
 import { SHORT_LINK_PAGE, SHORT_LINK_PAGE_HEADERS } from './short-link-page.ts';
 
 export { EventRoom } from './event-do.ts';
@@ -357,15 +357,20 @@ export default {
     }
 
     if (path.startsWith('/a/') && request.method === 'GET') {
-      const code = path.slice('/a/'.length);
+      // コードは、小文字で配る。大文字で打たれても開く（LINEで手で打つことがあるため）
+      const code = path.slice('/a/'.length).toLowerCase();
       const store = shortLinkStore(env);
       if (!store) return new Response('短い申込URLは、まだ使えません。運営に聞いてください。', { status: 503, headers: TEXT_HEADERS });
-      const found = SHORT_CODE_PATTERN.test(code) ? await store.fetch(new Request('https://short-links/code/' + code)) : null;
-      const body = found?.ok ? ((await found.json().catch(() => ({}))) as { target?: unknown }) : {};
-      if (typeof body.target !== 'string' || !isShortLinkTarget(body.target)) {
-        return new Response('この短い申込URLは見つかりません。運営に、新しいURLを聞いてください。', { status: 404, headers: TEXT_HEADERS });
+      const notFound = () => new Response('この短い申込URLは見つかりません。運営に、新しいURLを聞いてください。', { status: 404, headers: TEXT_HEADERS });
+      // どこで何が起きても、選手には、エラーの画面ではなく、この文を見せる（転送先は、URLとして整えた形だけを使う）
+      try {
+        const found = SHORT_CODE_PATTERN.test(code) ? await store.fetch(new Request('https://short-links/code/' + code)) : null;
+        const body = found?.ok ? ((await found.json().catch(() => ({}))) as { target?: unknown }) : {};
+        if (typeof body.target !== 'string' || !isShortLinkTarget(body.target)) return notFound();
+        return new Response(null, { status: 302, headers: { location: new URL(body.target).href, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
+      } catch {
+        return notFound();
       }
-      return new Response(null, { status: 302, headers: { location: body.target, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
     }
 
     if (path === '/api/short-links' && request.method === 'POST') {
@@ -375,22 +380,32 @@ export default {
       const store = shortLinkStore(env);
       if (!store) return withCors(json({ ok: false, reason: '短いURLの箱が、まだ用意されていません。' }, 503), request, env);
       const body = (await request.json().catch(() => ({}))) as { mode?: unknown; target?: unknown };
-      const mode = body.mode === 'live' || body.mode === 'test' ? body.mode : '';
-      if (!mode) return withCors(json({ ok: false, reason: 'モードが正しくありません。' }, 400), request, env);
+      // モードは、貼られたリンクの中身で決まる。送ってきたときは、それと同じかだけ確かめる（ちがえば、作らない）
+      const asked = body.mode === undefined || body.mode === null || body.mode === '' ? '' : body.mode === 'live' || body.mode === 'test' ? body.mode : null;
+      if (asked === null) return withCors(json({ ok: false, reason: 'モードが正しくありません。' }, 400), request, env);
       const target = typeof body.target === 'string' ? body.target.trim() : '';
-      if (!isShortLinkTarget(target)) {
-        return withCors(json({ ok: false, reason: '申込ページのURLではないので、短いURLを作りません。' }, 400), request, env);
+      // どの大会の・本番かテストかも、リンクの中身で決める（入力欄の大会IDや、?event= は使わない。別の大会の短いURLを上書きしないため）
+      const slot = shortLinkSlot(target);
+      if (!slot.ok) {
+        const reason = slot.reason === 'target' ? '申込ページのURLではないので、短いURLを作りません。'
+          : slot.reason === 'cut' ? '申込ページのURLが、途中で切れているようです。「選手の受付をつくる」の画面で、もう一度コピーしてください。'
+          : '申込ページのURLの中の大会IDが読めません。「選手の受付をつくる」の画面で、URLを作り直してください。';
+        return withCors(json({ ok: false, reason }, 400), request, env);
+      }
+      if (asked && asked !== slot.mode) {
+        const name = (mode: string) => (mode === 'test' ? 'テスト用' : '本番用');
+        return withCors(json({ ok: false, reason: '貼ったURLは「' + name(slot.mode) + '」ですが、指定は「' + name(asked) + '」です。URLを確かめてください。' }, 400), request, env);
       }
       const saved = await store.fetch(new Request('https://short-links/slot', {
         method: 'PUT',
-        body: JSON.stringify({ slot: eventId(request, env) + ':' + mode, target }),
+        body: JSON.stringify({ slot: slot.slot, target: slot.href }),
         headers: JSON_HEADERS,
       }));
       const result = (await saved.json().catch(() => ({}))) as { ok?: boolean; code?: unknown };
       if (!saved.ok || typeof result.code !== 'string') {
         return withCors(json({ ok: false, reason: '短いURLを保存できませんでした。' }, 500), request, env);
       }
-      return withCors(json({ ok: true, mode, code: result.code, url: url.origin + '/a/' + result.code }), request, env);
+      return withCors(json({ ok: true, mode: slot.mode, title: slot.title, code: result.code, url: url.origin + '/a/' + result.code }), request, env);
     }
 
     if (path === '/ws' || path === '/api/ws') {

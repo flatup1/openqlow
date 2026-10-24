@@ -4,10 +4,12 @@
  * 大会の状態（EventRoom）とは別の箱にしてあるので、大会当日の画面の動きには触れない。
  *   slot（大会ID:モード）→ コード … 一度決めたら変えない（同じ大会・同じモードの短いURLは、ずっと同じ）
  *   code（コード）→ 行き先（申込ページのURL） … 入れ直せる（同じ短いURLが、新しい行き先に変わる）
+ * 枠の名前（大会ID:モード）は、行き先のリンクの中身から決めたものだけ受け取る（core/shortLink.ts の shortLinkSlot）。
+ * 箱に入る行き先は、URLとして整えた形（途中の改行・タブが取れた形）だけ。
  * 古い長いURLは、ここを通らない。だから、もう配ってあるURLは何も変わらない。
  */
 
-import { isShortLinkTarget, SHORT_CODE_LENGTH, shortCodeChars } from '../core/shortLink.ts';
+import { isShortLinkTarget, SHORT_CODE_LENGTH, SHORT_CODE_PATTERN, SHORT_LINK_SLOT_PATTERN, shortCodeChars, shortLinkSlot } from '../core/shortLink.ts';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 
@@ -35,17 +37,20 @@ export class ShortLinks {
       const body = (await request.json().catch(() => null)) as { slot?: unknown; target?: unknown } | null;
       const slot = typeof body?.slot === 'string' ? body.slot : '';
       const target = typeof body?.target === 'string' ? body.target : '';
-      if (!slot || !isShortLinkTarget(target)) return json({ ok: false, reason: 'bad input' }, 400);
+      // 枠の名前は、行き先のリンクの中身（大会ID:モード）と同じものだけ。Worker が決めた枠でも、ここでもう一度、同じ決まりで確かめる
+      const derived = shortLinkSlot(target);
+      if (!SHORT_LINK_SLOT_PATTERN.test(slot) || !derived.ok || derived.slot !== slot) return json({ ok: false, reason: 'bad input' }, 400);
       // 大会・モードのコードは、初めてのときだけ作る。作り直しても、同じコードのまま行き先だけ変わる
       const code = (await this.ctx.storage.get<string>('slot:' + slot)) ?? (await this.freeCode());
-      await this.ctx.storage.put({ ['slot:' + slot]: code, ['code:' + code]: target });
+      await this.ctx.storage.put({ ['slot:' + slot]: code, ['code:' + code]: derived.href });
       return json({ ok: true, code });
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/code/')) {
-      const target = await this.ctx.storage.get<string>('code:' + url.pathname.slice('/code/'.length));
+      const code = url.pathname.slice('/code/'.length);
+      const target = SHORT_CODE_PATTERN.test(code) ? await this.ctx.storage.get<string>('code:' + code) : undefined;
       return typeof target === 'string' && isShortLinkTarget(target)
-        ? json({ ok: true, target })
+        ? json({ ok: true, target: new URL(target).href })
         : json({ ok: false, reason: 'not found' }, 404);
     }
 
