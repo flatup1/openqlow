@@ -638,6 +638,9 @@ const badgeOverlaps = (p) => p.evaluate(() => {
     if (!node.textContent.trim() || badge.contains(node)) continue;
     const el = node.parentElement;
     if (!el || el.closest('[hidden]') || getComputedStyle(el).visibility === 'hidden' || getComputedStyle(el).display === 'none') continue;
+    // 閉じている「くわしく」の中身は、画面に描かれない（見えない）ので、重なりには数えない。summary（見出し）は見えているので数える
+    const closedDetails = el.closest('details');
+    if (closedDetails && !closedDetails.open && !el.closest('summary')) continue;
     const range = document.createRange();
     range.selectNodeContents(node);
     for (const r of range.getClientRects()) {
@@ -824,7 +827,7 @@ await scenario('R7', 'what the page says it remembers is what it really remember
   await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true; }));
   const t2 = await bodyText(page);
   check(t2.includes('個人情報の同意のチェックと、ジム責任者の名前・電話も、いっしょに覚えます。'), 'R7 the next-person sentence also names the consent tick and the gym representative (pledge link with the gym box)');
-  check(t2.includes('送った内容は、主催者のGoogleのシートとドライブにだけ保存されます（これは変わりません）。') && !t2.includes('Googleの表にだけ'), 'R7 the storage sentence says sheet and Drive');
+  check(t2.includes('送った内容は、主催者のGoogleのシートとドライブにだけ保存されます。') && !t2.includes('Googleの表にだけ'), 'R7 the storage sentence says sheet and Drive');
   // what is really kept after a send: gym, contact, consent and the representative's name and phone; nothing else
   await fillBase(page, { age: '45' });
   await fillPledge(page);

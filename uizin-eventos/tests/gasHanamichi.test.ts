@@ -8,6 +8,8 @@ import { HANAMICHI_BAD_MESSAGE, HANAMICHI_ITEMS, HANAMICHI_KEYS, HANAMICHI_MISSI
 import { diagnose, parsePing, settingLines } from '../core/setupV3.ts';
 
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
+// くわしい戦績の表（①で作る。新しい版のシートだけ。花道の2つのあとに作られる）
+const DETAIL = '戦績詳細', DETAIL_TEST = 'テスト戦績詳細';
 const HN_TAB = '花道プロフィール', HN_TEST_TAB = 'テスト花道プロフィール';
 const ROW = '花道の追加情報';
 const ON = { 階級分け: 'あり', [ROW]: 'あり' };
@@ -56,7 +58,7 @@ test('設定の行: 行が無い古いシートは、「なし」と読む。シ
   assert.deepEqual(json(h.rows('設定')[29]), [ROW, 'なし', '「あり」にすると、区分の名前に「花道」が入っている区分を選んだ人にだけ、追加の質問が出ます。']);
   assert.deepEqual(json(h.settingsSheet().validations.get('30:2').list), ['なし', 'あり'], '足した行にも▼が付く');
   h.call('onOpen'); h.call('setupTournament'); assert.equal(h.rows('設定').length, 35, '2回目以降は増えない');
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS], '「なし」では花道のタブは作らない');
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST], '「なし」では花道のタブは作らない');
 });
 
 test('設定の行: 書いてある値だけで決まる。あり／なし以外は、直しもの。空は なし', () => {
@@ -158,7 +160,7 @@ test('ping: 設定の問題・見出しの問題があるあいだは、印を�
 
 test('① 最初の設定: 「あり」なら、花道プロフィールとテスト花道プロフィールの2つを作る。見出しは決まった順。全マスが文字の形。見出しは保護', () => {
   const h = harness(); h.ready(ON);
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB]);
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB, DETAIL, DETAIL_TEST]);
   const headers = ['受付番号', '申込日時', '所属ジム', '選手名', '氏名のフリガナ', '所属ジムのフリガナ', 'リングネーム', 'リングネームのフリガナ', '生年月日', 'キック歴（年）', '練習頻度（週に何回）', '他格闘歴', '職業', '趣味・特技', '始めた理由・良かった所', 'メッセージ'];
   for (const name of [HN_TAB, HN_TEST_TAB]) {
     const sheet = h.book.getSheetByName(name);
@@ -174,9 +176,10 @@ test('① 最初の設定: 「あり」なら、花道プロフィールとテ�
 
 test('① 最初の設定: 「なし」なら作らない。あとで「あり」にして①を押すと作る。もう一度押しても、あるタブの中身は1マスも変えない', () => {
   const h = harness(); h.ready({ 階級分け: 'あり' });
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS]);
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST]);
   h.setSetting(ROW, 'あり'); h.call('setupTournament');
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB]);
+  // タブの並びは、作った順。戦績詳細は最初の①で作られ、花道プロフィールはあとから足したので、そのあとに並ぶ
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST, HN_TAB, HN_TEST_TAB]);
   // 会長が書き足した行・書き換えたマスは、①で変わらない
   const sheet = h.book.getSheetByName(HN_TAB); sheet.rows.push(['メモ', 'そのまま']);
   const snapshot = JSON.stringify(h.book.getSheetByName(HN_TAB).rows), formats = h.book.getSheetByName(HN_TAB).formats.size, prot = h.book.getSheetByName(HN_TAB).protections.length;
@@ -184,7 +187,7 @@ test('① 最初の設定: 「なし」なら作らない。あとで「あり�
   assert.equal(JSON.stringify(h.book.getSheetByName(HN_TAB).rows), snapshot); assert.equal(h.book.getSheetByName(HN_TAB).formats.size, formats); assert.equal(h.book.getSheetByName(HN_TAB).protections.length, prot);
   // 「なし」にもどしても、タブは消さない
   h.setSetting(ROW, 'なし'); h.call('setupTournament');
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB]);
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST, HN_TAB, HN_TEST_TAB]);
 });
 
 test('① 最初の設定: 先にタブがあって見出しがちがうときは、何も書き換えずに止まる（ほかのタブと同じ）。空のタブには見出しだけ書く', () => {
@@ -335,7 +338,7 @@ test('保存: 「なし」のときは、花道の区分でも、花道の値を
   const h = harness(); h.ready({ 階級分け: 'あり' }); h.call('openEntries');
   assert.ok(h.call('saveEntry_', entry(h, 'live', {}, { ...HN, hnBirth: '9999-99-99' })));
   assert.ok(h.call('saveEntry_', entry(h, 'live', {}, {})));
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS]);
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST]);
   assert.equal(h.rows(PRIVATE).length, 3);
   for (const [name, sheet] of h.book.sheets as Map<string, any>) assert.ok(!JSON.stringify(sheet.rows).includes(HN.hnRing), name);
 });
@@ -506,9 +509,9 @@ test('結果の画面: 花道の失敗(hanamichi)は「保存していない」�
 
 /* ───────── 版・Googleの言葉 ───────── */
 
-test('版: build は 3.20261022.7。自動テストは版が変わるとやり直し（1回だけ）', () => {
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261022\.7';/);
-  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261022.7');
+test('版: build は 3.20261024.1。自動テストは版が変わるとやり直し（1回だけ）', () => {
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.1';/);
+  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261024.1');
   h.props.set('lastTestBuild', '3.20261019.6'); assert.equal(h.call('statusInfo_').testComplete, false);
   const rows = h.rows(TEST).length; h.call('setupTournament'); assert.equal(h.call('statusInfo_').testComplete, true); assert.equal(h.rows(TEST).length, rows + 1);
   h.call('setupTournament'); assert.equal(h.rows(TEST).length, rows + 1, 'もう増えない');

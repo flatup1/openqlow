@@ -792,7 +792,7 @@ await scenario('Q', 'the sentences: the contact note, the caution, the 使い道
   const t = await bodyText(page);
   check(!t.includes('この申し込みサイトには残りません'), 'Q the old claim 「この申し込みサイトには残りません」 is gone');
   check(!t.includes('途中でページを閉じたり、更新すると、入力は消えます'), 'Q the old claim 「途中でページを閉じたり、更新すると、入力は消えます」 is gone');
-  check(t.includes('送った内容は、主催者のGoogleのシートとドライブにだけ保存されます（これは変わりません）。'), 'Q the contact note: what was sent is stored only in the organiser\'s Google sheet and Drive (unchanged; photos go to Drive)');
+  check(t.includes('送った内容は、主催者のGoogleのシートとドライブにだけ保存されます。'), 'Q the contact note: what was sent is stored only in the organiser\'s Google sheet and Drive (photos go to Drive)');
   check(t.includes('この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。連絡先・写真・同意のチェックは、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。'), 'Q the draft sentence (what is kept: the player fields only)');
   check(t.includes('送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。'), 'Q the kit sentence');
   check(t.includes('共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。'), 'Q the shared-device line');

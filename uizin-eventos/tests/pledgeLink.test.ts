@@ -187,7 +187,9 @@ test('pl: 申し込みページのソースの約束（外へ通信しない・�
   const css = read('app/globals.css');
   assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /@layer\b/, '手書きCSSに @layer の規則を書かない（Safari 15）');
   // 誓約・同意の文は、アプリのコード（page・部品・core）に1字も無い。文の言い回しに出てくる言葉が、コードに無いこと
-  for (const [name, source] of [['page', page], ['pledgeForm', part], ['core', core]] as const) {
+  // 例外：戦績の注意文は、オーナーが貼った文をそのまま使う（「虚偽」を含む）。この1文だけ、見張りから外す（ほかの文は外さない）
+  const OWNER_RECORD_CAUTION = '公平で安全なマッチメイクのため、スパーリング大会を含む戦績を正確にご申告ください。戦績の過少申告や虚偽の申告はお控えください。';
+  for (const [name, source] of [['page', page.split(OWNER_RECORD_CAUTION).join('')], ['pledgeForm', part], ['core', core]] as const) {
     assert.doesNotMatch(source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), /賠償|帰属|虚偽|致します|感染症|一任|SNS/, name + ': 誓約・同意の文を持たない');
   }
   // ジム責任者の念押しのラベルだけは、操作の言葉として定数で持つ（会長が直す前提）

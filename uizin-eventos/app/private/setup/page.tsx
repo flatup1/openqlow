@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, PLEDGE_UNCONFIRMED_ADVICE, pledgeDiagnosis, settingLines, supportsHanamichi, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, PLEDGE_UNCONFIRMED_ADVICE, pledgeDiagnosis, settingLines, supportsHanamichi, supportsRecordDetail, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
 import { isAppsScriptUrl, publicEntryHash } from '../../../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../../../core/classRules.ts';
 import { weightSettingsToParam } from '../../../core/weightClass.ts';
@@ -945,6 +945,9 @@ export default function SetupV3() {
     : ping.weightRows === false ? <Caution className="mt-3" lead="このシートには、階級分け・ロゴの行がありません。"><p>階級分け（体重で分けたグループ）やロゴを使うときは、新しいひな形をもう一度コピーします（手順1）。使わないときは、このままで大丈夫です。</p></Caution>
     : !supportsWeightClasses(ping) && stage !== 'old-build' ? <Caution className="mt-3" lead="このシートは古い版で、階級分け・ロゴに対応していません。"><p>階級分け（体重で分けたグループ）やロゴを使う大会は、新しいひな形をもう一度コピーします（手順1）。いま使っているシートをそのまま使うときは、ジムの担当者が、そのシートの Apps Script のプログラムを新しい版に入れかえて、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。使わないときは、このままで大丈夫です。</p></Caution>
     : null;
+  // くわしい戦績（キック・他の格闘技・タイトル）は、新しい版の受付だけが受け取る。古い版でも申し込みは今までどおり受け付ける（くわしい欄が出ないだけ）
+  const recordCaution = !ping || stage === 'old-build' || supportsRecordDetail(ping) ? null
+    : <Caution className="mt-3" lead="くわしい戦績（キック・他の格闘技・タイトル）は、新しい版のシートで使えます。"><p>今のシートのままでも、申し込みは受け付けます（戦績は、今までどおり1行の欄になります）。使うときは、ひな形をもう一度コピーするか、Apps Scriptを新しい版にして「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。</p></Caution>;
   /** 読み取り欄の「階級分け」「ロゴ」の言葉。クラス分けの行と同じ作り（✓ できた／✕ 直す／⚠ このシートでは使えない／なし） */
   const weightRowText = weights && !configProblem ? '✓ あり（' + weights.divisions.length + '区分）。申し込みページに出ます'
     : ping?.weightMode && !ping.weights ? '✕ あり（でも、区分と階級の表を申し込みページに入れられません。シートの「設定」タブの「階級：…」の行を直して、「もう一度確かめる」を押します）'
@@ -1361,6 +1364,7 @@ export default function SetupV3() {
           {/* 誓約書：「あり」のときだけ1行。会長の確認が「済み」なら緑の✓、「まだ」なら赤い✕（URLは出す。止めるのは、申し込みページとGoogleの受付）。リンクが長すぎるときは、上の赤い「設定の直しもの」が1文で言う */}
           {pledgeDiag && !configProblem ? (pledgeDiag.confirmed ? <OkLine>{pledgeDiag.line}。</OkLine> : <ErrorLine id="pledge-unconfirmed-note">{pledgeDiag.line}。<span className="mt-1 block">{PLEDGE_UNCONFIRMED_ADVICE}</span></ErrorLine>) : null}
           {classCaution ?? weightCaution}
+          {recordCaution}
           {urlReady ? <>
             {staleCopy ? <ErrorLine>先に送ったURLは古い内容です。新しいURLを送り直します。</ErrorLine> : null}
             {copyFailed === 'live' ? <ErrorLine>コピーできていません。</ErrorLine> : null}

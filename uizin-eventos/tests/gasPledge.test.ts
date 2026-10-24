@@ -10,6 +10,8 @@ import { guardianNeeded, GYM_NAME_MAX, gymPhoneNormal, gymPhoneOk, isUnaffiliate
 import { diagnose, parsePing, settingLines } from '../core/setupV3.ts';
 
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
+// くわしい戦績の表（①で作る。新しい版のシートだけ。誓約書・花道のタブのあとに作られる）
+const DETAIL = '戦績詳細', DETAIL_TEST = 'テスト戦績詳細';
 const HN_TAB = '花道プロフィール', HN_TEST_TAB = 'テスト花道プロフィール';
 const TAB = '誓約書', REC = '誓約記録', REC_TEST = 'テスト誓約記録';
 const R = { pledge: '誓約書', guardian: '保護者の同意', gym: 'ジム責任者の同意', confirm: '誓約書の文の確認' };
@@ -108,7 +110,7 @@ test('設定の行: 行が無い古いシートは「なし」と読む。シー
   assert.deepEqual(json(h.rows('設定').slice(30).map((r) => r[0])), [...NEW_ROWS, RULE_ROW]);
   assert.deepEqual(json(h.settingsSheet().validations.get('32:2').list), ['18歳未満のみ', '全員', 'なし'], '足した行にも▼が付く');
   h.call('onOpen'); h.call('setupTournament'); assert.equal(h.rows('設定').length, 35, '2回目以降は増えない');
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS], '「なし」では誓約書のタブも誓約記録も作らない');
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST], '「なし」では誓約書のタブも誓約記録も作らない');
 });
 
 test('設定の行: 書いてある値だけで決まる。誓約書は あり だけが「あり」。保護者の同意の空は18歳未満のみ、ジム責任者の同意の空は あり、確認の空は まだ（安全側）', () => {
@@ -127,7 +129,7 @@ test('設定の行: 書いてある値だけで決まる。誓約書は あり �
 
 test('① 最初の設定: 「あり」なら、「誓約書」タブ（初期の文つき）と、誓約記録・テスト誓約記録を作る。初期の文は owner が貼った文字のまま（指紋で固定）', () => {
   const h = harness(); h.ready({ [R.pledge]: 'あり' });
-  assert.deepEqual(tabs(h), ['シート1', '設定', TAB, PRIVATE, OS, TEST, TEST_OS, REC, REC_TEST]);
+  assert.deepEqual(tabs(h), ['シート1', '設定', TAB, PRIVATE, OS, TEST, TEST_OS, REC, REC_TEST, DETAIL, DETAIL_TEST]);
   const tab = h.book.getSheetByName(TAB), rows = json(tab.rows) as string[][];
   assert.deepEqual(rows[0].slice(0, 3), TAB_HEADINGS, 'A1・B1・C1 の見出し');
   const items = rows.slice(1, 6).map((r) => r[0]); const guardian = rows[1][1], gym = rows[1][2];
@@ -177,14 +179,15 @@ test('① 最初の設定: タブができたあとは、1マスも触らない�
   assert.equal(JSON.stringify(pre.book.getSheetByName(TAB).rows), before); assert.equal(pre.book.getSheetByName(TAB).formats.size, 0);
   // 「なし」にもどしても、タブは消さない・触らない
   const back = harness(); back.ready({ [R.pledge]: 'あり' }); back.setSetting(R.pledge, 'なし'); const before2 = JSON.stringify(back.book.getSheetByName(TAB).rows);
-  back.call('setupTournament'); assert.deepEqual(tabs(back), ['シート1', '設定', TAB, PRIVATE, OS, TEST, TEST_OS, REC, REC_TEST]); assert.equal(JSON.stringify(back.book.getSheetByName(TAB).rows), before2);
+  back.call('setupTournament'); assert.deepEqual(tabs(back), ['シート1', '設定', TAB, PRIVATE, OS, TEST, TEST_OS, REC, REC_TEST, DETAIL, DETAIL_TEST]); assert.equal(JSON.stringify(back.book.getSheetByName(TAB).rows), before2);
 });
 
 test('① 最初の設定: 「なし」なら作らない。あとで「あり」にして①を押すと作る。文は、その時の初期の文', () => {
   const h = harness(); h.ready();
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS]);
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST]);
   h.setSetting(R.pledge, 'あり'); h.call('setupTournament');
-  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, TAB, REC, REC_TEST]);
+  // タブの並びは、作った順。戦績詳細は最初の①で作られ、誓約書の3つはあとから足したので、そのあとに並ぶ
+  assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST, TAB, REC, REC_TEST]);
   const rows = json(h.book.getSheetByName(TAB).rows) as string[][];
   assert.equal(sha(canonOf(rows.slice(1, 6).map((r) => r[0]), rows[1][1], rows[1][2])), INITIAL_SHA);
   assert.equal(h.rows(REC).length, 1); assert.equal(h.rows(REC_TEST).length, 1, '自動テストはすでに済んでいるので、増やさない');
@@ -572,7 +575,7 @@ test('保存: 「なし」のとき、誓約書の鍵が1つでも付いてき�
     assert.equal(snap(h), before, '何も書かれない');
     assert.ok(h.call('saveEntry_', h.params('live', { division: '中学生男子', weightClass: '-37' })), '鍵が無ければ通る');
     assert.ok(h.call('saveEntry_', h.params('live', { division: '中学生男子', weightClass: '-37', pledge: '', pledgeItems: '  ', gymName: '' })), '空の鍵は無視');
-    assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS]);
+    assert.deepEqual(tabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, DETAIL, DETAIL_TEST]);
   }
 });
 
@@ -776,6 +779,6 @@ test('禁止語: 外へ出る道・評価の道を使わない。新しい権限
   const h = live();
   thrown(() => h.call('saveEntry_', entry(h, 'live', {}, { gymPermission: undefined }))); html(h, entry(h, 'live', {}, { gymName: '' }));
   assert.ok(!h.logs.join('\n').includes(GYM_NAME));
-  // 版は 3.20261022.7 のまま（まだ公開していない）
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261022\.7';/); assert.equal(ping(h).build, '3.20261022.7');
+  // 版は 3.20261024.1（まだ公開していない）
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.1';/); assert.equal(ping(h).build, '3.20261024.1');
 });

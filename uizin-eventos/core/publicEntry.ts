@@ -35,6 +35,8 @@ export type PublicEntryConfig = {
   logo?: boolean;
   /** 花道の追加の質問をするときだけ true（しないときは項目ごと無い）。リンクでは hn=on。protocol が 3 のときだけ読む。 */
   hanamichi?: boolean;
+  /** くわしい戦績（キックの勝ち負け・他の格闘技・タイトル/入賞歴）の欄を出すときだけ true。リンクでは rd=on。protocol が 3 のときだけ読む。古い版の受付のリンクには付けない。 */
+  recordDetail?: boolean;
   /** 誓約書（最後の□の✔）をするときだけ入る（しないときは項目ごと無い）。リンクでは pl=on と plg・plm・plc・plt。protocol が 3 のときだけ読む。文は持たない（文はリンクの plt から来る） */
   pledge?: PledgeConfig;
   /** 誓約書の文の指紋（16進の小文字64字）。リンクでは plf。ページは作らず・計算せず、POST の pledgeHash にそのまま入れて返す。pledge があるときだけ意味がある */
@@ -71,6 +73,8 @@ const HANAMICHI_RULE_KEY = 'hr';
 const WEIGHT_KEYS = ['wc', 'wd'] as const;
 /** 花道の追加の質問。hn＝on だけ（なしのときは付けない）。値の名前（hanamichi）は、リンクに出さない */
 const HANAMICHI_KEY = 'hn';
+/** くわしい戦績。rd＝on だけ（なしのときは付けない）。値の名前（recordDetail）は、リンクに出さない */
+const RECORD_DETAIL_KEY = 'rd';
 /** 誓約書の鍵（pl, plg, plm, plc, plf, plt の順）は PLEDGE_LINK_KEYS。値の名前（pledge・pledgeHash）は、リンクに出さない */
 const GUARDIAN_MODES: readonly string[] = ['under18', 'all', 'none'];
 const PLEDGE_HASH = /^[0-9a-f]{64}$/;
@@ -84,7 +88,7 @@ export function publicEntryHash(config: PublicEntryConfig): string {
   const params = new URLSearchParams();
   const put = (key: string, value: unknown) => params.set(key, typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value));
   for (const [key, value] of Object.entries(config)) {
-    if (key === 'classes' || key === 'hanamichiRule' || key === 'weights' || key === 'logo' || key === 'hanamichi' || key === 'pledge' || key === 'pledgeHash' || key === 'protocol' || key === 'mode') continue;
+    if (key === 'classes' || key === 'hanamichiRule' || key === 'weights' || key === 'logo' || key === 'hanamichi' || key === 'recordDetail' || key === 'pledge' || key === 'pledgeHash' || key === 'protocol' || key === 'mode') continue;
     put(key, value);
   }
   if (config.classes?.enabled) {
@@ -102,6 +106,8 @@ export function publicEntryHash(config: PublicEntryConfig): string {
     if (!isDefaultWeightSettings(config.weights)) params.set('wd', weightSettingsToParam(config.weights));
   }
   if (config.logo) params.set('logo', 'on');
+  // くわしい戦績（rd）は、花道（hn）のまえに書く。hn=on を、protocol のまえの最後の鍵のままにする（花道の鎖の試験）
+  if (config.recordDetail) params.set(RECORD_DETAIL_KEY, 'on');
   if (config.hanamichi) params.set(HANAMICHI_KEY, 'on');
   if (config.pledge) {
     const p = config.pledge;
@@ -224,6 +230,8 @@ export function publicEntryConfig(hash: string): PublicEntryConfig {
     ...(params.get('logo') === 'on' ? { logo: true } : {}),
     // 花道は、protocol が 3 の受付だけが知っている。古い受付（protocol 2）には、花道の鍵を送らないよう、読まない
     ...(params.get(HANAMICHI_KEY) === 'on' && params.get('protocol') === '3' ? { hanamichi: true } : {}),
+    // くわしい戦績も、protocol が 3 の受付だけが知っている。古い受付（protocol 2・rd なし）は、今までの「戦績」の一行のまま
+    ...(params.get(RECORD_DETAIL_KEY) === 'on' && params.get('protocol') === '3' ? { recordDetail: true } : {}),
     ...(pledge ? pledge : {}),
   };
 }

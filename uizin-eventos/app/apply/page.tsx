@@ -13,6 +13,9 @@ import { BirthDateSelect, type BirthParts } from '../components/BirthDateSelect.
 import { CkaLogo } from '../components/CkaLogo.tsx';
 import { allTicked, blankPledgeAnswers, GYM_PERMISSION_NOTE, isPledgeItemKey, isPledgeKey, pledgeIssues, pledgeLockReason, pledgeOrder, pledgePlan, pledgePost, PLEDGE_BLOCKED_TEXT, type PledgeAnswers, type PledgeIssues, type PledgeKey } from '../components/pledgeForm.ts';
 import { photoToDataUrl } from '../lib/privateStore.ts';
+import { kickFromRecordText, kickRecordText, packRecordDetail, recordDetailProblems } from '../../core/recordDetail.ts';
+import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
+import { RecordDetailFields } from '../components/RecordDetailFields.tsx';
 
 /*
   色と言葉の約束（全画面で同じ。色だけで伝えない）
@@ -426,6 +429,13 @@ export default function PublicApply() {
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [consent, setConsent] = useState(false);
+  // くわしい戦績（新しいリンクだけ使う）。画面の文字のまま持つ。戦績の一行（fighter.record）は、キックの数から決まる
+  const [kickText, setKickText] = useState<KickText>(EMPTY_KICK_TEXT);
+  const [otherRows, setOtherRows] = useState<OtherText[]>([]);
+  const [titleRows, setTitleRows] = useState<TitleText[]>([]);
+  const [otherOn, setOtherOn] = useState(false);
+  const [titleOn, setTitleOn] = useState(false);
+  const clearRecordDetail = () => { setKickText(EMPTY_KICK_TEXT); setOtherRows([]); setTitleRows([]); setOtherOn(false); setTitleOn(false); };
   /** クラス分け：選んだほう（'upper'＝上のクラス、'lower'＝下のクラス）。シートの設定が「なし」のときは、ずっと空 */
   const [chosenClass, setChosenClass] = useState<'upper' | 'lower' | ''>('');
   /** 階級分け：選んだ区分（設定にある名前）と階級（保存する形。例：37kg以下）。リンクに階級分けが無いときは、ずっと空 */
@@ -532,7 +542,7 @@ export default function PublicApply() {
       if (location.hash === appliedHashRef.current || sendingRef.current) return;
       if (hasInputRef.current) { setPendingHash(location.hash); return; }
       // 次の人のためのジム名・連絡先を入れただけの画面は、別のリンクへ移るとき、それも空に戻す（案内の枠が消えるので、持ち越さない）
-      if (kitRef.current) { kitRef.current = null; setFighter(blank()); setContactName(''); setContactPhone(''); setContactEmail(''); setConsent(false); setGymNameRaw(''); setGymPhoneRaw(''); }
+      if (kitRef.current) { kitRef.current = null; setFighter(blank()); clearRecordDetail(); setContactName(''); setContactPhone(''); setContactEmail(''); setConsent(false); setGymNameRaw(''); setGymPhoneRaw(''); }
       appliedHashRef.current = location.hash;
       applyConfig(publicEntryConfig(location.hash), location.hash);
     };
@@ -609,6 +619,15 @@ export default function PublicApply() {
   }, [reviewing]);
 
   const nf = useMemo(() => normalizeFighter(fighter), [fighter]);
+  // くわしい戦績（新しいリンクだけ）。戦績の一行は、キックの数が決まりに合うときだけ入る（合わなければ空＝送れない）
+  const recordOn = Boolean(config.recordDetail);
+  const detailNow = useMemo(() => detailFromText(kickText, otherOn ? otherRows : [], titleOn ? titleRows : []), [kickText, otherOn, otherRows, titleOn, titleRows]);
+  const kickOk = recordDetailProblems({ v: 1, kick: detailNow.kick, others: [], titles: [] }).length === 0;
+  const recordNow = recordOn && kickOk ? kickRecordText(detailNow.kick) : '';
+  useEffect(() => {
+    if (!recordOn) return;
+    setFighter((old) => (old.record === recordNow ? old : { ...old, record: recordNow }));
+  }, [recordOn, recordNow]);
   /** 連絡先のお名前（見えない文字・前後の空白を取ったもの） */
   const cname = trimAll(contactName);
   const phone = useMemo(() => normalizePhone(contactPhone), [contactPhone]);
@@ -660,6 +679,8 @@ export default function PublicApply() {
   const pledgeStates = pledgeOrder(plan, pa);
   const pledgeProblems: PledgeIssues = pledgeIssues(plan, pa);
   const pledgeNow = pledgePost(plan, pa, config.pledgeHash ?? '');
+  // くわしい戦績（新しいリンクだけ）。誓約書の鍵と同じく、ふつうの鍵の並びのあとに、別の入れ物から足す（古いリンクは {}）
+  const recordPost: Record<string, string> = recordOn ? { recordDetail: packRecordDetail(detailNow) } : {};
   const pledgeReason = pledgeLockReason(plan, pa);
   /** 誓約書の欄に、何か入れたが、形がまちがっている（携帯電話の形ではない、など）。「足りない」ではなく「直す」 */
   const typedWrong = (key: Key): boolean => isPledgeKey(key) && pledgeProblems[key]?.empty === false;
@@ -673,7 +694,7 @@ export default function PublicApply() {
   /** 「次の人のために60分だけ覚える」物のうち、「ジム名と連絡先」のほかにあるもの（正直に言う）。ジム責任者の名前・電話は、誓約書でジム責任者の欄があるリンクだけ */
   const kitExtra = (config.pledge?.gymMode ? '個人情報の同意のチェックと、ジム責任者の名前・電話' : '個人情報の同意のチェック') + 'も、いっしょに覚えます。';
   const thisYear = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
-  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, postGrade, postAge, postComment, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), ...(plan.on ? [JSON.stringify(pledgeNow)] : [])]);
+  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, postGrade, postAge, postComment, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), ...(plan.on ? [JSON.stringify(pledgeNow)] : []), ...(recordOn ? [JSON.stringify(recordPost)] : [])]);
   const contactNow: ContactNow = { name: cname, phone, email };
   const athleteInput = [fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl].some((v) => v.trim()) || Boolean(photo) || Boolean(chosenClass) || Boolean(division) || HANAMICHI_KEYS.some((key) => hn[key].trim()) || Boolean(birth.y || birth.m || birth.d)
     || pledgeAns.ticks.some(Boolean) || pledgeAns.guardian || pledgeAns.gymPermission || pledgeAns.gymConsent;
@@ -686,7 +707,7 @@ export default function PublicApply() {
   const hasInput = athleteInput || (gymContactInput && !kitOnly);
   hasInputRef.current = hasInput;
   // 確認の画面は、中身が本当に変わったときだけ閉じる（前後の空白を消すだけの自動なおしでは、閉じない）
-  const reviewKey = JSON.stringify([trimAll(fighter.gym), trimAll(fighter.name), trimAll(fighter.grade), nf.age, postGrade, postAge, postComment, nf.height, nf.weight, trimAll(fighter.record), trimAll(fighter.comment), nf.musicUrl, trimAll(contactName), phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), consent, ...(plan.on ? [JSON.stringify(pledgeNow)] : [])]);
+  const reviewKey = JSON.stringify([trimAll(fighter.gym), trimAll(fighter.name), trimAll(fighter.grade), nf.age, postGrade, postAge, postComment, nf.height, nf.weight, trimAll(fighter.record), trimAll(fighter.comment), nf.musicUrl, trimAll(contactName), phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), consent, ...(plan.on ? [JSON.stringify(pledgeNow)] : []), ...(recordOn ? [JSON.stringify(recordPost)] : [])]);
   useEffect(() => {
     if (reviewingRef.current) say('内容を直したので、もう一度「入力内容を確認する →」を押してください。', 'warn');
     setReviewing(false);
@@ -845,7 +866,8 @@ export default function PublicApply() {
   const hnTodoOrder: Array<[Key, boolean]> = hanamichiOn ? HANAMICHI_ASKED_ITEMS.filter((item) => !item.required || !item.needs || Boolean(hnNf[item.needs])).map((item): [Key, boolean] => [item.key, item.required ? Boolean(hnNf[item.key]) : true]) : [];
   const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight],
     ...(weights ? [['division', !!pickedDivision] as [Key, boolean]] : []), ...(needClass ? [['weightClass', classPicked] as [Key, boolean]] : []),
-    ['record', !!nf.record],
+    // くわしい戦績のリンクでは、キックだけでなく、足した行もぜんぶ決まりに合うまで「まだ」。途中の行があるあいだは、黄色が戦績に残る
+    ['record', !!nf.record && (!recordOn || recordDetailProblems(detailNow).length === 0)],
     ...(classes ? [['fighterClass', !!chosenClass] as [Key, boolean]] : []),
     ...(uiCfg.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(uiCfg.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(uiCfg.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
     ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo],
@@ -861,6 +883,11 @@ export default function PublicApply() {
     // 本番なのに、主催者が誓約書の文をまだ確認していない：送らない（サーバーも断る）
     if (confirmed && plan.blocked) { say(PLEDGE_BLOCKED_TEXT, 'error'); return; }
     const { errors, fields } = validate(nf, Boolean(photo), uiCfg, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass, division, weightClass, hanamichiOn ? hnProblems : null, plan.on ? pledgeProblems : null, classFree);
+    // くわしい戦績の決まり（キック・他の格闘技・タイトル）。決まりに合わなければ、送らない（直す所は、欄の近くに出る）
+    if (recordOn) {
+      const detailErrors = recordDetailProblems(detailNow);
+      if (detailErrors.length) { errors.push(...detailErrors); if (!fields.record) fields.record = detailErrors[0]; }
+    }
     if (errors.length) {
       setReviewing(false);
       setAttempted(true);
@@ -1107,6 +1134,8 @@ export default function PublicApply() {
     <Field key={key} id={'f-' + key} label={label} hint={META[key].hint} example={META[key].example} extra={extraNode} {...fieldProps(key)}>
       <input {...ids(key, { hint: true, example: true })} className={look(key)} value={fighter[key]} placeholder={key === 'record' ? '初試合' : undefined} inputMode={inputMode} autoComplete="off" enterKeyHint="next" onChange={(e) => change(key, e.target.value)} onBlur={() => leaveSoon(key)} />
     </Field>;
+  /** くわしい戦績の欄を直したら、戦績の赤を消す（古い1行の欄の change と同じ）。消さないと、直したあとも黄色の札が戦績に残り、先へ進めない */
+  const editRecord = <T,>(set: (value: T) => void) => (value: T) => { set(value); clearError('record'); };
   const gradeField = () => fighterField('grade', '学年 ' + (config.grade === 'required' ? '必須' : '任意'));
   const ageField = () => fighterField('age', '年齢 ' + (config.age === 'required' ? '必須' : '任意'), undefined, 'numeric');
   const commentLeft = 500 - nf.comment.length;
@@ -1230,7 +1259,7 @@ export default function PublicApply() {
     photoVersionRef.current += 1;
     photoLoadingRef.current = false;
     goodPhotoRef.current = '';
-    setFighter(blank()); setPhoto(''); setPhotoLoading(false); setPhotoError('');
+    setFighter(blank()); clearRecordDetail(); setPhoto(''); setPhotoLoading(false); setPhotoError('');
     setContactName(''); setContactPhone(''); setContactEmail(''); setConsent(false); setChosenClass(''); setDivision(''); setWeightClass(''); setHn(blankHn()); setBirth(blankBirth());
     setPledgeAns(blankPledgeAnswers()); setGymNameRaw(''); setGymPhoneRaw('');
     setFieldErrors({}); setNotes({}); setTouched({}); setEmailOk(''); setAttempted(false);
@@ -1246,7 +1275,7 @@ export default function PublicApply() {
     photoVersionRef.current += 1;
     photoLoadingRef.current = false;
     goodPhotoRef.current = '';
-    setFighter((old) => ({ ...blank(), gym: old.gym })); setPhoto(''); setPhotoLoading(false); setPhotoError('');
+    setFighter((old) => ({ ...blank(), gym: old.gym })); clearRecordDetail(); setPhoto(''); setPhotoLoading(false); setPhotoError('');
     setChosenClass(''); setDivision(''); setWeightClass(''); setHn(blankHn()); setBirth(blankBirth());
     setPledgeAns(blankPledgeAnswers());
     setFieldErrors({}); setNotes({}); setTouched({}); setAttempted(false);
@@ -1263,6 +1292,8 @@ export default function PublicApply() {
     const f = fitDraftToLink(offer.fields, { weights, classes: Boolean(config.classes?.enabled), hanamichiRule: Boolean(config.hanamichiRule), grade: config.grade !== 'off', age: config.age !== 'off', comment: config.comment !== 'off', music: config.music });
     const textKeys = ['gym', 'name', 'height', 'weight', 'record', 'grade', 'age', 'comment', 'musicUrl'] as const;
     setFighter((old) => { const next = { ...old }; for (const key of textKeys) if (f[key]) next[key] = f[key]; return next; });
+    // くわしい戦績のあるリンクでは、戦績の一行から、キックの数を戻す（ほかの細かい欄は、下書きには入らないので、空に戻す）
+    if (recordOn) { const kick = f.record ? kickFromRecordText(f.record) : null; setKickText(kick ? kickTextOf(kick) : EMPTY_KICK_TEXT); setOtherRows([]); setTitleRows([]); setOtherOn(false); setTitleOn(false); }
     for (const key of textKeys) if (f[key]) clearError(key);
     if (f.division) {
       setDivision(f.division); setWeightClass(f.weightClass); clearError('division'); clearError('weightClass');
@@ -1320,7 +1351,8 @@ export default function PublicApply() {
   };
   const onFieldsFocus = (e: { target: EventTarget }) => {
     const id = (e.target as HTMLElement).id || '';
-    const key = id.startsWith('f-') ? (id.slice(2) as Key) : null;
+    // くわしい戦績の欄（id が rd- で始まる）の中にいるあいだは、「戦績」にいるものとして数える（黄色の札を、欄を出るまで動かさない）
+    const key = id.startsWith('f-') ? (id.slice(2) as Key) : id.startsWith('rd-') ? ('record' as Key) : null;
     setStick(key && (TEXT_KEYS.includes(key) || (isHnKey(key) && key !== 'hnBirth') || key === 'gymName' || key === 'gymPhone') && key === todoKeyRef.current ? key : null);
   };
 
@@ -1382,7 +1414,7 @@ export default function PublicApply() {
       {tel ? <NextBox on={nextKind === 'call'} label="主催者に電話する" prefix="次はここ" className="mt-3">{telLink}</NextBox> : <p className="mt-3 font-bold">{noContactText}</p>}
     </div> : null}
     {endpointReady && deadlineUnclear && !deadlinePassed ? <Caution className="mt-4">申し込みの締切は「{config.deadline}」です。過ぎていないか、確かめてください</Caution> : null}
-    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、60分のあいだ、このページが覚えていて、入っていることがあります）</li></ul><button type="button" onClick={() => setRecentSent(false)} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
+    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）</li></ul><button type="button" onClick={() => setRecentSent(false)} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
     {askNew ? <>
       <Caution className="mt-4">別の大会のリンクです。入力を消して新しく始めますか？</Caution>
       <DangerConfirm title="消えます：いま入れた内容" lines={['選手の情報・写真・連絡先が、ぜんぶ消えます', '消したあとは、元にもどせません']} safeLabel="今のまま続ける" dangerLabel="消して新しく始める" onSafe={() => setPendingHash('')} onDanger={startNew} />
@@ -1391,7 +1423,6 @@ export default function PublicApply() {
 
     {endpointReady && !deadlineLocked ? <ol aria-label="申し込みの流れ" className="mt-4 grid grid-cols-4 gap-2">{steps.map((name, i) => { const n = i + 1; const state = n < stage ? 'done' : n === stage ? 'here' : 'later'; return <li key={name} aria-current={state === 'here' ? 'step' : undefined} className={'flex min-h-16 min-w-0 flex-col items-center rounded-2xl border-2 px-1 py-2 text-center text-[1.0625rem] font-bold leading-tight ' + (state === 'here' ? 'border-indigo-700 bg-indigo-50 text-indigo-950' : state === 'done' ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-slate-300 bg-white text-slate-700')}><span aria-hidden="true" className={'grid h-7 w-7 place-items-center rounded-full text-[1.0625rem] ' + (state === 'here' ? 'bg-indigo-700 text-white' : state === 'done' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700')}>{state === 'done' ? '✓' : n}</span><span className="mt-1 block min-w-0">{name}</span>{state === 'here' ? <><span className="sr-only">（いまここ）</span><span aria-hidden="true" className="mt-1 hidden whitespace-nowrap rounded-full bg-indigo-700 px-2 text-[1.0625rem] text-white sm:inline">📍 いまここ</span></> : null}</li>; })}</ol> : null}
     {endpointReady && !deadlineLocked ? <p className="mt-2 rounded-xl border-2 border-indigo-700 bg-white px-3 py-2 text-[1.0625rem] font-bold text-indigo-950 sm:hidden">{stepLine} いまここ：{stage} / 4　{steps[stage - 1]}</p> : null}
-    {endpointReady && !deadlineLocked ? <p className="mt-2 text-[1.0625rem] text-slate-700">「4 完了」は、Googleの画面で受付番号が出たときです。</p> : null}
     {!confirmationPending ? messageBox(true) : null}
     {/* 静かな案内の枠（黄色の「次はここ」にはしない・ボタンは灰色の副ボタン）。いつも1つだけ：下書きがあるときは下書き、なければ次の人のためのジム名と連絡先 */}
     {storeLink && draftOffer ? <Note id="draft-banner" status className="mt-4">
@@ -1410,10 +1441,10 @@ export default function PublicApply() {
           {fighterField('gym', 'ジム名 必須')}
           {fighterField('name', '選手名 必須', <Note className="mt-2">保護者の名前ではなく、出る人の名前</Note>)}
           {fighterField('height', '身長（cm）必須', undefined, 'decimal')}
-          {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}</>, 'decimal')}
+          {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}<p className="mt-2 text-[1.0625rem] font-bold text-slate-900">小学生は健康のため減量せず、普段の体重のままでご入力ください。</p></>, 'decimal')}
           {divisionField()}
           {weightClassField()}
-          {fighterField('record', '戦績 必須', nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : undefined)}
+          {recordOn ? <NextBox on={markKey === 'record'} label={nextLabel('record')} prefix={prefix} float><RecordDetailFields kick={kickText} setKick={editRecord(setKickText)} otherOn={otherOn} setOtherOn={editRecord(setOtherOn)} others={otherRows} setOthers={editRecord(setOtherRows)} titleOn={titleOn} setTitleOn={editRecord(setTitleOn)} titles={titleRows} setTitles={editRecord(setTitleRows)} problems={attempted ? recordDetailProblems(detailNow) : []} /></NextBox> : fighterField('record', '戦績 必須', <>{nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : !nf.record ? <button type="button" onClick={() => change('record', '初試合')} className={greyBtn + ' mt-2'}>初試合なら、ここを押す</button> : null}<p className="mt-2 text-[1.0625rem] font-bold text-red-700">公平で安全なマッチメイクのため、スパーリング大会を含む戦績を正確にご申告ください。戦績の過少申告や虚偽の申告はお控えください。</p></>)}
           {classField()}
           {classFree ? <Note id="f-hanamichiRule" className="min-w-0 whitespace-pre-wrap font-bold [overflow-wrap:anywhere]">{config.hanamichiRule}</Note> : null}
           {requiredExtra}
@@ -1436,19 +1467,19 @@ export default function PublicApply() {
       </section>
       {hanamichiOn ? <section id="hn-card" aria-labelledby="hn-card-title" className={cardNow} hidden={!endpointReady}>
         <h2 id="hn-card-title" className="flex items-center gap-3 text-2xl font-black"><span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-700 text-xl text-white">＋</span>花道の追加の質問</h2>
-        <p className="mt-3 text-[1.0625rem] text-slate-700">上の「1 選手の情報」の続きです。</p>
         <p className="mt-3 text-lg font-bold">花道の紹介の質問です。アナウンスで使います。</p>
         <Caution className="mt-3">住所や電話番号は書かないでください。</Caution>
-        <p className="mt-3 text-[1.0625rem] text-slate-700">「必須」のところは、ぜんぶ入れてください。</p>
-        <div className="tos-badge-room grid gap-8">{HANAMICHI_ASKED_ITEMS.map((item) => hnField(item))}</div>
+        <div className="tos-badge-room mt-6 grid gap-8">{HANAMICHI_ASKED_ITEMS.map((item) => hnField(item))}</div>
       </section> : null}
       <section className={cardNow} hidden={!endpointReady}>
         <h2 className="flex items-center gap-3 text-2xl font-black"><span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-700 text-xl text-white">2</span>連絡先</h2>
-        <Note className="mt-3 font-bold">主催者からの連絡だけに使います。送った内容は、主催者のGoogleのシートとドライブにだけ保存されます（これは変わりません）。</Note>
-        <Note id="temp-memory-note" className="mt-3">
-          <span className="block">この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。</span>
-          <span className="mt-1 block">送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。{kitExtra}共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。</span>
-        </Note>
+        <Note className="mt-3 font-bold">主催者からの連絡だけに使います。送った内容は、主催者のGoogleのシートとドライブにだけ保存されます。</Note>
+        <Fold id="contact-memory-fold" title="このスマホに残るもの" sub="くわしく読めます">
+          <div id="temp-memory-note" className="space-y-2">
+            <span className="block">この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。</span>
+            <span className="block">送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。{kitExtra}共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。</span>
+          </div>
+        </Fold>
         <div id="contact-fields" className="tos-badge-room grid scroll-mt-24 gap-8">
           <Field id="f-contactName" label="連絡先のお名前 必須" hint={META.contactName.hint} example={META.contactName.example} extra={!cname && nf.name ? <button type="button" onClick={() => { setContactName(nf.name); clearError('contactName'); }} className={greyBtn + ' mt-2'}>選手名と同じにする</button> : undefined} {...fieldProps('contactName')}><input {...ids('contactName', { hint: true, example: true })} className={look('contactName')} value={contactName} autoComplete="name" enterKeyHint="next" onChange={(e) => { setContactName(e.target.value); clearError('contactName'); }} onBlur={() => leaveSoon('contactName')} /></Field>
           <Field id="f-contactPhone" label="電話番号 必須" hint={META.contactPhone.hint} example={META.contactPhone.example} {...fieldProps('contactPhone')}><input {...ids('contactPhone', { hint: true, example: true })} className={look('contactPhone')} type="tel" inputMode="tel" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="tel" enterKeyHint="next" value={contactPhone} onChange={(e) => { setContactPhone(e.target.value); clearError('contactPhone'); }} onBlur={() => leaveSoon('contactPhone')} /></Field>
@@ -1465,7 +1496,6 @@ export default function PublicApply() {
       </section>
       {config.pledge ? <section id="pledge-card" aria-labelledby="pledge-card-title" className={cardNow} hidden={!endpointReady}>
         <h2 id="pledge-card-title" className="flex items-center gap-3 text-2xl font-black"><span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-700 text-xl text-white">＋</span>誓約書</h2>
-        <p className="mt-3 text-[1.0625rem] text-slate-700">上の「2 連絡先」の続きです。</p>
         {plan.blocked ? <ErrorLine id="pledge-unconfirmed" alert className="mt-3">{PLEDGE_BLOCKED_TEXT}</ErrorLine> : null}
         <p className="mt-3 text-lg font-bold">下の文を読んで、□に✔を入れてください。✔を入れないと、先へ進めません。</p>
         {/* 黄色の札（👉 次はここ）は□の上に浮かぶ。細い画面では2行（約62px）になるので、上の文にかぶらないよう、□の上を広くあけておく（guardian・gym の箱も同じ） */}
@@ -1499,6 +1529,7 @@ export default function PublicApply() {
     <form ref={formRef} action={endpointReady ? config.endpoint : undefined} method="post" target="_self" className="hidden">
       {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: postGrade, age: postAge, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', ...(weights ? { division, weightClass: needClass ? weightClass : '' } : {}), comment: postComment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo, ...hanamichiPost }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {Object.entries(pledgeNow).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+      {Object.entries(recordPost).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
     </form>
     {reviewing ? <section aria-label="送る前の確認" className="my-6 rounded-3xl border-2 border-indigo-700 bg-white p-4 sm:p-6">
       <h2 ref={reviewHeadingRef} tabIndex={-1} className="scroll-mt-24 text-2xl font-black outline-none">送る前の確認</h2>
@@ -1510,7 +1541,7 @@ export default function PublicApply() {
         <dl className="mt-2 grid gap-3">
           {([['ジム名', nf.gym], ['選手名', nf.name], ['身長', nf.height ? nf.height + ' cm' : ''], ['体重', nf.weight ? nf.weight + ' kg' : ''],
             ...(weights ? [[DIVISION_LABEL, division], ['階級', noClass ? noClassReviewValue() : weightClass ? weightClassLabel(weightClass) : '']] : []),
-            ['戦績', nf.record],
+            ['戦績', nf.record], ...(recordOn ? recordReviewPairs(detailNow) : []),
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
             ...(uiCfg.grade !== 'off' ? [['学年', nf.grade]] : []), ...(uiCfg.age !== 'off' ? [['年齢', nf.age]] : []), ...(uiCfg.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(gradeAuto && postGrade ? [['学年（自動）', postGrade]] : []), ...(hanamichiOn ? [...(postAge ? [['年齢（生年月日から自動）', postAge]] : []), ...(postComment ? [['意気込み（メッセージと同じ）', postComment]] : [])] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>
@@ -1548,15 +1579,13 @@ export default function PublicApply() {
         {!online ? <LockReason>電波がありません。電波のある場所で押してください</LockReason> : plan.blocked ? <LockReason>主催者が、誓約書の文を確認するまで、押せません</LockReason> : null}
       </NextBox>
       <div className="tos-note mt-3 text-[1.0625rem]">
-        <p className="font-bold">送ると、Googleの白い画面が出ます。そのあとの3つ：</p>
+        <p className="font-bold">送ると、Googleの白い画面が出ます。</p>
         <ol className="mt-1 list-decimal space-y-1 pl-6">
-          <li>「受付番号」が出たか見る。（「注意」の文字が出ても、だいじょうぶです）</li>
-          <li>その画面の写真をとる。</li>
+          <li>「受付番号」が出たら、その画面の写真をとる。（「注意」が出ても、だいじょうぶです）</li>
           <li>閉じる（戻らない）。</li>
         </ol>
         <p className="mt-2 font-bold">「送れませんでした」と出たときだけ、ブラウザの「戻る」で戻って、直してからもう一度送ります。</p>
         <p className="mt-1">戻ると、入れた文字と写真が消えていることがあります。そのときは、最初から入れ直してください。</p>
-        <p className="mt-2 text-slate-700">失敗したときのために、この確認の画面も写真にとっておくと安心です。</p>
       </div>
       <p className="mt-3 text-[1.0625rem] font-bold text-slate-700"><span aria-hidden="true" className="tos-icon">✓</span>「戻って直す」を押しても、入力は消えません</p>
       <button onClick={() => { setReviewing(false); setMessage(''); focusField('gym'); }} className="tos-safe-btn mt-2 w-full text-lg">戻って直す（送信しません）</button>

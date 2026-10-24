@@ -8,18 +8,19 @@ import { weightTag } from '../../core/weightClass.ts';
 import { formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { DEFAULT_ENTRY_CONFIG, entryConfigSearch, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { bytesToArrayBuffer, decryptBackup, deletePrivateEvent, encryptBackup, listPrivateEvents, photoToDataUrl, PrivateSaveConflict, readPrivateEvent, watchPrivateEvent, writePrivateEvent, type PrivateEventSummary } from '../lib/privateStore.ts';
+import type { RecordDetail } from '../../core/recordDetail.ts';
 import { newEventId, normalizeEventId } from './eventId.ts';
 import {
   backupFileName, backupIsFresh, boutProblems, classTrouble, openLockReason, classChanged, classChoices, classifyRestoreError, classifySaveError, clockText, contractKg, decodeCsvBytes, decryptWithRetry, dropBlankBouts, entryConfigFromHash, eventListName, FALLBACK_ERROR,
   describeClassChange, describeWeightChange, effectiveClassSettings, fromEventIdFromHash, gapLevel, heightWeightSwapped, importErrorParts, ImportProblem, importProblemKind, importKind, isBlankBout, isHalfBout, isPastDate, isTitleReal, looksLikeBackup, mergeKeepExisting, nextAction, normalizeImported, oldCopyText, overwriteBoxText,
   photoErrorText, pickMarker, restoreBoxText, restoreLastRemoved, RESTORE_TEXT, sameEntryConfig, sameExceptProgress, sameFighterExists, sameKey, saveErrorText, saveLine, saveReasonShort, saveReasonText, shortProblem, tidyClass, tidyWeight, tooLong, useOtherBoxText, weightChanged, weightChoiceTrouble, weightColumnNote, weightGap, weightMissing, weightMixAt, weightMixText, weightUnreadable,
-  classNamesOf, excelCellText, isPhotoName, isRosterCsvName, isZipJunk, pickZipRoster, TEXT_LIMITS, zipEntryName,
+  classNamesOf, excelCellText, isPhotoName, isRecordsCsvName, isRosterCsvName, isZipJunk, pickZipRoster, recordDetailOnFighters, recordDetailsFromCsv, recordsCsvEntry, RECORDS_CSV_MAX_BYTES, TEXT_LIMITS, zipEntryName,
   type FighterDiff, type Follow, type ImportFileKind, type NextKey, type RemovedBout, type SaveErrorKind, type SaveState,
 } from './logic.ts';
 import { checkFighter, checkNumber, describeChange, FIELD_LABEL, foldKana, normalizePassword, readDate, shorten, type FieldKey, type FieldProblem } from './normalize.ts';
 import { Badge, btn, Chip, cls, Fold, inputClass, Notice, Section, type NoticeExtra } from './parts.tsx';
 import { Caution, DangerConfirm, ErrorLine, Example, LockReason, NextSlot, OkLine, Soft, StepNo } from './marks.tsx';
-import { BoutCard, FighterFields, kgText, type FieldFixes, type FieldProblems } from './cards.tsx';
+import { BoutCard, FighterFields, kgText, RecordDetailFold, type FieldFixes, type FieldProblems } from './cards.tsx';
 
 const blankFighter = (): LocalFighter => ({ id: crypto.randomUUID(), gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', photoDataUrl: '' });
 /** 消した試合を戻すボタンの名前。知らせ（トースト）の文と、ずっと残るボタンで、同じ言葉を使う */
@@ -771,6 +772,7 @@ function PrivateAdmin() {
       if (file.size > 100 * 1024 * 1024) throw new ImportProblem('too-large');
       let csv = '';
       let photos: Record<string, Uint8Array> = {};
+      let details = new Map<string, RecordDetail>();
       if (kind === 'zip') {
         const { unzipSync } = await import('fflate');
         let unpackedBytes = 0, fileCount = 0;
@@ -778,6 +780,8 @@ function PrivateAdmin() {
           const name = zipEntryName(entry.name);
           // Macが入れるごみ（__MACOSX・.DS_Store・._名前）は、数にも大きさにも入れない
           if (isZipJunk(name)) return false;
+          // くわしい戦績（records.csv）は、名簿の数・大きさには数えない。大きすぎるときは読まないだけ（名簿は止めない）
+          if (isRecordsCsvName(name)) return entry.originalSize <= RECORDS_CSV_MAX_BYTES;
           fileCount++; unpackedBytes += entry.originalSize;
           if (fileCount > 3001) throw new ImportProblem('too-many-files');
           if (unpackedBytes > 100 * 1024 * 1024) throw new ImportProblem('too-large');
@@ -785,8 +789,12 @@ function PrivateAdmin() {
           if (entry.originalSize > 20 * 1024 * 1024) { if (isPhotoName(name)) { bigPhotos.push(name.slice(name.lastIndexOf('/') + 1)); return false; } throw new ImportProblem('too-large'); }
           return isRosterCsvName(name) || isPhotoName(name);
         } });
-        const found = pickZipRoster(Object.keys(unpacked).map((raw) => [raw, zipEntryName(raw)] as const));
+        const entries = Object.keys(unpacked).map((raw) => [raw, zipEntryName(raw)] as const);
+        const found = pickZipRoster(entries);
         if (!found) throw new ImportProblem('no-list');
+        // くわしい戦績（records.csv）は、名簿と同じフォルダにあるときだけ読む。無い・読めないときは、何も付けない（エラーにしない）
+        const recordsRaw = recordsCsvEntry(entries, found.csv);
+        details = recordDetailsFromCsv(recordsRaw ? unpacked[recordsRaw] : undefined);
         // 名簿のCSVは、ふつうのCSVと同じ読み方（まずUTF-8、文字化けしたらExcelのCSV＝Shift_JIS）
         csv = decodeCsvBytes(unpacked[found.csv]);
         // 写真は 'photos/<名前>.jpg' の形にそろえる（フォルダごと圧縮された ZIP でも、同じように読む）
@@ -806,7 +814,7 @@ function PrivateAdmin() {
       if(!result.fighters.length)throw new ImportProblem('empty');
       // 手で入れるときと同じ約束で、数字（全角・単位）・入場曲の空白・クラスの書き方を自動で直す。直せないものは、赤で知らせる
       const tidied = normalizeImported(result.fighters, data.entryConfig?.classes, data.entryConfig?.weights);
-      const fighters = await Promise.all(tidied.fighters.map(async (fighter) => {
+      const fighters = await Promise.all(recordDetailOnFighters(tidied.fighters, details).map(async (fighter) => {
         const photoEntry = Object.entries(photos).find(([name]) => name.replace(/^photos\//, '').replace(/\.[^.]+$/, '') === fighter.id);
         if (!photoEntry) return fighter;
         const extension = photoEntry[0].split('.').pop()?.toLowerCase();
@@ -825,6 +833,8 @@ function PrivateAdmin() {
       const same = merge.lookalike.length;
       const already = fighters.length - merge.added - same;
       let text = fighters.length + '人分を読み込みました（写真 ' + fighters.filter((fighter) => fighter.photoDataUrl).length + '枚）。';
+      const withRecords = fighters.filter((fighter) => fighter.recordDetail).length;
+      if (withRecords > 0) text += 'くわしい戦績が' + withRecords + '人分あります。';
       if (current.length > 0) {
         text += '新しく入った人は' + merge.added + '人です。';
         if (same > 0) text += '名前とジムが同じ人が' + same + '人いたので、足していません。';
@@ -962,7 +972,7 @@ function PrivateAdmin() {
     if (!original) return;
     const result = checkFighter(draft, entryConfig, 'edit');
     if (result.problems.length) { focusSoon('edit-' + editingId + '-' + result.problems[0].key); return; }
-    const next: LocalFighter = tidyWeight(tidyClass({ ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl, ...(original.absent ? { absent: true } : {}) }));
+    const next: LocalFighter = tidyWeight(tidyClass({ ...result.fighter, id: original.id, photoDataUrl: original.photoDataUrl, ...(original.absent ? { absent: true } : {}), ...(original.recordDetail ? { recordDetail: original.recordDetail } : {}) }));
     setData((old) => ({ ...old, fighters: old.fighters.map((item) => item.id === editingId ? next : item) }));
     setEditNote({ id: editingId, text: [describeChange(original, next), describeClassChange(original, next), describeWeightChange(original, next)].filter(Boolean).join('、') });
     setEditingId(null); setEditFixes({}); setOtherEditErr(null);
@@ -1871,6 +1881,7 @@ function PrivateAdmin() {
                         {dupIds.has(fighter.id) ? <p className="mt-1"><Chip tone="amber">⚠ 同じ名前の人がいます</Chip></p> : null}
                       </div>
                     </div>
+                    {fighter.recordDetail ? <RecordDetailFold detail={fighter.recordDetail} /> : null}
                     {editing ? <div className="mt-3 space-y-3 border-t-2 border-slate-200 pt-3">
                       <FighterFields value={draft} mode="edit" config={entryConfig} prefix={'edit-' + fighter.id} problems={editProblems} fixes={editFixes} classOptions={classList} classSettings={classSettings} weights={weights} alsoShow={(['grade', 'age', 'comment', 'musicUrl'] as const).filter((k) => String(fighter[k]).trim() !== '')}
                         onClassChange={(v) => setDraft((old) => ({ ...old, fighterClass: v }))}

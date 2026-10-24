@@ -368,7 +368,7 @@ test('タブの名前: 設定の画面は「選手の受付をつくる」、当
 
 test('ZIPの名前: 画面と文書は、本物の名前（Tournament_OS_〜.zip）で言う。「選手名簿.zip」と教えない', () => {
   for (const path of ['app/private/page.tsx', 'app/private/logic.ts', 'app/private/setup/page.tsx']) assert.ok(!read(path).includes('選手名簿.zip'), path);
-  assert.match(GS, /exportRows_\(rows,resources\.folder,'Tournament_OS_'\)/);
+  assert.match(GS, /exportRows_\(rows,resources\.folder,'Tournament_OS_',/);
   assert.match(PAGE, new RegExp('const MENU_ZIP = \'④ OS用の名簿ZIPを作る\''));
   assert.ok(GS.includes(".addItem('④ OS用の名簿ZIPを作る', 'menuExport')"), '画面のメニューの名前は、シートのメニューと同じ');
 });

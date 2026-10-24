@@ -166,14 +166,14 @@ test('つなぎ目: サーバーの失敗の文 = core の文 = 結果の画面�
   assert.match(APPLY, /item\.max - hnNf\[key\]\.length/, '残りの文字数は、表の max から数える');
 });
 
-test('つなぎ目: 版。.gs の RECEPTION_BUILD = EXPECTED。受け付ける版は古い順に4つで、最後が EXPECTED。階級分けは 3.20261019.6 以降、花道は 3.20261022.7 だけ', () => {
+test('つなぎ目: 版。.gs の RECEPTION_BUILD = EXPECTED。受け付ける版は古い順に5つで、最後が EXPECTED。階級分けは 3.20261019.6 以降、花道は 3.20261022.7 以降', () => {
   assert.equal(script.match(/RECEPTION_BUILD = '([0-9.]+)'/)![1], EXPECTED_RECEPTION_BUILD);
-  assert.equal(ACCEPTED_RECEPTION_BUILDS.at(-1), EXPECTED_RECEPTION_BUILD); assert.equal(ACCEPTED_RECEPTION_BUILDS.length, 4);
+  assert.equal(ACCEPTED_RECEPTION_BUILDS.at(-1), EXPECTED_RECEPTION_BUILD); assert.equal(ACCEPTED_RECEPTION_BUILDS.length, 5);
   const sorted = [...ACCEPTED_RECEPTION_BUILDS].sort((a, b) => a.localeCompare(b));
   assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], sorted, '古い順');
   const at = (build: string) => ({ app: 'tournament-os', protocol: 3, build, ready: true }) as Ping;
-  assert.deepEqual(ACCEPTED_RECEPTION_BUILDS.map((b) => supportsWeightClasses(at(b))), [false, false, true, true]);
-  assert.deepEqual(ACCEPTED_RECEPTION_BUILDS.map((b) => supportsHanamichi(at(b))), [false, false, false, true]);
+  assert.deepEqual(ACCEPTED_RECEPTION_BUILDS.map((b) => supportsWeightClasses(at(b))), [false, false, true, true, true]);
+  assert.deepEqual(ACCEPTED_RECEPTION_BUILDS.map((b) => supportsHanamichi(at(b))), [false, false, false, true, true]);
   assert.equal(isAppsScriptUrl(ENDPOINT), true);
 });
 

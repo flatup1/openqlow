@@ -20,7 +20,9 @@ const FROZEN_VALUES = ['', '', '', '', '', '', '', 'なし', '必須', '必須',
 const FROZEN_DESCRIPTION_SHA = '06c7a9d1b5dfb9386228571777c60fa1b398fd257f9b245687d32c8712bdb34f';
 /** 足してよい行。足す前は空 []。花道の追加情報と、そのあとに足した誓約書の4行だけ（それ以外の差は、赤くなる） */
 const ADDED_SETTING_ROWS: string[] = ['花道の追加情報', '誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール'];
-const FROZEN_SHEETS = ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS];
+// くわしい戦績の表（①で作る。新しい版のシートだけ使う。古い版のシートは、①を押すと同じ2つが増える）
+const RECORD_TAB = '戦績詳細', RECORD_TEST_TAB = 'テスト戦績詳細';
+const FROZEN_SHEETS = ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, RECORD_TAB, RECORD_TEST_TAB];
 const PRIVATE_HEADERS = ['受付番号', '申込日時', '大会ID', '所属ジム', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', '連絡先氏名', '連絡先電話番号', '連絡先メールアドレス', '同意', 'リクエストID', 'クラス', '区分', '階級'];
 const OS_HEADERS = ['管理番号', 'ジム名', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', 'クラス', '区分', '階級'];
 const FROZEN_PROPS = ['spreadsheetId', 'ownerEmail', 'eventId', 'accepting', 'photoFolderId', 'testFolderId', 'rateMinute', 'rateCount', 'lastTestBuild', 'lastTestRequest'];
@@ -64,9 +66,9 @@ test('golden 設定タブ: ▼の欄・色・列の幅・固定行は、足す�
   assert.deepEqual(json([...sheet.columnWidths.entries()]), [[1, 160], [2, 380], [3, 520]]); assert.equal(sheet.frozenRows, 1);
 });
 
-test('golden 「① 最初の設定」: 作るタブは4つだけ（申込原本・OS取込用・テスト申込・テストOS取込用）。見出しの保護・ping・プロパティの鍵も同じ', () => {
+test('golden 「① 最初の設定」: 作るタブは6つだけ（申込原本・OS取込用・テスト申込・テストOS取込用・戦績詳細・テスト戦績詳細）。見出しの保護・ping・プロパティの鍵も同じ', () => {
   const h = harness(); h.ready();
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, 'シート1・設定・4つの表。花道のタブは作らない');
+  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, 'シート1・設定・6つの表。花道のタブは作らない');
   assert.deepEqual(json(h.rows(PRIVATE)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(OS)[0]), OS_HEADERS);
   assert.deepEqual(json(h.rows(TEST)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(TEST_OS)[0]), OS_HEADERS);
   for (const name of [PRIVATE, OS, TEST, TEST_OS]) assert.equal(h.book.getSheetByName(name).protections.length, 1, name + ' の見出しは保護される');
@@ -173,7 +175,7 @@ test('golden core/setupV3: 版の一覧・pingの読み方・申し込みペー�
   assert.deepEqual(Object.keys(parsed), ['app', 'protocol', 'build', 'ready', 'accepting', 'eventId', 'testComplete', 'settingsProblem', 'storageProblem', 'title', 'date', 'venue', 'venueUrl', 'organizer', 'contact', 'deadline', 'music', 'grade', 'age', 'comment', 'error', 'classMode', 'classes', 'classRows', 'weightMode', 'weights', 'weightRows', 'logo', 'errorTab', 'errorCell', 'errorExpected', 'errorInserted', 'errorRowGone', 'closedBy']);
   assert.equal(diagnose(parsed).stage, 'ready');
   const config = entryConfigFromPing(parsed, 'https://script.google.com/macros/s/AKfycbyTEST_ONLY/exec', 'live');
-  assert.deepEqual(Object.keys(config), ['endpoint', 'protocol', 'mode', 'eventId', 'title', 'organizer', 'date', 'venue', 'venueUrl', 'deadline', 'contact', 'music', 'grade', 'age', 'comment']);
+  assert.deepEqual(Object.keys(config), ['endpoint', 'protocol', 'mode', 'eventId', 'title', 'organizer', 'date', 'venue', 'venueUrl', 'deadline', 'contact', 'music', 'grade', 'age', 'comment', 'recordDetail']);
   // 知らない鍵（花道のモードなど）が来ても、「なし」の読み取りには出ない
   assert.equal('hanamichiMode' in parsePing({ ...base, hanamichiMode: false }), false);
   assert.equal('hanamichiMode' in parsePing({ ...base, hanamichiMode: 'on' }), false);

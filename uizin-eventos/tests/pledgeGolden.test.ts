@@ -24,7 +24,9 @@ const FROZEN_VALUES = ['', '', '', '', '', '', '', 'なし', '必須', '必須',
 const FROZEN_DESCRIPTION_SHA = '80e6791483e30135afb680137dd2b74e3edfd33699e18bb0e1261fe4e9e963d7';
 /** 足してよい行。足す前は空 []。誓約書を足したので、下の行だけ（それ以外の差は、赤くなる） */
 const ADDED_SETTING_ROWS: string[] = ['誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール'];
-const FROZEN_SHEETS = ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS];
+// くわしい戦績の表（①で作る。新しい版のシートだけ使う。古い版のシートは、①を押すと同じ2つが増える）
+const RECORD_TAB = '戦績詳細', RECORD_TEST_TAB = 'テスト戦績詳細';
+const FROZEN_SHEETS = ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, RECORD_TAB, RECORD_TEST_TAB];
 const PRIVATE_HEADERS = ['受付番号', '申込日時', '大会ID', '所属ジム', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', '連絡先氏名', '連絡先電話番号', '連絡先メールアドレス', '同意', 'リクエストID', 'クラス', '区分', '階級'];
 const OS_HEADERS = ['管理番号', 'ジム名', '選手名', '学年', '年齢', '身長', '体重', '戦績・競技歴', '試合への意気込み', '入場曲URL（Apple Music推奨）', '顔写真URL', 'クラス', '区分', '階級'];
 const HN_HEADERS = ['受付番号', '申込日時', '所属ジム', '選手名', '氏名のフリガナ', '所属ジムのフリガナ', 'リングネーム', 'リングネームのフリガナ', '生年月日', 'キック歴（年）', '練習頻度（週に何回）', '他格闘歴', '職業', '趣味・特技', '始めた理由・良かった所', 'メッセージ'];
@@ -86,9 +88,9 @@ test('golden 古いシート（誓約書の行が無い）: 開くと足りな�
   h.call('onOpen'); h.call('setupTournament'); assert.equal(h.rows('設定').length, count);
 });
 
-test('golden 「① 最初の設定」: 作るタブは4つだけ（申込原本・OS取込用・テスト申込・テストOS取込用）。見出しの保護・プロパティの鍵も同じ。もう一度押しても同じ', () => {
+test('golden 「① 最初の設定」: 作るタブは6つだけ（申込原本・OS取込用・テスト申込・テストOS取込用・戦績詳細・テスト戦績詳細）。見出しの保護・プロパティの鍵も同じ。もう一度押しても同じ', () => {
   const h = harness(); h.ready();
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, 'シート1・設定・4つの表。花道・誓約書のタブは作らない');
+  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, 'シート1・設定・6つの表。花道・誓約書のタブは作らない');
   assert.deepEqual(json(h.rows(PRIVATE)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(OS)[0]), OS_HEADERS);
   assert.deepEqual(json(h.rows(TEST)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(TEST_OS)[0]), OS_HEADERS);
   for (const name of [PRIVATE, OS, TEST, TEST_OS]) assert.equal(h.book.getSheetByName(name).protections.length, 1, name + ' の見出しは保護される');
@@ -104,7 +106,8 @@ test('golden 「① 最初の設定」: 作るタブは4つだけ（申込原本
 
 test('golden 「① 最初の設定」: 花道の追加情報＝あり のときは、花道の2つのタブが加わる（見出しの順・保護）。誓約書の語は、どのタブにも出ない', () => {
   const h = harness(); h.ready({ 階級分け: 'あり', 花道の追加情報: 'あり' });
-  assert.deepEqual([...h.book.sheets.keys()], [...FROZEN_SHEETS, HN_TAB, HN_TEST_TAB]);
+  // 花道の2つは、くわしい戦績の2つより前に作られる（①の順）
+  assert.deepEqual([...h.book.sheets.keys()], ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB, RECORD_TAB, RECORD_TEST_TAB]);
   for (const name of [HN_TAB, HN_TEST_TAB]) { assert.deepEqual(json(h.rows(name)), [HN_HEADERS]); assert.equal(h.book.getSheetByName(name).protections.length, 1); }
   const everything = JSON.stringify([...h.book.sheets.values()].filter((s: any) => s.name !== '設定').map((s: any) => s.rows));
   assert.ok(!/誓約/.test(everything), '誓約の語は、設定タブのほかには出ない');
@@ -240,14 +243,14 @@ test('golden 申し込みページが送る鍵（photoDataUrl まで）は、足
 });
 
 test('golden core/setupV3: 版の一覧・pingの読み方・申し込みページへ渡す設定の鍵は、足す前のとおり（「なし」の読み取りに、誓約書の鍵は増えない）', () => {
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7']);
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261022.7');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1']);
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.1');
   const base = { app: 'tournament-os', protocol: 3, build: EXPECTED_RECEPTION_BUILD, ready: true, accepting: true, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: 'テスト大会', date: '2099-12-01', venue: '体育館', venueUrl: '', organizer: '主催ジム', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
   const parsed = parsePing(base);
   assert.deepEqual(Object.keys(parsed), ['app', 'protocol', 'build', 'ready', 'accepting', 'eventId', 'testComplete', 'settingsProblem', 'storageProblem', 'title', 'date', 'venue', 'venueUrl', 'organizer', 'contact', 'deadline', 'music', 'grade', 'age', 'comment', 'error', 'classMode', 'classes', 'classRows', 'weightMode', 'weights', 'weightRows', 'logo', 'errorTab', 'errorCell', 'errorExpected', 'errorInserted', 'errorRowGone', 'closedBy']);
   assert.equal(diagnose(parsed).stage, 'ready');
   const config = entryConfigFromPing(parsed, ENDPOINT_FOR_CONFIG, 'live');
-  assert.deepEqual(Object.keys(config), ['endpoint', 'protocol', 'mode', 'eventId', 'title', 'organizer', 'date', 'venue', 'venueUrl', 'deadline', 'contact', 'music', 'grade', 'age', 'comment']);
+  assert.deepEqual(Object.keys(config), ['endpoint', 'protocol', 'mode', 'eventId', 'title', 'organizer', 'date', 'venue', 'venueUrl', 'deadline', 'contact', 'music', 'grade', 'age', 'comment', 'recordDetail']);
   // 花道の印（hanamichiMode: true）だけは、来たときに鍵が1つ増える（足す前から）。誓約書の印は、「なし」では増えない
   const keys = Object.keys(parsed), withHn = Object.keys(parsePing({ ...base, hanamichiMode: true }));
   assert.deepEqual(withHn, [...keys.slice(0, keys.indexOf('logo') + 1), 'hanamichiMode', ...keys.slice(keys.indexOf('logo') + 1)], 'hanamichiMode は logo のあと');

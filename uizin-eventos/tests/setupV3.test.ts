@@ -166,8 +166,8 @@ test('クラス分け: 申込ページへ渡す設定にクラスが入り、読
   assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: 文が長すぎて、選手に渡すURLに入りません。「大会名」（セル B2）を短くしてください。$/);});
 
 test('クラス分け・階級分け: 古い版 3.20261004.4・3.20261010.5 も新しい版も受け付け、知らない版は古いと言う', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261022.7');
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7']);
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.1');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1']);
   assert.equal(diagnose(ping({ build: '3.20261004.4' })).stage, 'need-open');
   assert.equal(diagnose(ping({ build: '3.20261004.4', accepting: true })).stage, 'ready');
   assert.equal(diagnose(ping({ build: '3.20261004.4', ready: false })).stage, 'not-setup');
@@ -214,6 +214,7 @@ test('花道の追加情報: ping の hanamichiMode は、診断（迷う原因�
   assert.equal(on.replace('&hn=on', ''), plain, 'hn=on を取りのぞくと、「なし」のリンクと同じ');
   assert.equal(on.split('hn=on').length, 2, 'hn=on は1つだけ');
   const old = publicEntryHash(entryConfigFromPing(ping({ build: '3.20261019.6', accepting: true, hanamichiMode: true }), endpoint, 'live'));
-  assert.equal(old, plain, '印を返さない古い版（偽の印があっても）は、「なし」のリンクと同じ');
+  const oldPlain = publicEntryHash(entryConfigFromPing(ping({ build: '3.20261019.6', accepting: true }), endpoint, 'live'));
+  assert.equal(old, oldPlain, '印を返さない古い版（偽の印があっても）は、同じ版の「なし」のリンクと同じ（くわしい戦績の rd は、新しい版だけ付く）');
   assert.equal(publicEntryConfig(on).hanamichi, true); assert.equal(publicEntryConfig(plain).hanamichi, undefined);
 });

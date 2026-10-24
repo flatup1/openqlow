@@ -1839,7 +1839,29 @@ const openApply = async (ctx, over = {}, mode = 'live', hash = null) => {
   await settle(500);
   return page;
 };
-const fillField = async (page, key, value) => { const el = page.locator('#f-' + key); await el.fill(value); await el.blur(); };
+/**
+ * 戦績だけは、新しい版のシートのリンク（くわしい戦績の欄）なら、キックの数に直して入れる。古い1行の欄のリンクなら、そのまま文字を入れる。
+ * 『初試合』＝試合数0／『3勝1敗』＝試合数4・勝ち3・負け1／ほかの文字（<script> など）は、「他の格闘技」の競技名に入れて、文字として扱われるかを見る
+ */
+async function fillRecordDetail(page, value) {
+  const kick = value.match(/^(\d+)勝(\d+)敗(?:(\d+)分)?$/);
+  if (value === '初試合') await page.locator('#rd-kick-games').fill('0');
+  else if (kick) {
+    const [w, l, d] = [Number(kick[1]), Number(kick[2]), Number(kick[3] ?? 0)];
+    await page.locator('#rd-kick-games').fill(String(w + l + d));
+    await page.locator('#rd-kick-win').fill(String(w)); await page.locator('#rd-kick-loss').fill(String(l)); await page.locator('#rd-kick-draw').fill(String(d));
+  } else {
+    await page.locator('#rd-kick-games').fill('0');
+    await page.getByRole('radio', { name: 'あり', exact: true }).first().check();
+    await page.locator('#rd-other-sport-0').fill(value);
+    for (const [part, v] of [['games', '1'], ['win', '1'], ['loss', '0'], ['draw', '0'], ['nores', '0']]) await page.locator('#rd-other-' + part + '-0').fill(v);
+  }
+  await page.evaluate(() => { const el = document.activeElement; if (el && el.blur) el.blur(); });
+}
+const fillField = async (page, key, value) => {
+  if (key === 'record' && await page.locator('#rd-kick-games').count()) { await fillRecordDetail(page, value); return; }
+  const el = page.locator('#f-' + key); await el.fill(value); await el.blur();
+};
 /** a careful student: everything right. skip = field keys to leave empty. */
 async function fillApply(page, o = {}, { photo = true, consent = true, skip = [] } = {}) {
   const v = { ...GOOD, ...o };

@@ -72,7 +72,7 @@ test('golden core/setupV3: 花道のルールの無い ping は、読んでも�
   assert.equal('hanamichiRule' in withClass, false);
   assert.equal(diagnose(withClass).stage, 'ready');
   const config = entryConfigFromPing(withClass, ENDPOINT, 'live');
-  assert.deepEqual(Object.keys(config), ['endpoint', 'protocol', 'mode', 'eventId', 'title', 'organizer', 'date', 'venue', 'venueUrl', 'deadline', 'contact', 'music', 'grade', 'age', 'comment', 'classes', 'weights']);
+  assert.deepEqual(Object.keys(config), ['endpoint', 'protocol', 'mode', 'eventId', 'title', 'organizer', 'date', 'venue', 'venueUrl', 'deadline', 'contact', 'music', 'grade', 'age', 'comment', 'recordDetail', 'classes', 'weights']);
   assert.equal(publicEntryHash(config).includes('hr='), false);
 });
 
@@ -286,7 +286,7 @@ test('R8-1 core/setupV3: クラス分けがあるときだけ、選手に渡す�
   const config = entryConfigFromPing(withClass, ENDPOINT, 'live');
   assert.equal(config.hanamichiRule, RULE);
   assert.deepEqual(Object.keys(config).slice(-2), ['classes', 'hanamichiRule']);
-  assert.equal(publicEntryHash(config), HEAD.replace('test-cup', 'tos-0123456789').replace(/title=[^&]*/, 'title=' + encodeURIComponent('テスト大会')).replace(/organizer=[^&]*/, 'organizer=' + encodeURIComponent('主催ジム')).replace(/date=[^&]*/, 'date=' + encodeURIComponent(config.date)).replace(/venue=[^&]*/, 'venue=' + encodeURIComponent('体育館')).replace(/deadline=[^&]*/, 'deadline=' + encodeURIComponent(config.deadline)).replace(/contact=[^&]*/, 'contact=' + encodeURIComponent('0200000000')).replace('music=on', 'music=off') + '&cls=on&hr=' + packText(RULE) + '&protocol=3&mode=live&end=1');
+  assert.equal(publicEntryHash(config), HEAD.replace('test-cup', 'tos-0123456789').replace(/title=[^&]*/, 'title=' + encodeURIComponent('テスト大会')).replace(/organizer=[^&]*/, 'organizer=' + encodeURIComponent('主催ジム')).replace(/date=[^&]*/, 'date=' + encodeURIComponent(config.date)).replace(/venue=[^&]*/, 'venue=' + encodeURIComponent('体育館')).replace(/deadline=[^&]*/, 'deadline=' + encodeURIComponent(config.deadline)).replace(/contact=[^&]*/, 'contact=' + encodeURIComponent('0200000000')).replace('music=on', 'music=off') + '&cls=on&hr=' + packText(RULE) + '&rd=on&protocol=3&mode=live&end=1');
   const noClass = parsePing({ ...PING, hanamichiRule: RULE });
   const plain = entryConfigFromPing(noClass, ENDPOINT, 'live');
   assert.equal('hanamichiRule' in plain, false); assert.equal(publicEntryHash(plain).includes('hr='), false);
