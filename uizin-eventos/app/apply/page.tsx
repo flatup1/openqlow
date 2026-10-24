@@ -67,7 +67,7 @@ const HN_SCREEN_LABEL: Partial<Record<HanamichiKey, string>> = { hnReason: '趣�
 const hnLabel = (item: HanamichiItem): string => HN_SCREEN_LABEL[item.key] ?? item.label;
 const HN_SHORT = Object.fromEntries(HANAMICHI_ITEMS.map((item) => [item.key, hnLabel(item)])) as Record<HanamichiKey, string>;
 /** 「次はここ」の札の中の項目名。札は欄の上に浮かぶので、3行にのびると、上の欄の入れた文字にかさなる（320pxで）。2行におさまるよう、長い名前だけ短くする（欄の見出しは、そのまま） */
-const HN_MARK_NAME: Partial<Record<HanamichiKey, string>> = { hnRingKana: 'フリガナ' };
+const HN_MARK_NAME: Partial<Record<HanamichiKey, string>> = { hnRingKana: 'フリガナ', hnReason: '趣味・特技と理由' };
 const hnMarkName = (key: HanamichiKey): string => HN_MARK_NAME[key] ?? hnLabel(HN_BY_KEY[key]);
 const HN_NEXT_LABEL = Object.fromEntries(HANAMICHI_ITEMS.map((item) => [item.key, hnMarkName(item.key) + (item.kind === 'date' ? 'を選ぶ' : 'を入れる')])) as Record<HanamichiKey, string>;
 const isHnKey = (key: Key): key is HanamichiKey => key in HN_BY_KEY;
@@ -1521,7 +1521,8 @@ export default function PublicApply() {
               <input {...ids('gymPhone', { hint: true, example: true })} className={look('gymPhone')} type="tel" inputMode="tel" autoComplete="off" enterKeyHint="done" value={gymPhoneRaw} onChange={(e) => { setGymPhoneRaw(e.target.value); clearError('gymPhone'); }} onBlur={() => leaveSoon('gymPhone')} />
             </Field>
             <Note id="pledge-gym-permission-note">{GYM_PERMISSION_NOTE}</Note>
-            {tickBox('pledgeGym', pa.gymConsent && pa.gymPermission, (on) => { setPledgeAns((old) => ({ ...old, gymConsent: on, gymPermission: on })); clearError('pledgeGym'); clearError('gymPermission'); }, 'ここに✔を入れる', 'pledge-gym-title pledge-gym-text')}
+            {/* 黄色の札は2行（約62px）で□の上に浮かぶ。許可の注意文にかぶらないよう、□の上を、ほかの□と同じ広さ（gap の32px + 32px = 64px）にあけておく */}
+            <div className="mt-8">{tickBox('pledgeGym', pa.gymConsent && pa.gymPermission, (on) => { setPledgeAns((old) => ({ ...old, gymConsent: on, gymPermission: on })); clearError('pledgeGym'); clearError('gymPermission'); }, 'ここに✔を入れる', 'pledge-gym-title pledge-gym-text')}</div>
           </div>
         </div> : null}
       </section> : null}

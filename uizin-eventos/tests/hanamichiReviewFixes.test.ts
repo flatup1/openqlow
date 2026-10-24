@@ -34,18 +34,23 @@ test('直し2: 任意の項目（職業・他格闘歴）に赤いまちがい�
   assert.deepEqual(optional, ['hnOther', 'hnJob'], '任意は、この2つ（表を変えたら、この試験と画面の試験 N を見直す）');
 });
 
-test('直し3: 「次はここ」の札は、320pxで2行におさまる長さ。長い名前（リングネームのフリガナ）だけ短くする。見出しとほかの文は、そのまま', () => {
+test('直し3: 「次はここ」の札は、320pxで2行におさまる長さ。長い名前（リングネームのフリガナ・趣味・特技と始めた理由）だけ短くする。見出しとほかの文は、そのまま', () => {
   const map = PAGE.match(/const HN_MARK_NAME[^=]*= \{([^}]*)\}/);
   assert.ok(map, 'HN_MARK_NAME がある');
   const pairs = [...map![1].matchAll(/(hn\w+): '([^']+)'/g)].map((m) => [m[1], m[2]] as const);
-  assert.deepEqual(pairs.map(([key]) => key), ['hnRingKana']);
+  assert.deepEqual(pairs.map(([key]) => key), ['hnRingKana', 'hnReason']);
   const short = new Map<string, string>(pairs);
-  // 320pxで実際に測った（scripts/test-hanamichi-apply.mjs の N2 が、ぜんぶの札を本物のブラウザで測る）：「リングネームのフリガナを入れる／直す」だけが3行（90px）。ほかは2行（62px）以下
+  // 320pxで実際に測った（scripts/test-hanamichi-apply.mjs の N2 が、ぜんぶの札を本物のブラウザで測る）：「リングネームのフリガナを入れる／直す」と「趣味・特技と、始めた理由を入れる／直す」が3行（90px）。ほかは2行（62px）以下
   const ring = HANAMICHI_ITEMS.find((item) => item.key === 'hnRingKana')!;
   const name = short.get('hnRingKana')!;
   assert.ok(name.length < ring.label.length, '短い名前にしてある');
   assert.ok((name + 'を入れる').length <= 10 && (name + 'を直す').length <= 10, '短い名前なら、どちらの言い方も2行に楽におさまる: ' + name);
   assert.equal(ring.label, 'リングネームのフリガナ', '欄の見出しと、シートの見出しは、短くしない');
+  // 趣味・特技と始めた理由：札は短い名前で言う。欄の見出し（画面の言い方）は、そのまま
+  const reason = short.get('hnReason')!;
+  assert.equal(reason, '趣味・特技と理由');
+  assert.ok((reason + 'を入れる').length <= 12 && (reason + 'を直す').length <= 12, '短い名前なら、どちらの言い方も2行におさまる: ' + reason);
+  assert.match(PAGE, /const HN_SCREEN_LABEL[^=]*= \{ hnReason: '趣味・特技と、始めた理由' \};/, '欄の見出し（画面の言い方）は、短くしない');
   // 見出し（欄の名前）と、赤い帯の「直す所：…」は、短くしない
   assert.match(PAGE, /const SHORT: Record<Key, string> = \{ \.\.\.HN_SHORT,/);
   assert.match(PAGE, /return !empty && shown\(key\) \? `\$\{SHORT\[key\]\}を直す` : NEXT_LABEL\[key\];/, '前からの「直す」の行は、そのまま');
