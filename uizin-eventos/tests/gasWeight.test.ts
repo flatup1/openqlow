@@ -295,8 +295,8 @@ test('階級: 階級の読み方は、core/weightClass.ts と同じ答えにな�
 test('階級: ログや画面に区分・階級の送信値を出さない。禁止語が増えていない', () => {
   assert.ok(!/console\.log|Logger\.log\([^)]*(?:division|weightClass)/.test(script), 'ログに送信値を出さない');
   for (const word of ['getAccessToken', 'ScriptApp.getOAuthToken', 'UrlFetchApp', 'eval(', 'new Function']) assert.ok(!script.includes(word), word);
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.1';/);
-  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261024.1');
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.2';/);
+  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261024.2');
 });
 
 test('階級: 新しい版にすると、古い版で済ませた自動テストはやり直しになる（1回だけ）。区分も保存する', () => {

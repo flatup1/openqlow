@@ -714,6 +714,18 @@ test('結果の画面の再送フォーム: 誓約書が「あり」のときだ
   assert.deepEqual(names.slice(-10), [...PLEDGE_POST_KEYS]); assert.equal(names.length, 22 + 12 + 10);
 });
 
+/* ───────── 行が足りない表（見直し 2026-10-24） ───────── */
+
+test('行が足りない表でも、書く前に行を足す：申込原本・OS取込用・花道プロフィール・誓約記録（本物のシートは、行の外へ書くと止まり、受付番号が出ない）', () => {
+  const h = live({ 階級分け: 'あり', 花道の追加情報: 'あり' });
+  const tabsToFill = [PRIVATE, OS, HN_TAB, REC];
+  for (const name of tabsToFill) { const sheet = h.book.getSheetByName(name); sheet.maxRows = sheet.rows.length; }   // 書ける行が、もう無い
+  const HN = { hnNameKana: 'カクウ', hnGymKana: 'カクウ', hnRing: '架空の花', hnRingKana: 'カクウ', hnBirth: '1975-04-05', hnKickYears: '3', hnPerWeek: '2', hnOther: '', hnJob: '', hnHobby: '釣り', hnReason: '健康', hnMessage: 'よろしく' };
+  const receipt = h.call('saveEntry_', entry(h, 'live', { division: '花道・男子（40歳以上）', weightClass: '-70', ...HN }));
+  assert.ok(receipt, '受付番号が出る');
+  for (const name of tabsToFill) { assert.equal(h.rows(name).length, 2, name); assert.ok(h.book.getSheetByName(name).maxRows >= 2, name + '：行が足りている'); }
+});
+
 /* ───────── 自動テスト ───────── */
 
 test('自動テスト: 「あり」でも通る（架空の✔・名前・電話）。テスト誓約記録に1行。文の確認が まだ でも、保護者の同意が全員でも、ジム責任者の同意が なし でも通る', () => {
@@ -779,6 +791,6 @@ test('禁止語: 外へ出る道・評価の道を使わない。新しい権限
   const h = live();
   thrown(() => h.call('saveEntry_', entry(h, 'live', {}, { gymPermission: undefined }))); html(h, entry(h, 'live', {}, { gymName: '' }));
   assert.ok(!h.logs.join('\n').includes(GYM_NAME));
-  // 版は 3.20261024.1（まだ公開していない）
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.1';/); assert.equal(ping(h).build, '3.20261024.1');
+  // 版は 3.20261024.2（まだ公開していない）
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.2';/); assert.equal(ping(h).build, '3.20261024.2');
 });

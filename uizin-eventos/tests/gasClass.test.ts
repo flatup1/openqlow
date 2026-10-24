@@ -447,8 +447,8 @@ test('クラス: 古い申込ページ（クラスを送らない）から「あ
 
 test('クラス: 新しい版にすると、古い版で済ませた自動テストはやり直しになる（1回だけ）', () => {
   const h = harness(); h.ready(ON);
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.1';/);
-  assert.equal(ping(h).build, '3.20261024.1');
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.2';/);
+  assert.equal(ping(h).build, '3.20261024.2');
   h.props.set('lastTestBuild', '3.20261004.4');
   assert.equal(h.call('statusInfo_').testComplete, false);
   assert.throws(() => h.call('openEntries'), /先にテスト申込1件/);
@@ -465,7 +465,7 @@ test('クラス: 古い版で作った表（クラス列なし・古い自動テ
   makeOld(h); h.props.set('lastTestBuild', '3.20261004.4'); h.settingsSheet().rows.length = 12;
   h.call('setupTournament');
   const body = ping(h);
-  assert.equal(body.testComplete, true); assert.equal(body.build, '3.20261024.1'); assert.equal('classMode' in body, false);
+  assert.equal(body.testComplete, true); assert.equal(body.build, '3.20261024.2'); assert.equal('classMode' in body, false);
   assert.equal(h.rows(TEST)[0][18], 'クラス'); assert.equal(h.rows(TEST_OS)[0][11], 'クラス');
   assert.equal(h.rows(TEST).at(-1)![18], '');
   h.call('openEntries'); h.call('saveEntry_', h.params('live'));

@@ -6,7 +6,7 @@ import { emptyTournament, importFighters, isLocalTournament, type LocalFighter, 
 import { RECORD_DETAIL_HEADERS, type RecordDetail } from '../core/recordDetail.ts';
 import { decryptBackup, encryptBackup, preparePrivateEventSave } from '../app/lib/privateStore.ts';
 import {
-  isRecordsCsvName, mergeKeepExisting, pickZipRoster, recordDetailLines, recordDetailOnFighters, recordDetailsFromCsv, recordsCsvEntry, RECORDS_CSV_MAX_BYTES, sameExceptProgress, zipEntryName,
+  isRecordsCsvName, mergeKeepExisting, pickZipRoster, recordDetailLines, readRecordDetails, recordDetailOnFighters, recordDetailsFromCsv, recordsCsvEntry, RECORDS_CSV_MAX_BYTES, sameExceptProgress, zipEntryName,
 } from '../app/private/logic.ts';
 
 const fighter = (id: string, over: Partial<LocalFighter> = {}): LocalFighter => ({ id, gym: 'テストジム', name: '架空' + id, grade: '', age: '', height: '170', weight: '60', record: '初試合', comment: '', musicUrl: '', photoDataUrl: '', ...over });
@@ -65,6 +65,20 @@ test('records.csv: 壊れた行がある受付は、その受付だけ付けな�
   assert.equal(found.has('R-011'), false, 'キックの勝ち負けの合計が試合数と合わない');
   assert.equal(found.has('R-012'), false, 'キックの1行が無い（未経験と読まない）');
   assert.deepEqual(found.get('R-013'), { v: 1, kick: { games: 0, win: 0, loss: 0, draw: 0 }, others: [], titles: [] }, '未経験（試合数0）は正しく読む');
+});
+
+test('records.csv: 読めなかった・付けなかった数を、取り込みの知らせのために数える（読めた分は、そのまま）', () => {
+  const kick = (receipt: string, games: number, win: number, loss: number) => rec(receipt, { 申込日時: 'x', 種類: 'キック', '競技名・大会名': 'キックボクシング', 試合数: games, 勝ち: win, 負け: loss, 引き分け: 0 });
+  assert.deepEqual(readRecordDetails(undefined), { details: new Map(), unreadable: false, skipped: 0 }, 'records.csv が無い：知らせは要らない');
+  const wrongHead = readRecordDetails(bytesOf('受付番号,種類\r\nR-001,キック\r\n'));
+  assert.equal(wrongHead.unreadable, true, '見出しが違う：読めなかった');
+  assert.equal(wrongHead.details.size, 0);
+  const ok = readRecordDetails(bytesOf(csvOf(kick('R-001', 3, 2, 1), kick('R-002', 2, 1, 0), kick('R-003', 1, 1, 0))));
+  assert.equal(ok.unreadable, false);
+  assert.deepEqual([...ok.details.keys()], ['R-001', 'R-003'], '合計が合わない R-002 だけ付けない');
+  assert.equal(ok.skipped, 1, '付けなかった受付の数');
+  assert.equal(readRecordDetails(bytesOf(csvOf(...detailRows))).skipped, 0, 'ぜんぶ読めたときは 0');
+  assert.equal(recordDetailsFromCsv(bytesOf(csvOf(kick('R-001', 3, 2, 1)))).size, 1, 'recordDetailsFromCsv は、読めた分だけ返す（今までどおり）');
 });
 
 test('records.csv: 受付番号が名簿と一致しない行は、誰にも付かない。前後の空白は無視して付く', () => {
@@ -196,11 +210,16 @@ test('画面: くわしい戦績は、戦績がある人の行だけに出る。
   assert.match(page, /くわしい戦績が' \+ withRecords \+ '人分あります。/);
 });
 
-test('画面: ZIPの数え方は、records.csv を名簿の数・大きさに数えず、名簿（players.csv）と写真の読みは変えない', () => {
+test('画面: ZIPの数え方は、records.csv も数と大きさに数える（上限を通りぬけさせない）。大きすぎるときは読まないだけ。名簿（players.csv）と写真の読みは変えない', () => {
   const page = readFileSync(new URL('../app/private/page.tsx', import.meta.url), 'utf8');
-  const recordsAt = page.indexOf('if (isRecordsCsvName(name)) return entry.originalSize <= RECORDS_CSV_MAX_BYTES;');
-  assert.ok(recordsAt > 0, '読まない大きさの決まり');
-  assert.ok(recordsAt < page.indexOf('fileCount++; unpackedBytes += entry.originalSize;'), '名簿の数に数える前に、records.csv を分ける');
+  const countAt = page.indexOf('fileCount++; unpackedBytes += entry.originalSize;');
+  const recordsAt = page.indexOf('if (isRecordsCsvName(name)) {');
+  assert.ok(countAt > 0 && recordsAt > 0, '数える所と、records.csv の決まり');
+  assert.ok(countAt < recordsAt, 'records.csv を分ける前に、数と大きさに数える');
+  assert.ok(page.indexOf("throw new ImportProblem('too-many-files')") < recordsAt && page.indexOf("unpackedBytes > 100 * 1024 * 1024") < recordsAt, '数の上限・大きさの上限の検査が、records.csv より先');
+  assert.match(page, /return entry\.originalSize <= RECORDS_CSV_MAX_BYTES;/);
+  // 大きすぎて読まなかった知らせは、名簿と同じフォルダの records.csv のときだけ（ほかのフォルダのものは、もともと使わない）
+  assert.match(page, /if \(recordsCsvEntry\(bigRecords\.map\(\(name\) => \[name, name\] as const\), found\.csv\)\) recordsNotes\.push\('records\.csv が大きすぎる/);
   assert.match(page, /return isRosterCsvName\(name\) \|\| isPhotoName\(name\);/);
   assert.match(page, /const found = pickZipRoster\(entries\);/);
   assert.match(page, /recordDetailOnFighters\(tidied\.fighters, details\)/);

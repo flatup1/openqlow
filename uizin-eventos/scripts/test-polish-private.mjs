@@ -144,6 +144,17 @@ scenario('ZIP', 'ZIP with one top-level folder, Mac junk, upper-case names', asy
   const err = await page.locator('#import-error').innerText().catch(() => '');
   check(/ファイルが多すぎます/.test(err) && /3000まで/.test(err) && (err.match(/大きすぎます/g) || []).length === 0, 'ZIP with 3100 real files: its own message, no "大きすぎます" (' + short(err, 160) + ')');
   await ctx.close();
+  // records.csv も、ファイルの数に入れる（フォルダごとに records.csv を3100個置いても、止まる。数えないと、上限を通りぬけてしまう）
+  const manyRecords = {};
+  for (let i = 0; i < 3100; i++) manyRecords['d' + i + '/records.csv'] = strToU8('x');
+  manyRecords['f/players.csv'] = strToU8(csv);
+  const ctx2 = await newCtx();
+  const page2 = await open(ctx2, 'polish-zip-many-records-' + Date.now());
+  await importFile(page2, 'many-records.zip', 'application/zip', Buffer.from(zipSync(manyRecords)));
+  await page2.locator('#import-error').waitFor({ timeout: 20000 }).catch(() => {});
+  const err2 = await page2.locator('#import-error').innerText().catch(() => '');
+  check(/ファイルが多すぎます/.test(err2) && /3000まで/.test(err2), 'ZIP with 3100 records.csv files: counted like any file, so it stops (' + short(err2, 160) + ')');
+  await ctx2.close();
 });
 
 /* ───────────────────────── Overflow (S-1 / r1-136 / r1-10) and the photo box (r1-36) ───────────────────────── */

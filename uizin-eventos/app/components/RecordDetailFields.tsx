@@ -32,7 +32,7 @@ type Props = {
   problems?: string[];
 };
 
-/** 戦績の3つの欄と、下の赤い注意。試合の経験がある人だけ、くわしい欄が出る */
+/** 戦績の3つの欄と、下の赤い注意。勝ちの欄は、試合数が1以上のときだけ出る（試合数0＝未経験は、それで入力完了） */
 export function RecordDetailFields(p: Props): ReactNode {
   const games = countOf(p.kick.games);
   // 経験があるときだけ、勝ちを出す（未経験は試合数0で、入力は完了）。聞くのは、試合数と勝ちだけ
@@ -86,7 +86,7 @@ export function RecordDetailFields(p: Props): ReactNode {
         <h3 id="rd-other-title" className="text-lg font-black">【他の格闘技の試合経験】</h3>
         {onOff('他の格闘技の試合経験', p.otherOn, p.setOtherOn,
           () => { if (p.others.length === 0) p.setOthers([emptyOtherText()]); },
-          () => p.setOthers([]))}
+          () => { /* 入れた行は消さない（「なし」を押しまちがえても、入力が消えない。「なし」のあいだは、行を使わない） */ })}
         {p.otherOn ? <div className="mt-4 grid gap-4">
           {p.others.map((row, i) => (
             <div key={i} className="grid gap-3 rounded-xl border-2 border-slate-300 p-3">
@@ -106,7 +106,7 @@ export function RecordDetailFields(p: Props): ReactNode {
         <h3 id="rd-title-title" className="text-lg font-black">【タイトル・入賞歴】</h3>
         {onOff('タイトル・入賞歴', p.titleOn, p.setTitleOn,
           () => { if (p.titles.length === 0) p.setTitles([emptyTitleText()]); },
-          () => p.setTitles([]))}
+          () => { /* 入れた行は消さない（「なし」を押しまちがえても、入力が消えない。「なし」のあいだは、行を使わない） */ })}
         {p.titleOn ? <div className="mt-4 grid gap-4">
           {p.titles.map((row, i) => (
             <div key={i} className="grid gap-3 rounded-xl border-2 border-slate-300 p-3">

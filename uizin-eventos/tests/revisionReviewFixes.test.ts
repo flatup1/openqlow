@@ -58,7 +58,7 @@ test('F-gym-phone: 入れたが携帯電話の形ではない電話は、「ま�
   assert.equal(pledgeLockReason(plan, empty), 'ジム責任者の名前と電話が、まだです', '空のときの言い方は、今までのまま');
   assert.doesNotMatch(pledgeLockReason(plan, wrong), /まだです/);
   // 画面：ふつうの電話番号の欄と同じ考え方（typedWrong）で、「直す」と数える
-  assert.match(PAGE_CODE, /const typedWrong = \(key: Key\): boolean => isPledgeKey\(key\) && pledgeProblems\[key\]\?\.empty === false;/);
+  assert.match(PAGE_CODE, /const typedWrong = \(key: Key\): boolean => \(isPledgeKey\(key\) && pledgeProblems\[key\]\?\.empty === false\) \|\| \(key === 'record' && recordWrong\);/);
   assert.match(PAGE_CODE, /const empty = order\.find\(\(\[k\]\) => k === key\)\?\.\[1\] === false && !typedWrong\(key\);/, '👉の札：直すか、入れるか');
   assert.match(PAGE_CODE, /order\.filter\(\(\[key, ok\]\) => !ok && fields\[key\] && !typedWrong\(key\)\)/, '赤い帯：足りない所に数えない（直す所に入る）');
 });
@@ -98,7 +98,7 @@ test('F-count-note: 「入力は全部で◯個」は「いま」の数。花道
 
 test('F-memory-honest: 覚える物を、正直に言う。途中の入力＝選手の欄だけ（残さない物は、このリンクにある物だけ名前を出す）。送ったあと60分＝ジム名・連絡先・同意のチェック（と、ジム責任者の名前・電話）。保存先＝Googleのシートとドライブ', () => {
   // 申し込みページ：残さない物の一覧は、リンクにある物だけ（誓約書も花道も無い昔のリンクに、その言葉を出さない）
-  assert.match(PAGE_CODE, /const keptNot = \['連絡先', '写真', '同意のチェック', \.\.\.\(hanamichiOn \? \['花道の答え'\] : \[\]\), \.\.\.\(config\.pledge \? \['誓約書の✔'\] : \[\]\), \.\.\.\(config\.pledge\?\.gymMode \? \['ジム責任者の欄'\] : \[\]\)\]\.join\('・'\);/);
+  assert.match(PAGE_CODE, /const keptNot = \['連絡先', '写真', '同意のチェック', \.\.\.\(recordOn \? \['他の格闘技・タイトル・入賞歴'\] : \[\]\), \.\.\.\(hanamichiOn \? \['花道の答え'\] : \[\]\), \.\.\.\(config\.pledge \? \['誓約書の✔'\] : \[\]\), \.\.\.\(config\.pledge\?\.gymMode \? \['ジム責任者の欄'\] : \[\]\)\]\.join\('・'\);/);
   assert.equal((PAGE.match(/\{keptNot\}/g) || []).length, 4, '上の注意・下書きの案内・連絡先のそば・使い道');
   assert.equal((PAGE.match(new RegExp('入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。\\{keptNot\\}は、途中では覚えません。', 'g')) || []).length, 2, '連絡先のそば・使い道');
   assert.ok(PAGE.includes('更新したときは、選手の欄（ジム名・選手名・身長・体重など）の入力だけ、残っていることがあります（上に「戻す」が出ます）。{keptNot}は、入れ直しになります。'));

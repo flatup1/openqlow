@@ -78,9 +78,36 @@ export function recordProblems(kick: KickText, others: OtherText[], titles: Titl
   return out;
 }
 
-/** 決まりの形（キック）を、画面の文字に戻す（下書きを戻すとき） */
+/** 決まりの形（キック）を、画面の文字に戻す（下書きを戻すとき）。初試合（試合数0）の勝ちは、空に戻す（ふつうに入れるときも、勝ちは空から始まる。「0」が入ったままだと、あとで試合数を変えたとき、勝ちを入れていないのに「入った」ことになる） */
 export function kickTextOf(kick: KickRecord): KickText {
-  return { games: String(kick.games), win: String(kick.win) };
+  return { games: String(kick.games), win: kick.games === 0 ? '' : String(kick.win) };
+}
+
+const anyText = (...values: string[]): boolean => values.some((value) => textOf(value) !== '');
+const LIMITS = { games: 999, sport: 20, event: 60, class: 30, result: 60, yearMin: 1900, yearMax: 2100 };
+const countIn = (n: number): boolean => Number.isInteger(n) && n >= 0 && n <= LIMITS.games;
+
+/**
+ * 「入れたのに、まちがっている」欄があるか（黄色の札・直す所の言い方を「戦績を入れる」でなく「戦績を直す」にするため）。
+ * まだ入れていない欄（空）や、入力の途中（試合数だけ入れて、勝ちはまだ、など）は、まちがいと言わない。
+ * 入れた文字そのものが決まりに合わないとき（数字でない・試合数より多い勝ち・字数オーバー・4けたでない年）だけ true。
+ */
+export function recordIsWrong(kick: KickText, others: OtherText[], titles: TitleText[]): boolean {
+  const g = countOf(kick.games), w = countOf(kick.win);
+  if (anyText(kick.games) && !countIn(g)) return true;
+  if (g > 0 && anyText(kick.win) && (!countIn(w) || w > g)) return true;
+  for (const o of others) {
+    const og = countOf(o.games), ow = countOf(o.win);
+    if (textOf(o.sport).length > LIMITS.sport) return true;
+    if (anyText(o.games) && !(countIn(og) && og >= 1)) return true;
+    if (anyText(o.win) && (!countIn(ow) || (og >= 1 && ow > og))) return true;
+  }
+  for (const t of titles) {
+    const year = countOf(t.year);
+    if (anyText(t.year) && !(Number.isInteger(year) && year >= LIMITS.yearMin && year <= LIMITS.yearMax)) return true;
+    if (textOf(t.event).length > LIMITS.event || textOf(t.class).length > LIMITS.class || textOf(t.result).length > LIMITS.result) return true;
+  }
+  return false;
 }
 
 /** 戦績の言い方「5戦3勝2敗」（2026-10-24 owner：確認の画面を ○戦○勝○敗 で出したい）。聞くのは試合数と勝ちだけなので、敗＝試合数−勝ち（引き分けも「敗」に入る） */

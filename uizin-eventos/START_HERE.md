@@ -289,10 +289,10 @@ cd openqlow
 git checkout claude/uizin-eventos-v1-6f2l8p
 cd uizin-eventos
 npm ci
-npm run verify        # テスト78件 + ビルド。これが通らない状態で push しない
+npm run verify        # 単体テスト + ビルド（件数は増える）。これが通らない状態で push しない
 ```
 
-必要なもの: **Node.js 22以上**。依存パッケージは**ゼロ**です（Next.js と wrangler 以外に何も入れていません）。
+必要なもの: **Node.js 22.13以上**（`package.json` の engines）。入れている部品は、Next.js・React・fflate（ZIP）・read-excel-file（Excel）と、公開用の wrangler です。
 
 本番へ再公開するとき（**JIN の承認後**）:
 

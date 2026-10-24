@@ -7,9 +7,9 @@ import { hanamichiRuleOk } from './hanamichi.ts';
 import { PLEDGE_LIMITS, packPledge, parsePledgeCanon, type GuardianMode, type PledgeConfig } from './pledge.ts';
 
 /** Google側（Tournament_OS_Google受付_v3.gs）の RECEPTION_BUILD と同じ値。テストで一致を確認する。 */
-export const EXPECTED_RECEPTION_BUILD = '3.20261024.1';
+export const EXPECTED_RECEPTION_BUILD = '3.20261024.2';
 /** クラス分けが入る前の版（3.20261004.4）・階級分けが入る前の版（3.20261010.5）・花道の追加情報が入る前の版（3.20261019.6）・花道と誓約書の版（3.20261022.7）も、そのまま使える（その分の機能が無いだけ）。古い順に並べる */
-export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', EXPECTED_RECEPTION_BUILD] as const;
+export const ACCEPTED_RECEPTION_BUILDS = ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', EXPECTED_RECEPTION_BUILD] as const;
 
 /** build が、受け付ける版の一覧の中で since 以降か。一覧に無い版は false。新しい版を足しても、前の版の判定が「古い」に変わらないよう、等しいかではなく、位置で比べる */
 const buildSince = (build: string | undefined, since: (typeof ACCEPTED_RECEPTION_BUILDS)[number]): boolean => {
@@ -149,7 +149,7 @@ export function entryConfigFromPing(ping: Ping, endpoint: string, mode: 'test' |
   const config: PublicEntryConfig = {
     endpoint: endpoint.trim(), protocol: '3', mode, eventId: ping.eventId!, title: ping.title!, organizer: ping.organizer!, date: formatDateInput(ping.date!), venue: ping.venue!, venueUrl: ping.venueUrl || '',
     deadline: ping.deadline!, contact: ping.contact!, music: ping.music === true, grade: ping.grade || 'optional', age: ping.age || 'optional', comment: ping.comment || 'optional',
-    // くわしい戦績：新しい版のシートだけ（リンクに rd=on が付く）。クラスの鍵より前に置く
+    // くわしい戦績：新しい版のシートだけ（リンクに rd=on が付く）。リンクの鍵の並びは publicEntryHash が決める（ここに書く場所は、並びに関係しない）
     ...(supportsRecordDetail(ping) ? { recordDetail: true } : {}),
     ...(ping.classes ? { classes: ping.classes } : {}),
     // 花道のルール：クラス分けがあるときだけ（リンクに hr が付く）。「なし」・古い版では、項目ごと無い

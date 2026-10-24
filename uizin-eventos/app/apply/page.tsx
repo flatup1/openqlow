@@ -5,7 +5,7 @@ import { agoText, draftKey, draftIsEmpty, fitDraftToLink, linkMode, nextKey, pac
 import { classMismatch, CLASS_NEUTRAL_NOTE, suggestClass, suggestText } from '../../core/classRules.ts';
 import { formatDateInput } from '../../core/dateInput.ts';
 import { emailFormOk, entryErrors, lowerLinkHost, MUSIC_URL_FORM, phoneFormOk, stripInvisible, type EntryFighter } from '../../core/entryPackage.ts';
-import { HANAMICHI_ASKED_ITEMS, HANAMICHI_DERIVED_KEYS, HANAMICHI_SKIPPED_KEYS, hanamichiAgeFrom, hanamichiAskRequired, hanamichiBirthText, hanamichiClean, hanamichiFill, hanamichiFormItems, HANAMICHI_ITEMS, HANAMICHI_KEYS, HANAMICHI_RING_KANA_KEY, HANAMICHI_RING_KEY, isHanamichiDivision, isRealPastDate, jstDateText, validateHanamichi, type HanamichiItem, type HanamichiKey } from '../../core/hanamichi.ts';
+import { HANAMICHI_DERIVED_KEYS, HANAMICHI_SKIPPED_KEYS, hanamichiAgeFrom, hanamichiAskRequired, hanamichiBirthText, hanamichiClean, hanamichiFill, hanamichiFormItems, HANAMICHI_ITEMS, HANAMICHI_KEYS, HANAMICHI_RING_KANA_KEY, HANAMICHI_RING_KEY, isHanamichiDivision, isRealPastDate, jstDateText, validateHanamichi, type HanamichiItem, type HanamichiKey } from '../../core/hanamichi.ts';
 import { ageKnown, gymPhoneNormal, isUnaffiliated, PLEDGE_LIMITS, UNAFFILIATED_TEXT } from '../../core/pledge.ts';
 import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
 import { DIVISION_LABEL, findDivision, isDivisionError, noClassReviewValue, NO_CLASS_NOTE_APPLY, normalizeWeightClass, weightChoiceError, weightClassLabel } from '../../core/weightClass.ts';
@@ -14,7 +14,7 @@ import { CkaLogo } from '../components/CkaLogo.tsx';
 import { allTicked, blankPledgeAnswers, GYM_PERMISSION_NOTE, isPledgeItemKey, isPledgeKey, pledgeIssues, pledgeLockReason, pledgeOrder, pledgePlan, pledgePost, PLEDGE_BLOCKED_TEXT, type PledgeAnswers, type PledgeIssues, type PledgeKey } from '../components/pledgeForm.ts';
 import { photoToDataUrl } from '../lib/privateStore.ts';
 import { kickFromRecordText, kickRecordText, packRecordDetail, recordDetailProblems } from '../../core/recordDetail.ts';
-import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, RECORD_LOSS_NOTE, recordProblems, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
+import { detailFromText, EMPTY_KICK_TEXT, kickTextOf, RECORD_LOSS_NOTE, recordIsWrong, recordProblems, recordReviewPairs, type KickText, type OtherText, type TitleText } from '../components/recordDetailText.ts';
 import { RecordDetailFields } from '../components/RecordDetailFields.tsx';
 
 /*
@@ -149,7 +149,7 @@ function telDigits(contact: string): string {
   return match ? match[0].replace(/\D/g, '') : '';
 }
 
-/** 花道のとき、選手名はリングネームになる（花道プロフィールの欄は60字まで）。長いときの文 */
+/** 花道のとき、リングネームの欄が空なら、選手名がリングネームになる（花道プロフィールの欄は60字まで）。選手名が長いときの文。リングネームを入れた人にも、同じ決まりのまま（選手名は本名なので、60字をこえることは、まず無い） */
 const HN_NAME_MAX = 60;
 const hnNameLongText = (name: string): string => `花道のときは、選手名は${HN_NAME_MAX}字までです（いま${name.trim().length}字）。短くしてください。`;
 /** 子どもの区分か（学年を聞く区分）。全角・半角・空白をそろえて見る */
@@ -293,7 +293,7 @@ function validate(nf: EntryFighter, hasPhoto: boolean, config: PublicEntryConfig
     const p = problemFor(key, nf, { name: contact.name, phone: contact.phone, email: contact.email }, config);
     if (p) { if (!fields[key]) errors.push(p.text); fields[key] = p.text; }
   }
-  // 花道のとき、選手名がリングネームになる。60字をこえると、花道プロフィールに入らないので、選手名の欄で直してもらう
+  // 花道のとき、リングネームの欄が空だと、選手名がリングネームになる。60字をこえると、花道プロフィールに入らないので、選手名の欄で直してもらう（リングネームを入れた人にも、同じ決まりのまま）
   if (hanamichi && !fields.name && nf.name.trim().length > HN_NAME_MAX) { const text = hnNameLongText(nf.name); errors.push(text); put('name', text); }
   // 階級分け（シートの設定が「あり」のときだけ）。区分→階級の順に選ぶ。選んでいないと送れない。階級のない区分（小学生以下など）は、階級を選ばなくてよい
   if (config.weights) {
@@ -624,6 +624,8 @@ export default function PublicApply() {
   const detailNow = useMemo(() => detailFromText(kickText, otherOn ? otherRows : [], titleOn ? titleRows : []), [kickText, otherOn, otherRows, titleOn, titleRows]);
   /** 直す所（画面の欄の言い方）。空なら、決まりに合っている。聞くのは試合数と勝ちだけ（負け＝試合数−勝ち。recordDetailText.ts） */
   const recordMessages = useMemo(() => recordProblems(kickText, otherOn ? otherRows : [], titleOn ? titleRows : []), [kickText, otherOn, otherRows, titleOn, titleRows]);
+  /** 入れたのに、まちがっている欄がある（空・入力の途中は、まちがいと言わない）。黄色の札は「戦績を直す」、送れなかったときは「直す所」に入れる */
+  const recordWrong = recordOn && recordIsWrong(kickText, otherOn ? otherRows : [], titleOn ? titleRows : []);
   const kickOk = recordDetailProblems({ v: 1, kick: detailNow.kick, others: [], titles: [] }).length === 0;
   const recordNow = recordOn && kickOk ? kickRecordText(detailNow.kick) : '';
   useEffect(() => {
@@ -694,20 +696,22 @@ export default function PublicApply() {
   const recordPost: Record<string, string> = recordOn ? { recordDetail: packRecordDetail(detailNow) } : {};
   const pledgeReason = pledgeLockReason(plan, pa);
   /** 誓約書の欄に、何か入れたが、形がまちがっている（携帯電話の形ではない、など）。「足りない」ではなく「直す」 */
-  const typedWrong = (key: Key): boolean => isPledgeKey(key) && pledgeProblems[key]?.empty === false;
+  const typedWrong = (key: Key): boolean => (isPledgeKey(key) && pledgeProblems[key]?.empty === false) || (key === 'record' && recordWrong);
   /** 入力の数が、選び方で変わるリンクか。変わる理由の言葉（区分・年齢）を返す。変わらないリンクは ''（花道・誓約書が無い昔のリンクは、いつも '' で、見た目は今のまま） */
   const countMayChange = [
     config.hanamichi && weights && weights.divisions.some((d) => isHanamichiDivision(d.name)) ? DIVISION_LABEL : '',
     config.pledge?.mode === 'under18' && config.age !== 'off' ? (hanamichiOn ? '生年月日' : '年齢') : '',
   ].filter(Boolean).join('・');
   /** 入力の途中では覚えない物（正直に言う）。このリンクにある物だけ名前を出す：花道の質問が出ているとき＝花道の答え／誓約書のリンク＝誓約書の✔／ジム責任者の欄があるリンク＝ジム責任者の欄。誓約書も花道も無いリンクには、その言葉を出さない（見た目が今のまま） */
-  const keptNot = ['連絡先', '写真', '同意のチェック', ...(hanamichiOn ? ['花道の答え'] : []), ...(config.pledge ? ['誓約書の✔'] : []), ...(config.pledge?.gymMode ? ['ジム責任者の欄'] : [])].join('・');
+  const keptNot = ['連絡先', '写真', '同意のチェック', ...(recordOn ? ['他の格闘技・タイトル・入賞歴'] : []), ...(hanamichiOn ? ['花道の答え'] : []), ...(config.pledge ? ['誓約書の✔'] : []), ...(config.pledge?.gymMode ? ['ジム責任者の欄'] : [])].join('・');
   /** 「次の人のために60分だけ覚える」物のうち、「ジム名と連絡先」のほかにあるもの（正直に言う）。ジム責任者の名前・電話は、誓約書でジム責任者の欄があるリンクだけ */
   const kitExtra = (config.pledge?.gymMode ? '個人情報の同意のチェックと、ジム責任者の名前・電話' : '個人情報の同意のチェック') + 'も、いっしょに覚えます。';
   const thisYear = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
   const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, postGrade, postAge, postComment, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), ...(plan.on ? [JSON.stringify(pledgeNow)] : []), ...(recordOn ? [JSON.stringify(recordPost)] : [])]);
   const contactNow: ContactNow = { name: cname, phone, email };
-  const athleteInput = [fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl].some((v) => v.trim()) || Boolean(photo) || Boolean(chosenClass) || Boolean(division) || HANAMICHI_KEYS.some((key) => hn[key].trim()) || Boolean(birth.y || birth.m || birth.d)
+  // くわしい戦績の欄に、何か入れてあるか（試合数・勝ち・足した行。「あり」にしただけで、何も書いていない行は、入力と数えない）
+  const recordTyped = recordOn && (Boolean(kickText.games.trim() || kickText.win.trim()) || (otherOn && otherRows.some((row) => row.sport.trim() || row.games.trim() || row.win.trim())) || (titleOn && titleRows.some((row) => row.event.trim() || row.year.trim() || row.class.trim() || row.result.trim())));
+  const athleteInput = [fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl].some((v) => v.trim()) || Boolean(photo) || Boolean(chosenClass) || Boolean(division) || HANAMICHI_KEYS.some((key) => hn[key].trim()) || Boolean(birth.y || birth.m || birth.d) || recordTyped
     || pledgeAns.ticks.some(Boolean) || pledgeAns.guardian || pledgeAns.gymPermission || pledgeAns.gymConsent;
   const gymContactInput = [fighter.gym, contactName, contactPhone, contactEmail].some((v) => v.trim()) || consent || Boolean(gymNameRaw.trim() || gymPhoneRaw.trim());
   // 次の人のためのジム名・連絡先を入れただけ（手を入れていない）なら、「入力がある」とは数えない（閉じるときの確認・別の大会のリンクの確認を、出さない）
@@ -873,12 +877,14 @@ export default function PublicApply() {
 
   // 花道の追加の質問の「必須」の項目（画面の順）。リングネームが空のあいだは、そのフリガナは まだ要らない（数えない）
   const hnOrder: Array<[Key, boolean]> = hanamichiOn ? hnItems.filter((item) => hanamichiAskRequired(item) && hnNeedOk(item)).map((item): [Key, boolean] => [item.key, Boolean(hnNf[item.key])]) : [];
-  // 「次はここ」を決める順番には、任意の項目（職業・他格闘歴）も入れる。空でもよいので、いつも「できた」。赤いまちがい（長すぎ）が出たときだけ、黄色がそこへ行く。入力 N/M の数には入れない（hnOrder のまま）
+  // 「次はここ」を決める順番には、任意の項目（いまはリングネームだけ。職業・他格闘歴は聞かない）も入れる。空でもよいので、いつも「できた」。赤いまちがい（長すぎ）が出たときだけ、黄色がそこへ行く。入力 N/M の数には入れない（hnOrder のまま）
   const hnTodoOrder: Array<[Key, boolean]> = hanamichiOn ? hnItems.filter((item) => !hanamichiAskRequired(item) || hnNeedOk(item)).map((item): [Key, boolean] => [item.key, hanamichiAskRequired(item) ? Boolean(hnNf[item.key]) : true]) : [];
+  /** 戦績が済んだか。黄色の札（order）と、「入力 N/M」「いまここ」の数（infoItems）が、同じ答えを使う（くわしい戦績では、足した行がまちがっているあいだも「まだ」） */
+  const recordDone = !!nf.record && (!recordOn || recordMessages.length === 0);
   const order: Array<[Key, boolean]> = [['gym', !!nf.gym], ['name', !!nf.name], ['height', !!nf.height], ['weight', !!nf.weight],
     ...(weights ? [['division', !!pickedDivision] as [Key, boolean]] : []), ...(needClass ? [['weightClass', classPicked] as [Key, boolean]] : []),
     // くわしい戦績のリンクでは、キックだけでなく、足した行もぜんぶ決まりに合うまで「まだ」。途中の行があるあいだは、黄色が戦績に残る
-    ['record', !!nf.record && (!recordOn || recordMessages.length === 0)],
+    ['record', recordDone],
     ...(classes ? [['fighterClass', !!chosenClass] as [Key, boolean]] : []),
     ...(uiCfg.grade === 'required' ? [['grade', !!nf.grade] as [Key, boolean]] : []), ...(uiCfg.age === 'required' ? [['age', !!nf.age] as [Key, boolean]] : []), ...(uiCfg.comment === 'required' ? [['comment', !!nf.comment] as [Key, boolean]] : []),
     ...(config.music ? [['musicUrl', !!nf.musicUrl] as [Key, boolean]] : []), ['photo', !!photo],
@@ -1055,7 +1061,7 @@ export default function PublicApply() {
   const deadlineShort = deadlineInfo ? `${deadlineInfo.m}月${deadlineInfo.d}日` : config.deadline;
   const deadlineUnclear = Boolean(config.deadline) && !deadlineInfo;
 
-  const infoItems = [nf.gym, nf.name, nf.height, nf.weight, nf.record, photo,
+  const infoItems = [nf.gym, nf.name, nf.height, nf.weight, recordDone, photo,
     ...(weights ? [pickedDivision?.name ?? ''] : []), ...(needClass ? [classPicked ? weightClass : ''] : []),
     ...(classes ? [chosenClass] : []),
     ...(uiCfg.grade === 'required' ? [nf.grade] : []), ...(uiCfg.age === 'required' ? [nf.age] : []), ...(uiCfg.comment === 'required' ? [nf.comment] : []), ...(config.music ? [nf.musicUrl] : []), ...hnOrder.map(([, ok]) => ok)].map(Boolean);
@@ -1302,9 +1308,10 @@ export default function PublicApply() {
     if (!offer || !storeLink) return;
     const f = fitDraftToLink(offer.fields, { weights, classes: Boolean(config.classes?.enabled), hanamichiRule: Boolean(config.hanamichiRule), grade: config.grade !== 'off', age: config.age !== 'off', comment: config.comment !== 'off', music: config.music });
     const textKeys = ['gym', 'name', 'height', 'weight', 'record', 'grade', 'age', 'comment', 'musicUrl'] as const;
-    setFighter((old) => { const next = { ...old }; for (const key of textKeys) if (f[key]) next[key] = f[key]; return next; });
-    // くわしい戦績のあるリンクでは、戦績の一行から、キックの数を戻す（ほかの細かい欄は、下書きには入らないので、空に戻す）
-    if (recordOn) { const kick = f.record ? kickFromRecordText(f.record) : null; setKickText(kick ? kickTextOf(kick) : EMPTY_KICK_TEXT); setOtherRows([]); setTitleRows([]); setOtherOn(false); setTitleOn(false); }
+    // くわしい戦績のあるリンクでは、戦績の一行（fighter.record）は、キックの数から決まる。下書きの一行をそのまま入れない（読めない言い方だと、数が空なのに、戦績だけ入ったことになるため）
+    setFighter((old) => { const next = { ...old }; for (const key of textKeys) if (f[key] && !(recordOn && key === 'record')) next[key] = f[key]; return next; });
+    // 戦績の一行から、キックの数を戻す。戻せたときだけ戻す（読めないとき・下書きに戦績が無いときは、いま入れてある戦績に触らない。ほかの細かい欄は、下書きには入らないので、空に戻す）
+    if (recordOn) { const kick = f.record ? kickFromRecordText(f.record) : null; if (kick) { setKickText(kickTextOf(kick)); setOtherRows([]); setTitleRows([]); setOtherOn(false); setTitleOn(false); } }
     for (const key of textKeys) if (f[key]) clearError(key);
     if (f.division) {
       setDivision(f.division); setWeightClass(f.weightClass); clearError('division'); clearError('weightClass');
@@ -1555,7 +1562,7 @@ export default function PublicApply() {
             ...(weights ? [[DIVISION_LABEL, division], ['階級', noClass ? noClassReviewValue() : weightClass ? weightClassLabel(weightClass) : '']] : []),
             ...(recordOn ? recordReviewPairs(detailNow) : [['戦績', nf.record]]),
             ...(classes && chosenClass ? [['クラス', classes[chosenClass].name]] : []),
-            ...(uiCfg.grade !== 'off' ? [['学年', nf.grade]] : []), ...(uiCfg.age !== 'off' ? [['年齢', nf.age]] : []), ...(uiCfg.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(gradeAuto && postGrade ? [['学年（自動）', postGrade]] : []), ...(hanamichiOn ? [...(postAge ? [['年齢（生年月日から自動）', postAge]] : []), ...(postComment ? [['意気込み（メッセージと同じ）', postComment]] : [])] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
+            ...(uiCfg.grade !== 'off' ? [['学年', nf.grade]] : []), ...(uiCfg.age !== 'off' ? [['年齢', nf.age]] : []), ...(uiCfg.comment !== 'off' ? [['意気込み', nf.comment]] : []), ...(gradeAuto && postGrade ? [['学年（自動）', postGrade]] : []), ...(hanamichiOn ? [...(postAge ? [['年齢（生年月日から自動）', postAge]] : []), ...(postComment ? [['意気込み（メッセージと同じ）', postComment]] : [])] : []), ...(config.music ? [['入場曲のリンク', nf.musicUrl]] : [])] as string[][]).map(([label, value], i) => <div key={label + '#' + i} className="min-w-0"><dt className="text-[1.0625rem] text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words text-lg font-bold">{value.trim() ? value : '（未入力）'}</dd></div>)}
         </dl>
         {recordOn && (detailNow.kick.games > 0 || detailNow.others.length > 0) ? <p id="review-record-note" className="mt-2 text-[1.0625rem] text-slate-700">{RECORD_LOSS_NOTE}</p> : null}
         {classMismatchText ? <><ErrorLine icon="⚠" className="mt-3"><span className="min-w-0">{classMismatchText} 合っていれば、そのまま送れます。</span></ErrorLine><button type="button" onClick={() => fix('fighterClass')} className={greyBtn + ' mt-2 w-full'}>クラスを選び直す</button></> : null}</div>

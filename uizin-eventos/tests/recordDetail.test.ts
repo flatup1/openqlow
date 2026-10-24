@@ -5,12 +5,13 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   EMPTY_KICK, RECORD_DETAIL_HEADERS, RECORD_DETAIL_LIMITS, RECORD_KIND,
-  kickFromRecordText, kickRecordText, packRecordDetail, parseRecordDetail, parseRecordDetailCsv, recordDetailProblems, recordDetailRows,
+  kickFromRecordText, kickRecordText, packRecordDetail, parseRecordDetail, parseRecordDetailCsv, recordDetailProblems, recordDetailRows, unguardRecordCell,
   type RecordDetail,
 } from '../core/recordDetail.ts';
 import { LINK_END_KEY, publicEntryConfig, publicEntryHash, type PublicEntryConfig } from '../core/publicEntry.ts';
 import { ACCEPTED_RECEPTION_BUILDS, EXPECTED_RECEPTION_BUILD, supportsRecordDetail } from '../core/setupV3.ts';
-import { detailFromText, countOf, kickTextOf, RECORD_LOSS_NOTE, recordLine, recordProblems, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
+import { detailFromText, countOf, kickTextOf, RECORD_LOSS_NOTE, recordIsWrong, recordLine, recordProblems, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
+import { unguardCell } from '../core/privateTournament.ts';
 
 const full = (over: Partial<RecordDetail> = {}): RecordDetail => ({
   v: 1,
@@ -20,12 +21,22 @@ const full = (over: Partial<RecordDetail> = {}): RecordDetail => ({
   ...over,
 });
 
-test('キックの戦績の言い方：試合数0は「初試合」、勝ち負けは「3勝1敗」、引き分けがあるときだけ「分」', () => {
+test('キックの戦績の言い方（シートの一行も）：試合数0は「初試合」、ほかは「4戦3勝1敗」（2026-10-24 owner）。前の版の引き分けつきだけ「分」', () => {
   assert.equal(kickRecordText({ games: 0, win: 0, loss: 0, draw: 0 }), '初試合');
-  assert.equal(kickRecordText({ games: 4, win: 3, loss: 1, draw: 0 }), '3勝1敗');
-  assert.equal(kickRecordText({ games: 4, win: 2, loss: 1, draw: 1 }), '2勝1敗1分');
+  assert.equal(kickRecordText({ games: 4, win: 3, loss: 1, draw: 0 }), '4戦3勝1敗');
+  assert.equal(kickRecordText({ games: 5, win: 3, loss: 2, draw: 0 }), '5戦3勝2敗');
+  assert.equal(kickRecordText({ games: 4, win: 2, loss: 1, draw: 1 }), '4戦2勝1敗1分', '前の版で引き分けが入っているデータ');
+  assert.equal(kickRecordText({ games: 999, win: 0, loss: 999, draw: 0 }), '999戦0勝999敗');
+  // 確認の画面の行（recordLine）と、シートの一行は、同じ字になる（いまの画面は引き分けを聞かないので、draw は 0）
+  for (const [games, win] of [[1, 0], [1, 1], [4, 3], [12, 7], [999, 999]]) assert.equal(kickRecordText({ games, win, loss: games - win, draw: 0 }), recordLine(games, win));
   assert.deepEqual(kickFromRecordText('初試合'), EMPTY_KICK);
-  assert.deepEqual(kickFromRecordText('2勝1敗1分'), { games: 4, win: 2, loss: 1, draw: 1 });
+  assert.deepEqual(kickFromRecordText('4戦3勝1敗'), { games: 4, win: 3, loss: 1, draw: 0 });
+  assert.deepEqual(kickFromRecordText('4戦2勝1敗1分'), { games: 4, win: 2, loss: 1, draw: 1 });
+  assert.deepEqual(kickFromRecordText('2勝1敗1分'), { games: 4, win: 2, loss: 1, draw: 1 }, '前の言い方（2026-10-24 より前の下書き）も読む');
+  assert.deepEqual(kickFromRecordText('3勝1敗'), { games: 4, win: 3, loss: 1, draw: 0 });
+  assert.equal(kickFromRecordText('5戦3勝1敗'), null, '「戦」の数と、勝ち・負けの合計が合わないときは、数に戻さない');
+  assert.equal(kickFromRecordText('0戦0勝0敗'), null, '試合数0は「初試合」の言い方だけ');
+  for (const kick of [{ games: 1, win: 0, loss: 1, draw: 0 }, { games: 7, win: 7, loss: 0, draw: 0 }, { games: 9, win: 4, loss: 3, draw: 2 }]) assert.deepEqual(kickFromRecordText(kickRecordText(kick)), kick, '作った一行から、同じ数に戻る');
   assert.equal(kickFromRecordText('空手3年'), null, '数字の形でない言葉は、数に戻さない');
   assert.equal(kickFromRecordText(''), null);
 });
@@ -167,7 +178,7 @@ test('「敗」の一言：試合数から勝ちを引いた数で、引き分�
   const page = readFileSync(new URL('../app/apply/page.tsx', import.meta.url), 'utf8');
   assert.match(page, /\{recordOn && \(detailNow\.kick\.games > 0 \|\| detailNow\.others\.length > 0\) \? <p id="review-record-note" className="mt-2 text-\[1\.0625rem\] text-slate-700">\{RECORD_LOSS_NOTE\}<\/p> : null\}/, '新しいリンクで、戦に出る行があるときだけ');
   // 送る形・シート・準備の画面は、変えていない（出す場所は確認の画面だけ）
-  assert.equal(kickRecordText({ games: 4, win: 3, loss: 1, draw: 0 }), '3勝1敗', 'シートの戦績の一行は、これまでどおり');
+  assert.equal(kickRecordText({ games: 4, win: 3, loss: 1, draw: 0 }), '4戦3勝1敗', 'シートの戦績の一行も、同じ ○戦○勝○敗（2026-10-24 owner。『分』は出さない）');
 });
 
 test('申し込みリンク：rd=on は、protocol 3 のときだけ読む。付けないリンク（古いリンク）には、rd が無い', () => {
@@ -178,16 +189,74 @@ test('申し込みリンク：rd=on は、protocol 3 のときだけ読む。付
   const newLink = publicEntryHash({ ...base, recordDetail: true });
   assert.ok(newLink.includes('rd=on'));
   assert.equal(publicEntryConfig(newLink).recordDetail, true);
-  const old2 = publicEntryHash({ ...base, protocol: '2', recordDetail: true }).replace('protocol=2', 'protocol=2');
+  const old2 = publicEntryHash({ ...base, protocol: '2', recordDetail: true });
+  assert.ok(old2.includes('rd=on') && old2.includes('protocol=2'), 'rd=on が付いた protocol 2 のリンク（試す材料が、ほんとうにそうなっている）');
   assert.equal(publicEntryConfig(old2).recordDetail, undefined, 'protocol 2 の受付では、rd を読まない');
   assert.ok(LINK_END_KEY.length > 0);
 });
 
-test('シートの版：くわしい戦績は 3.20261024.1 以降だけ。前の版はそのまま使える（一覧に残っている）', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.1');
+test('シートの版：くわしい戦績は 3.20261024.1 以降だけ（.2 も同じ）。前の版はそのまま使える（一覧に残っている）', () => {
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.2');
+  assert.ok((ACCEPTED_RECEPTION_BUILDS as readonly string[]).includes('3.20261024.1'), '前の版（3.20261024.1）も、まだ受け付ける');
   assert.ok((ACCEPTED_RECEPTION_BUILDS as readonly string[]).includes('3.20261022.7'), '花道と誓約書の版は、まだ受け付ける');
   assert.equal(supportsRecordDetail({ build: '3.20261022.7' }), false);
   assert.equal(supportsRecordDetail({ build: '3.20261024.1' }), true);
+  assert.equal(supportsRecordDetail({ build: '3.20261024.2' }), true);
   assert.equal(supportsRecordDetail({ build: '3.20261099.9' }), false, '知らない版は、くわしい戦績を付けない');
   assert.equal(supportsRecordDetail(null), false);
 });
+
+/* ───────── 見直し（2026-10-24）で直した所 ───────── */
+
+test('records.csv の「\'」: = + - @ で始まる文字の前の守りの \' を、1つだけ外す。名簿の unguardCell と同じ答え（本物の \' は外さない）', () => {
+  for (const value of ["'-60kg", "'+80kg", "'=架空", "'@優勝", "'-", "'--", "'''-x"]) assert.equal(unguardRecordCell(value), unguardCell(value), JSON.stringify(value));
+  assert.equal(unguardRecordCell("'-60kg"), '-60kg');
+  assert.equal(unguardRecordCell("''-60kg"), "''-60kg", "守りは先頭の1つだけ。先頭の \' のあとが \' なので（= + - @ ではない）、外さない");
+  for (const value of ['-60kg', 'abc', "'abc", "O'Brien", '', "'"]) assert.equal(unguardRecordCell(value), unguardCell(value), JSON.stringify(value) + '：外さない');
+});
+
+test('parseRecordDetailCsv: 文字の欄（競技名・大会名・階級・成績）は守りの \' を外す。数の欄・受付番号・種類は、そのまま', () => {
+  const head = RECORD_DETAIL_HEADERS.map((cell) => '"' + cell + '"').join(',');
+  const row = (cells: string[]) => cells.map((cell) => '"' + cell + '"').join(',');
+  const csv = [head,
+    row(['R-1', '2026-10-01', 'キック', 'キックボクシング', '4', '3', '1', '0', '', '', '', '']),
+    row(['R-1', '2026-10-01', '他の格闘技', "'-柔道", '2', '1', '1', '0', '0', '', '', '']),
+    row(['R-1', '2026-10-01', 'タイトル・入賞', "'=架空カップ", '', '', '', '', '', '2025', "'-60kg", "'@優勝"]),
+  ].join('\r\n');
+  const parsed = parseRecordDetailCsv(csv);
+  assert.ok(parsed.ok);
+  const detail = parsed.ok ? parsed.byReceipt.get('R-1') : null;
+  assert.equal(detail?.others[0].sport, '-柔道');
+  assert.deepEqual(detail?.titles[0], { event: '=架空カップ', year: 2025, class: '-60kg', result: '@優勝' });
+  assert.deepEqual(detail?.kick, { games: 4, win: 3, loss: 1, draw: 0 });
+});
+
+test('kickTextOf: 初試合（試合数0）の勝ちは空に戻す。ふつうの勝ちは、そのまま', () => {
+  assert.deepEqual(kickTextOf({ games: 0, win: 0, loss: 0, draw: 0 }), { games: '0', win: '' });
+  assert.deepEqual(kickTextOf({ games: 4, win: 0, loss: 4, draw: 0 }), { games: '4', win: '0' }, '4戦0勝は、勝ち0を入れた人');
+  assert.deepEqual(kickTextOf({ games: 4, win: 3, loss: 1, draw: 0 }), { games: '4', win: '3' });
+});
+
+test('recordIsWrong: 入れたのにまちがっているときだけ true。空・入力の途中は false（黄色の札を「入れる」でなく「直す」にする目安）', () => {
+  const none: KickText = { games: '', win: '' };
+  assert.equal(recordIsWrong(none, [], []), false, '何も入れていない');
+  assert.equal(recordIsWrong({ games: '3', win: '' }, [], []), false, '試合数だけ：入力の途中');
+  assert.equal(recordIsWrong({ games: '0', win: '' }, [], []), false, '未経験');
+  assert.equal(recordIsWrong({ games: '3', win: '5' }, [], []), true, '勝ちが試合数より多い');
+  assert.equal(recordIsWrong({ games: '3', win: 'あ' }, [], []), true, '勝ちが数字でない');
+  assert.equal(recordIsWrong({ games: 'あ', win: '' }, [], []), true, '試合数が数字でない');
+  assert.equal(recordIsWrong({ games: '1000', win: '' }, [], []), true, '試合数が上限をこえる');
+  assert.equal(recordIsWrong({ games: '３', win: '２' }, [], []), false, '全角の数字は読める');
+  const ok: KickText = { games: '5', win: '3' };
+  assert.equal(recordIsWrong(ok, [{ sport: '', games: '', win: '' }], []), false, '足したばかりの空の行は、まちがいではない');
+  assert.equal(recordIsWrong(ok, [{ sport: '柔道', games: '', win: '' }], []), false, '競技名だけ：入力の途中');
+  assert.equal(recordIsWrong(ok, [{ sport: '柔道', games: '3', win: '4' }], []), true, '勝ちが試合数より多い');
+  assert.equal(recordIsWrong(ok, [{ sport: '柔道', games: '0', win: '' }], []), true, '他の格闘技の試合数は1以上');
+  assert.equal(recordIsWrong(ok, [{ sport: 'あ'.repeat(21), games: '1', win: '1' }], []), true, '競技名が長すぎる');
+  assert.equal(recordIsWrong(ok, [{ sport: 'あ'.repeat(20), games: '1', win: '1' }], []), false, '競技名がちょうど20字');
+  assert.equal(recordIsWrong(ok, [], [{ event: '', year: '', class: '', result: '' }]), false, '空のタイトルの行');
+  assert.equal(recordIsWrong(ok, [], [{ event: '架空', year: '25', class: '', result: '' }]), true, '4けたでない年');
+  assert.equal(recordIsWrong(ok, [], [{ event: '架空', year: '2025', class: '', result: '' }]), false, '年はよい。ほかはまだ');
+  assert.equal(recordIsWrong(ok, [], [{ event: 'あ'.repeat(61), year: '', class: '', result: '' }]), true, '大会名が長すぎる');
+});
+

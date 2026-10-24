@@ -36,20 +36,28 @@ export const EMPTY_KICK: KickRecord = { games: 0, win: 0, loss: 0, draw: 0 };
 const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= RECORD_DETAIL_LIMITS.games;
 const isText = (value: unknown, max: number): value is string => typeof value === 'string' && value.trim() !== '' && value.trim().length <= max;
 
-/** キックの戦績の、1行の言い方。試合数0は「初試合」（クラス分けの言い方と同じ）。例：「3勝1敗」「2勝1敗1分」 */
+/**
+ * キックの戦績の、1行の言い方（シートの「戦績・競技歴」・名簿・準備の画面・A3に出る）。試合数0は「初試合」（クラス分けの言い方と同じ）。
+ * 例：「4戦3勝1敗」（2026-10-24 owner：シートも ○戦○勝○敗 にする。『分』は出さない＝いまの画面は引き分けを聞かず、敗に入る）。
+ * 前の版の申し込みで、引き分けが本当の数で入っているときだけ「4戦2勝1敗1分」。
+ */
 export function kickRecordText(kick: KickRecord): string {
   if (kick.games === 0) return '初試合';
-  return kick.win + '勝' + kick.loss + '敗' + (kick.draw > 0 ? kick.draw + '分' : '');
+  return kick.games + '戦' + kick.win + '勝' + kick.loss + '敗' + (kick.draw > 0 ? kick.draw + '分' : '');
 }
 
-/** 「3勝1敗」「2勝1敗1分」「初試合」から、キックの数に戻す（下書きを戻すとき用）。合わなければ null */
+/**
+ * 「4戦3勝1敗」「4戦2勝1敗1分」「初試合」から、キックの数に戻す（下書きを戻すとき用）。合わなければ null。
+ * 前の言い方（「3勝1敗」「2勝1敗1分」。2026-10-24 より前の下書き）も読む。「戦」があるときは、勝ち・負け・引き分けの合計と合うときだけ。
+ */
 export function kickFromRecordText(text: string): KickRecord | null {
   const t = String(text ?? '').trim();
   if (t === '初試合') return { ...EMPTY_KICK };
-  const m = t.match(/^(\d{1,3})勝(\d{1,3})敗(?:(\d{1,3})分)?$/);
+  const m = t.match(/^(?:(\d{1,3})戦)?(\d{1,3})勝(\d{1,3})敗(?:(\d{1,3})分)?$/);
   if (!m) return null;
-  const win = Number(m[1]), loss = Number(m[2]), draw = m[3] ? Number(m[3]) : 0;
+  const win = Number(m[2]), loss = Number(m[3]), draw = m[4] ? Number(m[4]) : 0;
   const games = win + loss + draw;
+  if (m[1] !== undefined && Number(m[1]) !== games) return null;
   if (games < 1 || games > RECORD_DETAIL_LIMITS.games) return null;
   return { games, win, loss, draw };
 }
@@ -141,7 +149,17 @@ export function recordDetailRows(receiptNo: string, submittedAt: string, detail:
   return rows;
 }
 
-/** records.csv（見出しつき）を読み、受付番号ごとの中身にする。見出しが違うときは、ぜんぶ読まない（名簿は別に読める） */
+/**
+ * 受付のシートは、数式にならないよう、= + - @ で始まる文字の前に ' を1つ足して書く（受付の clean_）。records.csv の文字の欄にも、その ' が付いている。
+ * 読み込むときは、その守りの ' を1つだけ外す（名簿 players.csv の読み込み unguardCell と同じ決まり。あちらは privateTournament.ts にあり、
+ * その privateTournament.ts がこのファイルを読むので、ここに同じ形を持つ。試験が、2つが同じ答えになることを見ている）。
+ * （' のあとが = + - @ でないときは、本物の ' なので外さない）
+ */
+export function unguardRecordCell(value: string): string {
+  return /^'[=+\-@]/.test(value) ? value.slice(1) : value;
+}
+
+/** records.csv（見出しつき）を読み、受付番号ごとの中身にする。見出しが違うときは、ぜんぶ読まない（名簿は別に読める）。文字の欄は、守りの ' を外してから使う */
 export function parseRecordDetailCsv(text: string): { ok: true; byReceipt: Map<string, RecordDetail> } | { ok: false; reason: string } {
   const rows = csvRows(String(text ?? '').replace(/^﻿/, ''));
   if (!rows.length) return { ok: true, byReceipt: new Map() };
@@ -154,9 +172,10 @@ export function parseRecordDetailCsv(text: string): { ok: true; byReceipt: Map<s
     const kind = (row[2] ?? '').trim();
     const cur: RecordDetail = byReceipt.get(receipt) ?? { v: RECORD_DETAIL_VERSION, kick: { ...EMPTY_KICK }, others: [], titles: [] };
     const num = (i: number) => Number((row[i] ?? '').trim());
+    const str = (i: number) => unguardRecordCell((row[i] ?? '').trim());
     if (kind === RECORD_KIND.kick) cur.kick = { games: num(4), win: num(5), loss: num(6), draw: num(7) };
-    else if (kind === RECORD_KIND.other) cur.others.push({ sport: (row[3] ?? '').trim(), games: num(4), win: num(5), loss: num(6), draw: num(7), noResult: num(8) });
-    else if (kind === RECORD_KIND.title) cur.titles.push({ event: (row[3] ?? '').trim(), year: num(9), class: (row[10] ?? '').trim(), result: (row[11] ?? '').trim() });
+    else if (kind === RECORD_KIND.other) cur.others.push({ sport: str(3), games: num(4), win: num(5), loss: num(6), draw: num(7), noResult: num(8) });
+    else if (kind === RECORD_KIND.title) cur.titles.push({ event: str(3), year: num(9), class: str(10), result: str(11) });
     else continue;
     byReceipt.set(receipt, cur);
   }

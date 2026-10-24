@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import { harness } from './helpers/gasV3Harness.ts';
-import { kickRecordText, parseRecordDetail, recordDetailProblems, recordDetailRows, RECORD_DETAIL_HEADERS } from '../core/recordDetail.ts';
+import { kickRecordText, parseRecordDetail, parseRecordDetailCsv, recordDetailProblems, recordDetailRows, RECORD_DETAIL_HEADERS } from '../core/recordDetail.ts';
+import { recordDetailsFromCsv } from '../app/private/logic.ts';
 
 type H = ReturnType<typeof harness>;
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
@@ -98,16 +99,16 @@ test('正しいくわしい戦績（テスト申込）: テスト戦績詳細に
     [receipt, when, 'タイトル・入賞', '架空カップ', '', '', '', '', '', '2025', '-70kg', '優勝'],
   ]);
   assert.equal(rowsOf(h, REC).length, 1, '本番の表は、テストでは書かない');
-  assert.equal(rowOf(h, TEST, receipt)[9], '3勝1敗', '送られた「適当な文」ではなく、キックの1行');
-  assert.equal(rowOf(h, TEST_OS, receipt)[7], '3勝1敗', 'OS取込用の戦績も同じ');
+  assert.equal(rowOf(h, TEST, receipt)[9], '4戦3勝1敗', '送られた「適当な文」ではなく、キックの1行（○戦○勝○敗。2026-10-24 owner）');
+  assert.equal(rowOf(h, TEST_OS, receipt)[7], '4戦3勝1敗', 'OS取込用の戦績も同じ（名簿ZIP・準備の画面・A3にも、この形で出る）');
 });
 
-test('正しいくわしい戦績（本番）: 戦績詳細に書く。キックは未経験なら「初試合」、引き分けがあれば「2勝1敗1分」。キックの行は必ず1行', () => {
+test('正しいくわしい戦績（本番）: 戦績詳細に書く。キックは未経験なら「初試合」、前の版の引き分けつきは「4戦2勝1敗1分」。キックの行は必ず1行', () => {
   const h = live();
   const none = h.call('saveEntry_', form(h, 'live', { v: 1, kick: { games: 0, win: 0, loss: 0, draw: 0 }, others: [], titles: [] }));
   const drawn = h.call('saveEntry_', form(h, 'live', detail({ kick: { games: 4, win: 2, loss: 1, draw: 1 }, others: [], titles: [] })));
   assert.equal(rowOf(h, PRIVATE, none)[9], '初試合');
-  assert.equal(rowOf(h, PRIVATE, drawn)[9], '2勝1敗1分');
+  assert.equal(rowOf(h, PRIVATE, drawn)[9], '4戦2勝1敗1分');
   assert.deepEqual(json(rowsOf(h, REC).slice(1)), [
     [none, String(rowOf(h, PRIVATE, none)[1]), 'キック', 'キックボクシング', '0', '0', '0', '0', '', '', '', ''],
     [drawn, String(rowOf(h, PRIVATE, drawn)[1]), 'キック', 'キックボクシング', '4', '2', '1', '1', '', '', '', ''],
@@ -251,6 +252,32 @@ test('名簿ZIP: 戦績詳細に行があるときだけ records.csv を付け�
   assert.ok(!csv.includes('09000000000') && !csv.includes('test@example.com'), '連絡先は入れない');
 });
 
+test('つなぎ目: 受付が書き出した records.csv を、準備の画面の読み込みに、そのまま通す。= + - @ で始まる文字（守りの \' つき）も、元の戦績に戻る（階級「-60kg」など）', () => {
+  const h = live();
+  const original = detail({
+    others: [{ sport: '-柔道', games: 2, win: 1, loss: 1, draw: 0, noResult: 0 }, { sport: '+空手', games: 1, win: 0, loss: 1, draw: 0, noResult: 0 }],
+    titles: [{ event: '=架空カップ', year: 2025, class: '-60kg', result: '@優勝' }, { event: '架空,"大会"', year: 2024, class: '+80kg', result: '3位' }],
+  });
+  const receipt = h.call('saveEntry_', form(h, 'live', original));
+  h.call('exportTournament');
+  const bytes = h.zips.at(-1).find((f: any) => f.name === 'records.csv').bytes;
+  const csv = bytes.toString('utf8');
+  // 受付のシートの上では、数式にならないよう「'」が付く（見える表でも、書き出しでも）
+  assert.ok(csv.includes('"\'-60kg"') && csv.includes('"\'-柔道"') && csv.includes('"\'@優勝"'), '書き出しには、守りの \' が付いている');
+  const wanted = { v: 1, kick: original.kick, others: original.others, titles: original.titles };
+  const core = parseRecordDetailCsv(csv.replace(/^\uFEFF/, ''));
+  assert.ok(core.ok);
+  assert.deepEqual(json(core.ok ? core.byReceipt.get(receipt) : null), json(wanted), 'core の読み込み：守りの \' を外して、元に戻る');
+  const screen = recordDetailsFromCsv(new Uint8Array(bytes));
+  assert.deepEqual(json(screen.get(receipt)), json(wanted), '準備の画面の読み込みも、同じ（1字増えて決まりに落ちて、その人の戦績が黙って消えることもない）');
+  // 字数がちょうど上限（階級30字・競技名20字）で、- で始まっても、読める
+  const edge = live();
+  const edgeReceipt = edge.call('saveEntry_', form(edge, 'live', detail({ others: [{ sport: '-' + 'あ'.repeat(19), games: 1, win: 1, loss: 0, draw: 0, noResult: 0 }], titles: [{ event: '架空', year: 2025, class: '-' + 'ク'.repeat(29), result: '優勝' }] })));
+  edge.call('exportTournament');
+  const edgeBytes = edge.zips.at(-1).find((f: any) => f.name === 'records.csv').bytes;
+  assert.ok(recordDetailsFromCsv(new Uint8Array(edgeBytes)).has(edgeReceipt), '上限ちょうどの文字が - で始まっても、その受付の戦績が付く');
+});
+
 test('名簿ZIP: 戦績詳細の見出しがちがうのに行があるときは、ZIPを作らずに止める。テストのZIPには records.csv を付けない', () => {
   const h = live();
   h.call('saveEntry_', form(h, 'live', detail()));
@@ -263,6 +290,51 @@ test('名簿ZIP: 戦績詳細の見出しがちがうのに行があるときは
   assert.ok(testReceipt);
   t.call('exportTestTournament');
   assert.deepEqual(json(t.zips.at(-1).map((f: any) => f.name)).filter((n: string) => !n.startsWith('photos/')), ['players.csv']);
+});
+
+/* ───────── 見直し（2026-10-24）で直した所：行の数・pingでの見出しの点検 ───────── */
+
+test('行が足りない表（新しい表は1000行）でも、書く前に行を足す：申込原本・OS取込用・戦績詳細。受付番号が出ないまま止まらない（本物のシートは、行の外へ書くと止まる）', () => {
+  const h = live();
+  const full = (name: string) => { const s = h.book.getSheetByName(name); s.maxRows = s.rows.length; };   // 書ける行が、もう無い
+  for (const name of [PRIVATE, OS, REC]) full(name);
+  const receipt = h.call('saveEntry_', form(h, 'live', detail()));
+  assert.ok(/^[A-Z0-9]+-[0-9A-F]{20}$/.test(receipt), '受付番号が出る');
+  assert.equal(rowsOf(h, PRIVATE).length, 2); assert.equal(rowsOf(h, OS).length, 2); assert.equal(rowsOf(h, REC).length, 4, '見出し＋キック・他の格闘技・タイトル');
+  for (const name of [PRIVATE, OS, REC]) assert.ok(h.book.getSheetByName(name).maxRows >= h.book.getSheetByName(name).rows.length, name + '：行の数が、書いた行に足りている');
+  // 同じ申込の再送は、行を増やさない（足りていれば、足さない）
+  const before = [PRIVATE, OS, REC].map((name) => h.book.getSheetByName(name).maxRows);
+  assert.equal(h.call('saveEntry_', form(h, 'live', detail(), { requestId: rowOf(h, PRIVATE, receipt)[17] })), receipt);
+  assert.deepEqual([PRIVATE, OS, REC].map((name) => h.book.getSheetByName(name).maxRows), before);
+  // 1回に11行（他の格闘技5＋タイトル5＋キック1）書くときも、足りるまで足す
+  const many = live();
+  many.book.getSheetByName(REC).maxRows = 2;
+  const big = detail({ others: Array.from({ length: 5 }, (_, i) => ({ sport: '競技' + i, games: 2, win: 1, loss: 1, draw: 0, noResult: 0 })), titles: Array.from({ length: 5 }, (_, i) => ({ event: '架空' + i, year: 2020 + i, class: '-60kg', result: '優勝' })) });
+  many.call('saveEntry_', form(many, 'live', big));
+  assert.equal(rowsOf(many, REC).length, 12); assert.ok(many.book.getSheetByName(REC).maxRows >= 12);
+});
+
+test('ping: 「戦績詳細」「テスト戦績詳細」の見出しが崩れたら、直すタブ・マス・あるべき文字を言う（新しいリンクの申込は、すべて断られるので）。直せば、元どおり。表が無い・空のときは、問題にしない', () => {
+  const ping = (h: H) => JSON.parse(h.call('doGet', { parameter: { action: 'ping' } }).text);
+  const h = live();
+  assert.equal(ping(h).ready, true); assert.equal(ping(h).error, undefined, 'ふつうは、何も言わない');
+  rowsOf(h, REC)[0][3] = 'ちがう';
+  const body = ping(h);
+  assert.equal(body.ready, false); assert.equal(body.error, 'headers'); assert.equal(body.errorTab, REC); assert.equal(body.errorCell, 'D1'); assert.equal(body.errorExpected, RECORD_DETAIL_HEADERS[3]);
+  assert.ok(!JSON.stringify(body).includes('架空') && !JSON.stringify(body).includes('@'), '申込の中身・連絡先は入れない');
+  rowsOf(h, REC)[0][3] = RECORD_DETAIL_HEADERS[3];
+  assert.equal(ping(h).ready, true, '直せば、元どおり');
+  rowsOf(h, REC_TEST)[0][0] = 'ちがう';
+  assert.equal(ping(h).errorTab, REC_TEST, 'テストの表も同じ'); assert.equal(ping(h).errorCell, 'A1');
+  rowsOf(h, REC_TEST)[0][0] = RECORD_DETAIL_HEADERS[0];
+  // 表が無い（古いシート・消した）・空のときは、問題にしない（受付が作る）
+  h.book.sheets.delete(REC); h.book.sheets.delete(REC_TEST);
+  assert.equal(ping(h).ready, true, '表が無い');
+  // 見出しが崩れていても、新しいリンクでない申込（くわしい戦績なし）は、これまでどおり受けられる
+  const g = live(); rowsOf(g, REC)[0][3] = 'ちがう';
+  assert.ok(g.call('saveEntry_', g.params('live')), 'くわしい戦績なしの申込は、通る');
+  // ⑤の状態の表示（showStatus）にも、同じ直す所を出す
+  g.call('showStatus'); assert.ok(g.alerts.some((text: string) => text.includes('戦績詳細') && text.includes('D1')), '⑤にも出る');
 });
 
 /* ───────── .gs と core/recordDetail.ts が同じ答え ───────── */

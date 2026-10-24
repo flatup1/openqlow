@@ -151,11 +151,11 @@ test('core/hanamichi.ts: 画面（DOM）・通信・時計に頼らない。公�
 
 /* ───────── core/setupV3.ts ───────── */
 
-test('版: EXPECTED は 3.20261024.1。古い4つも受け付け続ける（古い順）', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.1');
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1']);
+test('版: EXPECTED は 3.20261024.2。古い5つも受け付け続ける（古い順）', () => {
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.2');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', '3.20261024.2']);
   const gs = readFileSync(new URL('../public/templates/Tournament_OS_Google受付_v3.gs', import.meta.url), 'utf8');
-  assert.ok(gs.includes("const RECEPTION_BUILD = '3.20261024.1';"));
+  assert.ok(gs.includes("const RECEPTION_BUILD = '3.20261024.2';"));
 });
 
 test('supportsWeightClasses / supportsHanamichi: 受け付ける版の一覧の中の「位置」で比べる。新しい版を足しても、前の版が「古い」に変わらない', () => {

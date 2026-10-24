@@ -13,7 +13,7 @@
 #   TOS_SCENARIOS="M1,M2"（確認の中の「場面」だけ動かす。各確認の TOS_ONLY として渡す）
 # 手元だけで動く: デプロイしない。通信は 127.0.0.1 だけ。1つの手順が失敗しても、ほかは最後まで動かす。
 # 全部合格したときだけ、.verify-ok（コミットと中身の指紋）を書く。npm run deploy:private が、公開の前に見る。
-#   ただし、build:private を とばした（TOS_SKIP_BUILD=1）とき、見出しの付かないサーバー（TOS_PLAIN_SERVER=1）のとき、一部だけ動かしたとき（--fast・TOS_ONLY）は書かない
+#   ただし、build:private を とばした（TOS_SKIP_BUILD=1）とき、見出しの付かないサーバー（TOS_PLAIN_SERVER=1）のとき、一部だけ動かしたとき（--fast・TOS_ONLY・TOS_SCENARIOS）は書かない
 #   （いま作った公開用フォルダを、本番と同じ約束の下で確かめたことにならないため）。
 # ポート（TOS_PORT）が もう使われていたら、はじめに止まって、ポートを変えるよう言う（ほかのサーバーを相手に、合格と言わないため）。
 # 目安の合格数（2026年10月12日の時点。数は増える）:
@@ -35,6 +35,7 @@ done
 # 指紋（.verify-ok）を書いてよい動かし方か。書いてよいときは空、だめなときは理由を返す
 stamp_blocker() {
   if [ -n "${TOS_ONLY:-}" ]; then echo "TOS_ONLY で一部だけ動かした"; return; fi
+  if [ -n "${TOS_SCENARIOS:-}" ]; then echo "TOS_SCENARIOS で、確認の中の場面を一部だけ動かした"; return; fi
   if [ "$FAST" != "0" ]; then echo "--fast で一部をとばした"; return; fi
   if [ "${TOS_SKIP_BUILD:-0}" = "1" ]; then echo "TOS_SKIP_BUILD=1 で、build:private をとばした（いまの中身で作った公開用フォルダではない）"; return; fi
   if [ "${TOS_PLAIN_SERVER:-0}" = "1" ]; then echo "TOS_PLAIN_SERVER=1 で、_headers（CSP）なしのサーバーを使った"; return; fi
@@ -72,7 +73,7 @@ build_private() {
 # 作業フォルダに、コミットしてはいけない物が混ざっていないか（名簿・バックアップ・秘密・手元の作業フォルダ）
 git_watch() {
   local bad
-  bad="$(git -C "$ROOT/.." status --porcelain --untracked-files=all 2>/dev/null | grep -E '^\?\? ' | sed 's/^?? //' | grep -E '(^|/)(next-stale-cache[^/]*|bd-[^/]*|audit|srv\.pid)(/|$)|\.(csv|zip|enc|log|map|jpe?g|png)$|(^|/)\.env' | grep -vE '(^|/)docs/manual-images/[^/]+\.jpg$' || true)"
+  bad="$(git -C "$ROOT/.." status --porcelain --untracked-files=all 2>/dev/null | grep -E '^\?\? ' | sed 's/^?? //' | grep -E '(^|/)(next-stale-cache[^/]*|bd-[^/]*|audit|srv\.pid)(/|$)|\.(csv|zip|enc|log|map|jpe?g|png|xlsx?|pdf)$|(^|/)\.env' | grep -vE '(^|/)docs/manual-images/[^/]+\.jpg$' || true)"
   if [ -n "$bad" ]; then
     echo "コミットしてはいけない物が、まだ追跡していない形で並んでいます（.gitignore に足すか、消してください）:"
     printf '%s\n' "$bad" | head -20

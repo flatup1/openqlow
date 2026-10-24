@@ -14,7 +14,7 @@ import {
   backupFileName, backupIsFresh, boutProblems, classTrouble, openLockReason, classChanged, classChoices, classifyRestoreError, classifySaveError, clockText, contractKg, decodeCsvBytes, decryptWithRetry, dropBlankBouts, entryConfigFromHash, eventListName, FALLBACK_ERROR,
   describeClassChange, describeWeightChange, effectiveClassSettings, fromEventIdFromHash, gapLevel, heightWeightSwapped, importErrorParts, ImportProblem, importProblemKind, importKind, isBlankBout, isHalfBout, isPastDate, isTitleReal, looksLikeBackup, mergeKeepExisting, nextAction, normalizeImported, oldCopyText, overwriteBoxText,
   photoErrorText, pickMarker, restoreBoxText, restoreLastRemoved, RESTORE_TEXT, sameEntryConfig, sameExceptProgress, sameFighterExists, sameKey, saveErrorText, saveLine, saveReasonShort, saveReasonText, shortProblem, tidyClass, tidyWeight, tooLong, useOtherBoxText, weightChanged, weightChoiceTrouble, weightColumnNote, weightGap, weightMissing, weightMixAt, weightMixText, weightUnreadable,
-  classNamesOf, excelCellText, isPhotoName, isRecordsCsvName, isRosterCsvName, isZipJunk, pickZipRoster, recordDetailOnFighters, recordDetailsFromCsv, recordsCsvEntry, RECORDS_CSV_MAX_BYTES, TEXT_LIMITS, zipEntryName,
+  classNamesOf, excelCellText, isPhotoName, isRecordsCsvName, isRosterCsvName, isZipJunk, pickZipRoster, readRecordDetails, recordDetailOnFighters, recordsCsvEntry, RECORDS_CSV_MAX_BYTES, TEXT_LIMITS, zipEntryName,
   type FighterDiff, type Follow, type ImportFileKind, type NextKey, type RemovedBout, type SaveErrorKind, type SaveState,
 } from './logic.ts';
 import { checkFighter, checkNumber, describeChange, FIELD_LABEL, foldKana, normalizePassword, readDate, shorten, type FieldKey, type FieldProblem } from './normalize.ts';
@@ -265,6 +265,8 @@ function PrivateAdmin() {
   const restoreBusyRef = useRef(false);
   const barRef = useRef<HTMLDivElement | null>(null);
   const pendingJump = useRef<{ id: string; box?: string; instant?: boolean } | null>(null);
+  /** jump がフォーカスを移している最中か（そのときは、帯の下の欄を、すぐには動かさない。動き終わってから見る） */
+  const jumpingRef = useRef(false);
   const lastTouched = useRef(-1);
   const backupAutoOpened = useRef(false);
   const navRef = useRef<HTMLElement | null>(null);
@@ -487,6 +489,16 @@ function PrivateAdmin() {
     return () => vv.removeEventListener('resize', check);
   }, []);
 
+  // 下の帯に重なっている欄（キーボードのフォーカス）を、帯の上まで動かす。ブラウザは、欄が画面の中に入っていると動かさない
+  // （帯の下に隠れても、そのまま。Tab で欄に移ったときも、帯が大きくなったときも起きる）ため、自分で動かす。動かす先は、帯の余白（scroll-padding-bottom）が決める
+  const revealAboveBar = (target: Element | null) => {
+    const bar = barRef.current;
+    if (!bar || !(target instanceof HTMLElement) || target === document.body || bar.contains(target)) return;
+    // 見えない入れ物に入ったファイル選択は、ラベル（見える部分）で測る
+    const shown = target instanceof HTMLInputElement && target.type === 'file' ? target.closest('label') ?? target : target;
+    const at = shown.getBoundingClientRect(), under = bar.getBoundingClientRect();
+    if (at.bottom > under.top + 2 && at.top < under.bottom) shown.scrollIntoView({ block: 'nearest' });
+  };
   // 下の帯の高さと、上の手順ナビの高さを測る。帯は本文の下の余白に、ナビは移動先の上の余白にする（隠れないように）。
   // 2つあわせて画面の4割をこえるとき（幅1024px未満。PCの左のナビは数えない）は、2つとも くっつけない（chromeFlow）。試合当日の画面の下の帯（live/page.tsx の FOOT_FLOW_SHARE）と同じ割合
   const measureChrome = () => {
@@ -499,6 +511,8 @@ function PrivateAdmin() {
     if (!barTightRef.current && barH > window.innerHeight * 0.4) { barTightRef.current = true; setBarTight(true); }
     if (bar) root.style.setProperty('--bar-h', barH + 'px');
     if (nav) root.style.setProperty('--nav-h', (flow ? 0 : navH) + 'px');
+    // 帯が大きくなったとき、いま選んでいる欄（キーボードのフォーカス）が帯の下に入ってしまうことがある。余白（--bar-h）を直しても、画面は動かないため、見える所まで動かす
+    revealAboveBar(document.activeElement);
   };
   useEffect(() => {
     const el = barRef.current;
@@ -506,10 +520,23 @@ function PrivateAdmin() {
     const root = document.documentElement;
     measureChrome();
     window.addEventListener('resize', measureChrome);
+    // 欄へ移った直後に見る。ゆっくり動く移動（jump）の最中に移ったときは、動き終わってから、もう一度見る（動き終わりの位置で、帯に重なることがあるため）
+    let stopWatch = () => {};
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target as Element | null;
+      // jump（ゆっくり動く移動）が移したフォーカスは、すぐには動かさない（動きを、とちゅうで止めてしまうため）。動き終わってから見る
+      if (!jumpingRef.current) revealAboveBar(target);
+      stopWatch();
+      const again = () => { stopWatch(); if (document.activeElement === target) revealAboveBar(target); };
+      const timer = window.setTimeout(again, 800);
+      document.addEventListener('scrollend', again, { once: true });
+      stopWatch = () => { window.clearTimeout(timer); document.removeEventListener('scrollend', again); stopWatch = () => {}; };
+    };
+    document.addEventListener('focusin', onFocusIn);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureChrome);
     observer?.observe(el);
     if (navRef.current) observer?.observe(navRef.current);
-    return () => { window.removeEventListener('resize', measureChrome); observer?.disconnect(); root.style.removeProperty('--bar-h'); root.style.removeProperty('--nav-h'); };
+    return () => { window.removeEventListener('resize', measureChrome); document.removeEventListener('focusin', onFocusIn); stopWatch(); observer?.disconnect(); root.style.removeProperty('--bar-h'); root.style.removeProperty('--nav-h'); };
   }, [ready, loadError]);
 
   // 帯の中身が変わったら、しまうのをやめて、測り直す（しまったまま測ると、また大きく戻って、行ったり来たりするため）
@@ -529,7 +556,7 @@ function PrivateAdmin() {
     // 遠い所（取り込んだあと）へは、ゆっくり動かさない。動いている間に押すと、まだ動いている画面の途中のボタンを押してしまうため
     const calm = instant || (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     box.scrollIntoView({ block: 'start', behavior: calm ? 'auto' : 'smooth' });
-    if (el) el.focus({ preventScroll: true });
+    if (el) { jumpingRef.current = true; try { el.focus({ preventScroll: true }); } finally { jumpingRef.current = false; } }
   }, []);
   useEffect(() => {
     const pending = pendingJump.current;
@@ -773,6 +800,9 @@ function PrivateAdmin() {
       let csv = '';
       let photos: Record<string, Uint8Array> = {};
       let details = new Map<string, RecordDetail>();
+      // くわしい戦績（records.csv）が付けられなかったときの知らせ（名簿は、ふつうに読む）
+      const recordsNotes: string[] = [];
+      const bigRecords: string[] = [];
       if (kind === 'zip') {
         const { unzipSync } = await import('fflate');
         let unpackedBytes = 0, fileCount = 0;
@@ -780,11 +810,11 @@ function PrivateAdmin() {
           const name = zipEntryName(entry.name);
           // Macが入れるごみ（__MACOSX・.DS_Store・._名前）は、数にも大きさにも入れない
           if (isZipJunk(name)) return false;
-          // くわしい戦績（records.csv）は、名簿の数・大きさには数えない。大きすぎるときは読まないだけ（名簿は止めない）
-          if (isRecordsCsvName(name)) return entry.originalSize <= RECORDS_CSV_MAX_BYTES;
           fileCount++; unpackedBytes += entry.originalSize;
           if (fileCount > 3001) throw new ImportProblem('too-many-files');
           if (unpackedBytes > 100 * 1024 * 1024) throw new ImportProblem('too-large');
+          // くわしい戦績（records.csv）も、数と大きさには数える（ZIP爆弾の守り）。ただ、大きすぎるときは読まないだけ（名簿は止めない）
+          if (isRecordsCsvName(name)) { if (entry.originalSize > RECORDS_CSV_MAX_BYTES) bigRecords.push(name); return entry.originalSize <= RECORDS_CSV_MAX_BYTES; }
           // 1枚が20MBをこえる写真は、その1枚だけ入れない（名簿とほかの写真は、読む）
           if (entry.originalSize > 20 * 1024 * 1024) { if (isPhotoName(name)) { bigPhotos.push(name.slice(name.lastIndexOf('/') + 1)); return false; } throw new ImportProblem('too-large'); }
           return isRosterCsvName(name) || isPhotoName(name);
@@ -794,7 +824,12 @@ function PrivateAdmin() {
         if (!found) throw new ImportProblem('no-list');
         // くわしい戦績（records.csv）は、名簿と同じフォルダにあるときだけ読む。無い・読めないときは、何も付けない（エラーにしない）
         const recordsRaw = recordsCsvEntry(entries, found.csv);
-        details = recordDetailsFromCsv(recordsRaw ? unpacked[recordsRaw] : undefined);
+        const read = readRecordDetails(recordsRaw ? unpacked[recordsRaw] : undefined);
+        details = read.details;
+        // 大きすぎて読まなかった records.csv が、名簿と同じフォルダのものだったときだけ言う（ほかのフォルダのものは、もともと使わない）
+        if (recordsCsvEntry(bigRecords.map((name) => [name, name] as const), found.csv)) recordsNotes.push('records.csv が大きすぎる（5MBまで）ので、くわしい戦績は付けていません。');
+        else if (read.unreadable) recordsNotes.push('records.csv が読めなかった（見出しが違う）ので、くわしい戦績は付けていません。');
+        else if (read.skipped > 0) recordsNotes.push('records.csv のうち' + read.skipped + '人分は、決まりに合わないので、付けていません。');
         // 名簿のCSVは、ふつうのCSVと同じ読み方（まずUTF-8、文字化けしたらExcelのCSV＝Shift_JIS）
         csv = decodeCsvBytes(unpacked[found.csv]);
         // 写真は 'photos/<名前>.jpg' の形にそろえる（フォルダごと圧縮された ZIP でも、同じように読む）
@@ -835,6 +870,10 @@ function PrivateAdmin() {
       let text = fighters.length + '人分を読み込みました（写真 ' + fighters.filter((fighter) => fighter.photoDataUrl).length + '枚）。';
       const withRecords = fighters.filter((fighter) => fighter.recordDetail).length;
       if (withRecords > 0) text += 'くわしい戦績が' + withRecords + '人分あります。';
+      // 名簿にない管理番号の戦績は、誰にも付かない（付いた人の数と合わない理由）
+      const unmatched = details.size - fighters.filter((fighter) => details.has(fighter.id.trim())).length;
+      if (unmatched > 0) recordsNotes.push('名簿にない管理番号の戦績が' + unmatched + '人分あったので、付けていません。');
+      text += recordsNotes.join('');
       if (current.length > 0) {
         text += '新しく入った人は' + merge.added + '人です。';
         if (same > 0) text += '名前とジムが同じ人が' + same + '人いたので、足していません。';
@@ -845,6 +884,7 @@ function PrivateAdmin() {
         if (merge.classesFilled > 0) text += 'クラスが空だった' + merge.classesFilled + '人に、クラスを足しました。';
         if (!result.hasClassColumn && current.some((fighter) => (fighter.fighterClass ?? '').trim())) text += 'このファイルにはクラスの列が無いので、今のクラスはそのままです。';
         if (merge.weightsFilled > 0) text += '区分・階級が空だった' + merge.weightsFilled + '人に、区分・階級を足しました。';
+        if (merge.recordsFilled > 0) text += 'くわしい戦績が無かった' + merge.recordsFilled + '人に、くわしい戦績を足しました。';
         text += weightColumnNote(current, result.hasDivisionColumn, result.hasWeightClassColumn);
       }
       // 前の大会の名簿が残っているかもしれないとき: 今の名簿に同じ管理番号の人が1人もいなくて、新しい人が足された

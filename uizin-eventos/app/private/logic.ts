@@ -241,23 +241,28 @@ export function recordsCsvEntry(entries: ReadonlyArray<readonly [string, string]
   return hit ? hit[0] : null;
 }
 
+/** records.csv を読んだ結果。unreadable＝ファイルが読めない・見出しが違う。skipped＝決まりに合わなくて付けなかった受付の数 */
+export type RecordDetailsRead = { details: Map<string, RecordDetail>; unreadable: boolean; skipped: number };
+
 /**
  * records.csv（UTF-8）を、受付番号ごとのくわしい戦績にする。読めないときは空（何も付けない）。
  * 見出しが違うときは、ぜんぶ読まない。キックの1行が無い受付・決まりに合わない行がある受付は、その受付だけ付けない（一部だけ出さない）。
  */
-export function recordDetailsFromCsv(bytes: Uint8Array | undefined): Map<string, RecordDetail> {
+export function readRecordDetails(bytes: Uint8Array | undefined): RecordDetailsRead {
   const found = new Map<string, RecordDetail>();
-  if (!bytes) return found;
+  if (!bytes) return { details: found, unreadable: false, skipped: 0 };
   try {
     const text = new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
     const parsed = parseRecordDetailCsv(text);
-    if (!parsed.ok) return found;
+    if (!parsed.ok) return { details: found, unreadable: true, skipped: 0 };
     // キックの1行は、受付ごとに必ずある（受付の決まり）。キックの行が無い受付は、未経験と読まない
     const withKick = new Set(toRowsIndexed(text).rows.filter(({ row }) => row['種類'] === RECORD_KIND.kick).map(({ row }) => row['受付番号']));
     for (const [receipt, detail] of parsed.byReceipt) if (withKick.has(receipt) && recordDetailProblems(detail).length === 0) found.set(receipt, detail);
+    return { details: found, unreadable: false, skipped: parsed.byReceipt.size - found.size };
   } catch { /* 読めないときは、何も付けない（名簿は別に読める） */ }
-  return found;
+  return { details: new Map(), unreadable: true, skipped: 0 };
 }
+export const recordDetailsFromCsv = (bytes: Uint8Array | undefined): Map<string, RecordDetail> => readRecordDetails(bytes).details;
 
 /** 受付番号（＝管理番号。前後の空白は無視）で、選手に付ける。付かなかった人は、そのまま（何も足さない） */
 export function recordDetailOnFighters(fighters: LocalFighter[], details: Map<string, RecordDetail>): LocalFighter[] {

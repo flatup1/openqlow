@@ -680,6 +680,32 @@ test('r2-156 / r2-164 開いたあとも、帯に「✓ 開きました（別の
 });
 import { nextLabel as nextLabelOf } from '../app/private/logic.ts';
 
+test('下の帯に重なったキーボードのフォーカスを、見える所まで動かす（Tab で移ったときも、帯が大きくなったときも。まれな失敗の直し）', () => {
+  const page = src('app/private/page.tsx');
+  const helper = page.slice(page.indexOf('const revealAboveBar = '), page.indexOf('const measureChrome = () => {'));
+  const body = page.slice(page.indexOf('const measureChrome = () => {'), page.indexOf('useEffect(() => {\n    const el = barRef.current;'));
+  const effect = page.slice(page.indexOf('useEffect(() => {\n    const el = barRef.current;'), page.indexOf('// 帯の中身が変わったら、しまうのをやめて'));
+  assert.ok(helper.length > 200 && body.length > 200 && effect.length > 200, '3つの部品が見つかる');
+  // 帯の外にある欄が帯に重なっていたら、scroll-padding を使って動かす（ブラウザは、画面の中に入っていると動かさない）
+  assert.match(helper, /bar\.contains\(target\)/);
+  assert.match(helper, /at\.bottom > under\.top \+ 2 && at\.top < under\.bottom/);
+  assert.match(helper, /shown\.scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.match(helper, /type === 'file' \? target\.closest\('label'\)/, '見えないファイル選択は、ラベルで測る');
+  // 帯が大きくなったとき（余白を直したあと）と、フォーカスが移ったときの、両方で呼ぶ
+  assert.ok(body.indexOf("setProperty('--bar-h'") < body.indexOf('revealAboveBar(document.activeElement)'), '余白を直してから動かす');
+  assert.match(effect, /addEventListener\('focusin', onFocusIn\)/);
+  assert.match(effect, /removeEventListener\('focusin', onFocusIn\)/, '画面を離れるときに外す');
+  // ゆっくり動く移動の最中に欄へ移ったときは、動き終わってから、もう一度見る（動き終わりの位置で帯に重なっていた。場面 L のまれな失敗の元）
+  assert.match(effect, /addEventListener\('scrollend', again, \{ once: true \}\)/);
+  assert.match(effect, /window\.setTimeout\(again, 800\)/, 'scrollend が来ないブラウザでも、少しあとで見る');
+  assert.match(effect, /document\.activeElement === target\) revealAboveBar\(target\)/, 'まだその欄にいるときだけ動かす');
+  assert.match(effect, /stopWatch\(\); observer\?\.disconnect\(\)/, '画面を離れるときに、待ちも外す');
+  // jump（ゆっくり動く移動）が移したフォーカスは、すぐには動かさない（動きを止めない）。動き終わってから見る
+  assert.match(effect, /if \(!jumpingRef\.current\) revealAboveBar\(target\);/);
+  assert.match(page, /jumpingRef\.current = true; try \{ el\.focus\(\{ preventScroll: true \}\); \} finally \{ jumpingRef\.current = false; \}/);
+  assert.match(readFileSync(join(ROOT2, 'app/globals.css'), 'utf8'), /scroll-padding-bottom: calc\(var\(--bar-h, 10rem\) \+ 1rem\)/, 'scrollIntoView が帯をよける元の決まり');
+});
+
 test('r2-140 verify-private-all.sh: ポートが使われていたら、何も確かめずに止まる。build をとばした／_headers なしの動かし方では 指紋を書かない', async () => {
   const script = join(ROOT2, 'scripts/verify-private-all.sh');
   // 指紋を書いてよい動かし方か（TOS_STAMP_CHECK で、判断だけを見る）
@@ -688,6 +714,7 @@ test('r2-140 verify-private-all.sh: ポートが使われていたら、何も�
   assert.match(check({ TOS_SKIP_BUILD: '1' }).stdout, /^stamp:no \(TOS_SKIP_BUILD=1/);
   assert.match(check({ TOS_PLAIN_SERVER: '1' }).stdout, /^stamp:no \(TOS_PLAIN_SERVER=1/);
   assert.match(check({ TOS_ONLY: 'test-polish-misc' }).stdout, /^stamp:no \(TOS_ONLY/);
+  assert.match(check({ TOS_SCENARIOS: 'M1' }).stdout, /^stamp:no \(TOS_SCENARIOS/, '場面だけ動かしたときも、指紋を書かない');
   assert.match(check({}, '--fast').stdout, /^stamp:no \(--fast/);
   // ポートが もう使われている
   const busy = createServer(); await new Promise<void>((resolve) => busy.listen(0, '127.0.0.1', resolve));

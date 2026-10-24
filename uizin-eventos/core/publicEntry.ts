@@ -106,7 +106,7 @@ export function publicEntryHash(config: PublicEntryConfig): string {
     if (!isDefaultWeightSettings(config.weights)) params.set('wd', weightSettingsToParam(config.weights));
   }
   if (config.logo) params.set('logo', 'on');
-  // くわしい戦績（rd）は、花道（hn）のまえに書く。hn=on を、protocol のまえの最後の鍵のままにする（花道の鎖の試験）
+  // くわしい戦績（rd）は、花道（hn）のまえに書く（鍵の並びは、ここで決まる。試験が、並びを見ている）
   if (config.recordDetail) params.set(RECORD_DETAIL_KEY, 'on');
   if (config.hanamichi) params.set(HANAMICHI_KEY, 'on');
   if (config.pledge) {

@@ -243,8 +243,8 @@ test('golden 申し込みページが送る鍵（photoDataUrl まで）は、足
 });
 
 test('golden core/setupV3: 版の一覧・pingの読み方・申し込みページへ渡す設定の鍵は、足す前のとおり（「なし」の読み取りに、誓約書の鍵は増えない）', () => {
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1']);
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.1');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', '3.20261024.2']);
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.2');
   const base = { app: 'tournament-os', protocol: 3, build: EXPECTED_RECEPTION_BUILD, ready: true, accepting: true, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: 'テスト大会', date: '2099-12-01', venue: '体育館', venueUrl: '', organizer: '主催ジム', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
   const parsed = parsePing(base);
   assert.deepEqual(Object.keys(parsed), ['app', 'protocol', 'build', 'ready', 'accepting', 'eventId', 'testComplete', 'settingsProblem', 'storageProblem', 'title', 'date', 'venue', 'venueUrl', 'organizer', 'contact', 'deadline', 'music', 'grade', 'age', 'comment', 'error', 'classMode', 'classes', 'classRows', 'weightMode', 'weights', 'weightRows', 'logo', 'errorTab', 'errorCell', 'errorExpected', 'errorInserted', 'errorRowGone', 'closedBy']);

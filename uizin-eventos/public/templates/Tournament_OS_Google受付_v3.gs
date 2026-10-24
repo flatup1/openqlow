@@ -1,5 +1,5 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261024.1';
+const RECEPTION_BUILD = '3.20261024.2';
 const MIN_FREE_BYTES = 200 * 1024 * 1024;
 /**
  * 「設定」タブの「花道のルール」を新しく作るときだけ入れる初期の文。原本（募集要項 Vol.7）の言葉を並べた仮の文で、owner が「OK」と答えたもの（2026-10-22）。
@@ -418,6 +418,7 @@ function saveHanamichiRow_(sheet, values, p) {
   const clean = hanamichiClean_(p), width = HANAMICHI_HEADERS_.length;
   const row = [values[0], values[1], values[3], values[4]].concat(HANAMICHI_ITEMS_.map(function (item) { return clean[item.key]; })).map(function (value) { return clean_(value, 2000); });
   const newRow = sheet.getLastRow() + 1;
+  ensureRows_(sheet, newRow);
   sheet.getRange(newRow, 1, 1, width).setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, width).setValues([row]);
   SpreadsheetApp.flush();
@@ -580,6 +581,7 @@ function savePledgeRow_(sheet, values, rec) {
   const width = PLEDGE_HEADERS_.length;
   const row = [values[0], values[1], values[4], rec.items, rec.guardian ? PLEDGE_YES_ : PLEDGE_NO_NEED_, rec.gymName, rec.gymPhone, rec.asked ? PLEDGE_YES_ : PLEDGE_NO_NEED_, rec.text, rec.hash].map(function (value) { return clean_(value, 2000); });
   const newRow = sheet.getLastRow() + 1;
+  ensureRows_(sheet, newRow);
   sheet.getRange(newRow, 1, 1, width).setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, width).setValues([row]);
   SpreadsheetApp.flush();
@@ -674,8 +676,8 @@ function recordDetailCheck_(p) {
   p.record = recordDetailKickText_(read.detail.kick);
   return read.detail;
 }
-/** キックの戦績の1行（core/recordDetail.ts の kickRecordText と同じ）。試合数0は「初試合」。例：「3勝1敗」「2勝1敗1分」 */
-function recordDetailKickText_(kick) { if (kick.games === 0) return '初試合'; return kick.win + '勝' + kick.loss + '敗' + (kick.draw > 0 ? kick.draw + '分' : ''); }
+/** キックの戦績の1行（core/recordDetail.ts の kickRecordText と同じ）。試合数0は「初試合」。例：「4戦3勝1敗」（前の版の引き分けつきは「4戦2勝1敗1分」） */
+function recordDetailKickText_(kick) { if (kick.games === 0) return '初試合'; return kick.games + '戦' + kick.win + '勝' + kick.loss + '敗' + (kick.draw > 0 ? kick.draw + '分' : ''); }
 /** 1件を、表の行（見出しの順）に分ける（core/recordDetail.ts の recordDetailRows と同じ）。キックは必ず1行。他の格闘技・タイトルは、1つにつき1行 */
 function recordDetailRows_(receiptNo, submittedAt, detail) {
   const blank = function () { return RECORD_DETAIL_HEADERS.map(function () { return ''; }); };
@@ -718,6 +720,22 @@ function recordDetailHeaderCheck_(sheet, name) {
   if (index === n) return null;
   return { state: 'bad', name: name, index: index, expected: RECORD_DETAIL_HEADERS[index], actual: row[index], inserted: false, rowGone: index === 0 && /^(?:TEST-)?[A-Z0-9]{1,10}-[0-9A-F]{8,}$/.test(String(row[0]).trim()) };
 }
+/**
+ * 「戦績詳細」（本番・テスト）の見出しが、この版と同じかを、ping と ⑤ で言うために調べる。ちがうと、新しいリンク（rd=on）の申し込みは、保存の前に、すべて断られる
+ * （くわしい戦績つきの申込だけ。ほかの申込は、これまでどおり通る）。だから、必須の表（tables_）には入れず、ここで、直すタブ・マスを言う。
+ * 表が無い・空のときは、問題にしない（受付が作る）。ちがうときは、headerProblemError_ を投げる（ping が、タブ・マス・あるべき文字を返す）
+ */
+function recordDetailTabsCheck_() {
+  const id = PropertiesService.getScriptProperties().getProperty('spreadsheetId');
+  if (!id) return;
+  const book = SpreadsheetApp.openById(id);
+  [RECORD_TABLE, RECORD_TEST_TABLE].forEach(function (name) {
+    const sheet = book.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() === 0) return;
+    const bad = recordDetailHeaderCheck_(sheet, name);
+    if (bad) throw headerProblemError_(bad);
+  });
+}
 /** ① のあとの注意：「戦績詳細」の見出しがこの版と違うとき。止めずに言う（直すまで、くわしい戦績つきの申込は受けない） */
 function recordDetailHeaderNote_(bad) { return '「' + bad.name + '」タブの見出しが、この版と違います（' + columnLetter_(bad.index) + '1 を「' + bad.expected + '」に直してください）。直すまで、くわしい戦績つきの申し込みは受けられません。'; }
 /** 受付の中で使う「戦績詳細」（本番かテスト）。無ければ作り、見出しがちがうときは止める（何も書かない） */
@@ -731,6 +749,7 @@ function recordDetailSaveRows_(sheet, values, detail) {
   if (findRow_(sheet, 1, values[0])) return;
   const width = RECORD_DETAIL_HEADERS.length, first = sheet.getLastRow() + 1;
   const rows = recordDetailRows_(values[0], values[1], detail).map(function (row) { return row.map(function (cell) { return clean_(cell, 2000); }); });
+  ensureRows_(sheet, first + rows.length - 1);
   sheet.getRange(first, 1, rows.length, width).setNumberFormat('@');
   sheet.getRange(first, 1, rows.length, width).setValues(rows);
   SpreadsheetApp.flush();
@@ -934,7 +953,10 @@ function statusInfo_() {
 }
 function showStatus() {
   const s = statusInfo_();
-  const text = ['設定：' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト：' + (s.testComplete ? '済み' : 'まだ'), '受付：' + (s.accepting ? '受付中' : s.closedBy === 'deadline' ? 'しめきりました（締切を過ぎています）' : '停止中'), '締切：' + (s.deadline || '未設定')].join('\n');
+  // 「戦績詳細」の見出しが崩れていたら、直すマスをいっしょに言う（新しいリンクの申し込みが、すべて断られてしまうため）
+  let recordNote = '';
+  try { recordDetailTabsCheck_(); } catch (error) { recordNote = '\n戦績詳細：' + String(error && error.message ? error.message : error); }
+  const text = ['設定：' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト：' + (s.testComplete ? '済み' : 'まだ'), '受付：' + (s.accepting ? '受付中' : s.closedBy === 'deadline' ? 'しめきりました（締切を過ぎています）' : '停止中'), '締切：' + (s.deadline || '未設定')].join('\n') + recordNote;
   Logger.log(text);
   try { SpreadsheetApp.getUi().alert('いまの状態', text, SpreadsheetApp.getUi().ButtonSet.OK); } catch (_) {}
   return s;
@@ -986,7 +1008,7 @@ function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.action === 'ping') {
     let body;
-    try { body = statusInfo_(); } catch (error) {
+    try { body = statusInfo_(); recordDetailTabsCheck_(); } catch (error) {
       body = { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, ready: false, error: error.code || 'error' };
       // 見出しの問題だけ、直すタブとマスを画面に伝える（タブの名前と、あるべき見出しだけ。申込の中身・メールは入れない）
       if (error.detail && (error.code === 'headers' || error.code === 'missing')) { body.errorTab = String(error.detail.tab || ''); if (error.detail.cell) body.errorCell = String(error.detail.cell); if (error.detail.expected) body.errorExpected = String(error.detail.expected); if (error.detail.inserted) body.errorInserted = true; if (error.detail.rowGone) body.errorRowGone = true; }
@@ -1155,6 +1177,7 @@ function saveEntry_(p){
       values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId,clean_(classLabel_(p),40),clean_(weightChoice.division,40),clean_(weightChoice.weightClass,40)]);
       // Googleの自動変換で電話番号の先頭0や数字だけの選手名を失わない。
       const newRow=sheet.getLastRow()+1;
+      ensureRows_(sheet,newRow);
       sheet.getRange(newRow,3,1,PRIVATE_HEADERS.length-2).setNumberFormat('@');
       sheet.getRange(newRow,1,1,PRIVATE_HEADERS.length).setValues([values]);
       // 実際に書かれた電話番号が送った文字と違えば（先頭0が消えた等）、文字として書き直す。
@@ -1163,6 +1186,7 @@ function saveEntry_(p){
       values=sheet.getRange(findRow_(sheet,18,requestId),1,1,PRIVATE_HEADERS.length).getDisplayValues()[0];
     }
     const osValues=osValuesOf_(values).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);
+    if(!osRow)ensureRows_(os,os.getLastRow()+1);
     os.getRange(osRow||os.getLastRow()+1,1,1,OS_HEADERS.length).setNumberFormat('@');
     if(osRow)os.getRange(osRow,1,1,OS_HEADERS.length).setValues([osValues]);else os.appendRow(osValues);
     SpreadsheetApp.flush();
@@ -1180,6 +1204,15 @@ function saveEntry_(p){
 }
 /** 申込原本の1行から、OS取込用の1行（連絡先なし）を作る：管理番号・ジム名〜写真URL・クラス・区分・階級 */
 function osValuesOf_(values){return[values[0]].concat(values.slice(3,13),[values[18],values[19],values[20]]);}
+/**
+ * 書く行（lastRow）が、いまのタブの行数をこえるときは、先に行を足す。足さないと、書き込みが範囲の外で止まり、受付番号が出ない
+ * （「① 最初の設定」で作ったタブは1000行しかない。くわしい戦績は1件で最大11行書くので、いちばん先に足りなくなる）。appendRow は、自分で足すので、要らない。
+ */
+function ensureRows_(sheet, lastRow) {
+  if (typeof sheet.getMaxRows !== 'function' || typeof sheet.insertRowsAfter !== 'function') return;
+  const max = sheet.getMaxRows();
+  if (max < lastRow) sheet.insertRowsAfter(max, lastRow - max);
+}
 function findRow_(sheet,column,value){if(sheet.getLastRow()<2)return 0;const values=sheet.getRange(2,column,sheet.getLastRow()-1,1).getDisplayValues();for(let i=0;i<values.length;i++)if(values[i][0]===value)return i+2;return 0;}
 function savePhoto_(folderId,receiptNo,dataUrl,requireExisting){
   const match=String(dataUrl).match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);

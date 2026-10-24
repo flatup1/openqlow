@@ -36,16 +36,19 @@ export function harness(opts: Opts = {}) {
     const stored = (v: any, r: number, c: number, viaSetValue = false) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v) && (formats.get(r + ':' + c) !== '@' || (opts.ignoreTextFormat && !viaSetValue)) ? Number(v) : v;
     const s: any = { name, rows: [] as any[][],
       maxRows: 1000, getMaxRows: () => s.maxRows,
+      // 本物のシートと同じ：行の数（maxRows）をこえる所へ書くと止まる（appendRow は、自分で足す）。insertRowsAfter で行を足してから書く
+      insertRowsAfter: (_after: number, howMany: number) => { s.maxRows += howMany; return s; },
       getLastRow: () => s.rows.length,
       appendRow: (values: any[]) => { const r = s.rows.length + 1; s.rows.push(values.map((v, c) => stored(v, r, c + 1))); },
       getDataRange: () => s.getRange(1, 1, s.rows.length, s.rows[0]?.length || 1),
       getRange: (r: number, c: number, n = 1, m = 1) => {
+        const inside = () => { if (r + n - 1 > s.maxRows) throw new Error('The coordinates of the range are outside the dimensions of the sheet.'); };
         const range: any = {
           getDisplayValues: () => Array.from({ length: n }, (_, i) => Array.from({ length: m }, (_, j) => String(s.rows[r - 1 + i]?.[c - 1 + j] ?? '').replace(/^'(?=[=+\-@])/u, ''))),
           getDisplayValue: () => range.getDisplayValues()[0][0],
-          setValues: (values: any[][]) => { values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
-          setValue: (v: any) => { s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
-          setNumberFormat: (f: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
+          setValues: (values: any[][]) => { inside(); values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
+          setValue: (v: any) => { inside(); s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
+          setNumberFormat: (f: string) => { inside(); for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
           setFontWeight: () => range, setBackground: (color: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) backgrounds.set((r + i) + ':' + (c + j), color); return range; }, setWrap: () => range,
           setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; },
           protect: () => { const prot: any = { warningOnly: false, setDescription() { return prot; }, setWarningOnly(v: boolean) { prot.warningOnly = v; return prot; } }; s.protections.push({ r, c, n, m, prot }); return prot; } };

@@ -1,6 +1,7 @@
 // くわしい戦績（キック・他の格闘技・タイトル/入賞歴）と、体重・戦績の注意文。申し込みのページを本物のChromiumで動かして確かめる。
 // 古いリンク（rd なし）は、今までの「戦績」の一行のまま。新しいリンク（rd=on）は、3つの欄と、送る形（recordDetail）。
 // 聞くのは「試合数」と「勝ち」だけ（2026-10-24 owner）。負け＝試合数−勝ち、引き分け・勝敗なし＝0 で送る（Googleの受付は変えない）。
+// 戦績の一行（シートの「戦績・競技歴」にも入る）は「4戦3勝1敗」の形（2026-10-24 owner の3つ目の依頼。『分』は出さない）。
 // 名前・大会名・ジム名・番号は、ぜんぶ架空。
 // 使い方：TOS_TEST_BASE=http://127.0.0.1:<port> node --experimental-strip-types scripts/test-record-detail-apply.mjs
 import assert from 'node:assert/strict';
@@ -35,7 +36,8 @@ async function newPage(viewport) {
     return route.abort();
   });
   const page = await ctx.newPage();
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
+  // 入れた途中で読み直すときの「このページを離れますか？」は、離れる（下書きを戻す場面のため）。ほかの確認は、閉じる
+  page.on('dialog', (d) => (d.type() === 'beforeunload' ? d.accept() : d.dismiss()).catch(() => {}));
   page.on('pageerror', (e) => pageErrors.push({ scenario: cur, message: e.message }));
   return { ctx, page };
 }
@@ -69,7 +71,7 @@ await scenario('O1', 'old link: the 戦績 is still the one text line, with the 
   for (const key of OLD_TEXT_KEYS) check(names.includes(key), 'old link posts ' + key);
 });
 
-await scenario('N1', 'new link: 試合数 first; 勝ち only after a game is entered (no 負け・引き分け fields); 戦績 becomes 3勝1敗 (負け = 試合数 − 勝ち)', [PHONE], async (page) => {
+await scenario('N1', 'new link: 試合数 first; 勝ち only after a game is entered (no 負け・引き分け fields); 戦績 becomes 4戦3勝1敗 (負け = 試合数 − 勝ち)', [PHONE], async (page) => {
   await open(page, NEW_LINK);
   check((await page.locator('#rd-kick-games').count()) === 1, 'new link shows 試合数');
   check((await page.locator('#rd-kick-win').count()) === 0, '勝ち is hidden before a game');
@@ -80,7 +82,7 @@ await scenario('N1', 'new link: 試合数 first; 勝ち only after a game is ent
   await settle(100);
   const words = await page.locator('#f-record').innerText();
   check(!/負け|引き分け|勝敗なし/.test(words), 'the 戦績 block never says 負け・引き分け・勝敗なし (' + words.replace(/\s+/g, ' ').slice(0, 60) + ')');
-  check((await hidden(page, 'record')) === '3勝1敗', 'record becomes 3勝1敗 from 試合数 4 and 勝ち 3');
+  check((await hidden(page, 'record')) === '4戦3勝1敗', 'record becomes 4戦3勝1敗 from 試合数 4 and 勝ち 3');
   const d = await postJson(page);
   check(d && d.v === 1 && d.kick.games === 4 && d.kick.win === 3 && d.kick.loss === 1 && d.kick.draw === 0, 'recordDetail carries the kick numbers');
   check(d && Array.isArray(d.others) && d.others.length === 0 && Array.isArray(d.titles) && d.titles.length === 0, 'no other sports and no titles when なし');
@@ -108,7 +110,7 @@ await scenario('N3', 'new link: 勝ち more than 試合数 shows the 直す line
   await page.locator('#rd-kick-win').fill('4');
   await settle(100);
   check((await page.getByText('勝ちが、試合数（4）より多くなっています。').count()) === 0, 'the line goes away once 勝ち is fixed');
-  check((await hidden(page, 'record')) === '4勝0敗', 'record is back (4勝0敗: every game won)');
+  check((await hidden(page, 'record')) === '4戦4勝0敗', 'record is back (4戦4勝0敗: every game won)');
   await page.locator('#rd-kick-win').fill('');
   await settle(100);
   check((await hidden(page, 'record')) === '', 'an empty 勝ち also cannot be sent');
@@ -129,8 +131,15 @@ await scenario('N4', 'new link: 他の格闘技 あり adds rows (max 5) with on
   check(d && d.others.length === 1 && d.others[0].sport === '柔道' && d.others[0].games === 2 && d.others[0].win === 1 && d.others[0].loss === 1 && d.others[0].draw === 0 && d.others[0].noResult === 0, 'others carries 柔道 with 試合数 2・勝ち 1 (負け is 試合数 − 勝ち, 引き分け・勝敗なし are 0)');
   await page.getByRole('button', { name: '競技を追加する' }).click();
   check((await page.getByLabel('競技名 必須', { exact: true }).count()) === 2, '競技を追加する adds a second row');
-  await page.getByRole('button', { name: 'この競技を消す' }).first().click();
-  check((await page.getByLabel('競技名 必須', { exact: true }).count()) === 1, 'この競技を消す removes a row');
+  // 上限は5つ。5つになったら、追加のボタンが消えて、「5つまで」の一言になる
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: '競技を追加する' }).click();
+  check((await page.getByLabel('競技名 必須', { exact: true }).count()) === 5, 'up to five rows can be added');
+  check((await page.getByRole('button', { name: '競技を追加する' }).count()) === 0, 'at five rows the 競技を追加する button is gone');
+  check(await page.getByText('追加できるのは、5つまでです。').isVisible(), 'at five rows it says 追加できるのは、5つまでです。');
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'この競技を消す' }).last().click();
+  check((await page.getByLabel('競技名 必須', { exact: true }).count()) === 1, 'この競技を消す removes rows (back to the first one)');
+  check((await page.getByRole('button', { name: '競技を追加する' }).count()) === 1, 'below five the 競技を追加する button comes back');
+  check((await page.getByLabel('競技名 必須', { exact: true }).inputValue()) === '柔道', 'the first row (柔道) is the one that stays');
   await page.getByRole('radio', { name: 'なし', exact: true }).first().check();
   await settle(60);
   d = await postJson(page);
@@ -285,7 +294,7 @@ for (const vp of [PHONE, SMALL]) {
     await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).click();
     await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 8000 });
     const review = await page.locator('section[aria-label="送る前の確認"]').innerText();
-    // 2026-10-24 owner：確認の画面は ○戦○勝○敗 で出す（敗＝試合数−勝ち。引き分けも入る）。シートの戦績の一行・準備の画面は、そのまま
+    // 2026-10-24 owner：確認の画面は ○戦○勝○敗 で出す（敗＝試合数−勝ち。引き分けも入る）。シートの戦績の一行も、同じ形（3つ目の依頼）
     check(review.includes('4戦3勝1敗'), 'the review shows the kick as 4戦3勝1敗');
     check(review.includes('12戦7勝5敗'), 'the review shows 柔道 as 12戦7勝5敗');
     check(review.includes('架空カップ'), 'the review shows the title');
@@ -300,7 +309,7 @@ for (const vp of [PHONE, SMALL]) {
     await page.getByRole('heading', { name: '申し込みが完了しました', exact: true }).waitFor({ timeout: 10000 });
     check(posts.length === 1, 'exactly one POST was sent (' + posts.length + ')');
     const sent = posts[0];
-    check(sent && sent.get('record') === '3勝1敗', 'record is still 3勝1敗 (the same one line the Google receiver stores; the sheet is not changed)');
+    check(sent && sent.get('record') === '4戦3勝1敗', 'record is 4戦3勝1敗, the same one line the Google receiver (build 3.20261024.2) stores in the sheet (' + (sent ? sent.get('record') : 'no post') + ')');
     const expected = '{"v":1,"kick":{"games":4,"win":3,"loss":1,"draw":0},"others":[{"sport":"柔道","games":12,"win":7,"loss":5,"draw":0,"noResult":0}],"titles":[{"event":"架空カップ","year":2025,"class":"-60kg","result":"優勝"}]}';
     check(sent && sent.get('recordDetail') === expected, 'recordDetail keeps the old shape the Google receiver accepts: ' + (sent ? String(sent.get('recordDetail')).slice(0, 200) : 'no post'));
   } catch (e) { failures.push('[E1] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); console.log('  FAIL [E1] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); }
@@ -332,6 +341,104 @@ for (const vp of [PHONE]) {
   } catch (e) { failures.push('[E2] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); console.log('  FAIL [E2] SCENARIO CRASHED: ' + String(e && e.message).slice(0, 300)); }
   await ctx.close();
 }
+
+/* ───────── 見直し（2026-10-24）で直した所：進み具合・「直す」の言い方・下書きの戻し方・入力の検出・「なし」で行が消えない ───────── */
+const progress = async (page) => { const m = (await page.evaluate(() => document.body.innerText)).match(/入力 (\d+)\/(\d+)/); return m ? [Number(m[1]), Number(m[2])] : [-1, -1]; };
+const markText = (page) => page.evaluate(() => [...document.querySelectorAll('[data-tos-next] .tos-next-badge')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+const bodyText = (page) => page.evaluate(() => document.body.innerText);
+const DRAFT_KEY = 'tos-apply-draft:v1:record-detail:live';
+const putDraft = (page, f) => page.evaluate(([k, v]) => sessionStorage.setItem(k, v), [DRAFT_KEY, JSON.stringify({ v: 1, eventId: 'record-detail', mode: 'live', savedAt: Date.now(), f })]);
+const FOUR = [['ジム名 必須', '架空ジム'], ['選手名 必須', '架空選手'], ['身長（cm）必須', '170'], ['体重（kg）必須', '65']];
+
+await scenario('F1', '見直し A1: 足した行が途中のあいだは、「入力 N/M」も「ぜんぶ入りました」も、まだ。黄色の札と同じ答え', [PHONE, SMALL], async (page) => {
+  await open(page, NEW_LINK);
+  for (const [label, value] of FOUR) await page.getByLabel(label, { exact: true }).fill(value);
+  await page.locator('#rd-kick-games').fill('5');
+  await page.locator('#rd-kick-win').fill('3');
+  await leaveField(page); await settle(150);
+  const [f0, t0] = await progress(page);
+  await page.getByRole('radio', { name: 'あり', exact: true }).first().check();   // 他の格闘技「あり」＝空の1行ができる
+  await settle(150);
+  const [f1, t1] = await progress(page);
+  check(t1 === t0 && f1 === f0 - 1, 'an empty added row takes 戦績 back to "not done" in the counter (入力 ' + f0 + '/' + t0 + ' → ' + f1 + '/' + t1 + ')');
+  check((await markerOnRecord(page)) === 1 && /戦績/.test((await markText(page))[0] || ''), 'and the yellow marker sits on 戦績 (' + (await markText(page)).join('|') + ')');
+  await fillOtherRow(page, '柔道', [12, 7]);
+  await leaveField(page); await settle(150);
+  const [f2, t2] = await progress(page);
+  check(f2 === f0 && t2 === t0, 'filling the row brings the counter back (入力 ' + f2 + '/' + t2 + ')');
+});
+
+await scenario('F2', '見直し A2: 入れたのにまちがっている戦績は、「戦績を直す」と「直す所：戦績」。まだ入れていないときは、これまでどおり「戦績を入れる」', [PHONE], async (page) => {
+  await open(page, NEW_LINK);
+  for (const [label, value] of FOUR) await page.getByLabel(label, { exact: true }).fill(value);
+  // まず、戦績が空のまま押す：戦績は「足りない所」に入る（数を覚える）
+  await page.getByRole('button', { name: '入力内容を確認する →' }).click();
+  await page.locator('#apply-msg').filter({ hasText: '足りない所' }).waitFor({ timeout: 5000 }).catch(() => {});
+  const emptyBand = (await page.locator('#apply-msg').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  const missingEmpty = Number(emptyBand.match(/足りない所が([0-9]+)か所/)?.[1] ?? NaN);
+  check(missingEmpty >= 1 && !/直す所：[^。]*戦績/.test(emptyBand), 'with 戦績 still empty it is one of the 足りない所 (' + emptyBand.slice(0, 80) + ')');
+  await page.locator('#rd-kick-games').fill('3');
+  await leaveField(page); await settle(150);
+  check(/戦績を入れる/.test((await markText(page))[0] || ''), 'a half-typed 戦績 (試合数 only) is still "戦績を入れる" (' + (await markText(page)).join('|') + ')');
+  await page.locator('#rd-kick-win').fill('5');
+  await leaveField(page); await settle(150);
+  await page.getByRole('button', { name: '入力内容を確認する →' }).click();
+  await page.locator('#apply-msg').filter({ hasText: '直す所' }).waitFor({ timeout: 5000 }).catch(() => {});
+  const band = (await page.locator('#apply-msg').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  const missingNow = Number(band.match(/足りない所が([0-9]+)か所/)?.[1] ?? 0);
+  // 入れたのにまちがっている戦績は「直す所」。「足りない所」は、1つへる（ほかの空の欄の分だけ残る）
+  check(/直す所：[^。]*戦績/.test(band) && missingNow === missingEmpty - 1, 'the typed-but-wrong 戦績 moves from 足りない所 (' + missingEmpty + ') to 直す所：戦績 (' + band.slice(0, 80) + ')');
+  check(/戦績を直す/.test((await markText(page))[0] || ''), 'the yellow marker says 「戦績を直す」 (' + (await markText(page)).join('|') + ')');
+  await page.locator('#rd-kick-win').fill('3');
+  await leaveField(page); await settle(200);
+  check(!/戦績を直す/.test((await markText(page))[0] || ''), 'after fixing, the marker no longer says 直す');
+});
+
+await scenario('F3', '見直し A3・A4: 下書きを戻す。読めない戦績は「入った」にしない。初試合のあとで試合数を変えても、勝ちは空から', [PHONE], async (page) => {
+  await open(page, NEW_LINK);
+  await putDraft(page, { gym: '架空ジム', name: '架空選手', record: 'アマ2勝' });
+  await page.reload(); await page.getByLabel('ジム名 必須', { exact: true }).waitFor(); await settle(250);
+  await page.getByRole('button', { name: '戻す', exact: true }).click(); await settle(250);
+  const [filled] = await progress(page);
+  check(filled === 2, 'an unreadable draft 戦績 is not counted as done: only ジム名 and 選手名 (入力 ' + filled + ')');
+  check((await page.locator('#rd-kick-games').inputValue()) === '' && (await markerOnRecord(page)) === 0 && (await markText(page)).length === 1, 'the 戦績 block stays empty');
+  await page.evaluate(() => sessionStorage.clear());
+  await putDraft(page, { gym: '架空ジム', name: '架空選手', record: '初試合' });
+  await page.reload(); await page.getByLabel('ジム名 必須', { exact: true }).waitFor(); await settle(250);
+  await page.getByRole('button', { name: '戻す', exact: true }).click(); await settle(250);
+  check((await page.locator('#rd-kick-games').inputValue()) === '0', '初試合 puts 試合数 back as 0');
+  await page.locator('#rd-kick-games').fill('3'); await settle(100);
+  check((await page.locator('#rd-kick-win').count()) === 1 && (await page.locator('#rd-kick-win').inputValue()) === '', 'changing 試合数 to 3 shows an EMPTY 勝ち (not a pre-filled 0)');
+});
+
+await scenario('F4', '見直し A5: くわしい戦績の欄だけ入れても、別の大会のリンクに変わるとき確かめる（何も入れていなければ、確かめない）', [PHONE], async (page) => {
+  const OTHER = publicEntryHash({ ...baseCfg, eventId: 'record-detail-2', recordDetail: true });
+  await open(page, NEW_LINK);
+  await page.evaluate((h) => { location.hash = h; }, OTHER); await settle(300);
+  check(!/別の大会のリンクです/.test(await bodyText(page)), 'nothing typed: switching links does not ask');
+  await open(page, NEW_LINK);
+  await page.locator('#rd-kick-games').fill('5');
+  await page.evaluate((h) => { location.hash = h; }, OTHER); await settle(300);
+  check(/別の大会のリンクです/.test(await bodyText(page)), 'only 試合数 typed: switching links asks first');
+  await open(page, NEW_LINK);
+  await page.getByRole('radio', { name: 'あり', exact: true }).first().check();
+  await page.getByLabel('競技名 必須', { exact: true }).first().fill('柔道');
+  await page.evaluate((h) => { location.hash = h; }, OTHER); await settle(300);
+  check(/別の大会のリンクです/.test(await bodyText(page)), 'only a 他の格闘技 row typed: switching links asks first');
+});
+
+await scenario('F5', '見直し A6: 「なし」を押しても、入れた行は消えない（もう一度「あり」にすると、戻る）。「なし」のあいだは、送らない', [PHONE], async (page) => {
+  await open(page, NEW_LINK);
+  await page.locator('#rd-kick-games').fill('5'); await page.locator('#rd-kick-win').fill('3');
+  await page.getByRole('radio', { name: 'あり', exact: true }).first().check();
+  await fillOtherRow(page, '柔道', [12, 7]);
+  await page.getByRole('radio', { name: 'なし', exact: true }).first().check(); await settle(120);
+  check((await page.locator('#rd-other-games-0').count()) === 0, 'while なし, the row is hidden');
+  const posted = await postJson(page);
+  check(posted && posted.others.length === 0, 'while なし, nothing about 柔道 is posted');
+  await page.getByRole('radio', { name: 'あり', exact: true }).first().check(); await settle(120);
+  check((await page.locator('#rd-other-games-0').inputValue()) === '12' && (await page.locator('#rd-other-win-0').inputValue()) === '7' && (await page.getByLabel('競技名 必須', { exact: true }).first().inputValue()) === '柔道', 'back to あり: the typed row is back');
+});
 
 await browser.close();
 const pageErrs = pageErrors.filter((e) => !/Failed to load resource/.test(e.message));

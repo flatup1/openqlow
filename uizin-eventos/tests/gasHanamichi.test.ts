@@ -509,9 +509,9 @@ test('結果の画面: 花道の失敗(hanamichi)は「保存していない」�
 
 /* ───────── 版・Googleの言葉 ───────── */
 
-test('版: build は 3.20261024.1。自動テストは版が変わるとやり直し（1回だけ）', () => {
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.1';/);
-  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261024.1');
+test('版: build は 3.20261024.2。自動テストは版が変わるとやり直し（1回だけ）', () => {
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.2';/);
+  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261024.2');
   h.props.set('lastTestBuild', '3.20261019.6'); assert.equal(h.call('statusInfo_').testComplete, false);
   const rows = h.rows(TEST).length; h.call('setupTournament'); assert.equal(h.call('statusInfo_').testComplete, true); assert.equal(h.rows(TEST).length, rows + 1);
   h.call('setupTournament'); assert.equal(h.rows(TEST).length, rows + 1, 'もう増えない');

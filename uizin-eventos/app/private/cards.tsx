@@ -180,9 +180,11 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
     const twin = (labelCount.get(labelKey(f)) ?? 0) > 1 ? `（番号 ${shorten(f.id, 10)}）` : '';
     return <option key={f.id} value={f.id} disabled={f.id === other}>{baseLabel(f) + twin + (f.absent === true ? '（欠場）' : '') + mark}</option>;
   })}</optgroup>);
-  const profile = (f: LocalFighter | undefined, side: 'red' | 'blue') => f ? <div className="mt-3 flex min-w-0 items-center gap-3">
+  // 写真（大きい）と文字は、横にならべる。ただし、この箱の幅に、写真と、文字の最低の幅（8rem）が入らないときは、文字を写真の下に回す（flex-wrap）。
+  // 画面の幅（md）で決めない：試合の箱は、画面の幅と左の手順の列しだいで、細くなる（幅768px・1024pxで、文字の列が30pxほどにつぶれていた）
+  const profile = (f: LocalFighter | undefined, side: 'red' | 'blue') => f ? <div data-profile={side} className="mt-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
     <div aria-hidden="true" className="h-28 w-28 shrink-0 rounded-lg border-2 border-slate-300 bg-slate-200 bg-cover bg-center sm:h-32 sm:w-32" style={f.photoDataUrl ? { backgroundImage: 'url(' + f.photoDataUrl + ')' } : undefined} />
-    <div className="min-w-0 text-[17px] font-medium leading-snug">
+    <div className="min-w-0 flex-[1_1_8rem] text-[17px] font-medium leading-snug">
       <p className="break-words text-lg font-bold">{f.name}</p>
       <p className="break-words">{kgText(f.weight)}{f.record ? '・' + f.record : ''}</p>
       {f.fighterClass ? <p className="break-words font-bold [overflow-wrap:anywhere]">クラス：{f.fighterClass}</p> : null}
