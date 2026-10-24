@@ -440,7 +440,6 @@ await scenario('F5', '見直し A6: 「なし」を押しても、入れた行�
   check((await page.locator('#rd-other-games-0').inputValue()) === '12' && (await page.locator('#rd-other-win-0').inputValue()) === '7' && (await page.getByLabel('競技名 必須', { exact: true }).first().inputValue()) === '柔道', 'back to あり: the typed row is back');
 });
 
-await browser.close();
 await scenario('F6', '採点 3-ux: 確認を押す前でも、入れたのにまちがっている戦績（勝ち＞試合数）は、戦績の箱を出たら「戦績を直す」と「直す所：戦績」。箱の中にいる間・空・入力の途中は、赤にしない', [PHONE, SMALL], async (page) => {
   await open(page, NEW_LINK);
   for (const [label, value] of FOUR) await page.getByLabel(label, { exact: true }).fill(value);
@@ -459,6 +458,8 @@ await scenario('F6', '採点 3-ux: 確認を押す前でも、入れたのにま
   await leaveField(page); await settle(200);
   check(!/戦績を直す/.test((await markText(page))[0] || '') && !(await fixLine()), 'after fixing: no 直す, no red');
 });
+
+await browser.close();
 
 const pageErrs = pageErrors.filter((e) => !/Failed to load resource/.test(e.message));
 check(pageErrs.length === 0, 'no page errors: ' + JSON.stringify(pageErrs.slice(0, 3)));

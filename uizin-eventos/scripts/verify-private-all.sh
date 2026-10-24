@@ -59,6 +59,8 @@ fi
 # 終わりにも同じ番号で、変更が無いときだけ、一覧に書く（途中で中身が変わったら、確かめた中身と言えないため）
 LIST="$(bash scripts/tree-stamp.sh --list 2>/dev/null || true)"
 TREE_START="$(bash scripts/tree-stamp.sh --tree 2>/dev/null || true)"
+# 始めたときの指紋（コミット＋まだコミットしていない中身）。終わったときと違えば、確認の途中で中身が変わったので、.verify-ok を書かない
+STAMP_START="$(bash scripts/tree-stamp.sh 2>/dev/null || true)"
 
 fail=0
 failed=""
@@ -162,7 +164,9 @@ printf '\n===== 結果 =====\n'
 printf '%b' "$table"
 if [ "$fail" -eq 0 ]; then
   why="$(stamp_blocker)"
-  if [ -z "$why" ]; then
+  if [ -z "$why" ] && [ "$(bash scripts/tree-stamp.sh 2>/dev/null || true)" != "$STAMP_START" ]; then
+    echo "✓ 合格。ただし、確認の途中で中身が変わった（ファイルが書きかわった）ので、公開用の指紋（.verify-ok）も、検証ずみの一覧も書きません。変えた中身で、もう一度動かします。"
+  elif [ -z "$why" ]; then
     bash scripts/tree-stamp.sh > .verify-ok 2>/dev/null && echo "✓ 全部合格。.verify-ok に、いまの指紋を書きました（公開のコマンドが見ます）。"
     record_tree
   else

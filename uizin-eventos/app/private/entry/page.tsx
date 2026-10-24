@@ -121,7 +121,7 @@ export default function PrivateEntry() {
       // ブラウザが保存を始めるまで待ってから、ファイルの元を手放す（すぐ手放すと、Safari・Firefox で空のファイルになることがある。準備の画面と同じ30秒）
       window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
       setSavedList(fighters);
-      ok('提出ファイルを保存しました。このZIPファイルを大会主催者へ渡してください。');
+      ok('提出ファイルの保存を始めました。ダウンロードの中にZIPファイルがあるか見て、大会主催者へ渡してください。');
     } catch {
       // ZIPを作れなかった（写真が多くて、スマホの力が足りない など）。入れた選手は、そのまま残す。閉じる前の確認も、そのまま
       setMessage({ kind: 'error', head: '保存できませんでした：', lines: [ZIP_FAILED] });

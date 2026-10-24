@@ -488,7 +488,8 @@ await scenario('F', 'another event or mode is never read; its key is left alone;
   const st2 = await formState(page);
   check(st2.contactPhone === '09033334444' || st2.contactPhone === '', 'F extra keys inside a draft are dropped (the phone is not the leaked one: ' + st2.contactPhone + ')');
   check(st2.contactEmail !== 'leak@example.com' && st2.photo === 0 && st2.name === '架空選手', 'F and nothing but the twelve fields came back');
-  // the test mode has its own keys: a send in test mode writes the :test key, not the :live key
+  // the test mode has its own keys: a send in test mode writes the :test keys, not the :live keys
+  // (the next-person kit, and the 60-minute "sent copy" that the 受付番号が出なかったとき button restores — both :test only)
   const ctx2 = await newCtx(DESKTOP);
   const page2 = await openApply(ctx2, hashFor({ mode: 'test' }));
   await fillAll(page2);
@@ -496,7 +497,7 @@ await scenario('F', 'another event or mode is never read; its key is left alone;
   await page2.goto(base + '/apply/' + hashFor({ mode: 'test' }));
   await gymBox(page2).waitFor();
   const s2 = await dump(page2);
-  check(same(Object.keys(s2), [NEXT(EVENT, 'test')]), 'F a send in test mode writes only the :test key (' + Object.keys(s2).join(',') + ')');
+  check(same(Object.keys(s2).sort(), [COPY(EVENT, 'test'), NEXT(EVENT, 'test')].sort()), 'F a send in test mode writes only the :test keys: the next-person kit and the sent copy (' + Object.keys(s2).join(',') + ')');
   check((await page2.locator('#next-banner').count()) === 1, 'F the test link uses it');
   await page2.goto(base + '/apply/' + hashFor({ mode: 'live' }));
   await gymBox(page2).waitFor();

@@ -281,6 +281,8 @@ function PrivateAdmin() {
   const pendingJump = useRef<{ id: string; box?: string; instant?: boolean } | null>(null);
   /** jump がフォーカスを移している最中か（そのときは、帯の下の欄を、すぐには動かさない。動き終わってから見る） */
   const jumpingRef = useRef(false);
+  /** 最後にマウス・指で押した時刻。押した直後は、帯の下の欄を動かさない（押している最中に画面が動くと、押したつもりのボタン・ファイル選びが押せないため） */
+  const pointerAtRef = useRef(0);
   const lastTouched = useRef(-1);
   const backupAutoOpened = useRef(false);
   const navRef = useRef<HTMLElement | null>(null);
@@ -519,6 +521,8 @@ function PrivateAdmin() {
   const revealAboveBar = (target: Element | null) => {
     const bar = barRef.current;
     if (!bar || !(target instanceof HTMLElement) || target === document.body || bar.contains(target)) return;
+    // 動かすのは、キーボードで移ったときだけ。マウス・指で押した直後（1秒）は動かさない
+    if (Date.now() - pointerAtRef.current < 1000) return;
     // 見えない入れ物に入ったファイル選択は、ラベル（見える部分）で測る
     const shown = target instanceof HTMLInputElement && target.type === 'file' ? target.closest('label') ?? target : target;
     const at = shown.getBoundingClientRect(), under = bar.getBoundingClientRect();
@@ -558,10 +562,12 @@ function PrivateAdmin() {
       stopWatch = () => { window.clearTimeout(timer); document.removeEventListener('scrollend', again); stopWatch = () => {}; };
     };
     document.addEventListener('focusin', onFocusIn);
+    const onPointerDown = () => { pointerAtRef.current = Date.now(); };
+    document.addEventListener('pointerdown', onPointerDown, true);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureChrome);
     observer?.observe(el);
     if (navRef.current) observer?.observe(navRef.current);
-    return () => { window.removeEventListener('resize', measureChrome); document.removeEventListener('focusin', onFocusIn); stopWatch(); observer?.disconnect(); root.style.removeProperty('--bar-h'); root.style.removeProperty('--nav-h'); };
+    return () => { window.removeEventListener('resize', measureChrome); document.removeEventListener('focusin', onFocusIn); document.removeEventListener('pointerdown', onPointerDown, true); stopWatch(); observer?.disconnect(); root.style.removeProperty('--bar-h'); root.style.removeProperty('--nav-h'); };
   }, [ready, loadError]);
 
   // 帯の中身が変わったら、しまうのをやめて、測り直す（しまったまま測ると、また大きく戻って、行ったり来たりするため）
@@ -960,7 +966,7 @@ function PrivateAdmin() {
         bigPhotos: bigPhotos.length ? bigPhotos : undefined, dateCells: dateCells > 0 ? dateCells : undefined,
         badPhotos: badPhotos > 0 ? badPhotos : undefined,
         // CSVの道では、写真と records.csv を読まない。ZIPの中の players.csv だけを選んだように見えるときは、「写真は、あとでOK」と言わず、ZIPを選び直すと入ることを言う
-        zipHint: kind === 'csv' && rosterOnlyFromZip(file.name, csv) ? true : undefined,
+        zipHint: kind === 'csv' && rosterOnlyFromZip(file.name) ? true : undefined,
       });
       // 取り込んだあと、次の黄色（試合を1つ作る）が画面の外にあるときは、そこまで動かす（「＋ 試合を追加」を押したあとと同じ）
       if (dataRef.current.bouts.length === 0 && isTitleReal(dataRef.current.title) && (merge.changed ? merge.merged : current).length >= 2) { pendingJump.current = { id: 'add-bout', box: 'add-bout-slot', instant: true }; setJumpTick((n) => n + 1); }
@@ -1629,7 +1635,7 @@ function PrivateAdmin() {
   const nextCard = <section aria-label="👉 次はここ" className="rounded-2xl border-2 border-slate-400 bg-white p-4 shadow-sm">
     {key === 'done' && na.kind === 'open' && !ask && here === 'bar' ? <OkLine>{ALL_READY(true)}</OkLine> : <>
       <p className="text-lg font-bold text-slate-950">👉 次はここ：{ask ? '確認の箱に答える' : here === 'none' ? na.label : marker.label}</p>
-      {here === 'edit' && !ask ? <p className="mt-1 font-medium">直している途中の内容は、まだ入っていません。このまま試合当日の画面を開くと、前の内容のまま開きます。</p> : null}
+      {here === 'edit' && !ask ? <p className="mt-1 font-medium">直している途中の内容は、まだ入っていません。「この内容で直す」を押すまで、試合当日の画面と一覧表は開きません（前の内容のまま開かないように）。</p> : null}
       {here === 'manual' && !ask ? <p className="mt-1 font-medium">「1人ずつ入れる」に入れた選手は、まだ名簿に入っていません。</p> : null}
       {key === 'open' && !ask && here === 'bar' ? moreBoutsNote : null}
       {ask || na.kind === 'conflict' || here === 'bar' || here === 'bar-copy' || here === 'none' ? <p className="mt-1 font-medium">{ask ? '画面の中の確認の箱で、下の2つのボタンのどちらかを押します。' : na.kind === 'conflict' ? '別の画面で内容が変わりました。上の「👉 次はここ」の箱で、どちらを使うか選びます。' : banner[key].hint}</p> : null}
@@ -1901,11 +1907,12 @@ function PrivateAdmin() {
                       <button type="button" onClick={undoStaleAdd} className="tos-safe-btn inline-flex items-center justify-center text-center text-lg touch-manipulation">足さない（もどす）</button>
                       <button type="button" onClick={() => setImportNote((old) => old ? { ...old, staleWarn: false } : old)} className={cls(btn.base, btn.outlineBig)}>このまま足す</button>
                     </span></Caution> : null}
+                  {/* ZIPの中の players.csv だけを選んだときの注意は、「できた」の知らせの上に置く（知らせの中の「書きかえる」ボタンと、その確認の箱を、はなさないため） */}
+                  {importNote.zipHint ? <Caution role="status">ZIPの中の players.csv だけを選んだようです。写真とくわしい戦績は入っていません。シートの④で作ったZIPを、開かずに、もう一度選ぶと入ります（前からいる人は変わりません）。</Caution> : null}
                   <Notice kind="ok" onClose={() => setImportNote(null)} action={overwriteReady ? { label: 'ファイルの内容で' + overwriteReady.differs.length + '人を書きかえる', onClick: askOverwrite, id: 'overwrite-trigger' } : undefined}>
                     <b>できた：</b>{importNote.text}
                     {importNote.noPhoto ? <span className="mt-1 block font-medium">{importNote.zipHint ? <>写真がない選手：{importNote.noPhoto}人</> : <>写真がない選手：{importNote.noPhoto}人（写真は、あとでOKです）</>}</span> : null}
                   </Notice>
-                  {importNote.zipHint ? <Caution role="status">ZIPの中の players.csv だけを選んだようです。写真とくわしい戦績は入っていません。シートの④で作ったZIPを、開かずに、もう一度選ぶと入ります（前からいる人は変わりません）。</Caution> : null}
                   {importNote.badPhotos ? <Caution role="status">読めなかった写真が{importNote.badPhotos}枚あります（こわれている・写真ではない、など）。その人は「写真なし」で入れました。写真は、あとで1人ずつ選べます。</Caution> : null}
                   {importNote.fixed ? <OkLine quiet>自動で直しました：{importNote.fixed.people}人・{importNote.fixed.fields}か所（{importNote.fixed.examples.join('、')}{importNote.fixed.fields > importNote.fixed.examples.length ? ' など' : ''}）</OkLine> : null}
                   {liveUnreadable.length ? <div className="space-y-2">

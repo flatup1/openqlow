@@ -699,6 +699,10 @@ test('下の帯に重なったキーボードのフォーカスを、見える�
   assert.match(helper, /at\.bottom > under\.top \+ 2 && at\.top < under\.bottom/);
   assert.match(helper, /shown\.scrollIntoView\(\{ block: 'nearest' \}\)/);
   assert.match(helper, /type === 'file' \? target\.closest\('label'\)/, '見えないファイル選択は、ラベルで測る');
+  // マウス・指で押した直後（1秒）は動かさない（押している最中に画面が動くと、ボタン・ファイル選びが押せない。場面 G の「ファイルを選ぶ」が開かなかった）
+  assert.match(helper, /if \(Date\.now\(\) - pointerAtRef\.current < 1000\) return;/);
+  assert.match(page, /document\.addEventListener\('pointerdown', onPointerDown, true\)/);
+  assert.match(page, /document\.removeEventListener\('pointerdown', onPointerDown, true\)/);
   // 帯が大きくなったとき（余白を直したあと）と、フォーカスが移ったときの、両方で呼ぶ
   assert.ok(body.indexOf("setProperty('--bar-h'") < body.indexOf('revealAboveBar(document.activeElement)'), '余白を直してから動かす');
   assert.match(effect, /addEventListener\('focusin', onFocusIn\)/);

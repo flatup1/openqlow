@@ -811,7 +811,7 @@ scenario('S24', 'other-gym entry page: the ZIP is made even when no more script 
     const names = Object.keys(files);
     check(names.includes('players.csv') && names.some((n) => n.startsWith('photos/')) && strFromU8(files['players.csv']).includes('架空 一郎'), 'the ZIP has players.csv with the fighter, and the photo (' + names.join(',') + ')');
   }
-  check(await page.getByText('提出ファイルを保存しました').first().waitFor({ timeout: 5000 }).then(() => true, () => false), 'the green line says the file was saved');
+  check(await page.getByText('提出ファイルの保存を始めました').first().waitFor({ timeout: 5000 }).then(() => true, () => false), 'the green line says the file was saved');
   await ctx.close();
 });
 

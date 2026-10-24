@@ -216,13 +216,12 @@ test('photosById：管理番号 → 写真の表。同じ番号が2つあると�
 /* ───────── 3-ux：ZIPの中の players.csv だけを選んだとき ───────── */
 
 test('players.csv だけを選んだように見えるときは、「写真は、あとでOK」と言わず、ZIPを選び直すと写真と戦績が入ると言う', () => {
-  assert.equal(rosterOnlyFromZip('players.csv', '選手名\nA'), true);
-  assert.equal(rosterOnlyFromZip('PLAYERS.CSV', '選手名\nA'), true, '大文字・小文字は気にしない');
-  assert.equal(rosterOnlyFromZip('名簿.csv', '﻿"管理番号","ジム名","選手名"\n"R-1","A","B"'), true, '見出しに管理番号（④や、他のジムのZIPの名簿と同じ形）');
-  assert.equal(rosterOnlyFromZip('名簿.csv', '選手名,ジム名\nA,B'), false, '自分で作った名簿（管理番号なし）は、今までどおり');
-  assert.equal(rosterOnlyFromZip('名簿.csv', '選手名\nA,管理番号'), false, '1行目だけを見る');
+  assert.equal(rosterOnlyFromZip('players.csv'), true);
+  assert.equal(rosterOnlyFromZip('PLAYERS.CSV'), true, '大文字・小文字は気にしない');
+  assert.equal(rosterOnlyFromZip('名簿.csv'), false, '会長の練習用の名簿（見出しに管理番号がある）・自分で作った名簿は、今までどおり');
+  assert.equal(rosterOnlyFromZip('架空名簿6人.csv'), false, 'マニュアル付録Bの練習用の名簿');
   const page = src('app/private/page.tsx');
-  assert.match(page, /zipHint: kind === 'csv' && rosterOnlyFromZip\(file\.name, csv\) \? true : undefined/);
+  assert.match(page, /zipHint: kind === 'csv' && rosterOnlyFromZip\(file\.name\) \? true : undefined/);
   assert.match(page, /ZIPの中の players\.csv だけを選んだようです。写真とくわしい戦績は入っていません。シートの④で作ったZIPを、開かずに、もう一度選ぶと入ります（前からいる人は変わりません）。/);
   assert.match(page, /\{importNote\.zipHint \? <>写真がない選手：\{importNote\.noPhoto\}人<\/> : <>写真がない選手：\{importNote\.noPhoto\}人（写真は、あとでOKです）<\/>\}/);
 });
@@ -302,4 +301,17 @@ test('知らせの保存の番号（updatedAt）が、いま持っているデ�
   assert.match(live, /const saved=await writePrivateEvent\(next\);curRef\.current=saved\.currentBout;setData\(saved\);seenAtRef\.current=saved\.updatedAt;/);
   const page = src('app/private/page.tsx');
   assert.match(page, /watchPrivateEvent\(eventId, \(updatedAt\?: number\) => \{\s*(?:\/\/[^\n]*\n\s*)*if \(typeof updatedAt === 'number' && updatedAt === savedRef\.current\?\.updatedAt\) return;/);
+});
+
+/* ───────── 帯の「赤コーナーを選ぶ」は、保存や「開く」ではなく、空の試合カードの赤コーナーへ行く ───────── */
+test('帯の「赤コーナーを選ぶ」（空の試合カードがあって、次が保存・開くのとき）は、保存も「開く」もしないで、その赤コーナーへ行く', () => {
+  const page = src('app/private/page.tsx');
+  const run = page.slice(page.indexOf('const runMarker = () => {'), page.indexOf('const onBarPrimary = () => {'));
+  assert.ok(run.length > 100, 'runMarker が見つかる');
+  assert.match(run, /case 'bout': if \(blankIndex >= 0 && marker\.index === blankIndex && marker\.side === 'red'\) \{ jump\('bout-' \+ blankIndex \+ '-red'\); return; \} banner\[key\]\.run\(\); return;/);
+  // 黄色の決め方（logic.ts）：空の試合カードがあるときは、保存・開くより先に、その赤コーナーを指す
+  for (const over of [{ dirty: true }, {}] as Array<Partial<NextActionState>>) {
+    const marker = markerOf(over, { blankIndex: 2 });
+    assert.deepEqual([marker.where, marker.index, marker.side], ['bout', 2, 'red'], '次が保存・開くでも、空の試合カードの赤コーナーを指す ' + JSON.stringify(over));
+  }
 });

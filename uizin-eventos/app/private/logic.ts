@@ -773,11 +773,11 @@ export function photosById<T>(photos: Record<string, T>): Map<string, readonly [
 
 /**
  * ZIPの中の players.csv（名簿だけ）を選んだように見えるか。CSVの道では、写真と records.csv を読まない。
- * ファイル名が players.csv のとき、または見出しに「管理番号」がある（シートの④や、他のジムのZIPの中の名簿と同じ形）とき
+ * ファイル名が players.csv のときだけ（大文字・小文字は気にしない）。見出しの「管理番号」では決めない
+ * （会長の練習用の名簿や、自分で作った名簿にも、管理番号の列があるため。そのときに「ZIPを選び直して」とは言わない）
  */
-export function rosterOnlyFromZip(fileName: string, csv: string): boolean {
-  const head = csv.replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '';
-  return isRosterCsvName(zipEntryName(fileName)) || head.includes('管理番号');
+export function rosterOnlyFromZip(fileName: string): boolean {
+  return isRosterCsvName(zipEntryName(fileName));
 }
 
 /** コピーのファイルのパスワードの見本（画面の「例：」）。見本のままのパスワードでは、新しいコピーを作らない（見本は公開のページに書いてあり、だれでも戻せてしまう） */

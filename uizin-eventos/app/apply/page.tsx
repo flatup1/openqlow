@@ -1378,7 +1378,7 @@ export default function PublicApply() {
     if (!copy || !storeLink) return;
     fillDraftFields(copy.fields);
     dropSentCopy();
-    say('さっきの選手の入力を戻しました。写真は、もう一度えらんでください。まちがいがないか、見てください。', 'ok');
+    say('さっきの選手の入力を戻しました。写真は、もう一度えらんでください。' + (recordOn ? '他の格闘技・タイトル・入賞歴は「なし」にもどっています。あった方は、入れ直してください。' : '') + 'まちがいがないか、見てください。', 'ok');
     document.getElementById('f-gym')?.focus({ preventScroll: true });
     setStick(null);
   };
@@ -1413,6 +1413,8 @@ export default function PublicApply() {
   /** 「変える」：次の人のために入れたジム名と連絡先を、空に戻して、入れ物を消す */
   const changeNext = () => {
     if (storeLink) safeRemove(tabStorage(), nextKey(storeLink));
+    // 共用の端末で次の人に代わるとき：前の子の「送った控え」も消す（次の人が、前の子の入力を戻せないように）
+    dropSentCopy();
     kitRef.current = null;
     setNextBanner(false);
     setFighter((old) => ({ ...old, gym: '' })); setContactName(''); setContactPhone(''); setContactEmail(''); setConsent(false); setGymNameRaw(''); setGymPhoneRaw('');
@@ -1505,7 +1507,7 @@ export default function PublicApply() {
       {tel ? <NextBox on={nextKind === 'call'} label="主催者に電話する" prefix="次はここ" className="mt-3">{telLink}</NextBox> : <p className="mt-3 font-bold">{noContactText}</p>}
     </div> : null}
     {endpointReady && deadlineUnclear && !deadlinePassed ? <Caution className="mt-4">申し込みの締切は「{config.deadline}」です。過ぎていないか、確かめてください</Caution> : null}
-    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）</li></ul>{storeLink && sentCopy && !draftOffer ? <button type="button" onClick={restoreSentCopy} className={greyBtn + ' mt-2 w-full'}>受付番号が出なかったときだけ：さっきの選手の入力を戻す（写真は選び直し）</button> : null}<button type="button" onClick={() => { setRecentSent(false); dropSentCopy(); }} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
+    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>{storeLink && sentCopy && !draftOffer ? '選手の入力は、下の灰色のボタンで戻せます（写真は、選び直します）。戻したら、中身を見てから送ってください。' : '選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。'}（ジム名と連絡先は、残っていることがあります）</li></ul>{storeLink && sentCopy && !draftOffer ? <button type="button" onClick={restoreSentCopy} className={greyBtn + ' mt-2 w-full'}>受付番号が出なかったときだけ：さっきの選手の入力を戻す（写真は選び直し）</button> : null}<button type="button" onClick={() => { setRecentSent(false); dropSentCopy(); }} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
     {askNew ? <>
       <Caution className="mt-4">別の大会のリンクです。入力を消して新しく始めますか？</Caution>
       <DangerConfirm title="消えます：いま入れた内容" lines={['選手の情報・写真・連絡先が、ぜんぶ消えます', '消したあとは、元にもどせません']} safeLabel="今のまま続ける" dangerLabel="消して新しく始める" onSafe={() => setPendingHash('')} onDanger={startNew} />

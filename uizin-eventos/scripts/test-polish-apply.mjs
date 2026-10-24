@@ -615,7 +615,11 @@ await scenario('P17', 'reopen after a send: yellow, both branches, no green', [P
   const t = await bodyText(again);
   check(/さっき、申し込みを送りました。/.test(t), 'P17 the banner is there');
   check(/受付番号の画面が出た方：申し込み済みです。同じ人を、もう一度送らないでください。/.test(t), 'P17 branch 1: receipt number appeared -> done, do not send again');
-  check(/「送れませんでした」と出た方、何も出なかった方：選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）/.test(t), 'P17 branch 2: failed -> the athlete\'s typing is cleared, fill in again and send (gym and contact may be remembered, R9-2)');
+  // 送った控え（60分）があれば、戻すボタンと「ボタンで戻せます」。無ければ「消えています。入れ直して」
+  const canRestore = (await again.getByRole('button', { name: '受付番号が出なかったときだけ：さっきの選手の入力を戻す（写真は選び直し）' }).count()) === 1;
+  check(canRestore
+    ? /「送れませんでした」と出た方、何も出なかった方：選手の入力は、下の灰色のボタンで戻せます（写真は、選び直します）。戻したら、中身を見てから送ってください。（ジム名と連絡先は、残っていることがあります）/.test(t)
+    : /「送れませんでした」と出た方、何も出なかった方：選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）/.test(t), 'P17 branch 2: failed -> says how to get the athlete\'s typing back (the restore button when the sent copy exists, otherwise fill in again) (restore button: ' + canRestore + ')');
   const banner = await again.evaluate(() => { const e = [...document.querySelectorAll('.tos-caution')].find((x) => /さっき、申し込みを送りました/.test(x.innerText)); const okOne = [...document.querySelectorAll('.tos-ok')].some((x) => /さっき/.test(x.innerText)); return { yellow: !!e, green: okOne }; });
   check(banner.yellow && !banner.green, 'P17 the banner is a yellow caution, not a green ✓');
   check((await again.getByRole('button', { name: '別の選手を申し込む', exact: false }).count()) === 0 && !/別の選手を申し込む/.test(t), 'P17 the old name 「別の選手を申し込む」 is gone');
