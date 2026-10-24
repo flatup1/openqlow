@@ -22,7 +22,7 @@ export { ShortLinks } from './short-links-do.ts';
 
 export type Env = {
   EVENT_ROOM: DurableObjectNamespace;
-  /** 操作者だけが持つ合言葉。未設定なら書き込みを一切受け付けない */
+  /** 操作者だけが持つ合言葉。未設定なら書き込みを一切受け付けない（短いURLを作るのには使わない：SHORT_LINK_KEY を見る） */
   OPERATOR_KEY?: string;
   /** Google スプレッドシートのID */
   SHEET_ID?: string;
@@ -42,6 +42,8 @@ export type Env = {
   ENTRY_SHEET_WEBHOOK_SECRET?: string;
   /** 短い申込URLの行き先を置く箱（大会の部屋とは別）。未設定でも、長いURLの申込には影響しない */
   SHORT_LINKS?: DurableObjectNamespace;
+  /** 短いURLを作る・行き先を入れ直すときだけの鍵。当日の進行の操作キー（OPERATOR_KEY）とは別の秘密。未設定なら、短いURLは作れない */
+  SHORT_LINK_KEY?: string;
 };
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -71,15 +73,24 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-function isOperator(request: Request, env: Env): boolean {
-  const key = env.OPERATOR_KEY ?? '';
+/** 鍵が合うか。鍵が空（未設定）なら、いつも false */
+function sameKey(key: string, given: string): boolean {
   if (key === '') return false;
-  const given = request.headers.get('x-operator-key') ?? new URL(request.url).searchParams.get('key') ?? '';
   if (given.length !== key.length) return false;
   // 長さが同じときだけ、時間差の出ない比較をする
   let diff = 0;
   for (let i = 0; i < key.length; i++) diff |= key.charCodeAt(i) ^ given.charCodeAt(i);
   return diff === 0;
+}
+
+function isOperator(request: Request, env: Env): boolean {
+  const given = request.headers.get('x-operator-key') ?? new URL(request.url).searchParams.get('key') ?? '';
+  return sameKey(env.OPERATOR_KEY ?? '', given);
+}
+
+/** 短いURLを作る鍵（SHORT_LINK_KEY）。操作キーでは通さない。URLの ?key= も受けない（鍵が、URLごと記録や履歴に残るため） */
+function isShortLinkMaker(request: Request, env: Env): boolean {
+  return sameKey(env.SHORT_LINK_KEY ?? '', request.headers.get('x-short-link-key') ?? '');
 }
 
 function eventId(request: Request, env: Env): string {
@@ -351,7 +362,7 @@ export default {
 
     // --- 短い申込URL（行き先だけを持つ。大会の部屋には触らない） ----------
     // 申込は、これまでどおり長いURLでも動く。ここは、短いURLを開く・作るだけ。
-    // 短いURLを作る画面（運営用）。操作キーを扱うのは、この画面と POST だけ（準備画面は扱わない）
+    // 短いURLを作る画面（運営用）。短いURLを作る鍵（SHORT_LINK_KEY）を扱うのは、この画面と POST だけ（準備画面は扱わない）
     if (path === '/short-link' && request.method === 'GET') {
       return new Response(SHORT_LINK_PAGE, { headers: SHORT_LINK_PAGE_HEADERS });
     }
@@ -362,20 +373,35 @@ export default {
       const store = shortLinkStore(env);
       if (!store) return new Response('短い申込URLは、まだ使えません。運営に聞いてください。', { status: 503, headers: TEXT_HEADERS });
       const notFound = () => new Response('この短い申込URLは見つかりません。運営に、新しいURLを聞いてください。', { status: 404, headers: TEXT_HEADERS });
-      // どこで何が起きても、選手には、エラーの画面ではなく、この文を見せる（転送先は、URLとして整えた形だけを使う）
+      // 少し待てば直る失敗（箱が答えない・こわれた答え）。URLは正しいかもしれないので、「見つかりません」とは言わない
+      const unavailable = () => new Response('いま開けません。少し待ってから、もう一度押してください。', { status: 503, headers: TEXT_HEADERS });
+      // 「見つかりません」は、本当に無いときだけ（コードの形がちがう・箱が「無い」と答えた・行き先が申込ページでない）
+      if (!SHORT_CODE_PATTERN.test(code)) return notFound();
+      // どこで何が起きても、選手には、エラーの画面ではなく、この2つの文のどちらかを見せる（転送先は、URLとして整えた形だけを使う）
       try {
-        const found = SHORT_CODE_PATTERN.test(code) ? await store.fetch(new Request('https://short-links/code/' + code)) : null;
-        const body = found?.ok ? ((await found.json().catch(() => ({}))) as { target?: unknown }) : {};
-        if (typeof body.target !== 'string' || !isShortLinkTarget(body.target)) return notFound();
+        const found = await store.fetch(new Request('https://short-links/code/' + code));
+        if (found.status === 404) return notFound();
+        if (!found.ok) return unavailable();
+        const body = (await found.json()) as { target?: unknown } | null;
+        if (typeof body?.target !== 'string' || !isShortLinkTarget(body.target)) return notFound();
         return new Response(null, { status: 302, headers: { location: new URL(body.target).href, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
       } catch {
-        return notFound();
+        return unavailable();
       }
     }
 
     if (path === '/api/short-links' && request.method === 'POST') {
-      if (!isOperator(request, env)) {
-        return withCors(json({ ok: false, reason: '操作キーが違います。この画面からは短いURLを作れません。' }, 401), request, env);
+      // 短いURLを作る・入れ直すのは、短いURL専用の鍵（SHORT_LINK_KEY）だけ。当日の進行の操作キー（OPERATOR_KEY）では作れない
+      // （進行の端末に残る操作キーで、配ってある /a/コード の行き先を、よそへ差し替えられないようにするため）
+      if ((env.SHORT_LINK_KEY ?? '') === '') {
+        return withCors(json({ ok: false, reason: '短いURLを作る鍵（SHORT_LINK_KEY）が、まだ入っていません。入れるまでは、短いURLを作れません（入れ方：docs/DEPLOY.md）。' }, 503), request, env);
+      }
+      if (!isShortLinkMaker(request, env)) {
+        return withCors(json({ ok: false, reason: '短いURLを作る鍵が違います（当日の進行の「操作キー」とは、別の鍵です）。この画面からは短いURLを作れません。' }, 401), request, env);
+      }
+      // 操作キーと同じ文字の鍵では、分けた意味が無いので、作らない（鍵を知っている人にだけ、この理由を見せる）
+      if (sameKey(env.OPERATOR_KEY ?? '', env.SHORT_LINK_KEY ?? '')) {
+        return withCors(json({ ok: false, reason: '短いURLを作る鍵が、当日の進行の「操作キー」と同じです。別の鍵を入れ直してください（入れ方：docs/DEPLOY.md）。' }, 503), request, env);
       }
       const store = shortLinkStore(env);
       if (!store) return withCors(json({ ok: false, reason: '短いURLの箱が、まだ用意されていません。' }, 503), request, env);

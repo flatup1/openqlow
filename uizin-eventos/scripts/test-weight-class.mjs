@@ -80,7 +80,8 @@ const nodeBackup = (value, password) => {
 };
 const nodeOpen = (text, password) => {
   const p = JSON.parse(text);
-  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), 250_000, 32, 'sha256');
+  // 新しいコピーのファイルは回数（iterations）を書く。書いていない古いファイルは 250,000 回
+  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), p.iterations ?? 250_000, 32, 'sha256');
   const buf = Buffer.from(p.data, 'base64');
   const d = createDecipheriv('aes-256-gcm', key, Buffer.from(p.iv, 'base64'));
   d.setAuthTag(buf.subarray(buf.length - 16));

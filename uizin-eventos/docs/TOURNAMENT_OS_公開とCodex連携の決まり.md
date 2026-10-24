@@ -20,8 +20,21 @@ npm run deploy:private
 
 - 公開先は、プログラムの中で `tournament-os-v3` に固定してあります。
 - ひな形のコピー用リンクは、`~/template-link.backup.json`（Macだけにある控え）から入れます。無ければ、**公開しません。**（作り直すとリンクが消える事故を防ぐため）
-- **このコマンドは、事前に、全部の検証が合格したコミットでだけ使います。** 検証したあとで中身が変わっていると、画面に「⚠ 検証していない」と出て、`yes-unverified` と打たないと進みません（4を見る）。
+- **このコマンドは、事前に、全部の検証が合格したコミットでだけ使います。** 検証したあとで中身が変わっていると、画面に「⚠ 検証していない」と出て、`yes-unverified` と打たないと進みません（4を見る）。全部の検証に合格した中身は、リポジトリのいちばん上の `uizin-eventos-verified-trees.txt`（検証ずみの一覧）に記録されます。この一覧にある中身なら、Mac でも「✓」と出て、ふつうの `yes` で進みます。
 - ③の画面に、公開する `.gs` の **build**（プログラムの版の番号。いまは `3.20261024.2`）が出ます。コピー元のシート（ひな形）の Apps Script の上から2行目と**同じ番号**か見くらべてから、`yes` と打ちます。ちがうと、配った先のシートに、クラスの行・花道の追加情報の行が入りません（手順：[クラス区分_設定の入れ方.md](クラス区分_設定の入れ方.md) の「ひな形シートを新しくする」）。
+
+### オーナーの Mac から公開する（`scripts/owner-deploy.sh`）
+
+Mac のターミナルで、この1行を動かします。
+
+```
+bash ~/openqlow-a3/uizin-eventos/scripts/owner-deploy.sh
+```
+
+- 決めた枝（ブランチ）を `~/openqlow-a3` に取ってきて、`npm ci`（決まった部品だけを入れる）と `npm run deploy:private` をします。前の `~/a3deploy.sh` と同じ仕事です。
+- いつもの枝の名前は、`scripts/owner-deploy.sh` の `DEFAULT_BRANCH` の1行だけに書いてあります。ちがう枝のときは、うしろに枝の名前を付けます（例：`bash ~/openqlow-a3/uizin-eventos/scripts/owner-deploy.sh 枝の名前`）。AIが枝を変えたときは、その1回だけ、枝の名前を付けて動かします。
+- 置きかえは1回だけ：いつもの `bash ~/a3deploy.sh` で1回公開すると、Mac にもこのファイルが入ります。そのあと `echo 'bash ~/openqlow-a3/uizin-eventos/scripts/owner-deploy.sh "$@"' > ~/a3deploy.sh` を1回動かします。次からも `bash ~/a3deploy.sh` だけです。
+- AIは、全部の検証（4を見る）に合格したら、検証ずみの一覧をコミットして push します。その一覧にある中身だけが「✓」になります。
 
 ## 3. 壊れないための自動チェック（`scripts/check-private-build.mjs`）
 
@@ -39,12 +52,13 @@ npm run deploy:private
 9. 古い Safari で動かない書き方が無い（クラスの `static` ブロック、正規表現の後読み）
 10. CSS に `@layer` が残っていない。Tailwind v4 は、規則を `@layer` の中に入れて出す。Safari 15.0〜15.3 は `@layer` を知らず、その塊を捨てて、レイアウトが全部消える。`postcss.config.mjs` の小さな部品が、`@layer` を取りのぞく（手書きの規則には、強さを保つ `:not(#\#)` を足す）。Safari 15.4 以降は、どちらでも同じ見た目
 11. 古い「別の方法で受付をつくる」画面（`private/google-setup`）は、公開用フォルダに入っていない。主催者のメールと合言葉（setupKey）をブラウザに残し、プライバシーの決まりに合わないため。入っていたら止まる（画面の置き場所・`tournament-google-setup:` の書き込み・`_headers` の古い設定・その画面だけが使う古い版のGoogleのプログラム `templates/Tournament_OS_Google受付.gs`）。ソースのファイルは消さず、`scripts/build-private-pages.sh` の `LEGACY_ROUTES` と `LEGACY_FILES` で外している。使える道は `/private/setup/`（v3）だけ
+12. 長く覚えさせる設定（`Cache-Control: public, max-age=31536000, immutable`）は、名前に中身の印が入った部品（`/_next/static/*`）だけにある。スマホは2回目から、その部品をサーバーに聞き直さない。画面（HTML）など、ほかの道すじに長く覚えさせる設定があると止まる（公開し直しても、古い画面が出つづけるため）
 
 手で動かす場合：`npm run verify:private-build`
 
 ## 4. 公開してよい条件（上のコマンドの前に、必ず）
 
-型チェック・単体テスト・画面の確認（`scripts/test-*.mjs` の**すべて**）・`validate-ai-os`・git の見張りが、**すべて**合格すること。
+型チェック・単体テスト・マニュアルの文字のロボット（`scripts/check-manual-labels.mjs`）・画面の確認（`scripts/test-*.mjs` の**すべて**）・`validate-ai-os`・git の見張りが、**すべて**合格すること。
 
 一度に全部やるコマンド（`uizin-eventos/` で）：
 
@@ -53,9 +67,10 @@ npm run verify:all          （中身は bash scripts/verify-private-all.sh）
 npm run verify:all -- --fast   （いちばん長い mistake-proof（およそ16分）だけをとばす。公開の前には使わない）
 ```
 
-順番：型チェック(tsc) → 単体テスト(`npm test`) → `build:private` → 手元の静かなサーバー → 画面の確認（`scripts/test-*.mjs` の名前が合うもの全部。足したものも自動で入る） → `validate-ai-os` → git の見張り（`next-stale-cache*/`・名簿のCSV・ZIP・`.env` などが、追跡していない形で混ざっていないか）。
+順番：型チェック(tsc) → 単体テスト(`npm test`) → `build:private` → マニュアルの文字のロボット（`check-manual-labels.mjs --no-suggest`。マニュアルの「…」が、作った画面に本当にあるか） → 手元の静かなサーバー → 画面の確認（`scripts/test-*.mjs` の名前が合うもの全部。足したものも自動で入る） → `validate-ai-os` → git の見張り（`next-stale-cache*/`・名簿のCSV・ZIP・`.env` などが、追跡していない形で混ざっていないか）。
 1つ失敗しても、ほかは最後まで動かします。最後に「手順・合否・秒」の表を出し、1つでも失敗なら、終わりの番号が0以外になります。
 **全部合格したときだけ**、`.verify-ok`（コミットと中身の指紋）を書きます。`npm run deploy:private` は、公開の前に、この指紋といまの中身を見くらべます。ちがうときは「⚠ 検証していない」と出て、`yes` ではなく `yes-unverified` と打たないと公開されません。
+さらに、はじめから終わりまで `uizin-eventos/` がコミットずみ（変更も、まだ追跡していないファイルも無い）なら、このフォルダの中身の番号（`git rev-parse HEAD:uizin-eventos`）を、リポジトリのいちばん上の `uizin-eventos-verified-trees.txt` に1行足します。**この一覧は、コミットして push します**（フォルダの外にあるので、コミットしても中身の番号は変わりません）。`.verify-ok` の無い Mac でも、公開のコマンドは、この一覧で「全部合格した中身か」を見分けます。
 全部の確認は、およそ30分かかります（2026-10-12 の実測の目安：browser 18秒・setup 7秒・v3-safety 12秒・glance 22秒・live-list 2.5分・class-ab 2.3分・resilience 5分・mistake-proof 16分）。
 
 環境変数：`TOS_CHROME_PATH`（Chrome の場所。無ければ、パソコンの Chrome）・`TOS_PLAYWRIGHT_MODULE`（既定は `playwright`）・`TOS_PORT`（既定 4990）・`TOS_SKIP_BUILD=1`・`TOS_ONLY="test-class-ab test-polish-misc"`（その確認だけ）。

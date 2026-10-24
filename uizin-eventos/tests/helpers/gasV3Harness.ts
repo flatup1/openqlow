@@ -26,7 +26,9 @@ export function harness(opts: Opts = {}) {
       parents: [] as any[], getParents: () => iterator(r.parents),
       createFolder: (n: string) => { const c = resource('folder', n); c.parents.push(r); r.children.push(c); return c; },
       createFile: (v: any) => { const c = resource('file', v.name, v); c.parents.push(r); r.children.push(c); return c; },
-      getFilesByName: (n: string) => iterator(r.children.filter((c: any) => c.kind === 'file' && c.name === n && !c.trashed)) };
+      getFilesByName: (n: string) => iterator(r.children.filter((c: any) => c.kind === 'file' && c.name === n && !c.trashed)),
+      // フォルダの中のファイルの一覧。ゴミ箱の中のファイルも出す（きびしいほうに合わせる。出なくても、受付は番号で探しなおすので、同じ答え）。完全に消したファイル＝resources から消したものは、出ない
+      getFiles: () => iterator(r.children.filter((c: any) => c.kind === 'file' && resources.has(c.id))) };
     resources.set(id, r); return r;
   }
   function sheet(book: any, name: string): any {

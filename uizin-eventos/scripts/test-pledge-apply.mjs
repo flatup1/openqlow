@@ -15,7 +15,9 @@
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { PLEDGE_POST_KEYS } from '../core/pledge.ts';
+import { packPledge } from '../core/pledge.ts';
 import { publicEntryHash } from '../core/publicEntry.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
@@ -40,10 +42,12 @@ const short = (s, n = 160) => String(s).replace(/\s+/g, ' ').slice(0, n);
 /** fake sentences: the app code and these tests carry no real pledge wording */
 const ITEMS = ['テスト用の文です1', 'テスト用の文です2', 'テスト用の文です3', 'テスト用の文です4', 'テスト用の文です5'];
 const PLEDGE = { items: ITEMS, guardian: 'テスト用の保護者の文です', gym: 'テスト用のジムの文です', mode: 'under18', gymMode: true, confirmed: true };
-const HASH = '0123456789abcdef'.repeat(4);
+/** the REAL fingerprint of the texts, made the way the Google receiver makes it (JSON {items, guardian, gym} -> UTF-8 -> SHA-256 -> lower-case hex). The page now checks plt against plf: a fake one is refused like a cut link */
+const fingerprint = (p) => createHash('sha256').update(JSON.stringify({ items: p.items, guardian: p.guardian, gym: p.gym }), 'utf8').digest('hex');
+const HASH = fingerprint(PLEDGE);
 const WEIGHTS = { enabled: true, divisions: [{ name: '一般男子', classes: ['60kg以下', '60kgをこえる'] }, { name: '花道男子', classes: ['無差別'] }] };
 const baseCfg = { endpoint: ENDPOINT, eventId: 'pledge-apply', title: '架空テスト大会', organizer: '架空主催', date: '2027年10月3日', venue: '架空体育館', venueUrl: '', deadline: '2099-11-30', contact: '架空連絡先 02-0000-0000', music: false, grade: 'off', age: 'required', comment: 'off', protocol: '3', mode: 'live' };
-const hashFor = (over = {}, pledge = {}) => publicEntryHash({ ...baseCfg, pledge: { ...PLEDGE, ...pledge }, pledgeHash: HASH, ...over });
+const hashFor = (over = {}, pledge = {}) => publicEntryHash({ ...baseCfg, pledge: { ...PLEDGE, ...pledge }, pledgeHash: fingerprint({ ...PLEDGE, ...pledge }), ...over });
 const plainHash = () => publicEntryHash(baseCfg);
 /** the POST keys of the old form, in order (setting OFF must send exactly these) */
 const OLD_KEYS = ['protocol', 'entryKey', 'mode', 'website', 'eventId', 'requestId', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'fighterClass', 'comment', 'musicUrl', 'contactName', 'contactPhone', 'contactEmail', 'consent', 'photoDataUrl'];
@@ -801,6 +805,8 @@ await scenario('R6', 'the header number is the number NOW; a link whose count ca
     ['pledge none, gym', hashFor({}, { mode: 'none' }), []],
     ['pledge none, no gym', hashFor({}, { mode: 'none', gymMode: false }), []],
     ['花道 + weights', publicEntryHash({ ...baseCfg, weights: WEIGHTS, hanamichi: true }), ['出場区分']],
+    ['weights only (a division with 階級 adds the 階級 field)', publicEntryHash({ ...baseCfg, weights: WEIGHTS }), ['出場区分']],
+    ['pledge under18 + weights', hashFor({ weights: WEIGHTS }), ['出場区分', '年齢']],
     ['old link (nothing new)', plainHash(), []],
   ];
   for (const [label, hash, words] of variants) {
@@ -864,6 +870,31 @@ await scenario('R8', 'the ordinary form (no pledge) too: while every field is fi
   await page.locator('#f-consent').check(); await step('after consent (👉 on the confirm button)');
   check(bad.length === 0, 'R8 ' + vp.width + 'px: no badge covers text (' + bad.join(' ; ') + ')');
   // the photo box: the badge sits above the photo button; it has room above (no overlap with the note)
+  await ctx.close();
+});
+
+/* ───────────────────────── T: a pledge text edited inside the link (plf kept) stops like a cut link ───────────────────────── */
+await scenario('T', 'someone edits the pledge text inside the link (plt) and keeps the fingerprint (plf): the page refuses it like a cut link, nothing can be sent; the real link works as before', [DESKTOP, PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const good = hashFor();
+  const params = new URLSearchParams(good.replace(/^#/, ''));
+  params.set('plt', packPledge(['書きかえた文です（架空）', ...ITEMS.slice(1)], PLEDGE.guardian, PLEDGE.gym));
+  const forged = '#' + params.toString();
+  check(new URLSearchParams(forged.slice(1)).get('plf') === HASH, 'T the forged link keeps the real fingerprint');
+  const page = await openApply(ctx, forged, { wait: false });
+  await page.getByText('このページでは申し込めません').waitFor({ timeout: 15000 });
+  const t = await bodyText(page);
+  check(t.includes('理由：リンクが古いか、途中で切れています'), 'T the same red notice as a cut link');
+  check(!t.includes('書きかえた文です') || !(await page.locator('#pledge-card').isVisible().catch(() => false)), 'T the edited sentence is not offered for a tick');
+  check(!(await reviewBtn(page).isEnabled().catch(() => false)), 'T the review button is not usable');
+  check(ctx.__posts.length === 0, 'T nothing was sent');
+  await page.close();
+  // the real link: the card, the review and the POST as before (pledgeHash = plf, untouched)
+  const real = await openApply(ctx, good);
+  check((await cardCount(real)) === 1 && !(await bodyText(real)).includes('このページでは申し込めません'), 'T the real link shows the pledge card');
+  await fillBase(real); await fillPledge(real);
+  const post = await sendIt(real, ctx);
+  check(post && post.get('pledgeHash') === HASH, 'T the real link sends, pledgeHash = plf (' + (post && post.get('pledgeHash')) + ')');
   await ctx.close();
 });
 

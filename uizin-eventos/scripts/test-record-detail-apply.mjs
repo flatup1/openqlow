@@ -441,6 +441,25 @@ await scenario('F5', '見直し A6: 「なし」を押しても、入れた行�
 });
 
 await browser.close();
+await scenario('F6', '採点 3-ux: 確認を押す前でも、入れたのにまちがっている戦績（勝ち＞試合数）は、戦績の箱を出たら「戦績を直す」と「直す所：戦績」。箱の中にいる間・空・入力の途中は、赤にしない', [PHONE, SMALL], async (page) => {
+  await open(page, NEW_LINK);
+  for (const [label, value] of FOUR) await page.getByLabel(label, { exact: true }).fill(value);
+  const fixLine = async () => (await bodyText(page)).includes('直す所：戦績');
+  await page.locator('#rd-kick-games').fill('3');
+  await leaveField(page); await settle(150);
+  check(/戦績を入れる/.test((await markText(page))[0] || '') && !(await fixLine()), 'half-typed (試合数 only), after leaving: still 「戦績を入れる」, no red (' + (await markText(page)).join('|') + ')');
+  await page.locator('#rd-kick-win').fill('5');
+  await settle(150);
+  check(/戦績を入れる/.test((await markText(page))[0] || '') && !(await fixLine()), 'while the cursor is still in the block: not yet 直す (' + (await markText(page)).join('|') + ')');
+  await leaveField(page); await settle(200);
+  check(/戦績を直す/.test((await markText(page))[0] || ''), 'after leaving the block: the yellow marker says 「戦績を直す」 (' + (await markText(page)).join('|') + ')');
+  check(await fixLine(), 'and the red 「直す所：戦績」 line is shown, like the other fields');
+  check((await page.getByRole('heading', { name: '送る前の確認', exact: true }).count()) === 0, 'nothing was pressed: no review screen');
+  await page.locator('#rd-kick-win').fill('3');
+  await leaveField(page); await settle(200);
+  check(!/戦績を直す/.test((await markText(page))[0] || '') && !(await fixLine()), 'after fixing: no 直す, no red');
+});
+
 const pageErrs = pageErrors.filter((e) => !/Failed to load resource/.test(e.message));
 check(pageErrs.length === 0, 'no page errors: ' + JSON.stringify(pageErrs.slice(0, 3)));
 const count = failures.length;

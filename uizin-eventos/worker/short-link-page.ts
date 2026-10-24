@@ -2,12 +2,13 @@
  * 短い申込URLを作る画面（運営用）。Worker が自分で配る、1枚のページ。
  *
  * なぜ準備画面（Pages）に作らないか：準備画面は「Googleとだけ、読むだけ」と決めてあり、鍵も送信も置かない。
- * 操作キーを扱うのは、この画面だけ（Worker と同じ場所）。準備画面の決まりは、そのまま守る。
+ * 短いURLを作る鍵（SHORT_LINK_KEY）を扱うのは、この画面だけ（Worker と同じ場所）。準備画面の決まりは、そのまま守る。
  * 申込ページ・準備画面の外へ出る通信は、このページからの「自分（Worker）への呼び出し」だけ。
+ * この鍵は、当日の進行の操作キー（OPERATOR_KEY）とは別。進行の端末に残る操作キーでは、短いURLの行き先を変えられない。
  *
  * 大会IDの入力欄は無い：どの大会の・本番かテストかは、貼ったURLの中身から Worker が決める（別の大会の短いURLを上書きしないため）。
- * 操作キーは、この端末の localStorage には残さない（共用の端末で、だれでも使えてしまうため）。このタブの sessionStorage に、
- * Worker が「通した」と答えたあとだけ入れる（タブを閉じると消える）。前の版が localStorage に残した分は、開いたときに消す。
+ * 鍵は、この端末の localStorage には残さない（共用の端末で、だれでも使えてしまうため）。このタブの sessionStorage に、
+ * Worker が「通した」と答えたあとだけ入れる（タブを閉じると消える）。前の版が localStorage に残した操作キーは、開いたときに消す。
  */
 
 export const SHORT_LINK_PAGE_HEADERS = {
@@ -50,7 +51,7 @@ export const SHORT_LINK_PAGE = `<!doctype html>
   ③ 「短いURLを作る」を押します。できた短いURLを、LINEに送ります。</p>
   <p>同じ大会・同じ「本番／テスト」なら、何度作っても、短いURLは同じままです。大会は、貼ったURLの中身で決まります。</p>
 
-  <label for="key">操作キー（操作の画面で使うもの。このタブを閉じるまでだけ、覚えます）</label>
+  <label for="key">短いURLを作る鍵（SHORT_LINK_KEY。当日の進行の「操作キー」とは、別の鍵です。このタブを閉じるまでだけ、覚えます）</label>
   <input id="key" type="password" autocomplete="off">
 
   <label for="target">長い申込URL（「選手の受付をつくる」の画面でコピーしたもの）</label>
@@ -69,14 +70,16 @@ export const SHORT_LINK_PAGE = `<!doctype html>
 </main>
 <script>
 (function () {
-  var KEY_NAME = 'uizin.shortLink.operatorKey';
+  var KEY_NAME = 'uizin.shortLink.key';
+  // 前の版が使っていた名前（操作キーと大会ID）。読まずに、消すだけ
+  var OLD_KEY_NAME = 'uizin.shortLink.operatorKey';
   var OLD_EVENT_NAME = 'uizin.shortLink.eventId';
   function el(id) { return document.getElementById(id); }
-  // 操作キーは、このタブの間だけ（sessionStorage）。Worker が「通した」と答えたあとにだけ入れる。localStorage には、置かない
+  // 鍵は、このタブの間だけ（sessionStorage）。Worker が「通した」と答えたあとにだけ入れる。localStorage には、置かない
   function keep(name, value) { try { sessionStorage.setItem(name, value); } catch (e) { /* 残せなくても、使えます */ } }
   function recall(name) { try { return sessionStorage.getItem(name) || ''; } catch (e) { return ''; } }
   // 前の版が localStorage に残した操作キーと大会IDは、開いたときに消す
-  try { localStorage.removeItem(KEY_NAME); localStorage.removeItem(OLD_EVENT_NAME); } catch (e) { /* 消せなくても、使えます */ }
+  try { localStorage.removeItem(OLD_KEY_NAME); localStorage.removeItem(OLD_EVENT_NAME); } catch (e) { /* 消せなくても、使えます */ }
   function say(text, ok) { el('msg').className = ok ? 'ok' : 'bad'; el('msg').textContent = text; }
 
   el('key').value = recall(KEY_NAME);
@@ -84,7 +87,7 @@ export const SHORT_LINK_PAGE = `<!doctype html>
   el('make').addEventListener('click', function () {
     var key = el('key').value.trim();
     var target = el('target').value.trim();
-    if (!key) { say('操作キーを入れてください。', false); return; }
+    if (!key) { say('短いURLを作る鍵を入れてください。', false); return; }
     if (target.indexOf('https://') !== 0 || target.indexOf('/apply/#') < 0) {
       say('申込ページの長いURLを貼ってください（「/apply/#」が入っているURLです）。', false);
       return;
@@ -92,7 +95,8 @@ export const SHORT_LINK_PAGE = `<!doctype html>
     say('作っています…', true);
     fetch('/api/short-links', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-operator-key': key },
+      // 鍵は、このヘッダーだけで送る（URLには付けない）
+      headers: { 'content-type': 'application/json', 'x-short-link-key': key },
       body: JSON.stringify({ target: target })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (body) { return { ok: res.ok, body: body }; });

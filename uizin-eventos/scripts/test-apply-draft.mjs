@@ -24,6 +24,7 @@
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { DRAFT_FIELDS, DRAFT_TTL_MS, NEVER_STORED, NEXT_NEVER_STORED, NEXT_TTL_MS } from '../core/applyDraft.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { HANAMICHI_ASKED_ITEMS } from '../core/hanamichi.ts';
@@ -57,7 +58,8 @@ const WEIGHTS = { enabled: true, divisions: [{ name: '中学・一般男子', cl
 const baseCfg = { endpoint: ENDPOINT, eventId: EVENT, title: '架空テスト大会', organizer: '架空主催', date: '2027年10月3日', venue: '架空体育館', venueUrl: '', deadline: '2099-11-30', contact: '架空連絡先 02-0000-0000', music: true, grade: 'required', age: 'required', comment: 'required', protocol: '3', mode: 'live', weights: WEIGHTS, classes: DEFAULT_CLASS_SETTINGS };
 const ITEMS = ['テスト用の文です1', 'テスト用の文です2', 'テスト用の文です3'];
 const PLEDGE = { items: ITEMS, guardian: 'テスト用の保護者の文です', gym: 'テスト用のジムの文です', mode: 'under18', gymMode: true, confirmed: true };
-const HASH64 = '0123456789abcdef'.repeat(4);
+/** the REAL fingerprint (as the Google receiver makes it): the page checks plt against plf, a fake one is refused like a cut link */
+const HASH64 = createHash('sha256').update(JSON.stringify({ items: PLEDGE.items, guardian: PLEDGE.guardian, gym: PLEDGE.gym }), 'utf8').digest('hex');
 const hashFor = (over = {}) => publicEntryHash({ ...baseCfg, ...over });
 const fullHash = (over = {}) => publicEntryHash({ ...baseCfg, hanamichi: true, pledge: PLEDGE, pledgeHash: HASH64, ...over });
 /** the POST keys of the old form, in order (nothing may be added by this feature) */
@@ -68,6 +70,8 @@ const GYM_REP = { name: '架空 責任者', phone: '09000000000' };
 const SECRET_HN = { hnNameKana: 'ZQXカナ名', hnGymKana: 'ZQXカナジム', hnRing: 'ZQXリング', hnRingKana: 'ZQXリングカナ', hnOther: 'ZQX他格闘', hnJob: 'ZQX職業', hnHobby: 'ZQX趣味', hnReason: 'ZQX理由', hnMessage: 'ZQXメッセージ', hnKickYears: '7', hnPerWeek: '4' };
 const DRAFT = (id = EVENT, mode = 'live') => 'tos-apply-draft:v1:' + id + ':' + mode;
 const NEXT = (id = EVENT, mode = 'live') => 'tos-apply-next:v1:' + id + ':' + mode;
+/** the 送った控え: the draft is moved here at the moment of the send (60 minutes; restored only by hand) */
+const COPY = (id = EVENT, mode = 'live') => 'tos-apply-copy:v1:' + id + ':' + mode;
 const MIN = 60 * 1000;
 
 /* ───────────────────────── browser helpers ───────────────────────── */
@@ -340,7 +344,10 @@ await scenario('C', 'send: at the moment of the submit the draft is gone and the
   const atSubmit = JSON.parse((await readKey(page, '__t:atSubmit')) || '[]');
   check(atSubmit.includes(NEXT()) && !atSubmit.includes(DRAFT()), 'C right before the form was submitted: the kit was already written and the draft already removed (' + atSubmit.join(',') + ')');
   const s = await dump(page);
-  check(same(Object.keys(s), [NEXT()]), 'C afterwards the only key is the kit (' + Object.keys(s).join(',') + ')');
+  check(same(Object.keys(s).sort(), [COPY(), NEXT()].sort()), 'C afterwards the keys are the kit and the sent copy (the draft moved there) (' + Object.keys(s).join(',') + ')');
+  const copy = JSON.parse(s[COPY()] || '{}');
+  check(same(Object.keys(copy), ['v', 'eventId', 'mode', 'savedAt', 'f']) && same(Object.keys(copy.f || {}), [...DRAFT_FIELDS]) && same(copy.f, FIELD_VALUES), 'C the sent copy holds the twelve athlete fields that were sent (' + short(JSON.stringify(copy.f), 120) + ')');
+  check(!/data:|09012345678|kakuu@|"consent"|"contact/.test(s[COPY()] || ''), 'C the sent copy has no photo, no contact, no consent');
   const rec = JSON.parse(s[NEXT()] || '{}');
   check(same(Object.keys(rec), ['v', 'eventId', 'mode', 'savedAt', 'k']) && rec.eventId === EVENT && rec.mode === 'live' && Math.abs(Date.now() - rec.savedAt) < 90 * 1000, 'C the kit record is {v, eventId, mode, savedAt, k}');
   check(same(Object.keys(rec.k || {}).sort(), ['consent', 'contactEmail', 'contactName', 'contactPhone', 'gym', 'gymName', 'gymPhone']), 'C k holds the seven allowed keys only (' + Object.keys(rec.k || {}).join(',') + ')');
@@ -574,12 +581,14 @@ await scenario('H', 'type EVERYTHING (花道, pledge, guardian, gym representati
   await gymBox(page).waitFor();
   await settle(300);
   const after = await dump(page);
-  check(same(Object.keys(after), [NEXT()]), 'H after the send only the kit key is left (' + Object.keys(after).join(',') + ')');
+  check(same(Object.keys(after).sort(), [COPY(), NEXT()].sort()), 'H after the send only the kit and the sent copy are left (' + Object.keys(after).join(',') + ')');
+  const copyText = after[COPY()] || '';
+  check(!/data:|base64|ZQX|1971|09012345678|09000000000|kakuu@|テスト用|pledge|guardian|gymName|gymPhone|"yes"/.test(copyText), 'H the sent copy has none of the private things (photo, 花道, birth date, contact, pledge, gym representative)');
   const kitText = after[NEXT()] || '';
   const kit = JSON.parse(kitText || '{}');
   check(kit.k && kit.k.contactPhone === '09012345678' && kit.k.contactEmail === 'kakuu@example.com' && kit.k.gymName === GYM_REP.name && kit.k.gymPhone === GYM_REP.phone && kit.k.consent === true, 'H the kit holds the contact and the gym representative (the owner chose this)');
   const kitValues = JSON.stringify(kit.k || {});
-  const kitBad = [['a photo', /data:|base64/, false], ['the 花道 answers', /ZQX/, false], ['the birth date', /1971|昭和/, true], ['the pledge sentences', /テスト用/, false], ['the athlete fields', /架空選手|3勝1敗|全力で|music\.apple|一般男子|花道男子|中2|upper/, false], ['a pledge / guardian tick', /pledge|guardian|"yes"/, false], ['the 許可 tick', /gymPermission|gymConsent|permission/i, false], ['a hash', /0123456789abcdef/, false]];
+  const kitBad = [['a photo', /data:|base64/, false], ['the 花道 answers', /ZQX/, false], ['the birth date', /1971|昭和/, true], ['the pledge sentences', /テスト用/, false], ['the athlete fields', /架空選手|3勝1敗|全力で|music\.apple|一般男子|花道男子|中2|upper/, false], ['a pledge / guardian tick', /pledge|guardian|"yes"/, false], ['the 許可 tick', /gymPermission|gymConsent|permission/i, false], ['a hash', new RegExp(HASH64), false]];
   for (const [what, re, onValues] of kitBad) check(!re.test(onValues ? kitValues : kitText), 'H the kit has no ' + what);
   for (const key of NEXT_NEVER_STORED) check(!kitText.includes('"' + key + '"'), 'H the kit has no "' + key + '" key');
   // the form after reopening: the gym representative is filled (same gym), the ticks are NOT
@@ -787,6 +796,93 @@ await scenario('P', 'no memory on a closed deadline (live), a broken link or a c
 });
 
 /* ───────────────────────── Q: the page text is honest (nothing says "nothing is kept") ───────────────────────── */
+/* ───────────────────────── S: the sent copy (送った控え): only by hand, from the 「さっき、申し込みを送りました」 notice ───────────────────────── */
+await scenario('S', 'Google said 「送れませんでした」 and the page was reloaded: the notice offers a grey button that puts back the athlete fields (not the photo); never by itself; gone after 「この表示を消す」 / 「別の人を申し込む」 / a restore / 60 minutes', [DESKTOP, PHONE, SMALL], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor());
+  await fillAll(page);
+  await settle(900);
+  await sendIt(page, ctx);
+  // the same tab comes back to the apply page (the browser's back without the page kept = a reload)
+  await page.goto(base + '/apply/' + hashFor());
+  await gymBox(page).waitFor();
+  await settle(300);
+  const label = '受付番号が出なかったときだけ：さっきの選手の入力を戻す（写真は選び直し）';
+  const t = await bodyText(page);
+  check(t.includes('さっき、申し込みを送りました。') && t.includes('受付番号の画面が出た方：申し込み済みです。同じ人を、もう一度送らないでください。'), 'S the notice and its warning are there');
+  const btn = page.getByRole('button', { name: label, exact: true });
+  check((await btn.count()) === 1, 'S the notice has the grey restore button');
+  const look = await btn.evaluate((b) => ({ h: b.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(b).fontSize), main: b.className.includes('tos-main'), inNext: Boolean(b.closest('[data-tos-next]')), inCaution: Boolean(b.closest('.tos-caution')) }));
+  check(look.h >= 47.99 && look.fs >= 16.99 && !look.main && !look.inNext && look.inCaution, 'S the button is a grey secondary button inside the notice, 48px+ and 17px+ (' + JSON.stringify(look) + ')');
+  const before = await formState(page);
+  check(before.name === '' && before.height === '' && before.record === '' && before.photo === 0, 'S nothing of the athlete is put back by itself (' + short(JSON.stringify(before), 100) + ')');
+  check((await readKey(page, COPY())) !== null, 'S the sent copy is there');
+  await oneMark(page, 'S notice shown');
+  await btn.click();
+  await settle(300);
+  const back = await formState(page);
+  check(back.name === FIELD_VALUES.name && back.height === FIELD_VALUES.height && back.weight === FIELD_VALUES.weight && back.division === FIELD_VALUES.division && back.weightClass === FIELD_VALUES.weightClass && back.fighterClass === FIELD_VALUES.fighterClass && back.record === FIELD_VALUES.record && back.musicUrl === FIELD_VALUES.musicUrl, 'S the athlete fields are back (' + short(JSON.stringify(back), 160) + ')');
+  check(back.photo === 0, 'S the photo is not (it was never stored): choose it again');
+  check((await bodyText(page)).includes('写真は、もう一度えらんでください。'), 'S a green line says so');
+  check((await readKey(page, COPY())) === null && (await btn.count()) === 0, 'S after the restore the copy and the button are gone');
+  check((await bodyText(page)).includes('同じ人を、もう一度送らないでください。'), 'S the duplicate warning stays');
+  await oneMark(page, 'S after the restore', '写真');
+  // 「この表示を消す」 removes the copy too
+  await fillAll(page); await settle(300);
+  await sendIt(page, ctx);
+  await page.goto(base + '/apply/' + hashFor());
+  await gymBox(page).waitFor(); await settle(300);
+  check((await readKey(page, COPY())) !== null, 'S a second send: a copy again');
+  await page.getByRole('button', { name: 'この表示を消す', exact: true }).click(); await settle(200);
+  check((await readKey(page, COPY())) === null && !(await bodyText(page)).includes(label), 'S 「この表示を消す」 removes the copy');
+  // 60 minutes: an older copy is not offered and is deleted
+  await writeKey(page, COPY(), draftRecord(FIELD_VALUES, Date.now() - 61 * MIN));
+  await reload(page);
+  check((await page.getByRole('button', { name: label, exact: true }).count()) === 0 && (await readKey(page, COPY())) === null, 'S a 61-minute-old copy: no button, deleted');
+  await ctx.close();
+  // 「別の人を申し込む」 (back with the page kept): the copy is removed
+  const ctx2 = await newCtx(vp, bfBrowser);
+  const p2 = await openApply(ctx2, hashFor());
+  await fillAll(p2); await settle(300);
+  await sendIt(p2, ctx2);
+  await p2.goBack({ waitUntil: 'commit' });
+  await p2.getByText('受付番号の画面が出ましたか').first().waitFor({ timeout: 8000 });
+  check((await readKey(p2, COPY())) !== null, 'S (bfcache) the copy exists after the send');
+  await p2.getByRole('button', { name: '別の人を申し込む（選手の入力だけ消す）', exact: true }).click(); await settle(200);
+  check((await readKey(p2, COPY())) === null, 'S 「別の人を申し込む」 removes the copy');
+  await ctx2.close();
+});
+
+/* ───────────────────────── U: 消す can be undone for 10 seconds ───────────────────────── */
+await scenario('U', 'a mis-tap on 消す: 「消しました（元にもどす）」 for about 10 seconds puts the draft and its banner back', [DESKTOP, PHONE], async (vp) => {
+  const ctx = await newCtx(vp);
+  const page = await openApply(ctx, hashFor());
+  await fillAthlete(page);
+  await settle(900);
+  const saved = await readKey(page, DRAFT());
+  await reload(page);
+  await page.getByRole('button', { name: '消す', exact: true }).click();
+  await settle(250);
+  check((await readKey(page, DRAFT())) === null, 'U 消す removes the key at once (as before)');
+  const undo = await quiet(page, 'draft-undo', 'U undo note');
+  check(Boolean(undo) && same(undo.buttons.map((b) => b.text), ['消しました（元にもどす）']), 'U the note has the grey button 消しました（元にもどす）');
+  await page.getByRole('button', { name: '消しました（元にもどす）', exact: true }).click();
+  await settle(250);
+  check((await page.locator('#draft-undo').count()) === 0 && (await page.locator('#draft-banner').count()) === 1, 'U the draft banner (戻す / 消す) is back');
+  const again = JSON.parse((await readKey(page, DRAFT())) || '{}');
+  check(again.f && same(again.f, JSON.parse(saved || '{}').f) && again.savedAt === JSON.parse(saved || '{}').savedAt, 'U the same draft is stored again, with its old time');
+  check((await formState(page)).name === '', 'U nothing is put into the form until 戻す');
+  await page.getByRole('button', { name: '戻す', exact: true }).click();
+  await settle(250);
+  check((await formState(page)).name === FIELD_VALUES.name, 'U and 戻す still works');
+  // after about 10 seconds the undo is gone
+  await reload(page);
+  await page.getByRole('button', { name: '消す', exact: true }).click();
+  await settle(10600);
+  check((await page.locator('#draft-undo').count()) === 0 && (await readKey(page, DRAFT())) === null, 'U after 10 seconds the undo note is gone and the draft stays deleted');
+  await ctx.close();
+});
+
 await scenario('Q', 'the sentences: the contact note, the caution, the 使い道, the shared-device line, the LINE note', [DESKTOP, PHONE, SMALL], async (vp) => {
   const ctx = await newCtx(vp);
   const page = await openApply(ctx, hashFor());
@@ -795,7 +891,7 @@ await scenario('Q', 'the sentences: the contact note, the caution, the 使い道
   check(!t.includes('この申し込みサイトには残りません'), 'Q the old claim 「この申し込みサイトには残りません」 is gone');
   check(!t.includes('途中でページを閉じたり、更新すると、入力は消えます'), 'Q the old claim 「途中でページを閉じたり、更新すると、入力は消えます」 is gone');
   check(t.includes('送った内容は、主催者のGoogleのシートとドライブにだけ保存されます。'), 'Q the contact note: what was sent is stored only in the organiser\'s Google sheet and Drive (photos go to Drive)');
-  check(t.includes('この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。連絡先・写真・同意のチェックは、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。'), 'Q the draft sentence (what is kept: the player fields only)');
+  check(t.includes('この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。連絡先・写真・同意のチェックは、途中では覚えません。「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあとは、受付番号が出なかったときに戻せるよう、60分だけ残します（「この表示を消す」を押しても、消えます）。'), 'Q the draft sentence (what is kept: the player fields only; after a send, the sent copy for 60 minutes)');
   check(t.includes('送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。'), 'Q the kit sentence');
   check(t.includes('共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。'), 'Q the shared-device line');
   check((t.match(/共用の端末（ジムのタブレットなど）/g) || []).length >= 2, 'Q it is said both near the contact fields and in 使い道');

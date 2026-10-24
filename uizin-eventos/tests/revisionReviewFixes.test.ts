@@ -86,14 +86,20 @@ test('F-guardian-age: 年齢が空・読めないために保護者の欄が出�
   assert.match(PAGE, /\{guardianAgeUnknown \? <Note id="pledge-guardian-age-note" className="mt-3">\{hanamichiOn \? '生年月日を選ぶと' : '年齢を入れると'\}、18歳以上の方は、この欄が出なくなります。<\/Note> : null\}/, '花道は「生年月日を選ぶと」、ふつうは「年齢を入れると」');
 });
 
-test('F-count-note: 「入力は全部で◯個」は「いま」の数。花道の区分・年齢で出る保護者の欄・ジム責任者の欄があるリンクだけ、「…によって、入力の数が変わることがあります。」を1行そえる（昔のリンクは、見た目が今のまま）', () => {
+test('F-count-note: 「入力は全部で◯個」は「いま」の数。区分（花道の質問・階級の欄・大人の区分で聞かない学年・花道のルールで聞かないクラス）や、年齢で出る保護者の欄で数が変わるリンクだけ、「…によって、入力の数が変わることがあります。」を1行そえる（数が変わらないリンクは、見た目が今のまま）', () => {
   assert.match(PAGE_CODE, /\{`用意するもの：顔写真1枚。入力は全部で\$\{total\}個です。`\}/, '1行目は今までのまま');
   assert.match(PAGE_CODE, /\{endpointReady && countMayChange \? <p id="count-note"/);
-  const block = PAGE_CODE.slice(PAGE_CODE.indexOf('const countMayChange = ['), PAGE_CODE.indexOf('const kitExtra'));
-  assert.match(block, /config\.hanamichi && weights && weights\.divisions\.some\(\(d\) => isHanamichiDivision\(d\.name\)\) \? DIVISION_LABEL : ''/);
+  const block = PAGE_CODE.slice(PAGE_CODE.indexOf('const divisionMayChange ='), PAGE_CODE.indexOf('const kitExtra'));
+  // 言い方（花道・誓約書のときの言葉）は今のまま：区分で変わる＝「出場区分」、年齢で変わる＝「年齢」（花道は「生年月日」）
+  assert.match(block, /divisionMayChange \? DIVISION_LABEL : ''/);
   assert.match(block, /config\.pledge\?\.mode === 'under18' && config\.age !== 'off' \? \(hanamichiOn \? '生年月日' : '年齢'\) : ''/);
+  // 区分で数が変わる4つの理由。階級分けの無いリンク（weights なし）は、区分で数が変わらない
+  assert.match(block, /Boolean\(weights\?\.divisions\.some\(\(d\) => /);
+  assert.match(block, /\(config\.hanamichi && isHanamichiDivision\(d\.name\)\)/, '花道の質問が出る');
+  assert.match(block, /d\.classes\.length > 0/, '階級の欄が出る');
+  assert.match(block, /\(config\.grade === 'required' && !isKidsDivision\(d\.name\)\)/, '大人の区分では学年を聞かない');
+  assert.match(block, /\(Boolean\(config\.classes\?\.enabled\) && Boolean\(config\.hanamichiRule\) && isHanamichiDivision\(d\.name\)\)/, '花道のルールがあると、花道の区分ではクラスを聞かない');
   assert.doesNotMatch(block, /ジム名/, 'ジムに入っていない人は申し込めないので、ジム名で入力の数は変わらない');
-  assert.doesNotMatch(block, /config\.weights\b|config\.classes\b/, '花道・誓約書が無い昔のリンクでは、いつも空（見た目が今のまま）');
 });
 
 test('F-memory-honest: 覚える物を、正直に言う。途中の入力＝選手の欄だけ（残さない物は、このリンクにある物だけ名前を出す）。送ったあと60分＝ジム名・連絡先・同意のチェック（と、ジム責任者の名前・電話）。保存先＝Googleのシートとドライブ', () => {

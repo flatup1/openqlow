@@ -6,7 +6,7 @@ import { DEFAULT_ENTRY_CONFIG, entryConfigFromSearch, entryConfigSearch } from '
 import { DEFAULT_WEIGHT_SETTINGS, weightSettingsToParam, type WeightSettings } from '../core/weightClass.ts';
 import {
   describeWeightChange, entryConfigFromHash, entryConfigKey, hasWeightTag, mergeKeepExisting, normalizeImported, overwriteBoxText, overwriteConfirmText, restoreConfirmText,
-  sameEntryConfig, sameExceptProgress, sameWeightText, tidyWeight, weightChanged, weightChoiceTrouble, weightColumnNote, weightIssue, weightIssueText, weightMixAt, weightMixIndexes, weightMixText,
+  sameEntryConfig, sameExceptProgress, sameWeightText, tidyWeight, weightChanged, weightChoiceTrouble, weightColumnNote, weightIssue, weightIssueText, weightMixAt, weightMixText,
 } from '../app/private/logic.ts';
 
 /* 架空の名前だけ。区分・階級（階級分け）の、準備の画面まわりの小さな計算 */
@@ -75,10 +75,12 @@ test('区分・階級: 赤と青がちがう試合を数える（どちらかが
     fighter('c', { division: '中学生男子', weightClass: '40kg以下' }), fighter('d', { division: '中学生女子', weightClass: '37kg以下' }), fighter('e'),
   ];
   const bouts = [bout('1', 'a', 'b'), bout('2', 'a', 'c'), bout('3', 'a', 'd'), bout('4', 'a', 'e'), bout('5', 'a')];
-  assert.deepEqual(weightMixIndexes(bouts, fighters), [1, 2]);
+  // 区分・階級がちがう試合の番号（画面と同じく、weightMixAt で1試合ずつ見る）
+  const mixIndexes = (list: LocalBout[], people: LocalFighter[]) => { const map = new Map(people.map((f) => [f.id, f])); return list.flatMap((b, i) => (weightMixAt(b, map) ? [i] : [])); };
+  assert.deepEqual(mixIndexes(bouts, fighters), [1, 2]);
   const byId = new Map(fighters.map((f) => [f.id, f]));
   assert.equal(weightMixAt(bouts[0], byId), false); assert.equal(weightMixAt(bouts[2], byId), true);
-  assert.deepEqual(weightMixIndexes(bouts.map((b) => b), fighters.map((f) => ({ id: f.id, gym: f.gym, name: f.name, grade: '', age: '', height: '', weight: '60', record: '', comment: '', musicUrl: '', photoDataUrl: '' }))), [], '区分・階級の無い大会は、今までどおり何も数えない');
+  assert.deepEqual(mixIndexes(bouts.map((b) => b), fighters.map((f) => ({ id: f.id, gym: f.gym, name: f.name, grade: '', age: '', height: '', weight: '60', record: '', comment: '', musicUrl: '', photoDataUrl: '' }))), [], '区分・階級の無い大会は、今までどおり何も数えない');
   assert.equal(weightMixText([1, 2]), '区分・階級がちがう組が2つあります（第2・第3試合）。ふつうは同じ区分・階級の人どうしで組みます。');
 });
 

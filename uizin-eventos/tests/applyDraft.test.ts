@@ -5,8 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  agoText, DRAFT_FIELDS, DRAFT_KEY_PREFIX, DRAFT_MAX, DRAFT_TTL_MS, draftIsEmpty, draftKey, fitDraftToLink, linkMode, looksPrivate, NEVER_STORED, NEXT_KEY_PREFIX, NEXT_NEVER_STORED, NEXT_TEXT_KEYS,
-  NEXT_TTL_MS, nextIsEmpty, nextKey, packDraft, packNext, parseDraft, parseNext, pickDraft, pickNext, safeGet, safeRemove, safeSet, type DraftFields, type DraftLink, type DraftLinkShape, type StorageLike,
+  agoText, COPY_KEY_PREFIX, COPY_TTL_MS, copyKey, DRAFT_FIELDS, DRAFT_KEY_PREFIX, DRAFT_MAX, DRAFT_TTL_MS, draftIsEmpty, draftKey, fitDraftToLink, linkMode, looksPrivate, NEVER_STORED, NEXT_KEY_PREFIX, NEXT_NEVER_STORED, NEXT_TEXT_KEYS,
+  NEXT_TTL_MS, nextIsEmpty, nextKey, packCopy, packDraft, packNext, parseCopy, parseDraft, parseNext, pickDraft, pickNext, safeGet, safeRemove, safeSet, type DraftFields, type DraftLink, type DraftLinkShape, type StorageLike,
 } from '../core/applyDraft.ts';
 import { HANAMICHI_KEYS } from '../core/hanamichi.ts';
 import { DEFAULT_WEIGHT_SETTINGS } from '../core/weightClass.ts';
@@ -364,6 +364,47 @@ test('まとめ: 下書きと次の人は鍵が別。同じ storage に入れて
   for (const [key, value] of stored) if (key.startsWith(DRAFT_KEY_PREFIX)) assert.equal(/09000000000|09011112222|@|data:|生年月日|1975/.test(value), false, key);
 });
 
+test('送った控え：鍵の頭・期限（次の人と同じ60分）。中身は下書きと同じ12個だけ（写真・連絡先・同意・花道・誓約書・ジム責任者は入らない）', () => {
+  assert.equal(COPY_KEY_PREFIX, 'tos-apply-copy:v1:');
+  assert.equal(copyKey(LINK), 'tos-apply-copy:v1:draft-test:live');
+  assert.equal(copyKey({ eventId: 'draft-test', mode: 'test' }), 'tos-apply-copy:v1:draft-test:test');
+  assert.ok(copyKey(LINK) !== draftKey(LINK) && copyKey(LINK) !== nextKey(LINK), '下書き・次の人とは、別の鍵');
+  assert.equal(COPY_TTL_MS, 60 * MIN);
+  assert.equal(COPY_TTL_MS, NEXT_TTL_MS);
+  const everything = { ...FIELDS, ...KIT, photo: 'data:image/jpeg;base64,AAAA', photoDataUrl: 'data:image/jpeg;base64,AAAA', birth: '1975-04-05', hnBirth: '1975-04-05', hnNameKana: 'カクウ', pledge: 'yes', pledge1: 'yes', pledgeGuardian: 'yes', pledgeGym: 'yes', gymPermission: 'yes', gymConsent: true, requestId: 'r'.repeat(32) };
+  const packed = packCopy(everything, NOW, LINK);
+  assert.ok(packed);
+  const rec = JSON.parse(packed!);
+  assert.deepEqual(Object.keys(rec), ['v', 'eventId', 'mode', 'savedAt', 'f']);
+  assert.deepEqual(Object.keys(rec.f), [...DRAFT_FIELDS], '選手の欄12個だけ');
+  assert.deepEqual(rec.f, pickDraft(FIELDS));
+  for (const key of [...NEVER_STORED, 'requestId']) assert.ok(!packed!.includes('"' + key + '"'), key + ' は入らない');
+  assert.ok(!/data:|09000000000|09011112222|@|1975/.test(packed!), '写真・電話・メール・生年月日の中身も入らない');
+  assert.equal(packCopy({ photo: 'data:image/jpeg;base64,AAAA', contactName: '架空', consent: true }, NOW, LINK), null, '選手の欄が空なら、控えは作らない');
+});
+
+test('送った控えを読む：60分の間だけ。別の大会・別のモード・未来の時刻・形がちがう物は読まない（呼ぶ側が消す）。下書きの12時間とは期限だけがちがう', () => {
+  const packed = packCopy(FIELDS, NOW, LINK)!;
+  assert.deepEqual(parseCopy(packed, NOW, LINK), { fields: pickDraft(FIELDS), savedAt: NOW });
+  assert.ok(parseCopy(packed, NOW + 59 * MIN, LINK), '59分');
+  assert.equal(parseCopy(packed, NOW + 60 * MIN, LINK), undefined, '60分で読まない');
+  assert.ok(parseDraft(packed, NOW + 2 * 60 * MIN, LINK) && !parseCopy(packed, NOW + 2 * 60 * MIN, LINK), '同じ形でも、控えは60分（下書きは12時間）');
+  assert.equal(parseCopy(packed, NOW - 1, LINK), undefined, '未来の時刻');
+  assert.equal(parseCopy(packed, NOW, { eventId: 'draft-test', mode: 'test' }), undefined, '別のモード');
+  assert.equal(parseCopy(packed, NOW, { eventId: 'other-cup', mode: 'live' }), undefined, '別の大会');
+  for (const bad of [null, undefined, '', '{', '[]', 'null', JSON.stringify({ v: 2, eventId: 'draft-test', mode: 'live', savedAt: NOW, f: FIELDS }), JSON.stringify({ v: 1, eventId: 'draft-test', mode: 'live', savedAt: NOW, k: KIT })]) assert.equal(parseCopy(bad as string, NOW, LINK), undefined, String(bad).slice(0, 30));
+  assert.equal(parseCopy(JSON.stringify({ v: 1, eventId: 'draft-test', mode: 'live', savedAt: NOW, f: { contactPhone: '09000000000', photo: 'data:x' } }), NOW, LINK), undefined, '12個のほかしか無いものは、読まない');
+  // storage を使った流れ：送る瞬間に移す → 下書きは無い・控えだけ。消すと、どちらも無い
+  const m = memory();
+  safeSet(m, draftKey(LINK), packDraft(FIELDS, NOW, LINK) as string);
+  safeSet(m, copyKey(LINK), packCopy(pickDraft(FIELDS), NOW + MIN, LINK) as string);
+  safeRemove(m, draftKey(LINK));
+  assert.equal(safeGet(m, draftKey(LINK)), null);
+  assert.deepEqual(parseCopy(safeGet(m, copyKey(LINK)), NOW + 2 * MIN, LINK)?.fields, pickDraft(FIELDS));
+  safeRemove(m, copyKey(LINK));
+  assert.equal(safeGet(m, copyKey(LINK)), null);
+});
+
 test('core/applyDraft.ts: DOM・window・document・storage の名前・fetch・lookbehind・文（誓約・同意）を持たない', () => {
   const source = readFileSync(new URL('../core/applyDraft.ts', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -414,10 +455,11 @@ test('page: 案内の枠は静か：データを持つ id が2つ。黄色の「
 });
 
 test('page: 文は事実に合わせた。「残りません」「更新すると、入力は消えます」はもう言わない。ボタンの名前は「選手の入力だけ消す」', () => {
-  for (const old of ['入力した内容は、この申し込みサイトには残りません', '途中でページを閉じたり、更新すると、入力は消えます', '別の人を申し込む（入力を消して、最初から）', 'ブラウザの中にだけ入ります']) assert.ok(!PAGE.includes(old), old);
+  for (const old of ['入力した内容は、この申し込みサイトには残りません', '途中でページを閉じたり、更新すると、入力は消えます', '別の人を申し込む（入力を消して、最初から）', 'ブラウザの中にだけ入ります', '送信するか、「消す」を押すか']) assert.ok(!PAGE.includes(old), old);
   for (const now of [
     '送った内容は、主催者のGoogleのシートとドライブにだけ保存されます。',
-    'この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。',
+    // 送ったあとも、選手の欄は「送った控え」として60分だけ残る（受付番号が出なかったときに戻すため）。「送信すると消えます」とは、もう言わない
+    'この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあとは、受付番号が出なかったときに戻せるよう、60分だけ残します（「この表示を消す」を押しても、消えます）。',
     '送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。',
     '途中でページ（タブ）を閉じると、入力は消えます。更新したときは、選手の欄（ジム名・選手名・身長・体重など）の入力だけ、残っていることがあります（上に「戻す」が出ます）。{keptNot}は、入れ直しになります。',
     '※ 別のブラウザで開き直すと、入力は消えます。',

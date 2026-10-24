@@ -10,8 +10,11 @@
  * Checks are SOFT: every failure is recorded, all scenarios still run, the exit code is 1 if anything failed.
  */
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { strFromU8, unzipSync } from 'fflate';
 import { EXPECTED_RECEPTION_BUILD } from '../core/setupV3.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
+import { publicEntryConfig } from '../core/publicEntry.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4993';
@@ -48,6 +51,8 @@ async function newCtx(vp, o = {}) {
     if (/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec\?action=ping$/.test(url) && route.request().method() === 'GET') {
       pings.push({ scenario: cur, body: url });
       if (ctx.__pingFail) return route.abort();
+      // ctx.__pingHang のときは、答えない（Googleが止まったまま）。画面が自分で待つのをやめるかを見る
+      if (ctx.__pingHang) return;
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(ctx.__ping) });
     }
     if (url === ENDPOINT + '?action=ping' && route.request().method() === 'GET') { pings.push({ scenario: cur, body: route.request().postData() }); return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(ctx.__ping) }); }
@@ -641,6 +646,8 @@ scenario('S21', 'r2-121/126/111/84: delete a finished tournament (after a copy f
   await box.getByRole('button', { name: 'やめる（何も消さない）' }).click(); await settle(300);
   check(await page.locator('#confirm-delete-event').count() === 0 && (await page.evaluate((e) => indexedDB.databases().then((l) => l.length > 0))), 'cancelling keeps the tournament');
   await del.click(); await page.locator('#confirm-delete-event').waitFor();
+  // 消す前に、コピーのファイルを見たことを ✔ で答える（✔ が無いと、消すボタンは何もしない）
+  await page.locator('#confirm-delete-event #copy-seen').check();
   await page.locator('#confirm-delete-event').getByRole('button', { name: 'この大会を、このパソコンから消す' }).click();
   await page.waitForURL(base + '/private/', { timeout: 9000 });
   const left = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('tournament-os-private-v1'); r.onsuccess = () => { const q = r.result.transaction('events', 'readonly').objectStore('events').get('pol-s21'); q.onsuccess = () => resolve(q.result ?? null); }; }));
@@ -683,6 +690,206 @@ scenario('S21', 'r2-121/126/111/84: delete a finished tournament (after a copy f
   check(links >= 1, 'prep page: the link to the setup screen is named 「選手の受付をつくる画面へ →」');
   check(!(await p4.evaluate(() => document.body.textContent || '')).includes('申し込みページをつくる画面'), 'prep page: the old second name is gone');
   await c3.close();
+});
+
+/* ═════════════════════════ 採点の直し（2026-10-24）：設定の画面と、他のジム用の入力画面 ═════════════════════════ */
+
+/* S22: 9-errors Googleが答えないとき。20秒で待つのをやめ、「つながりませんでした」と言い、「自動で確かめられないとき」を開く。待っている間に押した「もう一度確かめる」は、待っている確かめを止めて、新しく確かめる */
+scenario('S22', 'a Google that never answers: the page stops waiting after 20 s and says so; a press while waiting stops the old check and starts a new one', async () => {
+  const ctx = await newCtx(PC);
+  ctx.__pingHang = true;
+  // 画面の中で、止めた確かめ（AbortError）の数を数える（通信の中身は見ない）
+  await ctx.addInitScript(() => { const real = window.fetch.bind(window); window.__aborted = 0; window.fetch = (...args) => real(...args).catch((e) => { if (e && e.name === 'AbortError') window.__aborted++; throw e; }); });
+  const sent = () => pings.filter((p) => p.scenario === 'S22').length;
+  const waitSent = async (n, ms = 8000) => { for (let t = 0; t < ms && sent() < n; t += 100) await settle(100); return sent(); };
+  const page = await openSetup(ctx, 'pol-s22', { step: 2, ticks: [true, true, true, true], url: ENDPOINT });
+  check(await waitSent(1) === 1, 'the automatic check was sent once (' + sent() + ')');
+  await page.getByText('⏳ 確かめています…（そのままお待ちください）').first().waitFor({ timeout: 5000 });
+  const recheck = page.getByRole('button', { name: 'もう一度確かめる' });
+  check(await recheck.getAttribute('aria-disabled') === null, 'while waiting, 「もう一度確かめる」 can still be pressed (it is not locked)');
+  await settle(1500);
+  await recheck.click();
+  const pressedAt = Date.now();
+  check(await waitSent(2) === 2, 'the press sent a new check (' + sent() + ')');
+  check(await page.waitForFunction(() => window.__aborted >= 1, null, { timeout: 5000 }).then(() => true, () => false), 'the press stopped the check that was still waiting');
+  await settle(Math.max(0, pressedAt + 17000 - Date.now()));
+  check(await page.getByText('Googleにつながりませんでした').count() === 0, 'it waits for the new check (no red line 17 s after the press)');
+  const shown = await page.getByText('Googleにつながりませんでした').first().waitFor({ timeout: 13000 }).then(() => true, () => false);
+  check(shown, 'about 20 s after the press, the page stops waiting and says 「Googleにつながりませんでした」');
+  const text = await bodyText(page);
+  check(!/⏳ 確かめています/.test(text), 'the 「⏳ 確かめています…」 line is gone');
+  check(/入れたURLは、そのまま残っています/.test(text) && await page.locator('#endpoint').inputValue() === ENDPOINT, 'the URL is kept');
+  check(await page.locator('details:has(summary:has-text("自動で確かめられないとき"))').first().evaluate((d) => d.open), 'the 「自動で確かめられないとき（貼って確かめる）」 fold is opened for him');
+  const marks = await oneMarker(page, 'ping timed out');
+  check(/もう一度確かめる/.test(marks.texts[0] || ''), 'the one yellow frame is 「もう一度確かめる」 (' + short(marks.texts[0] || '', 80) + ')');
+  check(await page.evaluate(() => window.__aborted) >= 2, 'the new check was stopped by the 20 s limit');
+  check(sent() === 2, 'no extra checks were sent while waiting (' + sent() + ')');
+  // Googleが答えるようになったら、もう一度押すと、つながる
+  ctx.__pingHang = false;
+  await recheck.click();
+  check(await page.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor({ timeout: 9000 }).then(() => true, () => false), 'when Google answers again, one press connects');
+  await ctx.close();
+});
+
+/* S23: 1-correctness 受付の版が 3.20261024.1（くわしい戦績は受け取るが、シートの戦績の1行は「3勝2敗」の形）。黄色の注意が1つ。選手に渡すURLは、止めない */
+scenario('S23', 'receiver build 3.20261024.1: one yellow caution says how to get 「5戦3勝2敗」 in the sheet; the link is still handed out', async () => {
+  const ctx = await newCtx(PC, { ping: { ...READY, build: '3.20261024.1', accepting: true } });
+  const page = await openSetup(ctx, 'pol-s23', { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+  await page.getByText('受付できます。選手に渡すURLをコピーできます。', { exact: true }).first().waitFor({ timeout: 9000 });
+  const note = page.locator('#record-text-note');
+  check(await note.count() === 1, 'build .1: the caution is shown');
+  const t = await note.innerText().catch(() => '');
+  check(/シートの戦績を「5戦3勝2敗」の形にするには/.test(t) && t.includes('（' + EXPECTED_RECEPTION_BUILD + '）') && /「新バージョン」→「デプロイ」/.test(t) && /① 最初の設定/.test(t) && /今のままでも、申し込みは受け付けます/.test(t), 'build .1: it says what to paste, how to deploy, to press ① after, and that entries are still accepted (' + short(t, 120) + ')');
+  check(await note.locator('[role=note]').first().evaluate((n) => n.classList.contains('tos-caution') && /⚠/.test(n.innerText)), 'build .1: it is a yellow caution with ⚠ and words');
+  check(await page.locator('section[aria-labelledby="made-url"] [role=note]').count() === 1, 'build .1: only ONE caution under 「選手に渡すURL」');
+  // 「次はここ」は、今までどおりコピーのボタン（注意は、2つ目の「次はここ」にならない）
+  await oneMarker(page, 'build .1 step 3', { primary: 1 });
+  check(/選手に渡すURLをコピーする/.test((await frameTexts(page))[0] || ''), 'build .1: the one yellow frame is still the copy button');
+  const copy = page.getByRole('button', { name: '完成：選手へ渡すURLをコピー' });
+  check(await copy.getAttribute('aria-disabled') === null, 'build .1: the copy button is not locked');
+  await copy.click();
+  const live = await page.evaluate(() => navigator.clipboard.readText());
+  const cfg = live.startsWith(base + '/apply/#') ? publicEntryConfig(new URL(live).hash) : null;
+  check(!!cfg && cfg.mode === 'live' && cfg.recordDetail === true, 'build .1: the copied link is a live link with the detailed record fields (' + short(live, 60) + ')');
+  await ctx.close();
+  // 新しい版：注意なし。くわしい戦績の無い古い版：前からある注意だけ（この注意は出ない）
+  for (const [name, build, old] of [['new build', EXPECTED_RECEPTION_BUILD, false], ['older build .7', '3.20261022.7', true]]) {
+    const c = await newCtx(PC, { ping: { ...READY, build, accepting: true } });
+    const p = await openSetup(c, 'pol-s23-' + (old ? 'old' : 'new'), { step: 3, ticks: [true, true, true, true], url: ENDPOINT });
+    await p.getByText('受付できます。選手に渡すURLをコピーできます。', { exact: true }).first().waitFor({ timeout: 9000 });
+    check(await p.locator('#record-text-note').count() === 0, name + ': no 「5戦3勝2敗」 caution');
+    check((await p.getByText('くわしい戦績（キック・他の格闘技・タイトル）は、新しい版のシートで使えます。').count()) === (old ? 1 : 0), name + ': the older caution about the detailed record is ' + (old ? 'still shown' : 'not shown'));
+    await c.close();
+  }
+});
+
+/* ───────── 他のジム用の入力画面（/private/entry/）。名前・写真は、ぜんぶ架空 ───────── */
+const ENTRY_PATH = '/private/entry/?music=off&grade=off&age=off&comment=off';
+async function openEntry(ctx) {
+  const page = await ctx.newPage();
+  await page.goto(base + ENTRY_PATH);
+  await page.locator('#entry-gym').waitFor({ timeout: 15000 });
+  return page;
+}
+/** 架空の選手を1人入れて「この選手を追加」を押す（写真は、その場で作った青い四角）。count＝追加したあとの人数 */
+async function addFighter(page, name, count) {
+  for (const [id, value] of [['#entry-gym', '架空ジム'], ['#entry-name', name], ['#entry-height', '170'], ['#entry-weight', '60'], ['#entry-record', '初試合']]) await page.locator(id).fill(value);
+  const jpeg = Buffer.from(await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 120; c.height = 160; const x = c.getContext('2d'); x.fillStyle = '#2563eb'; x.fillRect(0, 0, 120, 160); return c.toDataURL('image/jpeg').split(',')[1]; }), 'base64');
+  await page.locator('#entry-photo').setInputFiles({ name: 'face.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await page.locator('img[alt="選んだ顔写真"]').waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: 'この選手を追加', exact: true }).click();
+  await page.getByText('現在 ' + count + '人', { exact: true }).waitFor({ timeout: 5000 });
+}
+/** 閉じる・読み直すときに、確認が出るか（beforeunload が止められるか） */
+const leaveGuard = async (page) => { await settle(200); return page.evaluate(() => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; }); };
+const saveZip = (page, wait = 10000) => Promise.all([page.waitForEvent('download', { timeout: wait }).catch(() => null), page.getByRole('button', { name: '📥 提出ファイルを保存する', exact: true }).click()]).then(([dl]) => dl);
+
+/* S24: 9-errors ZIPを作る部品は、開いたときに読みこんである。あとから部品のファイルが読めなくても（新しい版の公開・弱いWi-Fi）保存できる。作れないときは赤い文で言い、選手は消えない */
+scenario('S24', 'other-gym entry page: the ZIP is made even when no more script files can be loaded; a failure is said in red and nothing is lost', async () => {
+  const ctx = await newCtx(PHONE);
+  const page = await openEntry(ctx);
+  await addFighter(page, '架空 一郎', 1);
+  // ここから先は、画面の部品（_next の js）を1つも読めない（公開で名前が変わった・Wi-Fiが切れた、のかわり）
+  let blocked = 0;
+  await page.route('**/_next/static/**', (route) => { blocked++; return route.abort(); });
+  // ZIPを作れないとき（スマホの力が足りない、のかわり）：赤い文。画面も選手も、そのまま
+  await page.evaluate(() => { window.__realCreate = URL.createObjectURL; URL.createObjectURL = () => { throw new Error('test: no room'); }; });
+  check(!(await saveZip(page, 3000)), 'a failing ZIP downloads nothing');
+  const t = await page.locator('[role=status].tos-error').first().innerText().catch(() => '');
+  check(/✕/.test(t) && /保存できませんでした：/.test(t) && /ZIPファイルを作れませんでした/.test(t) && /入れた選手は、消えていません/.test(t), 'a failed ZIP gives a red ✕ box in plain words (' + short(t, 100) + ')');
+  check(await page.getByText('現在 1人', { exact: true }).count() === 1 && page.url().includes('/private/entry/'), 'the page and the fighter are still there');
+  check(await leaveGuard(page) === true, 'after a failed save, closing the page still asks first');
+  const marks = await frameTexts(page);
+  check(marks.length === 1 && /提出ファイルを保存する/.test(marks[0]), 'the one yellow 「次はここ」 stays on the save button (' + short(marks.join(' | '), 80) + ')');
+  // もとにもどすと、同じボタンで保存できる。新しい部品のファイルは、1つも要らない
+  await page.evaluate(() => { URL.createObjectURL = window.__realCreate; });
+  const dl = await saveZip(page);
+  check(!!dl, 'when the problem is gone, the same button saves the ZIP (no more script files can be loaded)');
+  check(blocked === 0, 'pressing save needs no new script file (' + blocked + ' requested)');
+  if (dl) {
+    const files = unzipSync(new Uint8Array(await readFile(await dl.path())));
+    const names = Object.keys(files);
+    check(names.includes('players.csv') && names.some((n) => n.startsWith('photos/')) && strFromU8(files['players.csv']).includes('架空 一郎'), 'the ZIP has players.csv with the fighter, and the photo (' + names.join(',') + ')');
+  }
+  check(await page.getByText('提出ファイルを保存しました').first().waitFor({ timeout: 5000 }).then(() => true, () => false), 'the green line says the file was saved');
+  await ctx.close();
+});
+
+/* S25: 9-errors / 3-ux 閉じる・読み直す・「戻る」の前に確認する（選手がいる・入れている途中のとき）。ZIPを保存したあとは聞かない。上の説明に1行 */
+scenario('S25', 'other-gym entry page: leaving asks first while there is unsaved work, not after the ZIP is saved', async () => {
+  const ctx = await newCtx(PC);
+  const page = await openEntry(ctx);
+  check((await page.locator('#entry-close-note').innerText()).trim() === '閉じると、入れた選手は消えます。先に「提出ファイルを保存する」を押します。', 'the top text says that closing loses the fighters, and what to press first');
+  check(await leaveGuard(page) === false, 'an empty page closes without asking');
+  await page.locator('#entry-name').fill('架空 一郎');
+  check(await leaveGuard(page) === true, 'a half-typed fighter: closing asks first');
+  await page.locator('#entry-name').fill('');
+  check(await leaveGuard(page) === false, 'emptied again: no question');
+  await addFighter(page, '架空 一郎', 1);
+  check(await leaveGuard(page) === true, 'an added but unsaved fighter: closing asks first');
+  check(!!(await saveZip(page)), 'the ZIP is saved');
+  check(await leaveGuard(page) === false, 'after the ZIP is saved, closing does not ask (the gym name kept for the next fighter does not count)');
+  check(await frames(page).count() === 0, 'after the ZIP is saved, there is no yellow 「次はここ」 (nothing left to do here)');
+  await page.locator('#entry-name').fill('架空 二郎');
+  check(await leaveGuard(page) === true, 'typing the next fighter: closing asks again');
+  await ctx.close();
+});
+
+/* S26: 3-ux 「この選手を取り消す」は10秒だけ「元にもどす」で戻せる（2回押しでも、となりは消えない）。文字は17px以上・ボタンは48px以上。黄色の「次はここ」は1つ */
+scenario('S26', 'other-gym entry page: undo a removed fighter for 10 s, a double click removes only one, 17px text, 48px buttons, one yellow 「次はここ」', async () => {
+  for (const vp of [PHONE, PC]) {
+    const L = 'entry ' + vp.name;
+    const ctx = await newCtx(vp);
+    const page = await openEntry(ctx);
+    const names = () => page.locator('article b').allInnerTexts().then((list) => list.join(','));
+    let marks = await frameTexts(page);
+    check(marks.length === 1 && /この選手を追加/.test(marks[0]), L + ': at the start, the one yellow 「次はここ」 is on 「この選手を追加」 (' + short(marks.join(' | '), 80) + ')');
+    await addFighter(page, '架空 一郎', 1);
+    await addFighter(page, '架空 二郎', 2);
+    marks = await frameTexts(page);
+    check(marks.length === 1 && /提出ファイルを保存する/.test(marks[0]), L + ': with unsaved fighters, the one yellow 「次はここ」 is on the save button (' + short(marks.join(' | '), 80) + ')');
+    await page.locator('#entry-name').fill('架空 三郎'); await settle(200);
+    marks = await frameTexts(page);
+    check(marks.length === 1 && /この選手を追加/.test(marks[0]), L + ': while typing the next fighter, it moves to 「この選手を追加」');
+    await page.locator('#entry-name').fill(''); await settle(200);
+    // 2回押し：1人目だけ消える（となりの2人目が、同じ場所に来ても消えない）
+    const first = page.locator('article').first().getByRole('button', { name: 'この選手を取り消す' });
+    await first.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+    await first.dblclick();
+    await settle(400);
+    check(await page.getByText('現在 1人', { exact: true }).count() === 1 && await names() === '架空 二郎', L + ': a double click removes only the first fighter (' + await names() + ')');
+    const undo = page.locator('#entry-undo');
+    const note = await page.locator('[role=status].tos-error').first().innerText().catch(() => '');
+    check(/消しました：架空 一郎さん/.test(note) && await undo.isVisible() && (await undo.innerText()).trim() === '元にもどす', L + ': 「消しました：架空 一郎さん」 with a 「元にもどす」 button (' + short(note, 80) + ')');
+    // 大きさ（「消しました」の箱が出ている、部品がいちばん多いとき）
+    const small = await page.evaluate(() => [...document.querySelectorAll('main *')].filter((el) => {
+      if (el.tagName === 'OPTION' || !el.getClientRects().length) return false;
+      const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+      const field = el.matches('input:not([type=radio]):not([type=checkbox]), select, textarea');
+      return (own || field) && parseFloat(getComputedStyle(el).fontSize) < 17;
+    }).map((el) => el.tagName + ' ' + (el.textContent || el.id || '').trim().slice(0, 24)));
+    check(small.length === 0, L + ': every text and every input is 17px or more (' + short(small.join(' | '), 160) + ')');
+    const low = await page.evaluate(() => [...document.querySelectorAll('main button, main input[type=file], main select')].filter((el) => el.getClientRects().length && el.getBoundingClientRect().height < 47.5).map((el) => (el.textContent || el.id || el.tagName).trim().slice(0, 24) + ' ' + Math.round(el.getBoundingClientRect().height)));
+    check(low.length === 0, L + ': every button is 48px or taller (' + short(low.join(' | '), 160) + ')');
+    check(!(await hasHScroll(page)), L + ': no sideways scroll');
+    await undo.click();
+    await page.getByText('現在 2人', { exact: true }).waitFor({ timeout: 5000 });
+    check(await names() === '架空 一郎,架空 二郎', L + ': 「元にもどす」 puts the fighter back in the same place (' + await names() + ')');
+    const photoW = await page.locator('article').first().locator('img').evaluate((img) => (img.complete ? img.naturalWidth : new Promise((r) => { img.onload = () => r(img.naturalWidth); img.onerror = () => r(0); })));
+    check(photoW > 0, L + ': the photo came back too');
+    check(/架空 一郎さんを、元にもどしました/.test(await page.locator('[role=status]').first().innerText()), L + ': a green line says it was put back');
+    if (vp === PHONE) {
+      // 1回押し：目印（フォーカス）は「元にもどす」へ。10秒たつと、もどせなくなる（箱が消える）
+      await settle(800);
+      await page.locator('article').first().getByRole('button', { name: 'この選手を取り消す' }).click();
+      await undo.waitFor({ timeout: 3000 });
+      await settle(150);
+      check(await page.evaluate(() => document.activeElement?.id) === 'entry-undo', L + ': after removing, the focus is on 「元にもどす」');
+      await settle(10600);
+      check(await undo.count() === 0 && await page.getByText('現在 1人', { exact: true }).count() === 1, L + ': after about 10 seconds, the 「元にもどす」 box is gone');
+    }
+    await ctx.close();
+  }
 });
 
 /* ───────────────────────── runner ───────────────────────── */

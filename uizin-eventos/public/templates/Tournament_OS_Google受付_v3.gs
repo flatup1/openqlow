@@ -667,7 +667,7 @@ function recordDetailRead_(text) {
 function recordDetailParse_(text) { return recordDetailRead_(text).detail || null; }
 /**
  * くわしい戦績の検査（保存の前）。送られていなければ null（古い申込と同じ）。送られていて決まりに合わなければ、何も書かずに断る（'input'）。
- * 合っていれば中身を返し、申込の record は、キックの1行（「3勝1敗」「初試合」）にそろえる。
+ * 合っていれば中身を返し、申込の record は、キックの1行（「4戦3勝1敗」「初試合」。3.20261024.2 から）にそろえる。
  */
 function recordDetailCheck_(p) {
   if (!recordDetailSent_(p)) return null;
@@ -678,6 +678,25 @@ function recordDetailCheck_(p) {
 }
 /** キックの戦績の1行（core/recordDetail.ts の kickRecordText と同じ）。試合数0は「初試合」。例：「4戦3勝1敗」（前の版の引き分けつきは「4戦2勝1敗1分」） */
 function recordDetailKickText_(kick) { if (kick.games === 0) return '初試合'; return kick.games + '戦' + kick.win + '勝' + kick.loss + '敗' + (kick.draw > 0 ? kick.draw + '分' : ''); }
+/**
+ * キックの1行を、数にもどす（core/recordDetail.ts の kickFromRecordText と同じ）。合わなければ null。
+ * いまの形「4戦3勝1敗」「4戦2勝1敗1分」と、前の形「3勝1敗」「2勝1敗1分」（3.20261024.1 までが、シートに書いた形）と、「初試合」を読む。「戦」があるときは、勝ち・負け・引き分けの合計と合うときだけ
+ */
+function recordDetailKickFromText_(text) {
+  const t = String(text == null ? '' : text).trim();
+  if (t === '初試合') return { games: 0, win: 0, loss: 0, draw: 0 };
+  const m = /^(?:(\d{1,3})戦)?(\d{1,3})勝(\d{1,3})敗(?:(\d{1,3})分)?$/.exec(t);
+  if (!m) return null;
+  const win = Number(m[2]), loss = Number(m[3]), draw = m[4] ? Number(m[4]) : 0, games = win + loss + draw;
+  if (m[1] !== undefined && Number(m[1]) !== games) return null;
+  if (games < 1 || games > RECORD_LIMITS.games) return null;
+  return { games: games, win: win, loss: loss, draw: draw };
+}
+/** 同じ申込の再送のくらべ用：保存した戦績の1行（前の形でも、いまの形でも）が、送られたキックの数と同じか */
+function recordDetailKickSame_(stored, kick) {
+  const k = recordDetailKickFromText_(retryNorm_(stored));
+  return Boolean(k) && k.games === kick.games && k.win === kick.win && k.loss === kick.loss && k.draw === kick.draw;
+}
 /** 1件を、表の行（見出しの順）に分ける（core/recordDetail.ts の recordDetailRows と同じ）。キックは必ず1行。他の格闘技・タイトルは、1つにつき1行 */
 function recordDetailRows_(receiptNo, submittedAt, detail) {
   const blank = function () { return RECORD_DETAIL_HEADERS.map(function () { return ''; }); };
@@ -710,15 +729,20 @@ function recordDetailSheetEnsure_(book, name) {
   }
   return sheet;
 }
-/** 「戦績詳細」の1行目が、この版の見出しと同じか。違えば、どの列が違うか（headerProblemError_ が使う形）を返す。同じなら null */
+/**
+ * 「戦績詳細」の1行目が、この版の見出しと同じか。違えば、どの列が違うか（headerProblemError_ が使う形）を返す。同じなら null。
+ * 見方は、申込原本・OS取込用の headerCheck_ と同じ：途中に1列足された形（そこから先が、ひとつずつ右にずれて同じ）は inserted、左上が受付番号の形（1行目を消した）は rowGone
+ */
 function recordDetailHeaderCheck_(sheet, name) {
-  const n = RECORD_DETAIL_HEADERS.length, width = typeof sheet.getMaxColumns === 'function' ? Math.max(1, Math.min(n, sheet.getMaxColumns())) : n;
+  const n = RECORD_DETAIL_HEADERS.length, width = typeof sheet.getMaxColumns === 'function' ? Math.max(1, Math.min(n + 1, sheet.getMaxColumns())) : n + 1;
   const row = sheet.getRange(1, 1, 1, width).getDisplayValues()[0].map(function (cell) { return String(cell); });
   while (row.length < n) row.push('');
   let index = 0;
   while (index < n && row[index] === RECORD_DETAIL_HEADERS[index]) index++;
   if (index === n) return null;
-  return { state: 'bad', name: name, index: index, expected: RECORD_DETAIL_HEADERS[index], actual: row[index], inserted: false, rowGone: index === 0 && /^(?:TEST-)?[A-Z0-9]{1,10}-[0-9A-F]{8,}$/.test(String(row[0]).trim()) };
+  const inserted = row.length > n && JSON.stringify(row.slice(index + 1, n + 1)) === JSON.stringify(RECORD_DETAIL_HEADERS.slice(index));
+  const rowGone = index === 0 && /^(?:TEST-)?[A-Z0-9]{1,10}-[0-9A-F]{8,}$/.test(String(row[0]).trim());
+  return { state: 'bad', name: name, index: index, expected: RECORD_DETAIL_HEADERS[index], actual: rowGone ? '' : row[index], inserted: inserted, rowGone: rowGone };
 }
 /**
  * 「戦績詳細」（本番・テスト）の見出しが、この版と同じかを、ping と ⑤ で言うために調べる。ちがうと、新しいリンク（rd=on）の申し込みは、保存の前に、すべて断られる
@@ -736,8 +760,17 @@ function recordDetailTabsCheck_() {
     if (bad) throw headerProblemError_(bad);
   });
 }
-/** ① のあとの注意：「戦績詳細」の見出しがこの版と違うとき。止めずに言う（直すまで、くわしい戦績つきの申込は受けない） */
-function recordDetailHeaderNote_(bad) { return '「' + bad.name + '」タブの見出しが、この版と違います（' + columnLetter_(bad.index) + '1 を「' + bad.expected + '」に直してください）。直すまで、くわしい戦績つきの申し込みは受けられません。'; }
+/**
+ * ① のあとの注意：「戦績詳細」の見出しがこの版と違うとき。止めずに言う（直すまで、くわしい戦績つきの申込は受けない）。
+ * 列が足されたとき・1行目が消えたときは、見出しを書き直させない（書き直すと、前からある行が1列ずれたまま残る／最初の申込の行を上書きする）
+ */
+function recordDetailHeaderNote_(bad) {
+  const letter = columnLetter_(bad.index);
+  const how = bad.rowGone ? '1行目の見出しが消えています。見出しを書き直さず、「⑤ いまの状態を見る」で、もどし方を見てください'
+    : bad.inserted ? letter + '列が足されています。' + letter + '列の上で右クリック →「列を削除」で、足した' + letter + '列を消してください'
+    : letter + '1 を「' + bad.expected + '」に直してください';
+  return '「' + bad.name + '」タブの見出しが、この版と違います（' + how + '）。直すまで、くわしい戦績つきの申し込みは受けられません。';
+}
 /** 受付の中で使う「戦績詳細」（本番かテスト）。無ければ作り、見出しがちがうときは止める（何も書かない） */
 function recordDetailSheetOf_(book, isTest) {
   const name = isTest ? RECORD_TEST_TABLE : RECORD_TABLE, sheet = recordDetailSheetEnsure_(book, name), bad = recordDetailHeaderCheck_(sheet, name);
@@ -818,7 +851,8 @@ function adminError_(code, message, detail) { const error = entryError_(code, me
 /** 見出しの問題を、タブの名前・直すマス・あるべき文字つきの文にする。 */
 function headerProblemError_(check) {
   const name = check.name, quoted = '「' + name + '」タブ';
-  const real = name === TABLES[0][0] || name === TABLES[1][0] || name === HANAMICHI_TABLES_[0][0] || name === PLEDGE_TABLES_[0][0];
+  // 本物の申込が入るタブ（テストのタブではないもの）。名前を変えて作り直すと、前の申込が名簿ZIPから消えるので、その道は教えない
+  const real = name === TABLES[0][0] || name === TABLES[1][0] || name === HANAMICHI_TABLES_[0][0] || name === PLEDGE_TABLES_[0][0] || name === RECORD_TABLE;
   if (check.state === 'missing') return adminError_('missing', quoted + 'が見つからない（または、空になっている）ので、受付を止めています。「① 最初の設定」を押すと、見出しだけの新しいタブを作ります。' + (real ? '申込が入っていたタブを消したときは、先にジムの担当者に聞いてください。' : ''), { tab: name });
   const letter = columnLetter_(check.index), cell = letter + '1';
   const shown = check.actual === '' ? '（空）' : '「' + check.actual.slice(0, 20) + '」';
@@ -895,7 +929,8 @@ function selfTest_() {
   const resources = checkResources_();
   if (testComplete_(resources.book)) return true;
   const s = S_();
-  saveEntry_(Object.assign({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG }, selfTestHanamichi_(s), selfTestPledge_(s)));
+  // 2つ目の true＝① の自動テストの1件（「テスト申込」タブの件数の上限で、止めない）
+  saveEntry_(Object.assign({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG }, selfTestHanamichi_(s), selfTestPledge_(s)), true);
   if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
   return true;
 }
@@ -1133,7 +1168,11 @@ function validateEntry_(p){
   if(hanamichiApplies_(p)){const found=hanamichiErrors_(hanamichiClean_(p));if(found.missing.length)throw entryError_('hanamichi',HANAMICHI_MISSING_,false);if(found.bad.length)throw entryError_('hanamichi',HANAMICHI_BAD_,false);}
   return request;
 }
-function saveEntry_(p){
+/** 「テスト申込」タブに入れてよい件数。これより多いときは、テストの新しい申込を断る（① の自動テストの1件と、同じ申込の再送は、断らない） */
+const TEST_ENTRY_MAX_=200;
+const TEST_ENTRY_FULL_='テスト用の申し込みが'+TEST_ENTRY_MAX_+'件になったので、これ以上は受け付けません。本番の申し込みには関係ありません。主催者の方は、シートの「テスト申込」タブの、古いテストの行（2行目から下。1行目の見出しは残します）を消してから、「① 最初の設定」を押してください。';
+/** 1件を保存する。selfTest＝① の自動テストの1件のときだけ true（selfTest_ が付ける。申し込みページから来た申込〔doPost〕には、付かない） */
+function saveEntry_(p,selfTest){
   assertOwner_();const requestId=validateEntry_(p);
   return withLock_(function(){
     const props=PropertiesService.getScriptProperties(),resources=checkResources_(),isTest=p.mode==='test';
@@ -1156,7 +1195,9 @@ function saveEntry_(p){
       const same=function(a,b){return JSON.stringify(a.map(retryNorm_))===JSON.stringify(b.map(retryNorm_));};
       // いまの設定が「なし」の項目（学年・年齢・意気込み・入場曲）は、くらべない（保存したあとに、会長が「なし」に変えても、同じ内容の再送を「変わった」と断らない）。「なし」の項目は、保存したままの値と同じとして扱う
       const kept=function(off,index,text){return off?String(values[3+index]||''):text;};
-      const expected=[String(p.gym).trim(),String(p.name).trim(),kept(S_().grade==='off',2,String(p.grade||'').trim()),kept(S_().age==='off',3,String(p.age||'').trim()),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),kept(S_().comment==='off',7,String(p.comment||'').trim()),kept(!S_().music,8,String(p.musicUrl||'').trim())];
+      // くわしい戦績つきの再送では、保存した戦績の1行が前の形（「3勝1敗」「2勝1敗1分」。3.20261024.1 が書いた形）でも、キックの数が同じなら、同じとして扱う（受付のコードを貼りかえる前後の再送を、「変わった」と断らない）
+      const record=detail&&recordDetailKickSame_(values[9],detail.kick)?String(values[9]):String(p.record).trim();
+      const expected=[String(p.gym).trim(),String(p.name).trim(),kept(S_().grade==='off',2,String(p.grade||'').trim()),kept(S_().age==='off',3,String(p.age||'').trim()),String(Number(p.height)),String(Number(p.weight)),record,kept(S_().comment==='off',7,String(p.comment||'').trim()),kept(!S_().music,8,String(p.musicUrl||'').trim())];
       if(!same(values.slice(3,12),expected)||!same(values.slice(13,17),[String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p)||!weightRetryOk_(String(values[19]||''),String(values[20]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
       const photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),values[0],p.photoDataUrl,true);
       if(photoUrl!==values[12])throw entryError_('photo','保存済みの写真と申込表が一致しません。主催者へご連絡ください。',false);
@@ -1169,9 +1210,12 @@ function saveEntry_(p){
       pledgeRec=pledgeCheck_(p);
       if(!isTest&&(props.getProperty('accepting')!=='true'||Date.now()>deadlineTime_()))throw entryError_('closed','現在、申し込みを受け付けていません。主催者へご連絡ください。',false);
       if(sheet.getLastRow()>3000)throw entryError_('capacity','受付件数が上限に達しました。主催者へご連絡ください。',false);
-      const minute=String(Math.floor(Date.now()/60000)),count=props.getProperty('rateMinute')===minute?Number(props.getProperty('rateCount')||0):0;
+      // テストの新しい申込は、「テスト申込」タブに200件あるときは受けない（テスト用のリンクは、だれでも作れるので、表や写真フォルダが いっぱいにならないように）。① の自動テストの1件は止めない
+      if(isTest&&!selfTest&&filledRows_(sheet)>=TEST_ENTRY_MAX_)throw entryError_('capacity',TEST_ENTRY_FULL_,false);
+      // 1分あたりの数は、本番とテストで別々に数える（テストの申込がたくさん来ても、本番の申込は止まらない）。テストは前からの鍵（rateMinute・rateCount）、本番は liveRateMinute・liveRateCount
+      const rateKey=isTest?'rate':'liveRate',minute=String(Math.floor(Date.now()/60000)),count=props.getProperty(rateKey+'Minute')===minute?Number(props.getProperty(rateKey+'Count')||0):0;
       if(count>=30)throw entryError_('busy','受付が混み合っています。少し待ってください。',true);
-      props.setProperties({rateMinute:minute,rateCount:String(count+1)});
+      const rate={};rate[rateKey+'Minute']=minute;rate[rateKey+'Count']=String(count+1);props.setProperties(rate);
       const receiptNo=receipt_(requestId,isTest),photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),receiptNo,p.photoDataUrl);
       const common=[clean_(p.gym,120),clean_(p.name,80),S_().grade==='off'?'':clean_(p.grade,30),S_().age==='off'?'':clean_(p.age,3),String(Number(p.height)),String(Number(p.weight)),clean_(p.record,300),S_().comment==='off'?'':clean_(p.comment,500),S_().music?clean_(p.musicUrl,500):'',photoUrl];
       values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId,clean_(classLabel_(p),40),clean_(weightChoice.division,40),clean_(weightChoice.weightClass,40)]);
@@ -1214,6 +1258,8 @@ function ensureRows_(sheet, lastRow) {
   if (max < lastRow) sheet.insertRowsAfter(max, lastRow - max);
 }
 function findRow_(sheet,column,value){if(sheet.getLastRow()<2)return 0;const values=sheet.getRange(2,column,sheet.getLastRow()-1,1).getDisplayValues();for(let i=0;i<values.length;i++)if(values[i][0]===value)return i+2;return 0;}
+/** 2行目から下で、受付番号（A列）が入っている行の数。中身を消しただけの行（Delete キー）は、数えない */
+function filledRows_(sheet){if(sheet.getLastRow()<2)return 0;return sheet.getRange(2,1,sheet.getLastRow()-1,1).getDisplayValues().filter(function(row){return String(row[0]).trim()!=='';}).length;}
 function savePhoto_(folderId,receiptNo,dataUrl,requireExisting){
   const match=String(dataUrl).match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
   if(!match||match[1].length>1800000)throw entryError_('photo','写真を選び直してください。',false);
@@ -1263,24 +1309,33 @@ function resultPage_(receiptNo,message,error,p){
 }
 /** 主催者がOS用名簿と写真を自分のDriveへZIP保存する。連絡先は含めない。 */
 function exportTournament(){
+  // 時間の見張り（exportRows_）は、押したときから数える（ロックを待つ時間も、Googleの6分に入る）
+  const started=Date.now();
   return withLock_(function(){
     const resources=checkResources_(),sheet=resources.book.getSheetByName('OS取込用（連絡先なし）'),rows=sheet.getDataRange().getDisplayValues();
     if(rows.length<2)throw new Error('本番の申し込みはまだありません。テスト申込はこのファイルに混ぜません。');
-    return exportRows_(rows,resources.folder,'Tournament_OS_',recordsCsvOf_(resources.book));
+    return exportRows_(rows,resources.folder,'Tournament_OS_',recordsCsvOf_(resources.book),started);
   });
 }
 /** 最後に保存確認できたテスト1件だけを、テスト写真フォルダへ書き出す。 */
 function exportTestTournament(){
+  const started=Date.now();
   return withLock_(function(){
     const resources=checkResources_(),props=PropertiesService.getScriptProperties();
     if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');
     const original=resources.book.getSheetByName('テスト申込'),sourceRow=findRow_(original,18,props.getProperty('lastTestRequest'));
     const receipt=original.getRange(sourceRow,1).getDisplayValues()[0][0],sheet=resources.book.getSheetByName('テストOS取込用'),row=findRow_(sheet,1,receipt);
     const rows=[sheet.getRange(1,1,1,OS_HEADERS.length).getDisplayValues()[0],sheet.getRange(row,1,1,OS_HEADERS.length).getDisplayValues()[0]];
-    return exportRows_(rows,DriveApp.getFolderById(props.getProperty('testFolderId')),'TEST_Tournament_OS_');
+    return exportRows_(rows,DriveApp.getFolderById(props.getProperty('testFolderId')),'TEST_Tournament_OS_','',started);
   });
 }
-function exportRows_(rows,folder,prefix,recordsCsv){
+/** 名簿ZIPを作ってよい時間（ミリ秒）。Googleは、1回の動きを6分で止める（止まると、英語の文が出て、ZIPもできない）。ZIPにまとめて保存する時間を残して、5分で、日本語の案内を出して止める */
+const EXPORT_TIME_LIMIT_MS_=5*60*1000;
+/** 時間の見張りで止めたときの文（何が起きたか・どうするか）。done＝写真を何枚まで入れたか、total＝写真の枚数 */
+function exportSlowText_(done,total){return'名簿ZIPを作るのに時間がかかりすぎたので、とちゅうで止めました（写真'+total+'枚のうち、'+done+'枚まで進みました。Googleは、1回に6分までしか動けません）。ZIPは、まだできていません。申し込みと写真は、そのまま残っています。少し時間をおいてから、もう一度「④ OS用の名簿ZIPを作る」を押してください。何度やっても止まるときは、ジムの担当者に連絡してください。';}
+/** started＝押したときの時刻（Date.now()）。無いときは、ここから数える */
+function exportRows_(rows,folder,prefix,recordsCsv,started){
+    const begin=typeof started==='number'?started:Date.now();
     // 右のはしの列（クラス・区分・階級）は、見出しがそろっている列だけ、CSVに付ける（古い表は、足りない列を付けない）。区分・階級は、階級分けが「あり」か、中身があるときだけ（使わない大会のCSVは、これまでと同じ形）
     const weightOn=S_().weights.enabled,used=function(i){return rows.slice(1).some(function(r){return String(r[i]||'')!=='';});},extra=[11,12,13].filter(function(i){return rows[0].length>i&&String(rows[0][i])===OS_HEADERS[i]&&(i===11||weightOn||used(i));}),csvRows=rows.map(function(r){return r.slice(0,10).concat(extra.map(function(i){return r[i];}));});
     const csv='\uFEFF'+csvRows.map(function(row){return row.map(function(cell){return'"'+clean_(cell,2000).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
@@ -1288,7 +1343,12 @@ function exportRows_(rows,folder,prefix,recordsCsv){
     let totalBytes=csv.length*3;
     // くわしい戦績（records.csv）は、「戦績詳細」の表に行があるときだけ、players.csv のあとに付く（recordsCsvOf_ が '' のときは付けない）
     if(recordsCsv){files.push(Utilities.newBlob(recordsCsv,'text/csv','records.csv'));totalBytes+=recordsCsv.length*3;}
-    rows.slice(1).forEach(function(row){const who='受付番号 '+row[0]+'（'+String(row[2]||'').slice(0,20)+'）';const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。'+who);let file;try{file=DriveApp.getFileById(id[1]);}catch(_){throw new Error(who+' の写真が見つかりません（Googleドライブから消えています）。Googleドライブのゴミ箱に入っていないか、見てください。');}if(file.isTrashed())throw new Error(who+' の写真が、Googleドライブのゴミ箱に入っています。ゴミ箱を開いて「元に戻す」を押してから、もう一度やってください。');if(!isPrivateOwned_(file,assertOwner_()))throw new Error(who+' の写真の共有が、「制限付き」になっていません。写真の共有を「制限付き」に直してから、もう一度やってください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});
+    // 写真の持ち主（主催者本人）の確認は、くり返しの前に1回だけ（1回の実行の中では、答えは変わらない）
+    const owner=assertOwner_(),photoRows=rows.slice(1),inFolder={};
+    // 写真フォルダの中を1回だけ見て、ファイルの番号（ID）→ファイルの表を作る（写真1枚ごとに、Googleドライブへ探しに行かない）。
+    // 使う写真は、今までどおり、名簿の行の写真URLの番号のファイル。表に無いとき（ほかのフォルダへ動かした・消えた等）や、表が作れないときは、今までどおり、その番号で1枚ずつ探す
+    try{const listed=folder.getFiles();while(listed.hasNext()){const f=listed.next();inFolder[f.getId()]=f;}}catch(_){/* 中が見られなくても、1枚ずつ探せば作れる */}
+    photoRows.forEach(function(row,done){if(Date.now()-begin>EXPORT_TIME_LIMIT_MS_)throw new Error(exportSlowText_(done,photoRows.length));const who='受付番号 '+row[0]+'（'+String(row[2]||'').slice(0,20)+'）';const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。'+who);let file=Object.prototype.hasOwnProperty.call(inFolder,id[1])?inFolder[id[1]]:null;if(!file){try{file=DriveApp.getFileById(id[1]);}catch(_){throw new Error(who+' の写真が見つかりません（Googleドライブから消えています）。Googleドライブのゴミ箱に入っていないか、見てください。');}}if(file.isTrashed())throw new Error(who+' の写真が、Googleドライブのゴミ箱に入っています。ゴミ箱を開いて「元に戻す」を押してから、もう一度やってください。');if(!isPrivateOwned_(file,owner))throw new Error(who+' の写真の共有が、「制限付き」になっていません。写真の共有を「制限付き」に直してから、もう一度やってください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});
     const zipName=prefix+S_().eventId+'.zip', older=[], found=folder.getFilesByName(zipName);
     while(found.hasNext())older.push(found.next());
     const zip=folder.createFile(Utilities.zip(files,zipName));

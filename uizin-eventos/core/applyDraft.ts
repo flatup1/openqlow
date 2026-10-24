@@ -5,10 +5,11 @@
  * 事実：「この内容で送信する」を押すと、画面ごと Google のページに移る（form の target="_self"）。だから、送ったあとの「もう1人」の入力は、
  * 画面の中（メモリ）だけでは覚えられない。そこで、このスマホのこのタブの中（sessionStorage。タブを閉じると消える）に、短い時間だけ覚える。
  *
- * 2つの入れ物（どちらも sessionStorage だけ。localStorage・Cookie・ネットワークには出さない）：
- *   下書き  tos-apply-draft:v1:<eventId>:<mode> … 選手の欄12個だけ。12時間。送信の直前・「消す」で消える
- *   次の人  tos-apply-next:v1:<eventId>:<mode>  … ジム名・連絡先・個人情報の同意・ジム責任者の名前と電話。60分。送信の直前に書く
- * 絶対に入れない物は NEVER_STORED（下書き）と NEXT_NEVER_STORED（次の人）。入れ物は「入れてよい鍵」を選び出す書き方（pick）なので、
+ * 3つの入れ物（どれも sessionStorage だけ。localStorage・Cookie・ネットワークには出さない）：
+ *   下書き    tos-apply-draft:v1:<eventId>:<mode> … 選手の欄12個だけ。12時間。送信の直前に「送った控え」へ移る・「消す」で消える
+ *   送った控え tos-apply-copy:v1:<eventId>:<mode>  … 送った選手の欄12個（下書きと同じ中身・同じ検査）。60分。受付番号が出なかった人が、手で戻すだけ（自動では戻さない）
+ *   次の人    tos-apply-next:v1:<eventId>:<mode>  … ジム名・連絡先・個人情報の同意・ジム責任者の名前と電話。60分。送信の直前に書く
+ * 絶対に入れない物は NEVER_STORED（下書き・送った控え）と NEXT_NEVER_STORED（次の人）。入れ物は「入れてよい鍵」を選び出す書き方（pick）なので、
  * 一覧にない鍵は、ここを通ると必ず消える。さらに、電話・メール・写真らしい中身の欄は、入れてよい鍵でも入れない。
  */
 import { findDivision, normalizeWeightClass, type WeightSettings } from './weightClass.ts';
@@ -124,6 +125,26 @@ function openEnvelope(json: string | null | undefined, now: number, link: DraftL
  */
 export function parseDraft(json: string | null | undefined, now: number, link: DraftLink): ParsedDraft | undefined {
   const opened = openEnvelope(json, now, link, DRAFT_TTL_MS, 'f');
+  if (!opened) return undefined;
+  const fields = pickDraft(opened.body);
+  return draftIsEmpty(fields) ? undefined : { fields, savedAt: opened.savedAt };
+}
+
+/* ---------- 送った控え（送った選手の欄12個。受付番号が出なかったときだけ、手で戻す） ---------- */
+
+export const COPY_KEY_PREFIX = 'tos-apply-copy:v1:';
+/** 送った控えが生きる時間（次の人の入れ物と同じ60分） */
+export const COPY_TTL_MS = NEXT_TTL_MS;
+export const copyKey = (link: DraftLink): string => COPY_KEY_PREFIX + link.eventId + ':' + link.mode;
+
+/** 送った控えに入れる文字。中身と形は、下書きと同じ（選手の欄12個だけ。写真・連絡先・花道・誓約書は入らない）。入れるものが何もなければ null */
+export function packCopy(fields: Readonly<Record<string, unknown>>, now: number, link: DraftLink): string | null {
+  return packDraft(fields, now, link);
+}
+
+/** 送った控えを読む。下書きと同じ検査で、期限だけ60分。通らなければ undefined＝呼ぶ側が消す */
+export function parseCopy(json: string | null | undefined, now: number, link: DraftLink): ParsedDraft | undefined {
+  const opened = openEnvelope(json, now, link, COPY_TTL_MS, 'f');
   if (!opened) return undefined;
   const fields = pickDraft(opened.body);
   return draftIsEmpty(fields) ? undefined : { fields, savedAt: opened.savedAt };

@@ -1,7 +1,9 @@
 // 短い申込URL（/a/コード）。行き先の決まり・コードの字・枠（大会ID:モード）をリンクの中身から決めること・Workerの道筋（作る・固定・開く・大会の部屋と古い長いURLに触らない）・
-// 作る画面（操作キーを端末に残さない・テストのURLを大きく知らせる）。大会名・URL・キーは、ぜんぶ架空。
+// 作る鍵（SHORT_LINK_KEY。当日の進行の操作キーとは別）・開けないときの文（本当に無い＝404／少し待てば直る＝503）・
+// 作る画面（鍵を端末に残さない・テストのURLを大きく知らせる）・公開の手順（新しい Worker だけ）。大会名・URL・キーは、ぜんぶ架空。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import worker from '../worker/index.ts';
 import { ShortLinks } from '../worker/short-links-do.ts';
@@ -9,7 +11,10 @@ import { SHORT_LINK_PAGE } from '../worker/short-link-page.ts';
 import { publicEntryHash, type PublicEntryConfig } from '../core/publicEntry.ts';
 import { isShortLinkTarget, SHORT_CODE_ALPHABET, SHORT_CODE_LENGTH, SHORT_CODE_PATTERN, SHORT_LINK_SLOT_PATTERN, shortCodeChars, shortLinkSlot } from '../core/shortLink.ts';
 
-const KEY = 'example-operator-key-0001';
+/** 短いURLを作る鍵（SHORT_LINK_KEY） */
+const KEY = 'example-short-link-key-0001';
+/** 当日の進行の操作キー（OPERATOR_KEY）。短いURLには使えない */
+const OPERATOR = 'example-operator-key-0002';
 const WORKER = 'https://worker.example.test';
 
 /** 本物と同じ作り方のリンク（core/publicEntry.ts の publicEntryHash）。大会ID・名前・URLは架空 */
@@ -101,14 +106,16 @@ function storeFake() {
   return { data, storage };
 }
 
-function environment(options: { store?: boolean; storeFetch?: (request: Request) => Promise<Response> } = {}) {
+function environment(options: { store?: boolean; storeFetch?: (request: Request) => Promise<Response>; shortLinkKey?: string | null; operatorKey?: string } = {}) {
   const box = storeFake();
   const shortLinks = new ShortLinks({ storage: box.storage } as never, {});
   const roomNames: string[] = [];
   const env = {
     EVENT_ID: 'uizin-2026',
     ALLOWED_ORIGINS: '*',
-    OPERATOR_KEY: KEY,
+    OPERATOR_KEY: options.operatorKey ?? OPERATOR,
+    // null のときは、鍵を入れていない Worker
+    ...(options.shortLinkKey === null ? {} : { SHORT_LINK_KEY: options.shortLinkKey ?? KEY }),
     EVENT_ROOM: {
       idFromName(name: string) { roomNames.push(name); return name; },
       get() { return { fetch: async () => new Response('{}', { headers: { 'content-type': 'application/json' } }) }; },
@@ -123,20 +130,71 @@ function environment(options: { store?: boolean; storeFetch?: (request: Request)
   return { env: env as never, data: box.data, roomNames, shortLinks };
 }
 
-const post = (body: unknown, key: string | null = KEY, query = '') => new Request(WORKER + '/api/short-links' + query, {
+const post = (body: unknown, key: string | null = KEY, query = '', header = 'x-short-link-key') => new Request(WORKER + '/api/short-links' + query, {
   method: 'POST',
-  headers: { 'content-type': 'application/json', ...(key === null ? {} : { 'x-operator-key': key }) },
+  headers: { 'content-type': 'application/json', ...(key === null ? {} : { [header]: key }) },
   body: JSON.stringify(body),
 });
 const open = (code: string) => new Request(WORKER + '/a/' + code);
 type Made = { ok: boolean; mode?: string; title?: string; code: string; url: string; reason?: string };
 const make = async (env: never, body: unknown, query = ''): Promise<Made> => (await worker.fetch(post(body, KEY, query), env)).json() as Promise<Made>;
 
-test('短いURLは、操作キーがあるときだけ作れる。キーが無い・違うときは、何も保存しない', async () => {
+test('短いURLは、短いURLを作る鍵（SHORT_LINK_KEY）があるときだけ作れる。鍵が無い・違うときは、何も保存しない', async () => {
   const { env, data } = environment();
   assert.equal((await worker.fetch(post({ target: APPLY }, null), env)).status, 401);
   assert.equal((await worker.fetch(post({ target: APPLY }, 'wrong-key'), env)).status, 401);
   assert.equal(data.size, 0, '断ったあとは、何も残っていない');
+});
+
+test('鍵は分かれている：当日の進行の操作キーでは、短いURLを作れない・入れ直せない。URLの ?key= でも作れない。進行の道は、今までどおり操作キーで動く', async () => {
+  const { env, data } = environment();
+  const made = await make(env, { target: APPLY });
+  assert.equal(made.ok, true);
+  const before = new Map(data);
+  // 進行の端末に残る操作キーで、同じ大会の受付URLだけをよその Apps Script に変えたリンクを貼る（配ってある短いURLの行き先の差し替え）
+  const swapped = link({ endpoint: 'https://script.google.com/macros/s/OTHERKEY/exec' });
+  const tries: Array<[string, Request]> = [
+    ['操作キーを、操作キーのヘッダーで', post({ target: swapped }, OPERATOR, '', 'x-operator-key')],
+    ['操作キーを、短いURLの鍵のヘッダーで', post({ target: swapped }, OPERATOR)],
+    ['操作キーを、URLの ?key= で', post({ target: swapped }, null, '?key=' + OPERATOR)],
+    ['短いURLの鍵でも、URLの ?key= では受けない', post({ target: swapped }, null, '?key=' + KEY)],
+    ['短いURLの鍵でも、操作キーのヘッダーでは受けない', post({ target: swapped }, KEY, '', 'x-operator-key')],
+  ];
+  for (const [name, request] of tries) {
+    const response = await worker.fetch(request, env);
+    assert.equal(response.status, 401, name);
+    assert.match(((await response.json()) as Made).reason ?? '', /短いURLを作る鍵が違います/, name);
+  }
+  assert.deepEqual(data, before, '断ったあとは、箱の中身は何も変わらない');
+  assert.equal((await worker.fetch(open(made.code), env)).headers.get('location'), href(APPLY), '配った短いURLの行き先は、そのまま');
+  // 進行の道（v1）は、今までどおり：操作キーのヘッダーでも ?key= でも通る。短いURLの鍵では通らない
+  const command = (headers: Record<string, string>, query = '') => worker.fetch(new Request(WORKER + '/api/command' + query, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: '{}' }), env);
+  assert.equal((await command({ 'x-operator-key': OPERATOR })).status, 200);
+  assert.equal((await command({}, '?key=' + OPERATOR)).status, 200);
+  assert.equal((await command({ 'x-operator-key': KEY })).status, 401, '短いURLの鍵では、進行を操作できない');
+  assert.equal((await command({ 'x-short-link-key': KEY })).status, 401);
+});
+
+test('短いURLを作る鍵（SHORT_LINK_KEY）が入っていない Worker では、操作キーがあっても作らない。理由を、はっきり言う', async () => {
+  for (const shortLinkKey of [null, '']) {
+    const { env, data } = environment({ shortLinkKey });
+    for (const request of [post({ target: APPLY }, OPERATOR, '', 'x-operator-key'), post({ target: APPLY }, OPERATOR), post({ target: APPLY }, ''), post({ target: APPLY }, null, '?key=' + OPERATOR)]) {
+      const response = await worker.fetch(request, env);
+      assert.equal(response.status, 503, JSON.stringify(shortLinkKey));
+      assert.match(((await response.json()) as Made).reason ?? '', /短いURLを作る鍵（SHORT_LINK_KEY）が、まだ入っていません/);
+    }
+    assert.equal(data.size, 0, '何も保存しない');
+  }
+});
+
+test('短いURLを作る鍵が、操作キーと同じ文字のときは、作らない（分けた意味が無いため）。鍵を知らない人には、ふつうに 401', async () => {
+  const same = 'example-same-key-0003';
+  const { env, data } = environment({ shortLinkKey: same, operatorKey: same });
+  const response = await worker.fetch(post({ target: APPLY }, same), env);
+  assert.equal(response.status, 503);
+  assert.match(((await response.json()) as Made).reason ?? '', /操作キー」と同じです。別の鍵を入れ直してください/);
+  assert.equal((await worker.fetch(post({ target: APPLY }, 'wrong-key'), env)).status, 401);
+  assert.equal(data.size, 0, '何も保存しない');
 });
 
 test('作った短いURLを開くと、申込ページへ転送される（#の中身もそのまま）。大会の部屋には触らない', async () => {
@@ -248,20 +306,66 @@ test('コードは、大文字で打たれても開く。知らないコード�
 test('箱が無いときは 503。大会の既存の道は、箱が無くても動く', async () => {
   const noBox = environment({ store: false }).env;
   assert.equal((await worker.fetch(open('zzzzzzzz'), noBox)).status, 503);
-  assert.equal((await worker.fetch(post({ target: APPLY }), noBox)).status, 503);
+  const made = await worker.fetch(post({ target: APPLY }), noBox);
+  assert.equal(made.status, 503);
+  assert.match(((await made.json()) as Made).reason ?? '', /箱/, '鍵は合っている。箱が無いことを言う');
   assert.equal((await worker.fetch(new Request(WORKER + '/api/health'), noBox)).status, 200);
 });
 
-test('転送では、何が起きても、選手には 404 の文を見せる（箱が壊れた・答えがおかしい・行き先が申込ページでない）', async () => {
+const NOT_FOUND_TEXT = 'この短い申込URLは見つかりません。運営に、新しいURLを聞いてください。';
+const UNAVAILABLE_TEXT = 'いま開けません。少し待ってから、もう一度押してください。';
+
+test('転送で「見つかりません」（404）と言うのは、本当に無いときだけ：箱が「無い」と答えた・コードの形がちがう・行き先が申込ページでない', async () => {
   const code = 'abcdefgh';
-  const throwing = environment({ storeFetch: async () => { throw new Error('box is down'); } }).env;
-  const thrown = await worker.fetch(open(code), throwing);
-  assert.equal(thrown.status, 404);
-  assert.match(await thrown.text(), /見つかりません/);
+  let asked = 0;
+  const missing = environment({ storeFetch: async () => { asked += 1; return new Response(JSON.stringify({ ok: false, reason: 'not found' }), { status: 404 }); } }).env;
+  const gone = await worker.fetch(open(code), missing);
+  assert.equal(gone.status, 404);
+  assert.equal(await gone.text(), NOT_FOUND_TEXT);
+  assert.equal(gone.headers.get('cache-control'), 'no-store');
+  assert.equal(gone.headers.get('x-robots-tag'), 'noindex');
+  assert.equal(asked, 1);
+  const badShape = await worker.fetch(open('0000000o'), missing);
+  assert.equal(badShape.status, 404, '形がちがうコード');
+  assert.equal(await badShape.text(), NOT_FOUND_TEXT);
+  assert.equal(asked, 1, '形がちがうコードは、箱に聞きもしない');
   const evil = environment({ storeFetch: async () => new Response(JSON.stringify({ ok: true, target: 'https://evil.example.test/apply/#a=1' })) }).env;
-  assert.equal((await worker.fetch(open(code), evil)).status, 404, '申込ページでない行き先へは、転送しない');
-  const garbage = environment({ storeFetch: async () => new Response('not json') }).env;
-  assert.equal((await worker.fetch(open(code), garbage)).status, 404);
+  const evilOpened = await worker.fetch(open(code), evil);
+  assert.equal(evilOpened.status, 404, '申込ページでない行き先へは、転送しない');
+  assert.equal(evilOpened.headers.get('location'), null);
+  const noTarget = environment({ storeFetch: async () => new Response(JSON.stringify({ ok: true })) }).env;
+  assert.equal((await worker.fetch(open(code), noTarget)).status, 404, '行き先の無い答え');
+});
+
+test('転送で、少し待てば直る失敗（箱が例外・500・503・こわれた答え）は、503「いま開けません…」。「見つかりません」とは言わない。記録・検索に残さない', async () => {
+  const code = 'abcdefgh';
+  const failures: Array<[string, () => Promise<Response>]> = [
+    ['箱が例外', async () => { throw new Error('box is down'); }],
+    ['箱が500', async () => new Response(JSON.stringify({ ok: false }), { status: 500 })],
+    ['箱が503', async () => new Response('overloaded', { status: 503 })],
+    ['こわれた答え（JSONでない）', async () => new Response('not json')],
+  ];
+  for (const [name, storeFetch] of failures) {
+    const opened = await worker.fetch(open(code), environment({ storeFetch }).env);
+    assert.equal(opened.status, 503, name);
+    const text = await opened.text();
+    assert.equal(text, UNAVAILABLE_TEXT, name);
+    assert.equal(text.includes('見つかりません'), false, name);
+    assert.equal(opened.headers.get('cache-control'), 'no-store', name);
+    assert.equal(opened.headers.get('x-robots-tag'), 'noindex', name);
+    assert.match(opened.headers.get('content-type') ?? '', /text\/plain/, name);
+    assert.equal(opened.headers.get('location'), null, name);
+  }
+  // 箱が直れば、同じ短いURLが、そのまま開く
+  const { env, shortLinks } = environment();
+  const made = await make(env, { target: APPLY });
+  let down = true;
+  const flaky = environment({ storeFetch: async (request) => { if (down) throw new Error('box is down'); return shortLinks.fetch(request); } }).env;
+  assert.equal((await worker.fetch(open(made.code), flaky)).status, 503);
+  down = false;
+  const again = await worker.fetch(open(made.code), flaky);
+  assert.equal(again.status, 302);
+  assert.equal(again.headers.get('location'), href(APPLY));
 });
 
 test('転送は、箱が整えていない行き先（途中の改行・タブつき）を返してきても、整えた形で転送する（箱の古い中身でも、500にならない）', async () => {
@@ -293,8 +397,8 @@ test('箱そのものも、枠が行き先のリンクの中身と合わない�
   assert.equal((await shortLinks.fetch(new Request('https://short-links/code/NOT-A-CODE'))).status, 404, '形の違うコードは、箱も探さない');
 });
 
-/** 作る画面の中の動きを、ほんものの script のまま動かして確かめる（見かけの部品は、すり替える） */
-function runPage(options: { local?: Record<string, string>; session?: Record<string, string>; respond?: (url: string, init: { body?: string }) => { status: number; body: unknown } | Error } = {}) {
+/** 作る画面の中の動きを、ほんものの script のまま動かして確かめる（見かけの部品は、すり替える）。through を渡すと、呼び出しを本物の Worker に通す */
+function runPage(options: { local?: Record<string, string>; session?: Record<string, string>; respond?: (url: string, init: { body?: string }) => { status: number; body: unknown } | Error; through?: (url: string, init: RequestInit) => Promise<Response> } = {}) {
   const script = SHORT_LINK_PAGE.match(/<script>([\s\S]*?)<\/script>/)![1];
   const elements = new Map<string, Record<string, any>>();
   const el = (id: string) => {
@@ -309,24 +413,32 @@ function runPage(options: { local?: Record<string, string>; session?: Record<str
     return { data, calls, getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { calls.push('set:' + k); data.set(k, String(v)); }, removeItem: (k: string) => { calls.push('remove:' + k); data.delete(k); } };
   };
   const local = storeOf(options.local), session = storeOf(options.session);
-  const fetched: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const fetched: Array<{ url: string; body: Record<string, unknown>; headers: Record<string, string> }> = [];
+  const pending: Array<Promise<unknown>> = [];
   const sandbox = {
     document: { getElementById: el }, localStorage: local, sessionStorage: session, navigator: {},
-    fetch: (url: string, init: { body?: string }) => {
-      fetched.push({ url, body: JSON.parse(init.body ?? '{}') });
+    fetch: (url: string, init: { body?: string; headers?: Record<string, string> }) => {
+      fetched.push({ url, body: JSON.parse(init.body ?? '{}'), headers: { ...init.headers } });
+      if (options.through) {
+        const answer = options.through(url, init as RequestInit);
+        pending.push(answer.catch(() => undefined));
+        return answer;
+      }
       const made = options.respond?.(url, init) ?? { status: 200, body: {} };
       if (made instanceof Error) return Promise.reject(made);
       return Promise.resolve({ ok: made.status >= 200 && made.status < 300, status: made.status, json: () => Promise.resolve(made.body) });
     },
   };
   vm.runInNewContext(script, sandbox);
-  return { el, local, session, fetched };
+  return { el, local, session, fetched, pending };
 }
 const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((resolve) => setImmediate(resolve)); };
 const click = async (page: ReturnType<typeof runPage>, key: string, target: string) => {
   page.el('key').value = key;
   page.el('target').value = target;
   page.el('make').handlers.click();
+  await settle();
+  await Promise.all(page.pending);
   await settle();
 };
 
@@ -339,16 +451,16 @@ test('作る画面：大会IDの欄は無い。送るのは行き先のURLだけ
   assert.deepEqual(page.fetched[0].body, { target: APPLY });
 });
 
-test('作る画面：操作キーは、Workerが「通した」と答えたあとだけ、このタブ（sessionStorage）に覚える。localStorage には、一度も書かない', async () => {
+test('作る画面：短いURLを作る鍵は、Workerが「通した」と答えたあとだけ、このタブ（sessionStorage）に覚える。localStorage には、一度も書かない', async () => {
   const ok = runPage({ respond: () => ({ status: 200, body: { ok: true, url: WORKER + '/a/abcdefgh', mode: 'live', title: '架空大会' } }) });
   await click(ok, KEY, APPLY);
-  assert.equal(ok.session.data.get('uizin.shortLink.operatorKey'), KEY, '通ったあとは、このタブに覚える');
+  assert.equal(ok.session.data.get('uizin.shortLink.key'), KEY, '通ったあとは、このタブに覚える');
   assert.deepEqual(ok.local.calls.filter((call) => call.startsWith('set:')), [], 'localStorage には、何も書かない');
   // 断られたとき・通信できなかったとき・申込ページのURLでないときは、覚えない
-  const refused = runPage({ respond: () => ({ status: 401, body: { ok: false, reason: '操作キーが違います。この画面からは短いURLを作れません。' } }) });
+  const refused = runPage({ respond: () => ({ status: 401, body: { ok: false, reason: '短いURLを作る鍵が違います（当日の進行の「操作キー」とは、別の鍵です）。この画面からは短いURLを作れません。' } }) });
   await click(refused, 'wrong-key', APPLY);
-  assert.deepEqual(refused.session.calls, [], '断られたキーは、覚えない');
-  assert.match(refused.el('msg').textContent, /操作キーが違います/);
+  assert.deepEqual(refused.session.calls, [], '断られた鍵は、覚えない');
+  assert.match(refused.el('msg').textContent, /短いURLを作る鍵が違います/);
   assert.equal(refused.el('msg').className, 'bad');
   const offline = runPage({ respond: () => new Error('offline') });
   await click(offline, KEY, APPLY);
@@ -360,12 +472,42 @@ test('作る画面：操作キーは、Workerが「通した」と答えたあ�
   assert.deepEqual(notApply.session.calls, []);
 });
 
-test('作る画面：前の版が localStorage に残した操作キーと大会IDは、開いたときに消える。自動では入らない。同じタブでは、前に通ったキーが入る', () => {
+test('作る画面：前の版が localStorage に残した操作キーと大会IDは、開いたときに消える。自動では入らない。同じタブでは、前に通った鍵が入る', () => {
   const legacy = runPage({ local: { 'uizin.shortLink.operatorKey': 'old-key', 'uizin.shortLink.eventId': 'old-event' } });
   assert.equal(legacy.local.data.size, 0, '古い物は、消えている');
   assert.equal(legacy.el('key').value, '', 'localStorage の物は、入らない');
-  const sameTab = runPage({ session: { 'uizin.shortLink.operatorKey': KEY } });
-  assert.equal(sameTab.el('key').value, KEY, '同じタブで、通ったことがあるキーだけ、入る');
+  const oldTab = runPage({ session: { 'uizin.shortLink.operatorKey': 'old-operator-key' } });
+  assert.equal(oldTab.el('key').value, '', '前の版がこのタブに覚えた操作キーは、短いURLの鍵として入らない');
+  const sameTab = runPage({ session: { 'uizin.shortLink.key': KEY } });
+  assert.equal(sameTab.el('key').value, KEY, '同じタブで、通ったことがある鍵だけ、入る');
+});
+
+test('作る画面：鍵は「x-short-link-key」のヘッダーだけで送る（操作キーのヘッダー・URLの ?key= には入れない）。本物の Worker に通すと作れる。操作キーでは作れない', async () => {
+  const { env } = environment();
+  const through = (url: string, init: RequestInit) => worker.fetch(new Request(WORKER + url, init), env);
+  const page = runPage({ through });
+  await click(page, KEY, APPLY);
+  assert.equal(page.fetched.length, 1);
+  assert.equal(page.fetched[0].url, '/api/short-links', 'URLに鍵を付けない');
+  assert.deepEqual(Object.keys(page.fetched[0].headers).sort(), ['content-type', 'x-short-link-key']);
+  assert.equal(page.fetched[0].headers['x-short-link-key'], KEY);
+  assert.equal(page.el('result').hidden, false, '本物の Worker が、この鍵で作った');
+  assert.match(page.el('short').textContent, /^https:\/\/worker\.example\.test\/a\/[2-9a-hjkmnp-z]{8}$/);
+  assert.equal(page.session.data.get('uizin.shortLink.key'), KEY);
+  // 当日の進行の操作キーを入れても、作れない（理由が出る。覚えない）
+  const withOperator = runPage({ through });
+  await click(withOperator, OPERATOR, APPLY);
+  assert.equal(withOperator.el('result').hidden, true);
+  assert.match(withOperator.el('msg').textContent, /短いURLを作る鍵が違います/);
+  assert.equal(withOperator.el('msg').className, 'bad');
+  assert.deepEqual(withOperator.session.calls, [], '断られた鍵は、覚えない');
+  // 説明は「短いURLを作る鍵」。操作キーとは別だと書いてある（前の「操作キー（操作の画面で使うもの…）」は残っていない）
+  assert.match(SHORT_LINK_PAGE, /<label for="key">短いURLを作る鍵（SHORT_LINK_KEY。当日の進行の「操作キー」とは、別の鍵です。/);
+  assert.equal(SHORT_LINK_PAGE.includes('操作の画面で使うもの'), false);
+  const empty = runPage();
+  await click(empty, '', APPLY);
+  assert.equal(empty.fetched.length, 0, '鍵が空なら、送りもしない');
+  assert.match(empty.el('msg').textContent, /短いURLを作る鍵を入れてください/);
 });
 
 test('作る画面：テスト用のURLだと、赤い大きな文で「選手には送らない」と知らせる。本番用では出さない。どの大会かも見せる', async () => {
@@ -400,12 +542,37 @@ test('作る画面（運営用）は Worker が配る。鍵の値は画面に入
   assert.equal(html.includes('準備画面で'), false, '長いURLは、準備画面ではなく、「選手の受付をつくる」の画面でコピーする');
 });
 
-test('申込ページの画面（Pages）から、操作キーの付いた呼び出しを受け付ける（事前の確認も通る）', async () => {
+test('よその画面からの事前の確認：進行の画面のための x-operator-key は、今までどおり許す。短いURLを作る鍵（x-short-link-key）は許さない（作る画面は Worker と同じ場所なので、許さなくても使える）', async () => {
   const { env } = environment();
   const preflight = await worker.fetch(new Request(WORKER + '/api/short-links', {
     method: 'OPTIONS',
-    headers: { origin: 'https://tournament-os-v3.pages.dev', 'access-control-request-headers': 'content-type,x-operator-key' },
+    headers: { origin: 'https://tournament-os-v3.pages.dev', 'access-control-request-headers': 'content-type,x-short-link-key' },
   }), env);
   assert.equal(preflight.status, 204);
-  assert.match(preflight.headers.get('access-control-allow-headers') ?? '', /x-operator-key/);
+  const allowed = preflight.headers.get('access-control-allow-headers') ?? '';
+  assert.match(allowed, /x-operator-key/, '進行の画面（v1）の道は、今までどおり');
+  assert.equal(allowed.includes('x-short-link-key'), false, 'よその画面のスクリプトは、短いURLの鍵を送れない');
+});
+
+test('公開の手順（docs/DEPLOY.md）：短いURLは、新しい Worker（tournament-os-api）だけで作る。鍵は SHORT_LINK_KEY。確かめ方（302 と 401）と、開けないときの文も、Worker と同じ', async () => {
+  const doc = readFileSync(new URL('../docs/DEPLOY.md', import.meta.url), 'utf8');
+  const start = doc.indexOf('\n## 6. 短い申込URL\n');
+  assert.ok(start > 0, '短い申込URLの章がある');
+  const section = doc.slice(start);
+  assert.match(section, /\nnpm run worker:deploy:tournament\n/);
+  assert.match(section, /\nnpx wrangler secret put SHORT_LINK_KEY --config worker\/wrangler\.tournament\.toml\n/);
+  assert.match(section, /`https:\/\/tournament-os-api\.<account>\.workers\.dev\/short-link`/);
+  assert.match(section, /curl -si https:\/\/tournament-os-api\.<account>\.workers\.dev\/a\/<コード>\n# => HTTP\/2 302\n# => location: https:\/\/tournament-os-v3\.pages\.dev\/apply\/#/);
+  assert.match(section, /curl -si -X POST https:\/\/tournament-os-api\.<account>\.workers\.dev\/api\/short-links[^\n]*\n# => HTTP\/2 401\n/);
+  assert.equal(/uizin-eventos-api\.<account>\.workers\.dev\/short-link/.test(doc), false, '古い Worker の作る画面は、案内しない');
+  assert.equal(/secret put OPERATOR_KEY --config worker\/wrangler\.tournament\.toml/.test(doc), false, '短いURLのために、操作キーは入れない');
+  // 手順に書いた「開けないときの文」は、Worker が本当に出す文と同じ
+  const notFound = await (await worker.fetch(open('zzzzzzzz'), environment().env)).text();
+  const unavailable = await (await worker.fetch(open('abcdefgh'), environment({ storeFetch: async () => { throw new Error('box is down'); } }).env)).text();
+  assert.ok(section.includes('404「' + notFound + '」'), notFound);
+  assert.ok(section.includes('503「' + unavailable + '」'), unavailable);
+  // Worker の設定にも、鍵の入れ方が書いてある（鍵の値は、書かない）
+  const toml = readFileSync(new URL('../worker/wrangler.tournament.toml', import.meta.url), 'utf8');
+  assert.match(toml, /npx wrangler secret put SHORT_LINK_KEY --config worker\/wrangler\.tournament\.toml/);
+  assert.equal(/^\s*SHORT_LINK_KEY\s*=/m.test(toml), false, '鍵の値は、設定のファイルに書かない');
 });

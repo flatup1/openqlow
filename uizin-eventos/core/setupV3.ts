@@ -26,6 +26,24 @@ export const supportsHanamichi = (ping: Pick<Ping, 'build'> | null | undefined):
 export const supportsRecordDetail = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261024.1');
 /** このシートの受付は、誓約書に対応した版（3.20261022.7 以降）か。古い版は、ping に誓約書の印が来ない（来ても、リンクには付けない） */
 export const supportsPledge = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261022.7');
+/** このシートの受付は、シートの「戦績・競技歴」の1行を「5戦3勝2敗」の形で書く版（3.20261024.2 以降）か。1つ前の版（3.20261024.1）は「3勝2敗」と書く */
+export const supportsRecordText = (ping: Pick<Ping, 'build'> | null | undefined): boolean => !!ping && buildSince(ping.build, '3.20261024.2');
+
+/**
+ * くわしい戦績は受け取れるが、シートの戦績の1行が、まだ前の形（「3勝2敗」）で入る版のときに、設定の画面に出す黄色の注意（lead＝1行目、body＝すること）。
+ * 申し込みの画面の確認は「5戦3勝2敗」なので、シートだけ形がちがう。申し込みは今のままでも受け付けるので、リンクは止めない。
+ * それ以外（新しい版・くわしい戦績の無い古い版・知らない版・ping が無い）は undefined（何も出さない）
+ */
+export function recordTextCaution(ping: Pick<Ping, 'build'> | null | undefined): { lead: string; body: string } | undefined {
+  if (!supportsRecordDetail(ping) || supportsRecordText(ping)) return undefined;
+  return {
+    lead: 'シートの戦績を「5戦3勝2敗」の形にするには、受付のプログラムの新しい版（' + EXPECTED_RECEPTION_BUILD + '）を貼ります。',
+    body: 'ジムの担当者が、このシートの Apps Script のプログラムを、新しい版に貼りかえます。そして「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。そのあと、シートのメニュー「Tournament OS」→「① 最初の設定」を押します。今のままでも、申し込みは受け付けます（シートの戦績が「3勝2敗」の形になるだけです）。',
+  };
+}
+
+/** Googleの返事を待つ時間の上限（ミリ秒）。これを過ぎたら待つのをやめて、つながらないときと同じ案内を出す（「確かめています…」のまま止まらない） */
+export const PING_TIMEOUT_MS = 20_000;
 
 export type Ping = {
   app: 'tournament-os'; protocol: 3; build: string; ready: boolean; accepting?: boolean;

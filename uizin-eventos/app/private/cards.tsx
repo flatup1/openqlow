@@ -1,12 +1,12 @@
 'use client';
 
-import { Fragment, memo, useState } from 'react';
+import { Fragment, memo, useMemo, useState } from 'react';
 import { contractWeight, gymKey, sameFighterKey, type LocalBout, type LocalFighter } from '../../core/privateTournament.ts';
 import type { EntryFormConfig } from '../../core/entryPackage.ts';
 import type { RecordDetail } from '../../core/recordDetail.ts';
 import { boutClassWarning, classKey, classMismatch, classMixMessage, classState, suggestClass, suggestText, type ClassSettings } from '../../core/classRules.ts';
 import { boutWeightWarning, cleanDivisionName, cleanWeightText, findDivision, NO_CLASS_NOTE, normalizeWeightClass, weightClassLabel, weightTag, type WeightSettings } from '../../core/weightClass.ts';
-import { BOUT_TEXT_MAX, gapLevel, isBlankBout, isHalfBout, parseKg, recordDetailLines, sameClassName, weightGap, weightIssue, weightIssueText, weightTrouble, weightTroubleText } from './logic.ts';
+import { BOUT_TEXT_MAX, fighterOptionLabels, firstOtherBout, gapLevel, isBlankBout, isHalfBout, parseKg, recordDetailLines, sameClassName, weightGap, weightIssue, weightIssueText, weightTrouble, weightTroubleText } from './logic.ts';
 import { FIELD_LABEL, shorten, type FieldKey } from './normalize.ts';
 import { Caution, ErrorLine, Example, LockReason, NextSlot, OkLine, Soft } from './marks.tsx';
 import { Badge, btn, Chip, cls, Fold, inputClass } from './parts.tsx';
@@ -129,10 +129,23 @@ export function FighterFields({ value, onChange, onBlurField, config, prefix, pr
   })}</div>;
 }
 
+/* ───────── 選ぶ欄の文字（全部のカードで同じ。名簿が変わったときだけ、画面が1回作る） ───────── */
+// 選択肢は「Aクラス 65kg 山田 太郎（ジム名）」の順。クラスと体重が先なので、せまい画面で閉じていても切れない
+const baseLabel = (f: LocalFighter) => `${f.fighterClass ? f.fighterClass + ' ' : ''}${kgText(f.weight)} ${f.name}${f.gym.trim() ? '（' + f.gym.trim() + '）' : ''}`;
+
+/** 選ぶ欄の、選手1人ずつの文字（管理番号 → 文字。見た目が同じ人の番号・欠場の印つき）。名簿が変わったときだけ、画面（page.tsx）が1回作る */
+export const optionLabels = (fighters: LocalFighter[]): Map<string, string> => fighterOptionLabels(fighters, baseLabel);
+
 /* ───────── 対戦カード1枚（<article> はこの中だけ。画像タグは使わない） ───────── */
 export type BoutCardProps = {
-  bout: LocalBout; index: number; total: number; fighters: LocalFighter[]; groups: Array<[string, LocalFighter[]]>;
-  byId: Map<string, LocalFighter>; placed: Map<string, number>; bouts: LocalBout[];
+  bout: LocalBout; index: number; total: number; groups: Array<[string, LocalFighter[]]>;
+  byId: Map<string, LocalFighter>;
+  /** 選ぶ欄の、選手1人ずつの文字（optionLabels）。名簿が変わったときだけ、画面が1回作る */
+  labels: Map<string, string>;
+  /** 選手ごとに、入っている試合の番号（logic.ts の boutPlaces）。試合が変わったときだけ、画面が1回作る */
+  places: Map<string, number[]>;
+  /** 同じ人が、いくつの試合に入っているか（logic.ts の personBoutCounts） */
+  personCount: Map<string, number>;
   isCurrent: boolean; isSuggested: boolean; ruleCopied: boolean;
   /** 黄色の「👉 次はここ」を付ける側（なければ null）と、その札の文 */
   nextSide: 'red' | 'blue' | null; nextLabel: string;
@@ -152,7 +165,7 @@ export type BoutCardProps = {
 
 const sideStyle = { red: 'border-rose-600 bg-rose-50', blue: 'border-blue-600 bg-blue-50' } as const;
 
-export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, groups, byId, placed, bouts, isCurrent, isSuggested, ruleCopied, nextSide, nextLabel, acks, targetId, dupIds, classSettings, classesOn = false, onPatch, onMove, onRemove, onAck, onFocusSide, onEditWeight, onEditClass }: BoutCardProps) {
+export const BoutCard = memo(function BoutCard({ bout, index, total, groups, byId, labels, places, personCount, isCurrent, isSuggested, ruleCopied, nextSide, nextLabel, acks, targetId, dupIds, classSettings, classesOn = false, onPatch, onMove, onRemove, onAck, onFocusSide, onEditWeight, onEditClass }: BoutCardProps) {
   const [ruleOpen, setRuleOpen] = useState(false);
   // 100文字を超える貼りつけは、保存がぜんぶ失敗する原因になる。欄に入れられる数を決め、すでに超えているもの（古いコピー）は赤で知らせる
   const longRule = bout.rule.length > BOUT_TEXT_MAX, longClass = bout.className.length > BOUT_TEXT_MAX;
@@ -162,24 +175,20 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
   const level = gapLevel(gap);
   const contract = contractWeight(red, blue);
   const weightUnknown = !!red && !!blue && gap === null;
-  const inThisBout = (id: string) => id === bout.redId || id === bout.blueId;
   const title = 'bout-' + index + '-title';
-  // 選択肢は「Aクラス 65kg 山田 太郎（ジム名）」の順。クラスと体重が先なので、せまい画面で閉じていても切れない
-  const baseLabel = (f: LocalFighter) => `${f.fighterClass ? f.fighterClass + ' ' : ''}${kgText(f.weight)} ${f.name}${f.gym.trim() ? '（' + f.gym.trim() + '）' : ''}`;
-  // 見た目が同じ選択肢（同じ名前・同じジム・同じ体重・同じクラス）には、管理番号を足して見分けられるようにする
-  // （全角・半角と空白のちがいは、見た目では同じなので、同じ選択肢として数える）
-  const labelKey = (f: LocalFighter) => baseLabel(f).normalize('NFKC').replace(/\s+/g, '');
-  const labelCount = new Map<string, number>();
-  for (const f of fighters) labelCount.set(labelKey(f), (labelCount.get(labelKey(f)) ?? 0) + 1);
-  // この人が、ほかの試合のどこに入っているか（いちばん上の試合の番号）。選ぶ人に「どこに」を言うため
-  const elsewhere = new Map<string, number>();
-  bouts.forEach((other, at) => { if (at === index) return; for (const id of [other.redId, other.blueId]) if (id && !elsewhere.has(id)) elsewhere.set(id, at); });
-  const options = (side: 'red' | 'blue') => groups.map(([gym, list]) => <optgroup key={gym} label={gym || 'ジム名なし'}>{list.map((f) => {
-    const other = side === 'red' ? bout.blueId : bout.redId;
-    const mark = f.id === other ? (side === 'red' ? '（青コーナーで選んでいます）' : '（赤コーナーで選んでいます）') : elsewhere.has(f.id) ? '（もう第' + ((elsewhere.get(f.id) ?? 0) + 1) + '試合に入っています）' : (placed.get(f.id) ?? 0) - (inThisBout(f.id) ? 1 : 0) > 0 ? '（ほかの試合に入っています）' : '';
-    const twin = (labelCount.get(labelKey(f)) ?? 0) > 1 ? `（番号 ${shorten(f.id, 10)}）` : '';
-    return <option key={f.id} value={f.id} disabled={f.id === other}>{baseLabel(f) + twin + (f.absent === true ? '（欠場）' : '') + mark}</option>;
-  })}</optgroup>);
+  // 選ぶ欄の中身（選手全員）。文字は画面が1回だけ作ったもの（labels）、「どこに入っているか」も画面が1回だけ作ったもの（places）を使う。
+  // このカードの赤・青・番号と、名簿・試合の並びが変わらないかぎり、作り直さない（ほかの理由でカードを描き直しても、選択肢はそのまま）
+  const options = useMemo(() => {
+    const inThisBout = (id: string) => id === bout.redId || id === bout.blueId;
+    const make = (side: 'red' | 'blue') => groups.map(([gym, list]) => <optgroup key={gym} label={gym || 'ジム名なし'}>{list.map((f) => {
+      const other = side === 'red' ? bout.blueId : bout.redId;
+      // この人が、ほかの試合のどこに入っているか（いちばん上の試合の番号）。選ぶ人に「どこに」を言うため
+      const elsewhere = firstOtherBout(places, f.id, index);
+      const mark = f.id === other ? (side === 'red' ? '（青コーナーで選んでいます）' : '（赤コーナーで選んでいます）') : elsewhere !== undefined ? '（もう第' + (elsewhere + 1) + '試合に入っています）' : (places.get(f.id)?.length ?? 0) - (inThisBout(f.id) ? 1 : 0) > 0 ? '（ほかの試合に入っています）' : '';
+      return <option key={f.id} value={f.id} disabled={f.id === other}>{(labels.get(f.id) ?? '') + mark}</option>;
+    })}</optgroup>);
+    return { red: make('red'), blue: make('blue') };
+  }, [groups, labels, places, index, bout.redId, bout.blueId]);
   // 写真（大きい）と文字は、横にならべる。ただし、この箱の幅に、写真と、文字の最低の幅（8rem）が入らないときは、文字を写真の下に回す（flex-wrap）。
   // 画面の幅（md）で決めない：試合の箱は、画面の幅と左の手順の列しだいで、細くなる（幅768px・1024pxで、文字の列が30pxほどにつぶれていた）
   const profile = (f: LocalFighter | undefined, side: 'red' | 'blue') => f ? <div data-profile={side} className="mt-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
@@ -202,16 +211,8 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
     : level !== 'none' ? <Chip tone="amber">体重差 {gap}kg ⚠</Chip> : <Chip tone="green">体重差 {gap}kg ✓</Chip>;
   const gapMeaning = index === 0 && gap !== null ? <p className="text-center text-[17px] font-medium text-slate-700">体重差＝体重のちがい</p> : null;
   // 同じ人が2試合に出ている（相手の試合の番号は、この箱の中に書かない＝ほかの試合のカードと取りちがえないため）
-  // 管理番号がちがっても、名前もジムも同じ人は、同じ人として数える
-  const personBouts = (f: LocalFighter): number => {
-    const key = sameFighterKey(f);
-    return bouts.filter((other) => [other.redId, other.blueId].some((id) => {
-      if (!id) return false;
-      if (id === f.id) return true;
-      const person = key ? byId.get(id) : undefined;
-      return !!person && sameFighterKey(person) === key;
-    })).length;
-  };
+  // 管理番号がちがっても、名前もジムも同じ人は、同じ人として数える（数は、画面が1回だけ数えたもの：personCount）
+  const personBouts = (f: LocalFighter): number => personCount.get(f.id) ?? 0;
   const doubled = [red, blue].filter((f): f is LocalFighter => !!f && personBouts(f) > 1);
   const samePerson = !!red && !!blue && red.id !== blue.id && sameFighterKey(red) !== '' && sameFighterKey(red) === sameFighterKey(blue);
   const lookalikes = samePerson ? [] : [red, blue].filter((f): f is LocalFighter => !!f && dupIds.has(f.id));
@@ -245,7 +246,7 @@ export const BoutCard = memo(function BoutCard({ bout, index, total, fighters, g
       <NextSlot active={nextSide === side} label={nextLabel} className="mt-2">
         <select id={id} aria-label={side === 'red' ? '赤コーナーの選手' : '青コーナーの選手'} aria-describedby={title + (!value ? ' ' + id + '-hint' : '')} aria-invalid={!value || undefined}
           className={cls(inputClass, side === 'red' ? 'border-rose-400' : 'border-blue-400', targetId === id && 'tos-target')} value={value} onChange={(e) => onPatch(index, side === 'red' ? { redId: e.target.value } : { blueId: e.target.value })}>
-          <option value="">{side === 'red' ? '赤の選手を選ぶ' : '青の選手を選ぶ'}</option>{options(side)}
+          <option value="">{side === 'red' ? '赤の選手を選ぶ' : '青の選手を選ぶ'}</option>{side === 'red' ? options.red : options.blue}
         </select>
       </NextSlot>
       {!value ? <p id={id + '-hint'} className="mt-1 text-[17px] font-bold text-slate-900">{side === 'red' ? '赤の選手を選んでください' : '青の選手を選んでください'}</p> : null}

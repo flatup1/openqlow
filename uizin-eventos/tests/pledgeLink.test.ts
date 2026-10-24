@@ -61,8 +61,11 @@ test('golden: 誓約書の鍵が無い昔のリンク（end も無い）は、�
 test('golden: 申し込みページの POST の鍵は、誓約書なしなら今までと同じ（今までの並びは動かない・足すのは別の入れ物から）', () => {
   const page = read('app/apply/page.tsx');
   const post = page.slice(page.indexOf('<form ref={formRef}'), page.indexOf('</form>', page.indexOf('<form ref={formRef}')));
-  assert.match(post, /photoDataUrl: photo, \.\.\.hanamichiPost \}\)\.map\(\(\[name, value\]\) => <input key=\{name\} type="hidden" name=\{name\} value=\{value\} \/>\)\}\s+\{Object\.entries\(pledgeNow\)\.map\(/, '今までの鍵は1字も動かさない。誓約書の鍵は、そのあとに別の入れ物（pledgeNow）から足す（誓約書なしなら {}）');
-  assert.equal((post.match(/\bpledge\w*|gymName|gymPhone|gymPermission/g) || []).join(','), 'pledgeNow', 'フォームの行に、誓約書の鍵を直に書かない（pledgeNow 経由だけ）');
+  // 隠し欄は、送る中身の1つの並び（postFields）からだけ作る（送り直しの見張り payloadKey も、同じ並びから作る）。form の中に、ほかの隠し欄を直に書かない
+  assert.match(post, /^<form ref=\{formRef\}[^>]*>\s*\{postFields\.map\(\(\[name, value\]\) => <input key=\{name\} type="hidden" name=\{name\} value=\{value\} \/>\)\}\s*$/, 'form の中は postFields の隠し欄だけ');
+  const fields = page.slice(page.indexOf('const postFields'), page.indexOf('\n', page.indexOf('const postFields')));
+  assert.match(fields, /photoDataUrl: photo, \.\.\.hanamichiPost \}\), \.\.\.Object\.entries\(pledgeNow\), \.\.\.Object\.entries\(recordPost\)\];$/, '今までの鍵は1字も動かさない。誓約書の鍵は、そのあとに別の入れ物（pledgeNow）から足す（誓約書なしなら {}）');
+  assert.equal((fields.match(/\bpledge\w*|gymName|gymPhone|gymPermission/g) || []).join(','), 'pledgeNow', '送る中身の並びに、誓約書の鍵を直に書かない（pledgeNow 経由だけ）');
   assert.ok(/pledgePost\(plan, pa, config\.pledgeHash \?\? ''\)/.test(page), 'pledgeNow は、誓約書の部品の pledgePost が作る');
 });
 

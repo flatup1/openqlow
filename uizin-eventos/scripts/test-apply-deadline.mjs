@@ -18,6 +18,8 @@
 import assert from 'node:assert/strict';
 import { publicEntryHash } from '../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
+import { createHash } from 'node:crypto';
+import { pledgeCanon } from '../core/pledge.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4993';
@@ -292,7 +294,8 @@ await scenario('WD', 'wording: 用意するもの… (same number as 入力 N/M)
     ['class split', hashFor({ classes: DEFAULT_CLASS_SETTINGS }), null],
     ['weights', hashFor({ weights: WEIGHTS }), '一般男子'],
     ['hanamichi', hashFor({ weights: WEIGHTS, hanamichi: true }), '花道男子'],
-    ['pledge', hashFor({ pledge: PLEDGE, pledgeHash: '0123456789abcdef'.repeat(4) }), null],
+    // 誓約書の文の指紋は、本物（受付と同じ作り方）。にせの指紋のリンクは、いまは「切れたリンク」と同じに止まる
+    ['pledge', hashFor({ pledge: PLEDGE, pledgeHash: createHash('sha256').update(pledgeCanon(PLEDGE), 'utf8').digest('hex') }), null],
   ];
   const seen = new Set();
   for (const [label, hash, division] of variants) {

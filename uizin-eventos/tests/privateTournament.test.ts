@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { boutWarnings, contractWeight, importFighters, mergeFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
+import { boutWarnings, contractWeight, importFighters, safeMusicUrl, validateTournament, emptyTournament, isLocalTournament } from '../core/privateTournament.ts';
 import { entryConfigFromSearch, entryConfigSearch, entryCsv, entryErrors } from '../core/entryPackage.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { isAppsScriptUrl, isVenueUrl, publicEntryConfig, publicEntryHash } from '../core/publicEntry.ts';
@@ -66,12 +66,8 @@ test('読み込み失敗・空名簿・別大会復元・進行保存失敗で�
   const live=readFileSync(new URL('../app/private/live/page.tsx',import.meta.url),'utf8');
   assert.match(live,/const saved=await writePrivateEvent\(next\);(?:curRef\.current=saved\.currentBout;)?setData\(saved\)/);assert.match(live,/savingRef\.current/);
 });
-test('再取り込みは管理番号で更新・追加し、写真・元の選手・対戦カード・試合順を消さない',()=>{
-  const original=importFighters('管理番号,選手名,体重\nF1,赤,55\nF2,青,58').fighters;
-  original[0].photoDataUrl='data:image/jpeg;base64,/9j/2Q==';
-  const snapshot=JSON.stringify(original),incoming=importFighters('管理番号,選手名,体重\nF1,赤,56\nF3,赤,60').fighters;
-  const merged=mergeFighters(original,incoming);assert.equal(merged.length,3);assert.equal(merged[0].weight,'56');assert.equal(merged[0].photoDataUrl,original[0].photoDataUrl);assert.deepEqual(merged[1],original[1]);assert.equal(merged[2].id,'F3');assert.equal(JSON.stringify(original),snapshot);
-  assert.throws(()=>mergeFighters(original,[incoming[0],incoming[0]]),/同じ管理番号/);
+// 名簿の合わせ方（管理番号・写真・ファイルに無い人・新しい人）は、本物の道 mergeKeepExisting の試験で見る（dataScoreFixes.test.ts・privateSafety.test.ts ほか）
+test('再取り込みは本物の道（mergeKeepExisting）だけを使い、対戦カード・試合順を消さない',()=>{
   const source=readFileSync(new URL('../app/private/page.tsx',import.meta.url),'utf8');assert.match(source,/mergeKeepExisting\(current, fighters(?:, \{[^}]*\})?\)/);assert.ok(!/\bmergeFighters\(/.test(source),'名簿の読み込みは、前からいる人を黙って書きかえない');assert.ok(!source.includes('fighters, bouts: [], currentBout:0'));
 });
 
@@ -255,11 +251,7 @@ test('クラス: 復元前の検証は、クラスなしの旧データを今ま
   assert.deepEqual(JSON.parse(JSON.stringify(withClass)).fighters[0].fighterClass, 'Aクラス');
 });
 
-test('クラス: 再取り込みでもクラスは名簿に残る', () => {
-  const current = importFighters('管理番号,選手名\nF1,赤').fighters;
-  const merged = mergeFighters(current, importFighters('管理番号,選手名,クラス\nF1,赤,Aクラス').fighters);
-  assert.equal(merged[0].fighterClass, 'Aクラス');
-});
+// 「クラス: 再取り込みでもクラスは名簿に残る」は、本物の道 mergeKeepExisting で見る（polish-private.test.ts の r1-26・privateLogic.test.ts・dataScoreFixes.test.ts）
 
 test('クラス: 申込ページ用のURLは、クラスなしなら今までと同じで、あれば短く往復できる', () => {
   const cfg = { endpoint: 'https://script.google.com/macros/s/AKfycbyTEST_ONLY/exec', eventId: 'test-cup', title: 't', organizer: 'o', date: 'd', venue: 'v', venueUrl: '', deadline: '2099-11-30', contact: 'c', music: false, grade: 'optional' as const, age: 'optional' as const, comment: 'optional' as const, protocol: '3', mode: 'live' as const };

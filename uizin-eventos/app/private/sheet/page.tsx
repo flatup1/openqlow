@@ -123,12 +123,14 @@ export default function BoutSheet() {
   }, []);
 
   // 保存してある大会を読む。別の画面で保存されたとき・この画面にもどってきたときに、読み直す。読めたかどうかを返す
+  // 読んだ大会の版（updatedAt）。別の画面の知らせが、もう持っている版と同じなら、写真ごと読み直さない（当日の画面が1試合ごとに保存するため）
+  const seenAtRef = useRef<number | null>(null);
   const load = useCallback((): Promise<boolean> => readPrivateEvent(eventId)
-    .then((value) => { setData(value); setReadFailed(false); setLoaded(true); setReadAt(Date.now()); return true; })
+    .then((value) => { seenAtRef.current = value ? value.updatedAt : null; setData(value); setReadFailed(false); setLoaded(true); setReadAt(Date.now()); return true; })
     .catch(() => { setReadFailed(true); setLoaded(true); return false; }), [eventId]);
   useEffect(() => {
     void load();
-    const stop = watchPrivateEvent(eventId, () => { void load(); });
+    const stop = watchPrivateEvent(eventId, (updatedAt?: number) => { if (typeof updatedAt === 'number' && updatedAt === seenAtRef.current) return; void load(); });
     const onFocus = () => { void load(); };
     window.addEventListener('focus', onFocus);
     return () => { stop(); window.removeEventListener('focus', onFocus); };

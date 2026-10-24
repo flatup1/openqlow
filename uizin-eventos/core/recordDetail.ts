@@ -8,12 +8,19 @@
  * 古い申し込み（この欄が無い）は、ここを通らない。読めないものは、捨てて、選手の情報は止めない。
  *
  * 2026-10-24（owner：何戦何勝かだけ知りたい）：申し込みの画面は、「試合数」と「勝ち」だけを聞く（app/components/recordDetailText.ts）。
- * 送るときに、負け＝試合数−勝ち、引き分け・勝敗なし＝0 を入れる。受け取る側のこの決まり（と、Googleの受付・表の列・名簿ZIP）は、変えていない。
+ * 送るときに、負け＝試合数−勝ち、引き分け・勝敗なし＝0 を入れる。受け取る側の中身の決まり（recordDetailProblems と、Googleの受付の同じ検査）・
+ * 表の列・名簿ZIP は、変えていない。変えたのは、シートの「戦績・競技歴」に書く一行の形だけ（「5戦3勝2敗」。kickRecordText。Googleの受付は 3.20261024.2 から）。
  */
+
+import { CsvQuoteError, parseCsv } from './csv.ts';
 
 export const RECORD_DETAIL_VERSION = 1;
 
-/** 上限（入力の長さ・個数）。Googleの受付も、同じ数で止める */
+/**
+ * 上限（入力の長さ・個数）。Googleの受付も、同じ数で止める。
+ * 保存した大会・コピーのファイルを読むときの形の検査（isStoredRecordDetail）も、この数を使う。
+ * 小さくすると、前に保存した大会が読めなくなるので、小さくしない（大きくするのはよい。試験が見張っている）。
+ */
 export const RECORD_DETAIL_LIMITS = {
   games: 999,
   others: 5,
@@ -98,6 +105,24 @@ export function recordDetailProblems(detail: unknown): string[] {
   return out;
 }
 
+/**
+ * 保存した大会・コピーのファイルの中の、くわしい戦績の「形」だけを見る（読み込みの検査 isLocalTournament が使う）。
+ * 数は0〜999の整数、文字は上限までの長さ、他の格闘技・タイトルは上限の数まで、獲得年は上限の中の整数。
+ * 申し込みの決まり（勝ち・負けの合計が試合数と合う・競技名が要る など。recordDetailProblems）は、見ない。
+ * 決まりをあとで変えても、前の版の申し込みの戦績（例：4戦2勝1敗1分）が入った大会とコピーのファイルが、まるごと読めなくならないように。
+ */
+export function isStoredRecordDetail(detail: unknown): boolean {
+  const L = RECORD_DETAIL_LIMITS;
+  const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object';
+  const counts = (value: Record<string, unknown>, keys: string[]): boolean => keys.every((key) => isCount(value[key]));
+  const fits = (value: unknown, max: number): boolean => typeof value === 'string' && value.trim().length <= max;
+  const isYear = (value: unknown): boolean => typeof value === 'number' && Number.isInteger(value) && value >= L.yearMin && value <= L.yearMax;
+  if (!isObject(detail) || !isObject(detail.kick) || !counts(detail.kick, ['games', 'win', 'loss', 'draw'])) return false;
+  const { others, titles } = detail;
+  if (!Array.isArray(others) || others.length > L.others || !others.every((o) => isObject(o) && fits(o.sport, L.sport) && counts(o, ['games', 'win', 'loss', 'draw', 'noResult']))) return false;
+  return Array.isArray(titles) && titles.length <= L.titles && titles.every((t) => isObject(t) && fits(t.event, L.event) && isYear(t.year) && fits(t.class, L.class) && fits(t.result, L.result));
+}
+
 /** 画面が送る形（キーの順を決めて、JSON にする）。中身が決まりに合わないときは、空の文字（送らない） */
 export function packRecordDetail(detail: RecordDetail): string {
   if (recordDetailProblems(detail).length) return '';
@@ -159,9 +184,19 @@ export function unguardRecordCell(value: string): string {
   return /^'[=+\-@]/.test(value) ? value.slice(1) : value;
 }
 
-/** records.csv（見出しつき）を読み、受付番号ごとの中身にする。見出しが違うときは、ぜんぶ読まない（名簿は別に読める）。文字の欄は、守りの ' を外してから使う */
+/**
+ * records.csv（見出しつき）を読み、受付番号ごとの中身にする。見出しが違うときは、ぜんぶ読まない（名簿は別に読める）。文字の欄は、守りの ' を外してから使う。
+ * CSV の読み方は、名簿（players.csv）と同じ core/csv.ts の parseCsv（「"」は欄の最初にあるときだけ引用の始まり。5"6 はただの文字）。
+ * 準備の画面は、同じファイルを toRowsIndexed（同じ読み方）でも読むので、2つの答えがずれない。
+ * 「"」が閉じないまま終わるファイルは、あとの行が黙って消えるので、ぜんぶ読まない。空の行は、とばす。
+ */
 export function parseRecordDetailCsv(text: string): { ok: true; byReceipt: Map<string, RecordDetail> } | { ok: false; reason: string } {
-  const rows = csvRows(String(text ?? '').replace(/^﻿/, ''));
+  let rows: string[][];
+  try { rows = parseCsv(String(text ?? '').replace(/^\uFEFF/, ''), { strict: true }).filter((row) => row.some((cell) => cell !== '')); }
+  catch (error) {
+    if (error instanceof CsvQuoteError) return { ok: false, reason: '「"」が閉じていない所があります（ファイルがこわれているかもしれません）' };
+    throw error;
+  }
   if (!rows.length) return { ok: true, byReceipt: new Map() };
   const head = rows[0].map((cell) => cell.trim());
   if (head.length !== RECORD_DETAIL_HEADERS.length || head.some((cell, i) => cell !== RECORD_DETAIL_HEADERS[i])) return { ok: false, reason: '戦績の見出しが、この版と違います' };
@@ -180,28 +215,4 @@ export function parseRecordDetailCsv(text: string): { ok: true; byReceipt: Map<s
     byReceipt.set(receipt, cur);
   }
   return { ok: true, byReceipt };
-}
-
-/** CSVを行に分ける（"..." の中の , と改行を守る）。見出しと同じ形の、最小限の読み方 */
-function csvRows(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [], cell = '', quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quoted) {
-      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
-      else if (ch === '"') quoted = false;
-      else cell += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === ',') { row.push(cell); cell = ''; }
-    else if (ch === '\r' || ch === '\n') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
-      row.push(cell); cell = '';
-      if (row.some((c) => c !== '')) rows.push(row);
-      row = [];
-    } else cell += ch;
-  }
-  row.push(cell);
-  if (row.some((c) => c !== '')) rows.push(row);
-  return rows;
 }

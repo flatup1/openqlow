@@ -48,7 +48,8 @@ test('golden: hn の無い昔のリンク（end も無い）は、切れてい�
 
 test('golden: 申し込みページの POST の鍵は、花道なしなら今までと同じ（鍵の一覧と並びを固定）', () => {
   const page = read('app/apply/page.tsx');
-  const post = page.slice(page.indexOf('<form ref={formRef}'), page.indexOf('</form>', page.indexOf('<form ref={formRef}')));
+  // 送る欄は、1つの一覧（postFields）から、隠しの欄と payloadKey の両方を作る（足し忘れが起きない形）
+  const post = page.slice(page.indexOf('const postFields'), page.indexOf('\n', page.indexOf('const postFields')));
   // 花道の鍵は、ぜんぶ ...(花道のとき) の中に入っていて、ふつうの鍵の並びは動かない
   assert.match(post, /\{ protocol: config\.protocol === '3' \? '3' : '2', entryKey: config\.entryKey \|\| '', mode: config\.mode \|\| '', website: '', eventId: config\.eventId, requestId, gym: nf\.gym, name: nf\.name, grade: postGrade, age: postAge, height: nf\.height\.replace\(\/cm\$\/i, ''\), weight: nf\.weight\.replace\(\/kg\$\/i, ''\), record: nf\.record, fighterClass: classes \? chosenClass : '', \.\.\.\(weights \? \{ division, weightClass: needClass \? weightClass : '' \} : \{\}\), comment: postComment, musicUrl: config\.music \? nf\.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent \? 'yes' : 'no', photoDataUrl: photo(?: \}|, \.\.\.hanamichiPost \})/, '花道より前の鍵の並びは、そのまま');
   assert.equal((post.match(/\bhn[A-Z]\w+/g) || []).length, 0, 'フォームの行に、花道の鍵を直に書かない（hanamichiPost 経由だけ）');

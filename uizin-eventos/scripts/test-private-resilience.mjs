@@ -74,7 +74,7 @@ const nodeBackup = (value, password) => {
 };
 const nodeOpen = (text, password) => {
   const p = JSON.parse(text);
-  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), 250_000, 32, 'sha256');
+  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), p.iterations ?? 250_000, 32, 'sha256');
   const buf = Buffer.from(p.data, 'base64');
   const d = createDecipheriv('aes-256-gcm', key, Buffer.from(p.iv, 'base64'));
   d.setAuthTag(buf.subarray(buf.length - 16));
@@ -842,7 +842,7 @@ scenario('I', 'backup and restore round trip', async (vp) => {
     check(/\.tournament\.enc$/.test(d.suggestedFilename()) && d.suggestedFilename().includes(id), 'backup file name ends with .tournament.enc and has the event id (' + d.suggestedFilename() + ')');
     file = await readFile(await d.path(), 'utf8');
   });
-  check((await notices(A)).includes('ファイルを保存しました'), 'backup shows a visible success sign');
+  check((await notices(A)).includes('保存を始めました'), 'backup shows a visible success sign');
   // "F01" is only 3 base64 letters: it appears by pure chance inside random ciphertext of a photo-sized file (flaky),
   // so test the text outside the ciphertext for it, and test the decoded ciphertext bytes for long, unambiguous strings.
   const envelope = JSON.parse(file), cipherBytes = Buffer.from(envelope.data, 'base64');

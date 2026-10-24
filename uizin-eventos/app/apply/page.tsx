@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { agoText, draftKey, draftIsEmpty, fitDraftToLink, linkMode, nextKey, packDraft, packNext, parseDraft, parseNext, pickDraft, safeGet, safeRemove, safeSet, type DraftFields, type DraftLink, type NextKit, type StorageLike } from '../../core/applyDraft.ts';
+import { agoText, copyKey, draftKey, draftIsEmpty, fitDraftToLink, linkMode, nextKey, packCopy, packDraft, packNext, parseCopy, parseDraft, parseNext, pickDraft, safeGet, safeRemove, safeSet, type DraftFields, type DraftLink, type NextKit, type StorageLike } from '../../core/applyDraft.ts';
 import { classMismatch, CLASS_NEUTRAL_NOTE, suggestClass, suggestText } from '../../core/classRules.ts';
 import { formatDateInput } from '../../core/dateInput.ts';
 import { emailFormOk, entryErrors, lowerLinkHost, MUSIC_URL_FORM, phoneFormOk, stripInvisible, type EntryFighter } from '../../core/entryPackage.ts';
 import { HANAMICHI_DERIVED_KEYS, HANAMICHI_SKIPPED_KEYS, hanamichiAgeFrom, hanamichiAskRequired, hanamichiBirthText, hanamichiClean, hanamichiFill, hanamichiFormItems, HANAMICHI_ITEMS, HANAMICHI_KEYS, HANAMICHI_RING_KANA_KEY, HANAMICHI_RING_KEY, isHanamichiDivision, isRealPastDate, jstDateText, validateHanamichi, type HanamichiItem, type HanamichiKey } from '../../core/hanamichi.ts';
 import { ageKnown, gymPhoneNormal, isUnaffiliated, PLEDGE_LIMITS, UNAFFILIATED_TEXT } from '../../core/pledge.ts';
-import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
+import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, pledgeLinkGenuine, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
 import { DIVISION_LABEL, findDivision, isDivisionError, noClassReviewValue, NO_CLASS_NOTE_APPLY, normalizeWeightClass, weightChoiceError, weightClassLabel } from '../../core/weightClass.ts';
 import { BirthDateSelect, type BirthParts } from '../components/BirthDateSelect.tsx';
 import { CkaLogo } from '../components/CkaLogo.tsx';
@@ -470,6 +470,9 @@ export default function PublicApply() {
   const [pendingHash, setPendingHash] = useState('');
   /** リンクの後ろが切れている（コピーで途中までしか取れなかった）。送っても、あとでGoogleに断られるので、先に止める */
   const [linkCut, setLinkCut] = useState(false);
+  /** 誓約書の文（plt）と指紋（plf）を確かめている間は true（送らない。ふつうは一瞬で終わる）。pledgeRunRef は、いちばん新しいリンクの確かめの番号（前のリンクの答えは使わない） */
+  const pledgeCheckingRef = useRef(false);
+  const pledgeRunRef = useRef(0);
   /** 送った中身の控え。送ったあとに名前などを変えたら、別の人の申し込みとして、新しい控え番号で送る */
   const sentPayloadRef = useRef('');
   const formRef = useRef<HTMLFormElement>(null);
@@ -496,6 +499,12 @@ export default function PublicApply() {
   const [nextBanner, setNextBanner] = useState(false);
   const kitRef = useRef<NextKit | null>(null);
   const saveNextRef = useRef<() => void>(() => {});
+  /** 送った控え（送る瞬間に下書きから移した、選手の欄12個。60分）。読み込んだときに見つかったら、「さっき、申し込みを送りました」の注意の中に、戻すボタンを出す（自動では戻さない） */
+  const [sentCopy, setSentCopy] = useState<{ fields: DraftFields; savedAt: number } | null>(null);
+  /** 下書きの「消す」のあと10秒だけ、「消しました（元にもどす）」を出す。消した下書きは discardedRef に持つ（押しまちがえても、戻せるように） */
+  const [draftUndo, setDraftUndo] = useState(false);
+  const discardedRef = useRef<{ fields: DraftFields; savedAt: number } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const say =(text: string, kind: Tone = 'info') => { offlineMsgRef.current = false; setMessage(text); setTone(kind); };
 
@@ -503,6 +512,11 @@ export default function PublicApply() {
     setConfig(next);
     // setup 画面が作るリンクには、決まったキーが全部入っていて、最後に end=1 が付く。後ろが欠けていたら、途中で切れている
     setLinkCut(publicEntryLinkCut(hash));
+    // 誓約書の文（plt）が、指紋（plf）と合うかを確かめる（Googleの受付と同じ作り方の SHA-256）。合わない＝リンクの中で文が書きかえられている：途中で切れたリンクと同じに止める。
+    // 確かめ終わるまでは、送らない（submit が止める）。正しいリンクは、見た目も動きも今までのまま
+    const run = ++pledgeRunRef.current;
+    pledgeCheckingRef.current = Boolean(next.pledge);
+    if (next.pledge) void pledgeLinkGenuine(next).then((ok) => { if (run !== pledgeRunRef.current) return; pledgeCheckingRef.current = false; if (!ok) setLinkCut(true); });
     titleRef.current = next.title ? next.title + ' 申し込み' : '大会の申し込み';
     document.title = titleRef.current;
     const dl = parseJa(next.deadline);
@@ -697,9 +711,14 @@ export default function PublicApply() {
   const pledgeReason = pledgeLockReason(plan, pa);
   /** 誓約書の欄に、何か入れたが、形がまちがっている（携帯電話の形ではない、など）。「足りない」ではなく「直す」 */
   const typedWrong = (key: Key): boolean => (isPledgeKey(key) && pledgeProblems[key]?.empty === false) || (key === 'record' && recordWrong);
-  /** 入力の数が、選び方で変わるリンクか。変わる理由の言葉（区分・年齢）を返す。変わらないリンクは ''（花道・誓約書が無い昔のリンクは、いつも '' で、見た目は今のまま） */
+  /**
+   * 区分を選ぶと、出る欄（入力の数）が変わるリンクか。理由は4つ：花道の質問が出る（hn=on）／階級の欄が出る（階級のある区分）／
+   * 学年が必須でも、大人の区分では学年を聞かない／花道のルール（hr）があると、花道の区分ではクラスを聞かない
+   */
+  const divisionMayChange = Boolean(weights?.divisions.some((d) => (config.hanamichi && isHanamichiDivision(d.name)) || d.classes.length > 0 || (config.grade === 'required' && !isKidsDivision(d.name)) || (Boolean(config.classes?.enabled) && Boolean(config.hanamichiRule) && isHanamichiDivision(d.name))));
+  /** 入力の数が、選び方で変わるリンクか。変わる理由の言葉（区分・年齢）を返す。区分も年齢も数を変えないリンクは ''（見た目は今のまま。花道・誓約書の言い方も、今のまま） */
   const countMayChange = [
-    config.hanamichi && weights && weights.divisions.some((d) => isHanamichiDivision(d.name)) ? DIVISION_LABEL : '',
+    divisionMayChange ? DIVISION_LABEL : '',
     config.pledge?.mode === 'under18' && config.age !== 'off' ? (hanamichiOn ? '生年月日' : '年齢') : '',
   ].filter(Boolean).join('・');
   /** 入力の途中では覚えない物（正直に言う）。このリンクにある物だけ名前を出す：花道の質問が出ているとき＝花道の答え／誓約書のリンク＝誓約書の✔／ジム責任者の欄があるリンク＝ジム責任者の欄。誓約書も花道も無いリンクには、その言葉を出さない（見た目が今のまま） */
@@ -707,7 +726,13 @@ export default function PublicApply() {
   /** 「次の人のために60分だけ覚える」物のうち、「ジム名と連絡先」のほかにあるもの（正直に言う）。ジム責任者の名前・電話は、誓約書でジム責任者の欄があるリンクだけ */
   const kitExtra = (config.pledge?.gymMode ? '個人情報の同意のチェックと、ジム責任者の名前・電話' : '個人情報の同意のチェック') + 'も、いっしょに覚えます。';
   const thisYear = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
-  const payloadKey = JSON.stringify([fighter.gym, fighter.name, fighter.grade, fighter.age, nf.age, postGrade, postAge, postComment, nf.height, nf.weight, fighter.record, fighter.comment, nf.musicUrl, contactName, phone, email, photo, classes ? chosenClass : '', ...(weights ? [division, weightClass] : []), ...(hanamichiOn ? HANAMICHI_KEYS.map((key) => hnNf[key]) : []), ...(plan.on ? [JSON.stringify(pledgeNow)] : []), ...(recordOn ? [JSON.stringify(recordPost)] : [])]);
+  /**
+   * Googleへ送る中身（form の隠し欄）。この1つの並びから、隠し欄も、送り直しの見張り（payloadKey）も作る（送る欄を足しても、見張りへの足し忘れが起きない）。
+   * 並びと値は、今までと1字も変えない：ふつうの鍵（photoDataUrl まで）→ 花道の12個（花道のときだけ）→ 誓約書の鍵（pledgeNow）→ くわしい戦績（recordPost）
+   */
+  const postFields: Array<[string, string]> = [...Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: postGrade, age: postAge, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', ...(weights ? { division, weightClass: needClass ? weightClass : '' } : {}), comment: postComment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo, ...hanamichiPost }), ...Object.entries(pledgeNow), ...Object.entries(recordPost)];
+  /** 送り直しの見張り：送る中身から、控え番号（requestId）だけを除いたもの。送ったあとに中身を変えたら、別の人の申し込みとして、新しい控え番号で送る */
+  const payloadKey = JSON.stringify(postFields.filter(([name]) => name !== 'requestId'));
   const contactNow: ContactNow = { name: cname, phone, email };
   // くわしい戦績の欄に、何か入れてあるか（試合数・勝ち・足した行。「あり」にしただけで、何も書いていない行は、入力と数えない）
   const recordTyped = recordOn && (Boolean(kickText.games.trim() || kickText.win.trim()) || (otherOn && otherRows.some((row) => row.sport.trim() || row.games.trim() || row.win.trim())) || (titleOn && titleRows.some((row) => row.event.trim() || row.year.trim() || row.class.trim() || row.result.trim())));
@@ -897,6 +922,8 @@ export default function PublicApply() {
     if (deadlineLocked) return; // 締切を過ぎた本番：欄も ボタンも止まっているので、ここへは来ないはずの二重の守り
     if (photoLoadingRef.current) { setReviewing(false); say('まだ送れません：写真を準備しています。写真が表示されてから押してください。', 'warn'); return; }
     if (confirmed && !reviewing && !resend) return;
+    // 誓約書の文と指紋を、まだ確かめている（ふつうは一瞬で終わる）：送らない
+    if (confirmed && pledgeCheckingRef.current) { say('まだ送れません：リンクの中身を確かめています。少し待ってから、もう一度押してください。', 'warn'); return; }
     // 本番なのに、主催者が誓約書の文をまだ確認していない：送らない（サーバーも断る）
     if (confirmed && plan.blocked) { say(PLEDGE_BLOCKED_TEXT, 'error'); return; }
     const { errors, fields } = validate(nf, Boolean(photo), uiCfg, { name: cname, phone, email, consent }, publicEntryReady(config) && !linkCut, emailOk, chosenClass, division, weightClass, hanamichiOn ? hnProblems : null, plan.on ? pledgeProblems : null, classFree);
@@ -1016,9 +1043,14 @@ export default function PublicApply() {
     draftOfferRef.current = false;
     setDraftOffer(null);
     setNextBanner(false);
+    setSentCopy(null);
+    discardedRef.current = null; setDraftUndo(false);
     kitRef.current = null;
     if (!storeLink) return;
     const store = tabStorage();
+    // 送った控え：見つかったら、「さっき、申し込みを送りました」の注意の中にボタンを出すだけ（入力には入れない）。期限切れ・形がちがう物は、読まずに消す
+    const copyRaw = safeGet(store, copyKey(storeLink));
+    if (copyRaw !== null) { const copy = parseCopy(copyRaw, Date.now(), storeLink); if (copy) setSentCopy(copy); else safeRemove(store, copyKey(storeLink)); }
     const raw = safeGet(store, draftKey(storeLink));
     if (raw !== null) {
       const parsed = parseDraft(raw, Date.now(), storeLink);
@@ -1027,6 +1059,7 @@ export default function PublicApply() {
     }
     applyNextKit(storeLink, '');
   }, [storeId]);
+  useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
   useEffect(() => {
     // 入力が変わってから0.5秒後に、まとめて1回、下書きを書く（入れるものが何もなければ、入れ物を消す）。
     // 書かない時：送っている間／案内の枠が出ている間（保存してある物を、空の入力で上書きしない）／送ったのと同じ内容のまま（送った人が、また出てこないように）／次の人のためのジム名を入れただけ
@@ -1043,16 +1076,21 @@ export default function PublicApply() {
     }, 500);
     return () => window.clearTimeout(id);
   }, [storeId, sending, draftOffer, draftSrcKey]);
-  // 送信の直前（form を送る瞬間）に呼ぶ：下書きを消し、次の人のためにジム名と連絡先を覚える（新しい値で置きかえ）。覚える物は core/applyDraft.ts の pickNext が選ぶ
+  // 送信の直前（form を送る瞬間）に呼ぶ：下書きを「送った控え」へ移し（送れなかったときに、手で戻せるように。60分）、次の人のためにジム名と連絡先を覚える（新しい値で置きかえ）。
+  // 覚える物は core/applyDraft.ts の pickDraft・pickNext が選ぶ（写真は、どちらにも入らない）
   saveNextRef.current = () => {
     if (!storeLink) return;
     const store = tabStorage();
+    const copy = packCopy(draftSrc, Date.now(), storeLink);
+    if (copy === null) safeRemove(store, copyKey(storeLink)); else safeSet(store, copyKey(storeLink), copy);
     safeRemove(store, draftKey(storeLink));
     const kit = { gym: nf.gym, contactName: cname, contactPhone: phone, contactEmail: email, consent, gymName: plan.gym ? pa.gymName : '', gymPhone: plan.gym ? pa.gymPhone : '' };
     kitRef.current = kit;
     const packed = packNext(kit, Date.now(), storeLink);
     if (packed === null) safeRemove(store, nextKey(storeLink)); else safeSet(store, nextKey(storeLink), packed);
   };
+  /** 送った控えを消す（「この表示を消す」「別の人を申し込む」・戻したとき） */
+  const dropSentCopy = () => { if (storeLink) safeRemove(tabStorage(), copyKey(storeLink)); setSentCopy(null); };
   const tel = telDigits(config.contact);
   const dateInfo = parseJa(config.date);
   const dateText = dateInfo ? `${dateInfo.y}年${dateInfo.m}月${dateInfo.d}日（${weekday(dateInfo)}）` : config.date;
@@ -1081,6 +1119,8 @@ export default function PublicApply() {
     // 誓約書：✔が入っていない（empty）は、送ろうとしたときに赤にする。ジム責任者の名前が長すぎるのは、すぐ赤。電話の形は、欄を出た後に赤
     if (isPledgeKey(key)) { const p = pledgeProblems[key]; return p && !p.empty && (p.early || touched[key]) ? p.text : ''; }
     if (key === 'name' && hanamichiOn && nf.name.trim().length > HN_NAME_MAX) return hnNameLongText(nf.name);
+    // くわしい戦績：入れたのに、まちがっている欄があるときだけ（空・入力の途中は、まちがいと言わない）、戦績の箱を出たあとに「直す」にする（ほかの欄と同じ）
+    if (key === 'record' && recordOn) return recordWrong && touched.record ? recordMessages[0] ?? '' : '';
     const p = problemFor(key, nf, contactNow, uiCfg);
     return p && (p.early || touched[key]) ? p.text : '';
   };
@@ -1298,6 +1338,7 @@ export default function PublicApply() {
     setFieldErrors({}); setNotes({}); setTouched({}); setAttempted(false);
     setRequestId(''); setConfirmationPending(false); setReviewing(false);
     sentPayloadRef.current = '';
+    dropSentCopy();
     say('選手の入力を消しました。ジム名と連絡先は、そのままです。次の人の申し込みを、始められます。', 'ok');
     window.scrollTo({ top: 0 });
     document.getElementById('f-name')?.focus({ preventScroll: true });
@@ -1306,7 +1347,17 @@ export default function PublicApply() {
   const restoreDraft = () => {
     const offer = draftOffer;
     if (!offer || !storeLink) return;
-    const f = fitDraftToLink(offer.fields, { weights, classes: Boolean(config.classes?.enabled), hanamichiRule: Boolean(config.hanamichiRule), grade: config.grade !== 'off', age: config.age !== 'off', comment: config.comment !== 'off', music: config.music });
+    const gym = fillDraftFields(offer.fields);
+    draftOfferRef.current = false;
+    setDraftOffer(null);
+    applyNextKit(storeLink, gym || fighter.gym);
+    say('さっきの入力を戻しました。まちがいがないか、見てください。', 'ok');
+    document.getElementById('f-gym')?.focus({ preventScroll: true });
+    setStick(null); // 入れ終わった欄に、黄色の「次はここ」を残さない（フォーカスで「いまの欄に固定」になるのを外す）
+  };
+  /** 下書き・送った控えの12個を、いまのリンクで使える形にして、入力に入れる（「戻す」を押したときだけ）。空の値は入れない。入れたジム名を返す */
+  const fillDraftFields = (fields: DraftFields): string => {
+    const f = fitDraftToLink(fields, { weights, classes: Boolean(config.classes?.enabled), hanamichiRule: Boolean(config.hanamichiRule), grade: config.grade !== 'off', age: config.age !== 'off', comment: config.comment !== 'off', music: config.music });
     const textKeys = ['gym', 'name', 'height', 'weight', 'record', 'grade', 'age', 'comment', 'musicUrl'] as const;
     // くわしい戦績のあるリンクでは、戦績の一行（fighter.record）は、キックの数から決まる。下書きの一行をそのまま入れない（読めない言い方だと、数が空なのに、戦績だけ入ったことになるため）
     setFighter((old) => { const next = { ...old }; for (const key of textKeys) if (f[key] && !(recordOn && key === 'record')) next[key] = f[key]; return next; });
@@ -1319,16 +1370,25 @@ export default function PublicApply() {
       if (config.hanamichiRule && isHanamichiDivision(f.division)) clearError('fighterClass');
     }
     if (f.fighterClass) { setChosenClass(f.fighterClass as 'upper' | 'lower'); clearError('fighterClass'); }
-    draftOfferRef.current = false;
-    setDraftOffer(null);
-    applyNextKit(storeLink, f.gym || fighter.gym);
-    say('さっきの入力を戻しました。まちがいがないか、見てください。', 'ok');
-    document.getElementById('f-gym')?.focus({ preventScroll: true });
-    setStick(null); // 入れ終わった欄に、黄色の「次はここ」を残さない（フォーカスで「いまの欄に固定」になるのを外す）
+    return f.gym;
   };
-  /** 下書きの「消す」：保存してあった下書きを消す。そのあと、次の人のためのジム名と連絡先があれば、それを入れる（案内の枠は、いつも1つだけ） */
+  /** 送った控えの「戻す」（受付番号が出なかった人だけが押す）：送った選手の欄12個を入れて、控えを消す。写真は残していないので、選び直し */
+  const restoreSentCopy = () => {
+    const copy = sentCopy;
+    if (!copy || !storeLink) return;
+    fillDraftFields(copy.fields);
+    dropSentCopy();
+    say('さっきの選手の入力を戻しました。写真は、もう一度えらんでください。まちがいがないか、見てください。', 'ok');
+    document.getElementById('f-gym')?.focus({ preventScroll: true });
+    setStick(null);
+  };
+  /** 下書きの「消す」：保存してあった下書きを消す。そのあと、次の人のためのジム名と連絡先があれば、それを入れる。消した下書きは10秒だけ持っておき、「消しました（元にもどす）」で戻せる */
   const discardDraft = () => {
     if (!storeLink) return;
+    discardedRef.current = draftOffer;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => { undoTimerRef.current = null; discardedRef.current = null; setDraftUndo(false); }, 10000);
+    setDraftUndo(Boolean(draftOffer));
     safeRemove(tabStorage(), draftKey(storeLink));
     draftOfferRef.current = false;
     setDraftOffer(null);
@@ -1336,6 +1396,19 @@ export default function PublicApply() {
     say('保存してあった入力を消しました。', 'ok');
     document.getElementById('f-gym')?.focus({ preventScroll: true });
     setStick(null);
+  };
+  /** 「消しました（元にもどす）」：消した下書きを、入れ物と案内の枠に戻す（入力には、まだ入れない。「戻す」「消す」を、もう一度えらべる） */
+  const undoDiscard = () => {
+    const saved = discardedRef.current;
+    if (undoTimerRef.current) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
+    discardedRef.current = null;
+    setDraftUndo(false);
+    if (!saved || !storeLink) return;
+    const packed = packDraft(saved.fields, saved.savedAt, storeLink);
+    if (packed !== null) safeSet(tabStorage(), draftKey(storeLink), packed);
+    draftOfferRef.current = true;
+    setDraftOffer(saved);
+    say('消した入力を、元にもどしました。入力に入れるときは、「戻す」を押してください。', 'ok');
   };
   /** 「変える」：次の人のために入れたジム名と連絡先を、空に戻して、入れ物を消す */
   const changeNext = () => {
@@ -1432,7 +1505,7 @@ export default function PublicApply() {
       {tel ? <NextBox on={nextKind === 'call'} label="主催者に電話する" prefix="次はここ" className="mt-3">{telLink}</NextBox> : <p className="mt-3 font-bold">{noContactText}</p>}
     </div> : null}
     {endpointReady && deadlineUnclear && !deadlinePassed ? <Caution className="mt-4">申し込みの締切は「{config.deadline}」です。過ぎていないか、確かめてください</Caution> : null}
-    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）</li></ul><button type="button" onClick={() => setRecentSent(false)} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
+    {recentSent ? <Caution title="気をつけて" status className="mt-4"><span className="block font-bold">さっき、申し込みを送りました。</span><ul className="mt-1 list-disc space-y-1 pl-6"><li><b>受付番号の画面が出た方：</b>申し込み済みです。同じ人を、もう一度送らないでください。</li><li><b>「送れませんでした」と出た方、何も出なかった方：</b>選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）</li></ul>{storeLink && sentCopy && !draftOffer ? <button type="button" onClick={restoreSentCopy} className={greyBtn + ' mt-2 w-full'}>受付番号が出なかったときだけ：さっきの選手の入力を戻す（写真は選び直し）</button> : null}<button type="button" onClick={() => { setRecentSent(false); dropSentCopy(); }} className={greyBtn + ' mt-2 w-full'}>この表示を消す</button></Caution> : null}
     {askNew ? <>
       <Caution className="mt-4">別の大会のリンクです。入力を消して新しく始めますか？</Caution>
       <DangerConfirm title="消えます：いま入れた内容" lines={['選手の情報・写真・連絡先が、ぜんぶ消えます', '消したあとは、元にもどせません']} safeLabel="今のまま続ける" dangerLabel="消して新しく始める" onSafe={() => setPendingHash('')} onDanger={startNew} />
@@ -1442,7 +1515,11 @@ export default function PublicApply() {
     {endpointReady && !deadlineLocked ? <ol aria-label="申し込みの流れ" className="mt-4 grid grid-cols-4 gap-2">{steps.map((name, i) => { const n = i + 1; const state = n < stage ? 'done' : n === stage ? 'here' : 'later'; return <li key={name} aria-current={state === 'here' ? 'step' : undefined} className={'flex min-h-16 min-w-0 flex-col items-center rounded-2xl border-2 px-1 py-2 text-center text-[1.0625rem] font-bold leading-tight ' + (state === 'here' ? 'border-indigo-700 bg-indigo-50 text-indigo-950' : state === 'done' ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-slate-300 bg-white text-slate-700')}><span aria-hidden="true" className={'grid h-7 w-7 place-items-center rounded-full text-[1.0625rem] ' + (state === 'here' ? 'bg-indigo-700 text-white' : state === 'done' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700')}>{state === 'done' ? '✓' : n}</span><span className="mt-1 block min-w-0">{name}</span>{state === 'here' ? <><span className="sr-only">（いまここ）</span><span aria-hidden="true" className="mt-1 hidden whitespace-nowrap rounded-full bg-indigo-700 px-2 text-[1.0625rem] text-white sm:inline">📍 いまここ</span></> : null}</li>; })}</ol> : null}
     {endpointReady && !deadlineLocked ? <p className="mt-2 rounded-xl border-2 border-indigo-700 bg-white px-3 py-2 text-[1.0625rem] font-bold text-indigo-950 sm:hidden">{stepLine} いまここ：{stage} / 4　{steps[stage - 1]}</p> : null}
     {!confirmationPending ? messageBox(true) : null}
-    {/* 静かな案内の枠（黄色の「次はここ」にはしない・ボタンは灰色の副ボタン）。いつも1つだけ：下書きがあるときは下書き、なければ次の人のためのジム名と連絡先 */}
+    {/* 静かな案内の枠（黄色の「次はここ」にはしない・ボタンは灰色の副ボタン）。いつも1つだけ：下書きがあるときは下書き、なければ次の人のためのジム名と連絡先（下書きを「消す」を押したあとの10秒だけ、上に「元にもどす」の枠も出る） */}
+    {storeLink && draftUndo && !draftOffer ? <Note id="draft-undo" status className="mt-4">
+      まちがえて「消す」を押したときは、10秒のあいだ、元にもどせます。
+      <span className="mt-2 flex flex-wrap gap-3"><button type="button" onClick={undoDiscard} className={greyBtn}>消しました（元にもどす）</button></span>
+    </Note> : null}
     {storeLink && draftOffer ? <Note id="draft-banner" status className="mt-4">
       <b>さっきの入力が残っています（{agoText(draftOffer.savedAt, Date.now())}）。</b>残しているのは、選手の欄だけです。{keptNot}は、残していません。
       <span className="mt-2 flex flex-wrap gap-3"><button type="button" onClick={restoreDraft} className={greyBtn}>戻す</button><button type="button" onClick={discardDraft} className={greyBtn}>消す</button></span>
@@ -1462,7 +1539,7 @@ export default function PublicApply() {
           {fighterField('weight', '体重（kg）必須', <>{swapSuspect ? <Caution className="mt-2" status>身長と体重が、逆ではありませんか？ いま、身長{nf.height}cm、体重{nf.weight}kgと入っています。</Caution> : null}<p className="mt-2 text-[1.0625rem] font-bold text-slate-900">小学生は健康のため減量せず、普段の体重のままでご入力ください。</p></>, 'decimal')}
           {divisionField()}
           {weightClassField()}
-          {recordOn ? <NextBox on={markKey === 'record'} label={nextLabel('record')} prefix={prefix} float><RecordDetailFields kick={kickText} setKick={editRecord(setKickText)} otherOn={otherOn} setOtherOn={editRecord(setOtherOn)} others={otherRows} setOthers={editRecord(setOtherRows)} titleOn={titleOn} setTitleOn={editRecord(setTitleOn)} titles={titleRows} setTitles={editRecord(setTitleRows)} problems={attempted ? recordMessages : []} /></NextBox> : fighterField('record', '戦績 必須', <>{nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : !nf.record ? <button type="button" onClick={() => change('record', '初試合')} className={greyBtn + ' mt-2'}>初試合なら、ここを押す</button> : null}<p className="mt-2 text-[1.0625rem] font-bold text-red-700">公平で安全なマッチメイクのため、スパーリング大会を含む戦績を正確にご申告ください。戦績の過少申告や虚偽の申告はお控えください。</p></>)}
+          {recordOn ? <NextBox on={markKey === 'record'} label={nextLabel('record')} prefix={prefix} float><RecordDetailFields kick={kickText} setKick={editRecord(setKickText)} otherOn={otherOn} setOtherOn={editRecord(setOtherOn)} others={otherRows} setOthers={editRecord(setOtherRows)} titleOn={titleOn} setTitleOn={editRecord(setTitleOn)} titles={titleRows} setTitles={editRecord(setTitleRows)} problems={attempted ? recordMessages : []} onLeave={() => leaveSoon('record')} /></NextBox> : fighterField('record', '戦績 必須', <>{nf.record === 'なし' ? <Caution className="mt-2">初試合なら「初試合」と書いてください</Caution> : !nf.record ? <button type="button" onClick={() => change('record', '初試合')} className={greyBtn + ' mt-2'}>初試合なら、ここを押す</button> : null}<p className="mt-2 text-[1.0625rem] font-bold text-red-700">公平で安全なマッチメイクのため、スパーリング大会を含む戦績を正確にご申告ください。戦績の過少申告や虚偽の申告はお控えください。</p></>)}
           {classField()}
           {classFree ? <Note id="f-hanamichiRule" className="min-w-0 whitespace-pre-wrap font-bold [overflow-wrap:anywhere]">{config.hanamichiRule}</Note> : null}
           {requiredExtra}
@@ -1494,7 +1571,7 @@ export default function PublicApply() {
         <Note className="mt-3 font-bold">主催者からの連絡だけに使います。送った内容は、主催者のGoogleのシートとドライブにだけ保存されます。</Note>
         <Fold id="contact-memory-fold" title="このスマホに残るもの" sub="くわしく読めます">
           <div id="temp-memory-note" className="space-y-2">
-            <span className="block">この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。</span>
+            <span className="block">この画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあとは、受付番号が出なかったときに戻せるよう、60分だけ残します（「この表示を消す」を押しても、消えます）。</span>
             <span className="block">送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。{kitExtra}共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。</span>
           </div>
         </Fold>
@@ -1546,9 +1623,7 @@ export default function PublicApply() {
       </section> : null}
     </fieldset>
     <form ref={formRef} action={endpointReady ? config.endpoint : undefined} method="post" target="_self" className="hidden">
-      {Object.entries({ protocol: config.protocol === '3' ? '3' : '2', entryKey: config.entryKey || '', mode: config.mode || '', website: '', eventId: config.eventId, requestId, gym: nf.gym, name: nf.name, grade: postGrade, age: postAge, height: nf.height.replace(/cm$/i, ''), weight: nf.weight.replace(/kg$/i, ''), record: nf.record, fighterClass: classes ? chosenClass : '', ...(weights ? { division, weightClass: needClass ? weightClass : '' } : {}), comment: postComment, musicUrl: config.music ? nf.musicUrl : '', contactName: cname, contactPhone: phone, contactEmail: email, consent: consent ? 'yes' : 'no', photoDataUrl: photo, ...hanamichiPost }).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
-      {Object.entries(pledgeNow).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
-      {Object.entries(recordPost).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+      {postFields.map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
     </form>
     {reviewing ? <section aria-label="送る前の確認" className="my-6 rounded-3xl border-2 border-indigo-700 bg-white p-4 sm:p-6">
       <h2 ref={reviewHeadingRef} tabIndex={-1} className="scroll-mt-24 text-2xl font-black outline-none">送る前の確認</h2>
@@ -1635,7 +1710,7 @@ export default function PublicApply() {
         : <p className="tos-note mt-2 text-[1.0625rem]"><span aria-hidden="true" className="tos-icon">i</span>まだ送りません。次の画面で、まちがいがないか見るだけです。</p>) : null}
     </div>}
     {endpointReady ? <Note className="mt-4">下の「使い道」と「困ったとき」も、読んでください。押すと開きます。</Note> : null}
-    <Fold id="privacy-fold" title="使い道" sub="どんな情報を、何のために使いますか？"><ul className="list-disc space-y-1 pl-6"><li>集めるもの：選手の情報・顔写真・連絡先（名前・電話・メール・写真）{hanamichiOn ? '、花道の追加の質問の答え（生年月日・職業など）' : null}</li>{plan.gym ? <li>ジム責任者の名前・電話（誓約書があるとき）も、集めます。</li> : null}<li>見る人：申し込みの元データは、主催者と運営スタッフだけが見ます</li><li>使うこと：組み合わせ作り、大会の連絡、当日の会場の画面（名前・写真・ジム名・クラス・階級・一言）と、掲示する対戦一覧表（名前・ジム名・写真）での紹介</li><li>電話番号とメールは、会場の画面にも、掲示する対戦一覧表にも出ません。</li><li>このスマホの中の一時メモ：入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。{kitExtra}共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。このメモは、ネットには送りません。</li>{hanamichiOn ? <li>花道の質問の答え（フリガナ・リングネーム・生年月日・キック歴・練習頻度・他格闘歴・職業・趣味・始めた理由・メッセージ）は、会場のアナウンスで読み上げることがあります。会場の画面や掲示する表には、出ません。</li> : null}</ul></Fold>
+    <Fold id="privacy-fold" title="使い道" sub="どんな情報を、何のために使いますか？"><ul className="list-disc space-y-1 pl-6"><li>集めるもの：選手の情報・顔写真・連絡先（名前・電話・メール・写真）{hanamichiOn ? '、花道の追加の質問の答え（生年月日・職業など）' : null}</li>{plan.gym ? <li>ジム責任者の名前・電話（誓約書があるとき）も、集めます。</li> : null}<li>見る人：申し込みの元データは、主催者と運営スタッフだけが見ます</li><li>使うこと：組み合わせ作り、大会の連絡、当日の会場の画面（名前・写真・ジム名・クラス・階級・一言）と、掲示する対戦一覧表（名前・ジム名・写真）での紹介</li><li>電話番号とメールは、会場の画面にも、掲示する対戦一覧表にも出ません。</li><li>このスマホの中の一時メモ：入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、このスマホのこのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあとは、受付番号が出なかったときに戻せるよう、60分だけ残します（「この表示を消す」を押しても、消えます）。送ったあと、もう1人申し込む人のために、ジム名と連絡先を、このスマホのこのタブの中に60分だけ覚えます。タブを閉じると消えます。{kitExtra}共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じてください。このメモは、ネットには送りません。</li>{hanamichiOn ? <li>花道の質問の答え（フリガナ・リングネーム・生年月日・キック歴・練習頻度・他格闘歴・職業・趣味・始めた理由・メッセージ）は、会場のアナウンスで読み上げることがあります。会場の画面や掲示する表には、出ません。</li> : null}</ul></Fold>
     <Fold title="困ったとき"><ul className="space-y-3"><li><b>写真が選べないとき</b><br />LINEの右上のメニューから「他のブラウザで開く」（またはSafari）を選んで、開き直してください。</li><li><b>Googleの画面が出ないとき</b><br />少し待ってから、もう一度ボタンを押してください。同じ画面から送り直した分は、二重になりません。（もう一度ページを開いて入れ直した分は、別の申し込みになります）</li><li><b>受付番号が出ないとき</b><br />主催者に電話してください。{telLink ? <><br />{telLink}</> : null}</li></ul></Fold>
     <p className="mb-8 mt-6 text-center text-[1.0625rem] font-bold text-slate-700">問い合わせ：{config.contact || '大会主催者へご確認ください'}</p>
   </div></main>;

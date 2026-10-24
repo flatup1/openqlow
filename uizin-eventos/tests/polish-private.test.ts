@@ -314,7 +314,7 @@ import { cleanClassLabel, classMixMessage, classNameKey, classState, normalizeCl
 import { CsvQuoteError, normalizeKey, parseCsv, toRows } from '../core/csv.ts';
 import { dateDigits, formatDateInput } from '../core/dateInput.ts';
 import { entryErrors } from '../core/entryPackage.ts';
-import { gymKey, mergeFighters } from '../core/privateTournament.ts';
+import { gymKey } from '../core/privateTournament.ts';
 import { dropBlankBouts as dropBlankBoutsCore } from '../core/boutSuggest.ts';
 import {
   BOUT_TEXT_MAX, classTrouble, dropBlankBouts, excelCellText, openLockReason, overwriteBoxText, overwriteConfirmText, refileLabel, restoreConfirmText, shortProblem, weightTrouble, weightTroubleText,
@@ -486,7 +486,8 @@ test('r2-31 / r2-154 「試合当日の画面を開く」が押せない理由�
   const page = src('app/private/page.tsx');
   assert.ok(!page.includes('上の「次にすること」と「直すところ」を見てください'));
   assert.ok(!page.includes("['保存', done4,"), '保存の行は、保存したら ✓（直すところが残っていても）');
-  assert.match(page, /\['保存', everSaved && !dirty,/);
+  // 直している途中・追加する前の入力があるうちは ✓ にしない（状態ラインと同じ「未保存」）
+  assert.match(page, /\['保存', everSaved && !dirty(?: && !pendingInput)?,/);
 });
 
 test('r2-33 / r2-114 読み込みに失敗したあとの黄色：使ったファイルの種類に合わせる。部品が開けないときは「画面が古い」と言う', () => {
@@ -672,9 +673,16 @@ test('r2-32 / r2-139 保存データが読めない画面：?event= の番号を
   assert.ok(!page.includes('保存データが読めません（消えていません）'));
 });
 
-test('r2-156 / r2-164 開いたあとも、帯に「✓ 開きました（別のタブ）」と黄色が1つ。保存の同じ行を2回見せない', () => {
+test('r2-156 / r2-164 開いたあとも、帯に黄色が1つ（中は ✓ の文だけ。押すボタンは置かない）。「もう1つ開く」は黄色の外。保存の同じ行を2回見せない', () => {
   const page = src('app/private/page.tsx');
-  assert.match(page, /開きました（別のタブ）。もう一度押すと、もう1つ開きます。/);
+  // 黄色の枠の中：開いたあとは、✓ の文だけ（「黄色だけを押す」人が、当日の画面を いくつも開かないように）
+  const slot = page.slice(page.indexOf("<NextSlot active={here === 'bar'}"), page.indexOf('</NextSlot>', page.indexOf("<NextSlot active={here === 'bar'}")));
+  assert.match(slot, /key === 'done' && here === 'bar' \? <p className="tos-ok" role="status"><span aria-hidden="true">✓ <\/span>試合当日の画面は開いてあります。そちらのタブで進めます。<\/p>/);
+  // 「もう1つ開く」は、黄色の枠のあとの、ふつうの枠のボタン
+  const after = page.slice(page.indexOf('</NextSlot>', page.indexOf("<NextSlot active={here === 'bar'}")));
+  assert.match(after, /key === 'done' && here === 'bar' && !keyboardUp \? <div[^>]*>\s*<button type="button" onClick=\{onBarPrimary\} className=\{cls\(btn\.base, btn\.outline, 'shrink-0'\)\}>\{barLabel\}<\/button>/);
+  assert.match(after, /押すと、試合当日の画面が、もう1つ開きます（ふつうは押しません）。/);
+  assert.ok(!page.includes('開きました（別のタブ）。もう一度押すと、もう1つ開きます。'), '黄色の中のボタンで、もう1つ開く、とは言わない');
   assert.match(page, /saveShownAbove && 'sr-only'/);
   assert.equal(nextLabelOf('done'), 'もう1つ開く');
 });

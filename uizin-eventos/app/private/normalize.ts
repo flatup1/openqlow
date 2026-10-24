@@ -1,6 +1,6 @@
 // 準備の画面（/private/）の「入力のまちがい」を、人に直させず、機械が直すための小さな純関数。
 // 通信・保存・乱数・日時の読み取りはしません。直せたら「直した」と言い、直せないときだけ理由を返します。
-import { dateDigits, formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
+import { dateDigits, formatDateInput } from '../../core/dateInput.ts';
 import type { EntryFormConfig } from '../../core/entryPackage.ts';
 import { entryErrors } from '../../core/entryPackage.ts';
 import type { LocalFighter } from '../../core/privateTournament.ts';
@@ -93,9 +93,6 @@ export function readDate(raw: string): DateRead {
   if (/^\d{1,3}$/.test(text)) return { kind: 'partial' };
   return { kind: 'bad', reason: '日にちとして読めません。例：2027年10月3日' };
 }
-
-/** 保存や「受付をつくる」に進めるほど読めている日にちか */
-export const dateReadable = (raw: string): boolean => isCompleteDate(raw);
 
 /* ───────── 探す（ひらがな・カタカナ・全角を同じにする） ───────── */
 

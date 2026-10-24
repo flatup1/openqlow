@@ -97,10 +97,11 @@ if (existsSync(join(dir, 'template-link.json'))) {
 //     CSP は、許す宛先が「自分・none・data:・blob:・Googleの2つ」だけであること。申込（/apply/）は、外への通信 connect-src 'none'、送れる先は Google だけ。
 if (existsSync(join(dir, '_headers'))) {
   const blocks = new Map();
+  const allBlocks = [];
   let current = null;
   for (const raw of text(join(dir, '_headers')).split(/\r?\n/)) {
     if (!raw.trim() || raw.trim().startsWith('#')) continue;
-    if (/^\S/.test(raw)) { current = { path: raw.trim(), lines: [] }; blocks.set(current.path, current); } else if (current) current.lines.push(raw.trim());
+    if (/^\S/.test(raw)) { current = { path: raw.trim(), lines: [] }; blocks.set(current.path, current); allBlocks.push(current); } else if (current) current.lines.push(raw.trim());
   }
   const GOOGLE = ['https://script.google.com', 'https://script.googleusercontent.com'];
   const SAFE_TOKENS = ["'self'", "'none'", 'data:', 'blob:', "'unsafe-inline'", ...GOOGLE];
@@ -130,6 +131,18 @@ if (existsSync(join(dir, '_headers'))) {
       need((directives.get('connect-src') || []).join(' ') === "'self'", '_headers の ' + path + ' の connect-src は \'self\' でなければなりません。');
       need((directives.get('form-action') || []).join(' ') === "'none'", '_headers の ' + path + ' の form-action は \'none\' でなければなりません。');
     }
+  }
+  // 長く覚えさせる設定（Cache-Control）。名前に中身の印が入った部品（/_next/static/*。中身が変わると名前も変わる）だけに、1年・変わらない（immutable）を付ける。
+  // 画面（HTML）などに付けると、公開し直しても、スマホが古い画面を出しつづける（もう無い部品を読みに行って、動かなくなる）。
+  const STATIC_PATH = '/_next/static/*';
+  const STATIC_CACHE = 'public, max-age=31536000, immutable';
+  const cacheOf = (block) => block.lines.filter((l) => /^cache-control\s*:/i.test(l)).map((l) => l.replace(/^[^:]*:/, '').trim()).join(', ');
+  const staticBlocks = allBlocks.filter((b) => b.path === STATIC_PATH);
+  need(staticBlocks.length === 1 && cacheOf(staticBlocks[0]) === STATIC_CACHE, '_headers の ' + STATIC_PATH + ' に「Cache-Control: ' + STATIC_CACHE + '」が1つだけ必要です（名前に中身の印が入った部品を、スマホに長く覚えさせる設定）。');
+  for (const block of allBlocks) {
+    if (block.path === STATIC_PATH) continue;
+    const cc = cacheOf(block);
+    need(!/immutable|(?:^|[^a-z-])(?:s-)?max-?age\s*=\s*0*[1-9]/i.test(cc), '_headers の ' + block.path + ' に、長く覚えさせる Cache-Control（' + cc + '）があります。付けてよいのは ' + STATIC_PATH + ' だけです（画面に付けると、公開し直しても古い画面が出つづけます）。');
   }
 }
 

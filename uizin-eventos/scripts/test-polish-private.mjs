@@ -1068,6 +1068,65 @@ scenario('R2M', 'r2-133: the bottom bar never leaves the screen bottom (zoomed l
   }
 });
 
+/* R3A: 採点の直し（3-ux / 6-security / 9-errors）：直している途中の入力・開いたあとの黄色・players.csv だけ・見本のパスワード・消す前の✔ */
+scenario('R3A', 'score fixes: a pending edit holds the yellow and blocks opening; after opening the yellow has no button; players.csv alone says so; the sample password is refused; deleting needs the ✔', async () => {
+  const ctx = await newCtx(1280, 900);
+  const page = await open(ctx, 'polish-r3a-' + Date.now());
+  await page.locator('#field-title').fill('第3回 架空採点大会');
+  await importCsv(page, csvOf([row('F01', '1'), row('F02', '2'), row('F03', '3')]));
+  const sec2 = await page.locator('#sec-2').innerText();
+  check(/ZIPの中の players\.csv だけを選んだようです。写真とくわしい戦績は入っていません。/.test(sec2), 'players.csv alone: the notice says photos and records are not in (' + short(sec2, 120) + ')');
+  check(!sec2.includes('写真は、あとでOKです'), 'players.csv alone: no 「写真は、あとでOKです」');
+  await btn(page, '＋ 試合を追加').click();
+  await page.locator('#bout-0-red').selectOption('F01'); await page.locator('#bout-0-blue').selectOption('F02');
+  await saveNow(page); await settle(1600);
+  // 直す：体重を 60 → 61.5（「この内容で直す」はまだ押さない）。当日の画面の契約体重は、重いほうの 61.5kg になるはず
+  await btn(page, '直す 架空1選手').click();
+  await page.locator('#edit-F01-weight').fill('61.5'); await settle(300);
+  const y = await yellowSlots(page);
+  check(y.length === 1 && /「この内容で直す」を押す/.test(y[0]), 'pending edit: the ONE yellow is on 「この内容で直す」 (' + short(y.join(' | '), 80) + ')');
+  check(/直している途中の内容が、まだ入っていません/.test(await page.locator('#save-state').innerText()), 'pending edit: the state line says the edit is not in yet');
+  const pages0 = ctx.pages().length;
+  await page.locator('#sec-4').getByRole('button', { name: '試合当日の画面を開く', exact: true }).click(); await settle(900);
+  check(ctx.pages().length === pages0, 'pending edit: 「試合当日の画面を開く」 opens nothing');
+  check(/先に「この内容で直す」を押します/.test(await page.locator('div.fixed.bottom-0').innerText()), 'pending edit: the bar says to press 「この内容で直す」 first');
+  check(await page.evaluate(() => document.activeElement?.id) === 'edit-apply-F01', 'pending edit: the focus moved to 「この内容で直す」');
+  await page.locator('#edit-apply-F01').click(); await settle(300);
+  await saveNow(page); await settle(1600);
+  const [live] = await Promise.all([ctx.waitForEvent('page', { timeout: 9000 }), page.locator('#sec-4').getByRole('button', { name: '試合当日の画面を開く', exact: true }).click()]);
+  await live.locator('main').first().waitFor({ timeout: 15000 }); await settle(800);
+  check(/61\.5kg/.test(await live.evaluate(() => document.body.innerText)), 'after 「この内容で直す」 the match-day screen shows the new contract weight 61.5kg');
+  await live.close(); await settle(400);
+  // 開いたあと：黄色の中は ✓ の文だけ。「もう1つ開く」は黄色の外の、ふつうのボタン
+  const done = await page.evaluate(() => { const s = [...document.querySelectorAll('div.fixed.bottom-0 [data-tos-next]')]; return { n: s.length, text: s.map((e) => e.innerText.replace(/\s+/g, ' ')).join(' | '), buttonsIn: s.reduce((k, e) => k + e.querySelectorAll('button').length, 0) }; });
+  check(done.n === 1 && /試合当日の画面は開いてあります。そちらのタブで進めます。/.test(done.text) && done.buttonsIn === 0, 'after opening: the yellow holds only the ✓ sentence, no button (' + short(done.text, 90) + ', buttons ' + done.buttonsIn + ')');
+  check((await page.locator('div.fixed.bottom-0').getByRole('button', { name: 'もう1つ開く', exact: true }).count()) === 1, 'after opening: 「もう1つ開く」 is an ordinary button outside the yellow');
+  // 見本のパスワード：作らない。1つ目の欄へ
+  await openBackup(page);
+  await page.locator('#backup-password').fill('hanabi2027x'); await page.locator('#paper-done').check();
+  await btn(page, 'パスワードをつけて、コピーを保存する').click({ force: true }); await settle(500);
+  check(/見本のままです。自分の言葉に変えてください/.test(await page.locator('#backup').innerText()), 'the sample password is refused with 「見本のままです」');
+  check(await page.evaluate(() => document.activeElement?.id) === 'backup-password', 'the focus goes to the FIRST password box');
+  await page.locator('#backup-password').fill(PASSWORD); await page.locator('#paper-done').check();
+  const dl = page.waitForEvent('download');
+  await btn(page, 'パスワードをつけて、コピーを保存する').click();
+  const file = await dl; await settle(700);
+  check(new RegExp('保存を始めました。ダウンロードの中に「' + file.suggestedFilename().replace(/[.]/g, '\\.') + '」があるか、見ます。').test(await page.locator('#backup').innerText()), 'the copy message asks to look in Downloads for 「' + file.suggestedFilename() + '」');
+  // 消す：✔するまで消さない
+  await page.locator('summary', { hasText: '大会をえらぶ・安心のしくみ' }).click();
+  await page.locator('#delete-event-btn').click();
+  const box = page.locator('#confirm-delete-event');
+  await box.waitFor({ timeout: 6000 });
+  check(new RegExp('ダウンロードの中に「' + file.suggestedFilename().replace(/[.]/g, '\\.') + '」があるのを見た').test(await box.innerText()), 'the delete box names the copy file to look for');
+  await box.getByRole('button', { name: 'この大会を、このパソコンから消す', exact: true }).click(); await settle(900);
+  check(await box.count() === 1 && /まだ消していません/.test(await box.innerText()) && !page.url().endsWith('/private/'), 'without the ✔ the delete button deletes nothing');
+  await page.locator('#copy-seen').check();
+  await box.getByRole('button', { name: 'この大会を、このパソコンから消す', exact: true }).click();
+  await page.waitForURL(base + '/private/', { timeout: 9000 }).catch(() => {});
+  check(page.url() === base + '/private/', 'with the ✔ the tournament is deleted (' + page.url() + ')');
+  await ctx.close();
+});
+
 /* ───────────────────────── run ───────────────────────── */
 try {
   for (const s of SCENARIOS) {

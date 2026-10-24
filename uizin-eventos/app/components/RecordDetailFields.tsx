@@ -30,6 +30,8 @@ type Props = {
   setTitles: (next: TitleText[]) => void;
   /** 送ろうとして決まりに合わなかった所（文）。送ったあとだけ、ページが渡す。空なら何も出さない */
   problems?: string[];
+  /** 戦績の欄（この箱ぜんぶ）から、ほかの所へ移ったとき（箱の中の欄どうしで移るときは呼ばない）。ページは、ほかの欄の「欄を出た時」と同じにあつかう */
+  onLeave?: () => void;
 };
 
 /** 戦績の3つの欄と、下の赤い注意。勝ちの欄は、試合数が1以上のときだけ出る（試合数0＝未経験は、それで入力完了） */
@@ -69,7 +71,7 @@ export function RecordDetailFields(p: Props): ReactNode {
   const otherLimit = RECORD_DETAIL_LIMITS.others, titleLimit = RECORD_DETAIL_LIMITS.titles;
 
   return (
-    <div id="f-record" tabIndex={-1} className="min-w-0 space-y-6 outline-none">
+    <div id="f-record" tabIndex={-1} className="min-w-0 space-y-6 outline-none" onBlur={(e) => { if (p.onLeave && !e.currentTarget.contains(e.relatedTarget as Node | null)) p.onLeave(); }}>
       <p className="text-lg font-black">戦績 必須</p>
       {shownProblems.length ? <ul className="grid gap-2 rounded-2xl border-2 border-red-700 bg-white p-4 text-[1.0625rem] font-bold text-red-700">{shownProblems.map((text, i) => <li key={i}>✕ {text}</li>)}</ul> : null}
 

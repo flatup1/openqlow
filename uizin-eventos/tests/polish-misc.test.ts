@@ -178,6 +178,10 @@ const BAD: Array<[string, (dir: string) => void, RegExp]> = [
   ['Referrer-Policy が違う', (d) => edit(d, '_headers', (t) => t.replace('Referrer-Policy: no-referrer', 'Referrer-Policy: origin')), /Referrer-Policy/],
   ['X-Robots-Tag が無い', (d) => edit(d, '_headers', (t) => t.replaceAll('  X-Robots-Tag: noindex, nofollow\n', '')), /X-Robots-Tag/],
   ['frame-ancestors が違う', (d) => edit(d, '_headers', (t) => t.replace("frame-ancestors 'none'", "frame-ancestors *")), /frame-ancestors/],
+  ['/_next/static/* の長く覚えさせる設定が無い', (d) => edit(d, '_headers', (t) => t.replace(/\n\/_next\/static\/\*\n[^\n]*\n?/, '\n')), /\/_next\/static\/\*/],
+  ['/_next/static/* の覚える長さが違う', (d) => edit(d, '_headers', (t) => t.replace('max-age=31536000, immutable', 'max-age=60')), /\/_next\/static\/\*/],
+  ['画面(/apply/*)に immutable', (d) => edit(d, '_headers', (t) => t.replace(/(\/apply\/\*\n)/, '$1  Cache-Control: public, max-age=31536000, immutable\n')), /\/apply\/\* に、長く覚えさせる/],
+  ['全部(/*)に長い max-age', (d) => edit(d, '_headers', (t) => t + '\n/*\n  Cache-Control: public, max-age=86400\n'), /\/\* に、長く覚えさせる/],
   ['外のスクリプト', (d) => put(d, 'apply/index.html', '<html><script src="https://cdn.example.com/x.js"></script></html>'), /外のファイル/],
   ['外のCSS(link)', (d) => put(d, 'apply/index.html', '<html><link rel="stylesheet" href="//fonts.example.com/a.css"></html>'), /外のファイル/],
   ['外の画像', (d) => put(d, 'private/index.html', '<html><img src="https://img.example.com/a.png"></html>'), /外のファイル/],
@@ -230,7 +234,9 @@ const suites = readdirSync(join(ROOT, 'scripts')).filter((f) => /^test-.*\.mjs$/
 test('r1-158: verify-private-all.sh と npm run verify:all がある。tsc・npm test・build:private・サーバー・全 test-*.mjs・validate-ai-os・git の見張りを動かす', () => {
   const sh = read('scripts/verify-private-all.sh');
   assert.match(sh, /set -euo pipefail/);
-  for (const part of ['npx tsc --noEmit', 'npm test', 'build:private', 'python3 -m http.server', 'scripts/test-*.mjs', 'validate-ai-os', 'git_watch', '--fast', 'TOS_ONLY', 'TOS_CHROME_PATH', 'trap ']) assert.ok(sh.includes(part), part);
+  for (const part of ['npx tsc --noEmit', 'npm test', 'build:private', 'node scripts/check-manual-labels.mjs --no-suggest', 'python3 -m http.server', 'scripts/test-*.mjs', 'validate-ai-os', 'git_watch', '--fast', 'TOS_ONLY', 'TOS_CHROME_PATH', 'trap ']) assert.ok(sh.includes(part), part);
+  // マニュアルの文字のロボットは、公開用フォルダを作ったあと（それを読むため）、画面の確認の前に動く
+  assert.ok(sh.indexOf('run "build:private"') < sh.indexOf('check-manual-labels.mjs --no-suggest') && sh.indexOf('check-manual-labels.mjs --no-suggest') < sh.indexOf('suites="'), 'build:private → マニュアルのロボット → 画面の確認');
   assert.match(sh, /\.verify-ok/, '全部合格したときだけ指紋を書く');
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.scripts['verify:all'], 'bash scripts/verify-private-all.sh');
@@ -335,8 +341,11 @@ test('r1-140: robots(noindex)・空のアイコン・全ブロックの X-Robots
   assert.match(layout, /robots: \{ index: false, follow: false \}/);
   assert.match(layout, /icons: \{ icon: 'data:,' \}/);
   const blocks = HEADERS.split(/\n(?=\/)/).filter((b) => b.trim());
-  assert.ok(blocks.length >= 5, 'private/・entry・live・setup・apply（古い google-setup の分は、公開しないので無い）');
-  for (const b of blocks) assert.match(b, /X-Robots-Tag: noindex, nofollow/, b.split('\n')[0]);
+  // 名前に中身の印が入った部品（/_next/static/*）の分は、長く覚えさせる設定だけ。画面の道すじではない
+  const pageBlocks = blocks.filter((b) => b.split('\n')[0] !== '/_next/static/*');
+  assert.equal(pageBlocks.length, blocks.length - 1, '/_next/static/* の分が1つある');
+  assert.ok(pageBlocks.length >= 5, 'private/・entry・live・setup・apply（古い google-setup の分は、公開しないので無い）');
+  for (const b of pageBlocks) assert.match(b, /X-Robots-Tag: noindex, nofollow/, b.split('\n')[0]);
 });
 
 /* ───────── r1-167 / r1-168: 古い数字・状態の文書 ───────── */

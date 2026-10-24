@@ -158,6 +158,28 @@ export function unpackPledge(s: string): { items: string[]; guardian: string; gy
   }
 }
 
+/* ---------- 文の指紋（リンクの plf・送る pledgeHash） ---------- */
+
+/**
+ * 文のひとまとめ（JSON の文字）。Googleの受付の pledgeCanon_ と同じ作り方（鍵の順：items, guardian, gym）。
+ * 文の指紋は、この文字を UTF-8 にした SHA-256（.gs の pledgeHash_）。リンクの plt は、この文字を packText で詰めたもの（packPledge）。
+ */
+export function pledgeCanon(texts: { items: string[]; guardian: string; gym: string }): string {
+  return JSON.stringify({ items: texts.items, guardian: texts.guardian, gym: texts.gym });
+}
+
+/** SHA-256 の答え（バイトの並び）を、16進の小文字にする（.gs の hex_ と同じ形） */
+export function hexOfBytes(bytes: ArrayLike<number>): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) out += ('0' + (bytes[i] & 255).toString(16)).slice(-2);
+  return out;
+}
+
+/** 計算した指紋（SHA-256 の答え・32バイト）が、リンクの指紋（plf。16進の小文字64字）と同じか */
+export function pledgeHashMatches(digest: ArrayLike<number>, plf: string): boolean {
+  return typeof plf === 'string' && /^[0-9a-f]{64}$/.test(plf) && digest.length === 32 && hexOfBytes(digest) === plf;
+}
+
 /**
  * ping の pledgeCanon（.gs が作る JSON 文字列 {items, guardian, gym}）を読む。形と長さが守れていなければ undefined。投げない。
  * 鍵の順番は問わない（.gs の JSON.stringify の順は items, guardian, gym）。

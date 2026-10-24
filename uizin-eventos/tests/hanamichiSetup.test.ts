@@ -133,7 +133,8 @@ test('設定の画面: 公開前の検査に当たる書き方を、この変更
 test('つなぎ目: 申し込みページが送る12の鍵 = core の表 = Googleが読む鍵 = 結果の画面の再送フォームの鍵 = 「花道プロフィール」の列（この順）', () => {
   // 申し込みページ：鍵の一覧は core の HANAMICHI_KEYS から作る（手書きの鍵が無い）
   assert.match(APPLY, /HANAMICHI_KEYS\.map\(\(key\) => \[key, hnNf\[key\]\]\)/);
-  assert.match(APPLY, /\.\.\.hanamichiPost \}\)\.map\(\(\[name, value\]\) => <input key=\{name\} type="hidden"/);
+  assert.match(APPLY, /\.\.\.hanamichiPost \}\), \.\.\.Object\.entries\(pledgeNow\), \.\.\.Object\.entries\(recordPost\)\];/);
+  assert.match(APPLY, /\{postFields\.map\(\(\[name, value\]\) => <input key=\{name\} type="hidden"/);
   assert.doesNotMatch(APPLY, /name=["']hn[A-Z]/);
   // Google：表の鍵が core と同じ（1字も違わない）。再送フォームは、その表から作る
   const gsKeys = [...script.slice(script.indexOf('const HANAMICHI_ITEMS_'), script.indexOf('const HANAMICHI_HEADERS_')).matchAll(/key: '(hn[A-Za-z]+)'/g)].map((m) => m[1]);

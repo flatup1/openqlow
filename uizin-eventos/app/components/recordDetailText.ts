@@ -3,13 +3,14 @@
  * 決まりの確認と、送る形は core/recordDetail.ts。ここは、画面と試験の両方が使う、純粋な関数だけ。
  */
 
-import { RECORD_DETAIL_VERSION, recordDetailProblems, type KickRecord, type RecordDetail } from '../../core/recordDetail.ts';
+import { RECORD_DETAIL_LIMITS, RECORD_DETAIL_VERSION, recordDetailProblems, type KickRecord, type RecordDetail } from '../../core/recordDetail.ts';
 import { stripInvisible } from '../../core/entryPackage.ts';
 
 /**
  * 画面で聞くのは「試合数」と「勝ち」だけ（2026-10-24 owner：何戦何勝かだけ知りたい。引き分けなどは、いらない）。
  * 送る形（core/recordDetail.ts）は、これまでと同じ：負け＝試合数−勝ち（引き分け・勝敗なしも、ここに入る）、引き分け・勝敗なし＝0。
- * 決まり・Googleの受付（.gs）・表の列・名簿ZIPを、1つも変えないための作りです。
+ * こうすると、中身の決まり・Googleの受付（.gs）の検査・表の列・名簿ZIPは、変えなくてよい。
+ * 変えたのは、シートに書く戦績の一行の形だけ（「5戦3勝2敗」。Googleの受付は 3.20261024.2 から）。
  */
 export type KickText = { games: string; win: string };
 export type OtherText = { sport: string; games: string; win: string };
@@ -84,8 +85,8 @@ export function kickTextOf(kick: KickRecord): KickText {
 }
 
 const anyText = (...values: string[]): boolean => values.some((value) => textOf(value) !== '');
-const LIMITS = { games: 999, sport: 20, event: 60, class: 30, result: 60, yearMin: 1900, yearMax: 2100 };
-const countIn = (n: number): boolean => Number.isInteger(n) && n >= 0 && n <= LIMITS.games;
+// 上限は、決まりの確認と同じ core の RECORD_DETAIL_LIMITS を使う（ここに写しを持たない。写しがあると、片方だけ変えたときに答えがずれる）
+const countIn = (n: number): boolean => Number.isInteger(n) && n >= 0 && n <= RECORD_DETAIL_LIMITS.games;
 
 /**
  * 「入れたのに、まちがっている」欄があるか（黄色の札・直す所の言い方を「戦績を入れる」でなく「戦績を直す」にするため）。
@@ -98,14 +99,14 @@ export function recordIsWrong(kick: KickText, others: OtherText[], titles: Title
   if (g > 0 && anyText(kick.win) && (!countIn(w) || w > g)) return true;
   for (const o of others) {
     const og = countOf(o.games), ow = countOf(o.win);
-    if (textOf(o.sport).length > LIMITS.sport) return true;
+    if (textOf(o.sport).length > RECORD_DETAIL_LIMITS.sport) return true;
     if (anyText(o.games) && !(countIn(og) && og >= 1)) return true;
     if (anyText(o.win) && (!countIn(ow) || (og >= 1 && ow > og))) return true;
   }
   for (const t of titles) {
     const year = countOf(t.year);
-    if (anyText(t.year) && !(Number.isInteger(year) && year >= LIMITS.yearMin && year <= LIMITS.yearMax)) return true;
-    if (textOf(t.event).length > LIMITS.event || textOf(t.class).length > LIMITS.class || textOf(t.result).length > LIMITS.result) return true;
+    if (anyText(t.year) && !(Number.isInteger(year) && year >= RECORD_DETAIL_LIMITS.yearMin && year <= RECORD_DETAIL_LIMITS.yearMax)) return true;
+    if (textOf(t.event).length > RECORD_DETAIL_LIMITS.event || textOf(t.class).length > RECORD_DETAIL_LIMITS.class || textOf(t.result).length > RECORD_DETAIL_LIMITS.result) return true;
   }
   return false;
 }

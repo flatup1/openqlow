@@ -8,7 +8,7 @@ import { boutWeightWarning, cleanDivisionName, cleanWeightText, divisionKey, fin
 import { parseRecordDetailCsv, recordDetailProblems, RECORD_KIND, type RecordDetail } from '../../core/recordDetail.ts';
 import { toRowsIndexed } from '../../core/csv.ts';
 import { isValidEventId } from './eventId.ts';
-import { checkMusic, checkNumber, FIELD_LABEL, type FieldKey } from './normalize.ts';
+import { checkMusic, checkNumber, FIELD_LABEL, shorten, type FieldKey } from './normalize.ts';
 
 export const UNSET_TITLE = '大会名未設定';
 export const FALLBACK_ERROR = 'うまくいきませんでした。もう一度やってみてください。直らないときは、ジムの担当者に連絡してください。';
@@ -341,13 +341,17 @@ export function nextAction(s: NextActionState & { halfSide?: 'red' | 'blue' }): 
 
 export type SaveLine = { tone: 'ok' | 'warn' | 'bad' | 'neutral'; text: string; short: string };
 
-/** pending: 「この選手を追加」を押す前の入力・直している途中の入力がある（保存の対象には、まだ入っていない） */
-export function saveLine(s: { conflict: boolean; saveState: SaveState; dirty: boolean; everSaved: boolean; savedClock: string; pending?: boolean }): SaveLine {
+/**
+ * pending: 「この選手を追加」を押す前の入力（true か 'manual'）・直している途中の入力（'edit'）がある（保存の対象には、まだ入っていない）。
+ * 直している途中のときは、「追加」と言わない（「直す」の中の入力なので）
+ */
+export function saveLine(s: { conflict: boolean; saveState: SaveState; dirty: boolean; everSaved: boolean; savedClock: string; pending?: boolean | 'manual' | 'edit' }): SaveLine {
   if (s.conflict) return { tone: 'bad', text: '✕ 保存できません：別の画面で内容が変わりました', short: '✕ 保存できません' };
   if (s.saveState === 'saving') return { tone: 'neutral', text: '⏳ 保存中…（そのままお待ちください）', short: '⏳ 保存中…' };
   if (s.saveState === 'failed') return { tone: 'bad', text: '✕ 保存失敗（入れた内容は画面に残っています）', short: '✕ 保存失敗' };
   if (s.dirty) return { tone: 'warn', text: '● 未保存（入れた内容は、まだ保存していません）', short: '● 未保存' };
   if (!s.everSaved) return { tone: 'warn', text: '● 未保存（まだ一度も保存していません）', short: '● 未保存' };
+  if (s.pending === 'edit') return { tone: 'warn', text: '● 未保存（直している途中の内容が、まだ入っていません）', short: '● 未保存' };
   if (s.pending) return { tone: 'warn', text: '● 未保存（選手の入力が、まだ追加されていません）', short: '● 未保存' };
   return { tone: 'ok', text: '✓ 保存済み ' + s.savedClock, short: '✓ 保存済み ' + s.savedClock };
 }
@@ -536,9 +540,13 @@ export function overwriteBoxText(differs: FighterDiff[]): BoxText {
 
 /* ───────── 手入力フォーム ───────── */
 
-/** 1つも入れていない手入力フォームか（二度押しで同じ説明が出続けないように） */
+/**
+ * 1つも入れていない手入力フォームか（二度押しで同じ説明が出続けないように）。
+ * 選ぶ欄（クラス・区分・階級）だけを選んだときも「入力あり」と見る（閉じる前の確認・未保存の印を出すため）
+ */
 export const isBlankFighterForm = (f: LocalFighter): boolean =>
-  (['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'] as const).every((key) => !f[key].trim());
+  (['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'] as const).every((key) => !f[key].trim())
+  && !(f.fighterClass ?? '').trim() && !(f.division ?? '').trim() && !(f.weightClass ?? '').trim();
 
 /* ───────── クラス（Aクラス・Bクラスなど）。個人情報ではない。無いときは、項目ごと無い（古い形のまま） ───────── */
 
@@ -679,16 +687,110 @@ export function weightChoiceTrouble(fighters: LocalFighter[], settings: WeightSe
   return { blank, unknown };
 }
 
+/* ───────── 試合カードの計算を、1回だけにする（カードは150枚・選手は300人になることがある。カードごとに作り直さない） ───────── */
+
+/**
+ * 選手ごとに、入っている試合の番号（0から・小さい順・同じ試合は1回）。試合カードの選ぶ欄の「もう第N試合に入っています」に使う。
+ * 試合が変わったときだけ、画面（page.tsx）が1回作る
+ */
+export function boutPlaces(bouts: LocalBout[]): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  bouts.forEach((bout, index) => {
+    for (const id of new Set([bout.redId, bout.blueId])) {
+      if (!id) continue;
+      const list = map.get(id);
+      if (list) list.push(index); else map.set(id, [index]);
+    }
+  });
+  return map;
+}
+
+/**
+ * 試合カードの選ぶ欄の、選手1人ずつの文字（管理番号 → 文字）。base＝「Aクラス 65kg 山田 太郎（ジム名）」の形の文字（cards.tsx が決める）。
+ * 「もう第N試合に入っています」などの印は、カードごとに、うしろに足す。
+ * 見た目が同じ選択肢（同じ名前・同じジム・同じ体重・同じクラス）には、管理番号を足して見分けられるようにする
+ * （全角・半角と空白のちがいは、見た目では同じなので、同じ選択肢として数える）。欠場の人には「（欠場）」を付ける
+ */
+export function fighterOptionLabels(fighters: LocalFighter[], base: (fighter: LocalFighter) => string): Map<string, string> {
+  const labels = fighters.map((fighter) => base(fighter));
+  const keys = labels.map((label) => label.normalize('NFKC').replace(/\s+/g, ''));
+  const labelCount = new Map<string, number>();
+  for (const key of keys) labelCount.set(key, (labelCount.get(key) ?? 0) + 1);
+  return new Map(fighters.map((fighter, i) => [fighter.id, labels[i] + ((labelCount.get(keys[i]) ?? 0) > 1 ? `（番号 ${shorten(fighter.id, 10)}）` : '') + (fighter.absent === true ? '（欠場）' : '')]));
+}
+
+/** その試合（index）のほかで、この人が入っている いちばん上の試合の番号（無ければ undefined） */
+export const firstOtherBout = (places: Map<string, number[]>, id: string, index: number): number | undefined => {
+  const list = places.get(id);
+  return !list ? undefined : list[0] !== index ? list[0] : list[1];
+};
+
+/**
+ * 同じ人（管理番号が同じ、または名前とジムが同じ）が、いくつの試合に入っているか（選手の管理番号ごと）。
+ * 試合カードの「ほかの試合にも出ます」に使う（core の boutWarnings と同じ数え方）。名簿か試合が変わったときだけ、画面が1回作る
+ */
+export function personBoutCounts(fighters: LocalFighter[], bouts: LocalBout[]): Map<string, number> {
+  const keyOf = new Map(fighters.map((fighter) => [fighter.id, sameFighterKey(fighter)]));
+  const byKey = new Map<string, number>(), byId = new Map<string, number>();
+  for (const bout of bouts) {
+    const keys = new Set<string>();
+    for (const id of new Set([bout.redId, bout.blueId])) {
+      if (!id) continue;
+      byId.set(id, (byId.get(id) ?? 0) + 1);
+      const key = keyOf.get(id);
+      if (key) keys.add(key);
+    }
+    for (const key of keys) byKey.set(key, (byKey.get(key) ?? 0) + 1);
+  }
+  // 名前が空の人は、管理番号だけで数える（名前とジムでは、同じ人と決められない）
+  return new Map(fighters.map((fighter) => { const key = keyOf.get(fighter.id) ?? ''; return [fighter.id, key ? byKey.get(key) ?? 0 : byId.get(fighter.id) ?? 0]; }));
+}
+
+/**
+ * 並びを変えずに、多くても limit 個ずつ、順番に動かす（名簿ZIPの写真を、全部いっしょに読みはじめて、メモリが一気にふくらまないように）。
+ * fn の中のまちがいは、fn が自分で受け止める（ここでは止めない）
+ */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => { while (next < items.length) { const at = next++; out[at] = await fn(items[at], at); } };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
+}
+
+/**
+ * 名簿ZIPの写真（'photos/<管理番号>.jpg' の形の名前 → 中身）を、管理番号 → [名前, 中身] の表にする（1回だけ作る。選手ごとに、全部の写真を探し直さない）。
+ * 同じ管理番号の写真が2つあるときは、先のものを使う（今までの探し方と同じ）
+ */
+export function photosById<T>(photos: Record<string, T>): Map<string, readonly [string, T]> {
+  const map = new Map<string, readonly [string, T]>();
+  for (const [name, bytes] of Object.entries(photos)) {
+    const id = name.replace(/^photos\//, '').replace(/\.[^.]+$/, '');
+    if (!map.has(id)) map.set(id, [name, bytes] as const);
+  }
+  return map;
+}
+
+/**
+ * ZIPの中の players.csv（名簿だけ）を選んだように見えるか。CSVの道では、写真と records.csv を読まない。
+ * ファイル名が players.csv のとき、または見出しに「管理番号」がある（シートの④や、他のジムのZIPの中の名簿と同じ形）とき
+ */
+export function rosterOnlyFromZip(fileName: string, csv: string): boolean {
+  const head = csv.replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '';
+  return isRosterCsvName(zipEntryName(fileName)) || head.includes('管理番号');
+}
+
+/** コピーのファイルのパスワードの見本（画面の「例：」）。見本のままのパスワードでは、新しいコピーを作らない（見本は公開のページに書いてあり、だれでも戻せてしまう） */
+export const SAMPLE_PASSWORD = 'hanabi2027x';
+/** 見本のままか（全角・半角、大文字・小文字、前後の空白のちがいは、同じと見る）。戻すときは見ない（前に見本で作ったコピーも、戻せる） */
+export const isSamplePassword = (value: string): boolean => value.normalize('NFKC').trim().toLowerCase() === SAMPLE_PASSWORD;
+
+/** Safari（Chrome ではない WebKit）か。Safari は、その画面を7日ほど開かないと、画面が書いた保存を消すことがある */
+export const isSafariBrowser = (userAgent: string): boolean =>
+  /AppleWebKit\//.test(userAgent) && /Safari\//.test(userAgent) && !/Chrome\/|Chromium\/|CriOS\/|Edg\/|EdgiOS\/|EdgA\/|FxiOS\/|OPR\/|OPiOS\/|SamsungBrowser\/|Android/.test(userAgent);
+
 /** 赤と青で区分か階級がちがう試合か（どちらかが空なら、ちがうと言わない。core の boutWeightWarning と同じ決め方） */
 export const weightMixAt = (bout: LocalBout, byId: Map<string, LocalFighter>): boolean => boutWeightWarning(byId.get(bout.redId), byId.get(bout.blueId)) !== '';
-
-/** 区分・階級がちがう試合の番号（0から）。止めない注意なので、数えて知らせるだけ */
-export function weightMixIndexes(bouts: LocalBout[], fighters: LocalFighter[]): number[] {
-  const byId = new Map(fighters.map((fighter) => [fighter.id, fighter]));
-  const found: number[] = [];
-  bouts.forEach((bout, index) => { if (weightMixAt(bout, byId)) found.push(index); });
-  return found;
-}
 
 /** 「区分・階級がちがう組が2つあります（第1・第3試合）。…」。おすすめの組み合わせのあとの、赤い注意の文 */
 export function weightMixText(indexes: number[]): string {
@@ -1084,11 +1186,21 @@ export function excelCellText(cell: unknown): { text: string; wasDate: boolean }
   return { text: String(cell ?? ''), wasDate: false };
 }
 
-/** 取り込みエラーを「見出し」と「くわしい文」に分ける（くわしい文は importErrorText と同じ。末尾の「変えていません」だけ除く） */
-export function importErrorParts(error: unknown, fileName: string, blockedHeaders: string[] = []): { head: string; detail: string; hint: string } {
+/** 読み込み部品が開けなかったとき、ネットが切れているなら（offline）、こちらの文にする。開き直すと、ネットが無いので、この画面そのものが出なくなるため */
+export const OFFLINE_IMPORT = {
+  head: 'ネットにつながっていません',
+  detail: 'つながってから、もう一度ファイルを選びます（開き直さないでください。ネットが無いと、この画面が出なくなります）。名簿と保存したデータは消えません。',
+} as const;
+
+/**
+ * 取り込みエラーを「見出し」と「くわしい文」に分ける（くわしい文は importErrorText と同じ。末尾の「変えていません」だけ除く）。
+ * offline＝ネットが切れている（navigator.onLine が false）。読み込み部品が開けない（stale）ときだけ、「開き直す」ではなく「つながってから選び直す」と言う
+ */
+export function importErrorParts(error: unknown, fileName: string, blockedHeaders: string[] = [], offline = false): { head: string; detail: string; hint: string } {
   const full = importErrorText(error, blockedHeaders);
   const detail = full.replace(KEEP, '').trim();
   const kind = importProblemKind(error);
+  if (kind === 'stale' && offline) return { head: OFFLINE_IMPORT.head, detail: OFFLINE_IMPORT.detail, hint: '' };
   const words = blockedWords(blockedHeaders);
   switch (kind) {
     case 'ext': return { head: 'これは名簿ではありません（' + fileName + '）', detail, hint: '' };
@@ -1116,7 +1228,9 @@ export type Follow =
   | { kind: 'review'; n?: number }
   | { kind: 'pw' };
 
-export type MarkerWhere = 'none' | 'conflict' | 'chooser' | 'bar' | 'bar-copy' | 'title' | 'file' | 'add-bout' | 'bout' | 'photo' | 'review' | 'pw' | 'reload';
+export type MarkerWhere = 'none' | 'conflict' | 'chooser' | 'bar' | 'bar-copy' | 'title' | 'file' | 'add-bout' | 'bout' | 'photo' | 'review' | 'pw' | 'reload' | 'edit' | 'manual';
+/** まだ保存の対象に入っていない入力。edit＝「直す」の中で書きかえた途中（id＝その人）/ manual＝「1人ずつ入れる」の、追加する前の入力 */
+export type PendingInput = { kind: 'edit'; id: string } | { kind: 'manual' };
 export type Marker = {
   where: MarkerWhere;
   /** 黄色のバッジの文（「👉 次はここ：」のあと） */
@@ -1139,6 +1253,8 @@ export type MarkerInput = {
   titleMissing: boolean;
   /** 保存失敗の知らせに「コピーのファイルを作る」ボタンが出ているか（出ていなければ、黄色は「もう一度保存」に置く） */
   copyButton?: boolean;
+  /** 直している途中・追加する前の入力（無ければ null）。あるときは、保存・開く・開いたあと より先に、それを入れてもらう */
+  pending?: PendingInput | null;
 };
 
 const sideWord = (side: 'red' | 'blue') => (side === 'red' ? '赤' : '青');
@@ -1164,6 +1280,13 @@ export function pickMarker(a: MarkerInput): Marker {
   const { na } = a;
   if (na.kind === 'save' && a.saveState === 'failed') return a.copyButton === false ? { where: 'bar', label: 'もう一度 保存' } : { where: 'bar-copy', label: 'コピーのファイルを作る' };
   if (na.kind === 'save' && a.saveState === 'saving') return { where: 'bar', label: '保存が終わるまで待つ' };
+  // 直している途中の内容・追加する前の入力は、まだ保存の対象に入っていない。保存や「開く」より先に、それを入れてもらう
+  // （入れないまま試合当日の画面を開くと、前の内容（古い体重など）のまま開く）
+  if (a.pending && (na.key === 'save' || na.key === 'fix' || na.key === 'open' || na.key === 'done')) {
+    return a.pending.kind === 'edit'
+      ? { where: 'edit', id: a.pending.id, label: '「この内容で直す」を押す', barLabel: '直している所へ行く' }
+      : { where: 'manual', label: '「この選手を追加」を押す（いらないときは、入れた内容を消す）', barLabel: '入れている所へ行く' };
+  }
   // 空の試合カード（赤も青も空）が画面で待っているときは、保存や「開く」より先に、その赤コーナーを選ぶ（黄色はいつも1つ）
   if (a.blankIndex >= 0 && (na.key === 'bouts' || na.key === 'save' || na.key === 'fix' || na.key === 'open')) {
     return { where: 'bout', index: a.blankIndex, side: 'red', label: '第' + (a.blankIndex + 1) + '試合の赤コーナーを選ぶ', barLabel: '赤コーナーを選ぶ' };
@@ -1182,7 +1305,7 @@ export function pickMarker(a: MarkerInput): Marker {
       if (a.fix) return { where: 'bout', index: a.fix.index, side: a.fix.side, label: '第' + (a.fix.index + 1) + '試合の' + sideWord(a.fix.side) + 'コーナーを選び直す', barLabel: '直すところへ行く' };
       return a.titleMissing ? { where: 'title', label: 'ここに大会の名前を入れる' } : { where: 'bar', label: '直すところを見る' };
     case 'open': return { where: 'bar', label: '試合当日の画面を開く' };
-    // 開いたあと：黄色は消さない。当日は、開いた画面で試合を進める（ここで もう一度押すと、もう1つ開く）
+    // 開いたあと：黄色は消さない。当日は、開いた画面で試合を進める（黄色の中には、押すボタンを置かない。「もう1つ開く」は、黄色の外の ふつうのボタン）
     case 'done': return { where: 'bar', label: '当日は、開いた画面で試合を進める' };
     default: return { where: 'none', label: '' };
   }

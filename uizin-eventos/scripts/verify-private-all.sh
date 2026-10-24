@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 1つのコマンドで、会長の画面（Tournament OS v3）の「全部の確認」を動かす。
 #   1) 型チェック(tsc)  2) 単体テスト(npm test)  3) 公開用フォルダを作る(build:private + 自動チェック)
-#   4) 手元の静かなサーバー  5) 画面の確認(scripts/test-*.mjs を、名前が合うもの全部)  6) validate-ai-os  7) git の見張り
+#   4) マニュアルの文字のロボット(scripts/check-manual-labels.mjs。マニュアルの「…」が、作った画面に本当にあるか)
+#   5) 手元の静かなサーバー  6) 画面の確認(scripts/test-*.mjs を、名前が合うもの全部)  7) validate-ai-os  8) git の見張り
 # 使い方（uizin-eventos/ で）:
 #   bash scripts/verify-private-all.sh            全部（画面の確認は、全部で およそ30分）
 #   bash scripts/verify-private-all.sh --fast     いちばん長い test-private-mistake-proof（およそ16分）を、とばす
@@ -15,6 +16,10 @@
 # 全部合格したときだけ、.verify-ok（コミットと中身の指紋）を書く。npm run deploy:private が、公開の前に見る。
 #   ただし、build:private を とばした（TOS_SKIP_BUILD=1）とき、見出しの付かないサーバー（TOS_PLAIN_SERVER=1）のとき、一部だけ動かしたとき（--fast・TOS_ONLY・TOS_SCENARIOS）は書かない
 #   （いま作った公開用フォルダを、本番と同じ約束の下で確かめたことにならないため）。
+# さらに、はじめから終わりまで uizin-eventos フォルダがコミットずみ（変更も、まだ追跡していないファイルも無い）なら、
+#   このフォルダの中身の番号（git rev-parse HEAD:uizin-eventos）を、リポジトリのいちばん上の uizin-eventos-verified-trees.txt に1行足す。
+#   この一覧はコミットする（フォルダの外にあるので、コミットしても中身の番号は変わらない）。.verify-ok の無いオーナーの Mac でも、
+#   npm run deploy:private が、この一覧で「全部合格した中身か」を見分ける。
 # ポート（TOS_PORT）が もう使われていたら、はじめに止まって、ポートを変えるよう言う（ほかのサーバーを相手に、合格と言わないため）。
 # 目安の合格数（2026年10月12日の時点。数は増える）:
 #   browser 86 / setup 60 / v3-safety 44 / glance 84 / resilience / live-list / class-ab 820 / mistake-proof 3331 / bout-flow / polish-private / polish-apply / polish-misc
@@ -49,6 +54,11 @@ if port_busy; then
   echo "ポート${PORT}は、もう使われています。ほかのサーバーを止めるか、TOS_PORT を変えてください（例：TOS_PORT=4991）。何も確かめずに止まります。"
   exit 3
 fi
+
+# 検証ずみの一覧の場所と、はじめの時点の中身の番号（コミットずみで変更が無いときだけ。あれば空）。
+# 終わりにも同じ番号で、変更が無いときだけ、一覧に書く（途中で中身が変わったら、確かめた中身と言えないため）
+LIST="$(bash scripts/tree-stamp.sh --list 2>/dev/null || true)"
+TREE_START="$(bash scripts/tree-stamp.sh --tree 2>/dev/null || true)"
 
 fail=0
 failed=""
@@ -89,6 +99,8 @@ if [ -z "${TOS_ONLY:-}" ]; then
   run "tsc" npx tsc --noEmit --incremental false
   run "unit tests (npm test)" npm test --silent
   if [ "${TOS_SKIP_BUILD:-0}" != "1" ]; then run "build:private" build_private; else skip "build:private (TOS_SKIP_BUILD)"; fi
+  # マニュアルの「…」が、いま作った画面（out-private-pages）とソースに本当にあるか。読むだけ（数秒）。直し方の候補は、手で動かすと出る
+  run "manual labels (check-manual-labels)" node scripts/check-manual-labels.mjs --no-suggest
 fi
 
 if [ ! -d out-private-pages ]; then echo "out-private-pages がありません。TOS_SKIP_BUILD を付けずに、もう一度動かしてください。"; exit 1; fi
@@ -128,14 +140,33 @@ if [ -z "${TOS_ONLY:-}" ]; then
   run "git: 混ざってはいけない物" git_watch
 fi
 
+# 全部合格したときに、この中身の番号を、検証ずみの一覧に足す（もうあれば足さない）
+record_tree() {
+  local tree
+  tree="$(bash scripts/tree-stamp.sh --tree 2>/dev/null || true)"
+  if [ -z "$LIST" ]; then echo "i このフォルダは git のいちばん上か git の外なので、検証ずみの一覧は使いません。"; return 0; fi
+  if [ -z "$TREE_START" ] || [ "$tree" != "$TREE_START" ]; then
+    echo "i uizin-eventos に、コミットしていない変更（まだ追跡していないファイルも）があったので、検証ずみの一覧（${LIST##*/}）には書きません。コミットしてから、もう一度動かすと書きます。"
+    return 0
+  fi
+  if grep -Eq "^${tree}([[:space:]]|$)" "$LIST" 2>/dev/null; then echo "✓ この中身の番号（${tree}）は、もう検証ずみの一覧（${LIST##*/}）にあります。"; return 0; fi
+  [ -f "$LIST" ] || printf '%s\n' "# 全部の確認（uizin-eventos/scripts/verify-private-all.sh）に合格した、uizin-eventos フォルダの中身の番号。書くのは、そのスクリプトだけ（手で書かない）。" "# 1行に1つ：中身の番号（git rev-parse HEAD:uizin-eventos）  確かめた日時  そのときのコミット" > "$LIST"
+  if printf '%s  %s  %s\n' "$tree" "$(date '+%Y-%m-%dT%H:%M%z')" "$(git rev-parse --short HEAD)" >> "$LIST"; then
+    echo "✓ 検証ずみの一覧（${LIST}）に、この中身の番号（${tree}）を足しました。この一覧を、コミットしてください（コミットしても、中身の番号は変わりません。push のあと、オーナーの Mac の公開のコマンドが、これを見ます）。"
+  else
+    echo "検証ずみの一覧に書けませんでした: ${LIST}"
+  fi
+}
+
 printf '\n===== 結果 =====\n'
 printf '%b' "$table"
 if [ "$fail" -eq 0 ]; then
   why="$(stamp_blocker)"
   if [ -z "$why" ]; then
     bash scripts/tree-stamp.sh > .verify-ok 2>/dev/null && echo "✓ 全部合格。.verify-ok に、いまの指紋を書きました（公開のコマンドが見ます）。"
+    record_tree
   else
-    echo "✓ 合格。ただし、${why}ので、公開用の指紋（.verify-ok）は書きません。"
+    echo "✓ 合格。ただし、${why}ので、公開用の指紋（.verify-ok）も、検証ずみの一覧も書きません。"
   fi
   echo "ALL OK"; exit 0
 fi

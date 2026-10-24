@@ -1,7 +1,7 @@
 import type { EntryFieldMode } from './entryPackage.ts';
 import { CLASS_LIMITS, DEFAULT_CLASS_SETTINGS, parseClassSettings, type ClassSettings } from './classRules.ts';
 import { DEFAULT_WEIGHT_SETTINGS, isDefaultWeightSettings, weightSettingsToParam, weightsFromParam, type WeightSettings } from './weightClass.ts';
-import { PLEDGE_LINK_KEYS, packPledge, packText, unpackPledge, unpackText, type GuardianMode, type PledgeConfig } from './pledge.ts';
+import { PLEDGE_LINK_KEYS, packPledge, packText, pledgeCanon, pledgeHashMatches, unpackPledge, unpackText, type GuardianMode, type PledgeConfig } from './pledge.ts';
 import { hanamichiRuleOk } from './hanamichi.ts';
 
 export type PublicEntryConfig = {
@@ -39,7 +39,7 @@ export type PublicEntryConfig = {
   recordDetail?: boolean;
   /** 誓約書（最後の□の✔）をするときだけ入る（しないときは項目ごと無い）。リンクでは pl=on と plg・plm・plc・plt。protocol が 3 のときだけ読む。文は持たない（文はリンクの plt から来る） */
   pledge?: PledgeConfig;
-  /** 誓約書の文の指紋（16進の小文字64字）。リンクでは plf。ページは作らず・計算せず、POST の pledgeHash にそのまま入れて返す。pledge があるときだけ意味がある */
+  /** 誓約書の文の指紋（16進の小文字64字）。リンクでは plf。ページは作らず、POST の pledgeHash にそのまま入れて返す（ページが計算するのは、文が書きかえられていないかを確かめるときだけ：pledgeLinkGenuine）。pledge があるときだけ意味がある */
   pledgeHash?: string;
 };
 
@@ -166,6 +166,23 @@ export function publicEntryLinkCut(hash: string): boolean {
       }
     }
     return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * リンクの誓約書の文（plt）が、文の指紋（plf）と合っているか。合わないときは、文がリンクの中で書きかえられている
+ * （Googleの受付は、送られた指紋と「誓約書」タブの指紋しか比べないので、画面に出た文が本物かは、ここでしか分からない）。
+ * 指紋の作り方は、受付と同じ：pledgeCanon の文字を UTF-8 にした SHA-256。計算は crypto.subtle（ブラウザにも Node にもある）。投げない。
+ * 誓約書の無いリンクは true。crypto.subtle が無い・計算に失敗したときは、確かめられないので true（今までどおり。受付の指紋の検査は、そのまま残る）。
+ */
+export async function pledgeLinkGenuine(config: Pick<PublicEntryConfig, 'pledge' | 'pledgeHash'>, subtle: SubtleCrypto | null | undefined = globalThis.crypto?.subtle): Promise<boolean> {
+  if (!config.pledge) return true;
+  try {
+    if (!subtle) return true;
+    const digest = await subtle.digest('SHA-256', new TextEncoder().encode(pledgeCanon(config.pledge)));
+    return pledgeHashMatches(new Uint8Array(digest), config.pledgeHash ?? '');
   } catch {
     return true;
   }

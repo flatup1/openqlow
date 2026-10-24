@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { A3_MM, DEFAULT_SHOW, PER_PAGE, ROW_GAP_MM, buildSheet, clampPerPage, columnsOf, charEm, fitCenter, fitNameMm, fitSide, fitText, fitTitleMm, sideHeightMm, textWidthEm, wrapLines, pageCount, paginate, pagesIfTarget, parseSheetOptions, parseSheetPrefs, perPageForPages, perPageLimit, rangeText, resolvePerPage, rowsOf, sheetBouts, sheetMetrics, sheetNotes, sheetSide, suggestPerPage, type SheetBout } from '../core/boutSheet.ts';
-import { emptyTournament, isLocalTournament, mergeFighters, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
+import { emptyTournament, isLocalTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
 import { mergeKeepExisting, restoreConfirmText, sameExceptProgress } from '../app/private/logic.ts';
 import { buildRow, musicState, nowModel, summarizeMusic } from '../app/private/live/listLogic.ts';
 
@@ -158,8 +158,6 @@ test('欠場（absent）：保存の検査を通る。真偽以外は断る。�
   assert.equal(isLocalTournament(ok), true);
   const bad = tournament(1); (bad.fighters[0] as unknown as Record<string, unknown>).absent = 'yes';
   assert.equal(isLocalTournament(bad), false);
-  const merged = mergeFighters([fighter('r1', { absent: true })], [fighter('r1', { name: '新しい名前' })]);
-  assert.equal(merged[0].name, '新しい名前'); assert.equal(merged[0].absent, true);
   const result = mergeKeepExisting([fighter('r1', { absent: true })], [fighter('r1', { name: '別の名前' })]);
   assert.equal(result.merged[0].absent, true, '前からいる人は、黙って変えない');
   assert.equal(result.overwritten[0].name, '別の名前'); assert.equal(result.overwritten[0].absent, true, '書きかえても、欠場は消えない');

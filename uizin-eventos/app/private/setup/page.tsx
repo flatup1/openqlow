@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, PLEDGE_UNCONFIRMED_ADVICE, pledgeDiagnosis, settingLines, supportsHanamichi, supportsRecordDetail, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, PING_TIMEOUT_MS, pingUrl, PLEDGE_UNCONFIRMED_ADVICE, pledgeDiagnosis, recordTextCaution, settingLines, supportsHanamichi, supportsRecordDetail, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
 import { isAppsScriptUrl, publicEntryHash } from '../../../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../../../core/classRules.ts';
 import { weightSettingsToParam } from '../../../core/weightClass.ts';
@@ -313,6 +313,10 @@ export default function SetupV3() {
   const [copyOpened, setCopyOpened] = useState(false);
   const downloadedAt = useRef(0);
   const seq = useRef(0);
+  /** いまGoogleの返事を待っている確かめ（止めるための印）。待っていないときは null */
+  const pendingPing = useRef<AbortController | null>(null);
+  /** 「もう一度確かめる」を最後に押した時刻（2回押し・3回押しを、1回にまとめるため） */
+  const manualAt = useRef(0);
   const lastTickAt = useRef(0);
   const copyTimer = useRef<number | undefined>(undefined);
   const urlRef = useRef<HTMLInputElement>(null);
@@ -413,11 +417,17 @@ export default function SetupV3() {
   const check = async (mode: 'manual' | 'auto' | 'poll' = 'manual') => {
     let url: string;
     try { url = pingUrl(endpoint); } catch { if (mode !== 'poll') { setPing(null); if (mode === 'manual') setPingError('url'); } return; }
+    // 手で押したときは、待っている確かめを止めてから、新しく確かめる（押しても何も起きない、にしない）
+    if (mode === 'manual') pendingPing.current?.abort();
     const mine = ++seq.current;
     const checked = endpoint;
+    // Googleが答えないまま20秒たったら、待つのをやめる。つながらないときと同じ案内（'net'）になり、「自動で確かめられないとき」が開く
+    const controller = new AbortController();
+    pendingPing.current = controller;
+    const timer = window.setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
     if (mode !== 'poll') setChecking(true);
     try {
-      const response = await fetch(url, { cache: 'no-store' });
+      const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
       const next = parsePing(await response.json());
       if (mine !== seq.current) return;
       setFromPaste(false);
@@ -434,6 +444,8 @@ export default function SetupV3() {
       setPing(null);
       setPingError(classifyPingError(error));
     } finally {
+      window.clearTimeout(timer);
+      if (pendingPing.current === controller) pendingPing.current = null;
       if (mine === seq.current) setChecking(false);
     }
   };
@@ -946,7 +958,11 @@ export default function SetupV3() {
     : !supportsWeightClasses(ping) && stage !== 'old-build' ? <Caution className="mt-3" lead="このシートは古い版で、階級分け・ロゴに対応していません。"><p>階級分け（体重で分けたグループ）やロゴを使う大会は、新しいひな形をもう一度コピーします（手順1）。いま使っているシートをそのまま使うときは、ジムの担当者が、そのシートの Apps Script のプログラムを新しい版に入れかえて、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。使わないときは、このままで大丈夫です。</p></Caution>
     : null;
   // くわしい戦績（キック・他の格闘技・タイトル）は、新しい版の受付だけが受け取る。古い版でも申し込みは今までどおり受け付ける（くわしい欄が出ないだけ）
-  const recordCaution = !ping || stage === 'old-build' || supportsRecordDetail(ping) ? null
+  // くわしい戦績を受け取れる1つ前の版（3.20261024.1）は、シートの戦績の1行を「3勝2敗」の形で書く（申し込みの確認は「5戦3勝2敗」）。止めずに、新しい版にする方法を、黄色の注意1つで言う
+  const recordText = recordTextCaution(ping);
+  const recordCaution = !ping || stage === 'old-build' ? null
+    : recordText ? <div id="record-text-note"><Caution className="mt-3" lead={recordText.lead}><p>{recordText.body}</p></Caution></div>
+    : supportsRecordDetail(ping) ? null
     : <Caution className="mt-3" lead="くわしい戦績（キック・他の格闘技・タイトル）は、新しい版のシートで使えます。"><p>今のシートのままでも、申し込みは受け付けます（戦績は、今までどおり1行の欄になります）。使うときは、ひな形をもう一度コピーするか、Apps Scriptを新しい版にして「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。</p></Caution>;
   /** 読み取り欄の「階級分け」「ロゴ」の言葉。クラス分けの行と同じ作り（✓ できた／✕ 直す／⚠ このシートでは使えない／なし） */
   const weightRowText = weights && !configProblem ? '✓ あり（' + weights.divisions.length + '区分）。申し込みページに出ます'
@@ -1068,9 +1084,11 @@ export default function SetupV3() {
   </div>;
 
   const recheckPrimary = here('recheck') || here('recheck-fix');
-  const recheckBtn = (cls: string) => <button type="button" aria-disabled={!urlOk || checking || undefined} aria-busy={checking} onClick={() => {
+  const recheckBtn = (cls: string) => <button type="button" aria-disabled={!urlOk || undefined} aria-busy={checking} onClick={() => {
     if (!urlOk) { setWarn({ key: 'recheck', text: 'まだ押せません：' + (endpoint.trim() && urlWrong ? '上の「✕」の文のとおりに、URLを直してください。' : '先に、上の欄にURLを貼ってください。') }); setUrlTarget(true); jumpToUrl(); return; }
-    if (checking) return;
+    // 2回押し・3回押し（1秒の間）は、1回にまとめる。それより後に押したら、待っている確かめを止めて、新しく確かめる（Googleが答えないまま、止まらない）
+    if (checking && Date.now() - manualAt.current < 1000) return;
+    manualAt.current = Date.now();
     void check('manual');
   }} className={cls}>もう一度確かめる</button>;
 
@@ -1388,7 +1406,7 @@ export default function SetupV3() {
             {copyFailed === 'line' ? <p className="text-[17px]">{COPY_STEPS}</p> : null}
             <Box tone="info" id="apply-memory-note">
               <p className="font-bold">選手に送る前に、知っておくこと：選手のスマホに、一時的に残るもの</p>
-              <p className="text-[17px]">選手の申し込み画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、そのスマホのそのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。送信するか、「消す」を押すか、ページ（タブ）を閉じると、消えます。</p>
+              <p className="text-[17px]">選手の申し込み画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、そのスマホのそのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあとは、受付番号が出なかったときに戻せるよう、60分だけ残します（「この表示を消す」を押しても、消えます）。</p>
               <p className="text-[17px]">送ったあと、もう1人申し込む人のために、ジム名と連絡先を、そのスマホのそのタブの中に60分だけ覚えます。タブを閉じると消えます。{pledgeDiag?.gym ? '個人情報の同意のチェックと、ジム責任者の名前・電話も、いっしょに覚えます。' : '個人情報の同意のチェックも、いっしょに覚えます。'}</p>
               <p className="text-[17px]">共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じるように、選手に伝えてください。このメモは、ネットには送りません。送った申し込みの保存先は、これまでと同じ、主催者のGoogleのシートとドライブだけです。</p>
             </Box>

@@ -117,7 +117,7 @@ const nodeBackup = (value, password) => {
 };
 const nodeOpen = (text, password) => {
   const p = JSON.parse(text);
-  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), 250_000, 32, 'sha256');
+  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), p.iterations ?? 250_000, 32, 'sha256');
   const buf = Buffer.from(p.data, 'base64');
   const d = createDecipheriv('aes-256-gcm', key, Buffer.from(p.iv, 'base64'));
   d.setAuthTag(buf.subarray(buf.length - 16));
@@ -1395,7 +1395,7 @@ scenario('PRIVATE-E', 'PRIVATE', 'backup password, restore wrong things', async 
     let downloads = 0; page.on('download', () => { downloads++; });
     await backupBtn(page).dblclick(); await settle(2500);
     check(downloads === 1, 'E21: one file for a double press (' + downloads + ')');
-    check(/ファイルを保存しました|保存しました/.test(await notices(page) + await text(page)), 'E21: a green line says the file was saved');
+    check(/保存を始めました。ダウンロードの中に「[^」]+」があるか、見ます/.test(await notices(page) + await text(page)), 'E21: a green line says the file was saved');
     return 'downloads ' + downloads;
   });
   await ctx.close();
