@@ -7,6 +7,7 @@ import { formatDateInput } from '../../core/dateInput.ts';
 import { emailFormOk, entryErrors, lowerLinkHost, MUSIC_URL_FORM, phoneFormOk, stripInvisible, type EntryFighter } from '../../core/entryPackage.ts';
 import { HANAMICHI_DERIVED_KEYS, HANAMICHI_SKIPPED_KEYS, hanamichiAgeFrom, hanamichiAskRequired, hanamichiBirthText, hanamichiClean, hanamichiFill, hanamichiFormItems, HANAMICHI_ITEMS, HANAMICHI_KEYS, HANAMICHI_RING_KANA_KEY, HANAMICHI_RING_KEY, isHanamichiDivision, isRealPastDate, jstDateText, validateHanamichi, type HanamichiItem, type HanamichiKey } from '../../core/hanamichi.ts';
 import { ageKnown, gymPhoneNormal, isUnaffiliated, PLEDGE_LIMITS, UNAFFILIATED_TEXT } from '../../core/pledge.ts';
+import { linkSignatureOk, TRUSTED_LINK_KEYS } from '../../core/linkSign.ts';
 import { EMPTY_PUBLIC_ENTRY_CONFIG, isVenueUrl, pledgeLinkGenuine, publicEntryConfig, publicEntryLinkCut, publicEntryReady, type PublicEntryConfig } from '../../core/publicEntry.ts';
 import { DIVISION_LABEL, findDivision, isDivisionError, noClassReviewValue, NO_CLASS_NOTE_APPLY, normalizeWeightClass, weightChoiceError, weightClassLabel } from '../../core/weightClass.ts';
 import { BirthDateSelect, type BirthParts } from '../components/BirthDateSelect.tsx';
@@ -515,8 +516,10 @@ export default function PublicApply() {
     // 誓約書の文（plt）が、指紋（plf）と合うかを確かめる（Googleの受付と同じ作り方の SHA-256）。合わない＝リンクの中で文が書きかえられている：途中で切れたリンクと同じに止める。
     // 確かめ終わるまでは、送らない（submit が止める）。正しいリンクは、見た目も動きも今までのまま
     const run = ++pledgeRunRef.current;
-    pledgeCheckingRef.current = Boolean(next.pledge);
-    if (next.pledge) void pledgeLinkGenuine(next).then((ok) => { if (run !== pledgeRunRef.current) return; pledgeCheckingRef.current = false; if (!ok) setLinkCut(true); });
+    // 署名（主催者のパソコンで作ったリンクか）：使ってよい鍵がサイトに登録してあるときだけ確かめる。合わない・無い＝ほかの人が作ったリンクかもしれないので、切れたリンクと同じに止める
+    const needSig = TRUSTED_LINK_KEYS.length > 0 && hash !== '' && hash !== '#';
+    pledgeCheckingRef.current = Boolean(next.pledge) || needSig;
+    if (next.pledge || needSig) void Promise.all([pledgeLinkGenuine(next), needSig ? linkSignatureOk(hash) : true]).then(([pledgeOk, sigOk]) => { if (run !== pledgeRunRef.current) return; pledgeCheckingRef.current = false; if (!pledgeOk || !sigOk) setLinkCut(true); });
     titleRef.current = next.title ? next.title + ' 申し込み' : '大会の申し込み';
     document.title = titleRef.current;
     const dl = parseJa(next.deadline);

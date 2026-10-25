@@ -105,8 +105,9 @@ test('1 指紋の確かめ：誓約書の無いリンクは何もしない（tru
 test('1 画面：リンクを読むたびに確かめ、合わなければ「切れたリンク」と同じ道（linkCut）で止める。確かめの間は送らない。古いリンクの答えは使わない', () => {
   const apply = PAGE_CODE.slice(PAGE_CODE.indexOf('const applyConfig = '), PAGE_CODE.indexOf('useEffect(() => {', PAGE_CODE.indexOf('const applyConfig = ')));
   assert.match(apply, /setLinkCut\(publicEntryLinkCut\(hash\)\);/);
-  assert.match(apply, /const run = \+\+pledgeRunRef\.current;\s*pledgeCheckingRef\.current = Boolean\(next\.pledge\);/);
-  assert.match(apply, /if \(next\.pledge\) void pledgeLinkGenuine\(next\)\.then\(\(ok\) => \{ if \(run !== pledgeRunRef\.current\) return; pledgeCheckingRef\.current = false; if \(!ok\) setLinkCut\(true\); \}\);/);
+  // 誓約書の指紋と、リンクの署名（linkSign.test.ts）を、いっしょに確かめる。どちらかが合わなければ止める
+  assert.match(apply, /const run = \+\+pledgeRunRef\.current;[\s\S]*?pledgeCheckingRef\.current = Boolean\(next\.pledge\) \|\| needSig;/);
+  assert.match(apply, /if \(next\.pledge \|\| needSig\) void Promise\.all\(\[pledgeLinkGenuine\(next\), needSig \? linkSignatureOk\(hash\) : true\]\)\.then\(\(\[pledgeOk, sigOk\]\) => \{ if \(run !== pledgeRunRef\.current\) return; pledgeCheckingRef\.current = false; if \(!pledgeOk \|\| !sigOk\) setLinkCut\(true\); \}\);/);
   const submit = PAGE_CODE.slice(PAGE_CODE.indexOf('const submit = '), PAGE_CODE.indexOf('const choosePhoto = '));
   const gate = submit.indexOf('if (confirmed && pledgeCheckingRef.current)');
   assert.ok(gate > 0 && gate < submit.indexOf('setSending(true)') && gate < submit.indexOf('sendingRef.current = true'), '送る前に止める');

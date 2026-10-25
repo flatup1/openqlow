@@ -7,6 +7,8 @@ import { DEFAULT_CLASS_SETTINGS } from '../../../core/classRules.ts';
 import { weightSettingsToParam } from '../../../core/weightClass.ts';
 import { formatDateInput } from '../../../core/dateInput.ts';
 import { readPrivateEvent } from '../../lib/privateStore.ts';
+import { loadLinkKey, makeLinkKey, type StoredLinkKey } from '../../lib/linkKeyStore.ts';
+import { signLinkHash, TRUSTED_LINK_KEYS } from '../../../core/linkSign.ts';
 import { isPastDate, isTitleReal } from '../logic.ts';
 
 /*
@@ -264,6 +266,11 @@ export default function SetupV3() {
   const [tpl, setTpl] = useState<'loading' | 'ok' | 'none'>('loading');
   const [ownerSheet, setOwnerSheet] = useState('');
   const [ping, setPing] = useState<Ping | null>(null);
+  /** 申し込みのリンクに署名する鍵（このパソコンのブラウザの中）。undefined＝読みこみ中、null＝無い */
+  const [linkKey, setLinkKey] = useState<StoredLinkKey | null | undefined>(undefined);
+  const [linkKeyNote, setLinkKeyNote] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
+  /** 署名したリンク（署名の前のリンク → 署名つき）。署名は少し待つので、できたものをここに入れる */
+  const [signed, setSigned] = useState<Record<string, string>>({});
   const [pingError, setPingError] = useState<PingError | null>(null);
   const [checking, setChecking] = useState(false);
   const [pasted, setPasted] = useState('');
@@ -553,7 +560,45 @@ export default function SetupV3() {
   };
   const canGo = (n: number) => n <= step || (n === 2 && reached >= 2) || (n === 3 && reached >= 2 && !blocked);
 
-  const link = (mode: 'test' | 'live') => { try { return ping ? '/apply/' + publicEntryHash(entryConfigFromPing(ping, endpoint, mode)) : ''; } catch { return ''; } };
+  /** 署名の前のリンク（# から） */
+  const rawHash = (mode: 'test' | 'live') => { try { return ping ? publicEntryHash(entryConfigFromPing(ping, endpoint, mode)) : ''; } catch { return ''; } };
+  /** このパソコンの鍵が、サイトに登録した鍵（TRUSTED_LINK_KEYS）か */
+  const keyTrusted = !!linkKey && TRUSTED_LINK_KEYS.includes(linkKey.publicText);
+  /** 鍵を登録したあとで、このパソコンに その鍵が無い：リンクは作らない（作っても、申し込みのページが止める） */
+  const keyMissing = TRUSTED_LINK_KEYS.length > 0 && linkKey !== undefined && !keyTrusted;
+  /**
+   * 選手に渡すリンク（/apply/#…）。鍵があれば署名つき（署名ができるまでは空）。鍵が無く、まだ1つも登録していないときは、今までどおり署名なし。
+   * 鍵を登録したあとで、このパソコンに その鍵が無いときは空（作らない）
+   */
+  const link = (mode: 'test' | 'live') => {
+    const hash = rawHash(mode);
+    if (!hash || linkKey === undefined || keyMissing) return '';
+    if (!linkKey) return '/apply/' + hash;
+    return signed[hash] ? '/apply/' + signed[hash] : '';
+  };
+  useEffect(() => { let alive = true; void loadLinkKey().then((key) => { if (alive) setLinkKey(key); }); return () => { alive = false; }; }, []);
+  const testHash = rawHash('test'), liveHash = rawHash('live');
+  useEffect(() => {
+    if (!linkKey) return;
+    let alive = true;
+    const todo = [testHash, liveHash].filter((hash) => hash && !signed[hash]);
+    if (!todo.length) return;
+    void Promise.all(todo.map((hash) => signLinkHash(hash, linkKey.privateKey).then((done) => [hash, done] as const)))
+      .then((pairs) => { if (alive) setSigned((prev) => ({ ...prev, ...Object.fromEntries(pairs) })); })
+      .catch(() => { if (alive) setLinkKeyNote({ kind: 'bad', text: 'リンクに署名できませんでした。このページを読みこみ直してください。直らないときは、下の「リンクの鍵」で鍵を作り直します。' }); });
+    return () => { alive = false; };
+  }, [linkKey, testHash, liveHash, signed]);
+  const createKey = async () => {
+    if (linkKey && !window.confirm('このパソコンには、もう鍵があります。作り直すと、前の鍵で作ったリンクは、登録を変えたあと使えなくなります。作り直しますか？')) return;
+    try {
+      const key = await makeLinkKey();
+      setSigned({}); setLinkKey(key);
+      setLinkKeyNote({ kind: 'ok', text: '鍵を作りました。下の「公開用の文字」をコピーして、作る人（Claude）に送ってください。' });
+    } catch {
+      setLinkKeyNote({ kind: 'bad', text: '鍵を作れませんでした。Chrome の、ふつうのウィンドウ（シークレットではない）で開いて、もう一度押してください。' });
+    }
+  };
+
   const copy = async (key: string, text: string) => {
     window.clearTimeout(copyTimer.current);
     try {
@@ -562,7 +607,7 @@ export default function SetupV3() {
       copyTimer.current = window.setTimeout(() => setCopied(''), 5000);
     } catch {
       setCopied(''); setCopyFailed(key);
-      window.setTimeout(() => { const box = key === 'line' ? lineBoxRef.current : liveBoxRef.current; box?.focus(); box?.select(); }, 0);
+      window.setTimeout(() => { const box = key === 'line' ? lineBoxRef.current : key === 'key' ? document.getElementById('link-key-text') as HTMLInputElement | null : liveBoxRef.current; box?.focus(); box?.select(); }, 0);
     }
   };
   /** ひな形の文を、同じ画面のファイルから読む（外へは出ない） */
@@ -1383,6 +1428,7 @@ export default function SetupV3() {
           {pledgeDiag && !configProblem ? (pledgeDiag.confirmed ? <OkLine>{pledgeDiag.line}。</OkLine> : <ErrorLine id="pledge-unconfirmed-note">{pledgeDiag.line}。<span className="mt-1 block">{PLEDGE_UNCONFIRMED_ADVICE}</span></ErrorLine>) : null}
           {classCaution ?? weightCaution}
           {recordCaution}
+          {keyMissing && diagnosis?.ok ? <ErrorLine id="link-key-missing">このパソコンでは、選手に渡すURLを作れません。登録した「リンクの鍵」が、このパソコンのブラウザにありません。鍵を作ったパソコン（Chrome）で、この画面を開いてください。</ErrorLine> : null}
           {urlReady ? <>
             {staleCopy ? <ErrorLine>先に送ったURLは古い内容です。新しいURLを送り直します。</ErrorLine> : null}
             {copyFailed === 'live' ? <ErrorLine>コピーできていません。</ErrorLine> : null}
@@ -1391,9 +1437,9 @@ export default function SetupV3() {
           {warnLine('copy')}
           {mark('copy', urlReady
             ? <button type="button" aria-describedby="live-reason" onClick={() => void copy('live', liveUrl)} className={here('copy') || here('copy-new') ? btnPrimary : copiedFresh ? btnDone : btnSecondary}>{copied === 'live' ? '✓ コピーしました（もう一度押せます）' : '完成：選手へ渡すURLをコピー'}</button>
-            : <button type="button" aria-disabled="true" aria-describedby="live-reason" onClick={() => setWarn({ key: 'copy', text: stage === 'closed' ? 'まだ押せません：受付が終わっています' : 'まだ押せません：シートで「② 受付を開始」を押す' })} className={btnOff}>完成：選手へ渡すURLをコピー</button>)}
+            : <button type="button" aria-disabled="true" aria-describedby="live-reason" onClick={() => setWarn({ key: 'copy', text: stage === 'closed' ? 'まだ押せません：受付が終わっています' : keyMissing && diagnosis?.ok ? 'まだ押せません：このパソコンには、リンクの鍵がありません' : 'まだ押せません：シートで「② 受付を開始」を押す' })} className={btnOff}>完成：選手へ渡すURLをコピー</button>)}
           <div id="live-reason" className="space-y-1">
-            {!urlReady ? <Why>{stage === 'closed' ? 'まだ押せません：受付が終わっています。選手には渡しません' : 'まだ押せません：シートで「② 受付を開始」を押す'}</Why>
+            {!urlReady ? <Why>{stage === 'closed' ? 'まだ押せません：受付が終わっています。選手には渡しません' : keyMissing && diagnosis?.ok ? 'まだ押せません：このパソコンには、リンクの鍵がありません' : 'まだ押せません：シートで「② 受付を開始」を押す'}</Why>
               : copyFailed === 'live' ? <p className="text-[17px]">{COPY_STEPS}</p>
               : copiedFresh ? <OkLine>コピー済み {copiedAt}</OkLine>
               : <p className="text-[17px]">このURLを、選手にLINEなどで送ります。</p>}
@@ -1411,6 +1457,25 @@ export default function SetupV3() {
               <p className="text-[17px]">共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じるように、選手に伝えてください。このメモは、ネットには送りません。送った申し込みの保存先は、これまでと同じ、主催者のGoogleのシートとドライブだけです。</p>
             </Box>
           </> : null}
+          <Fold id="link-key" title="リンクの鍵（このパソコンで作ったURLだけを使えるようにする）" openSignal={keyMissing || !!linkKeyNote}>
+            <div className="space-y-3 p-4 pt-0">
+              <p className="text-[17px]">選手に渡すURLに、このパソコンだけが付けられる「しるし」（署名）を付けます。登録したあとは、しるしの無いURL（ほかの人が作ったニセのURLや、登録の前に作ったURL）は、申し込みのページが止めます。</p>
+              {linkKey === undefined ? <p className="text-[17px]">⏳ 鍵を調べています…</p>
+                : !linkKey ? <p className="text-[17px]">このパソコンには、まだ鍵がありません。{TRUSTED_LINK_KEYS.length ? '' : '鍵を登録するまでは、今までどおり、しるしの無いURLも使えます。'}</p>
+                : keyTrusted ? <OkLine>このパソコンの鍵は、登録ずみです。作るURLには、しるしが付きます。</OkLine>
+                : <Caution lead={TRUSTED_LINK_KEYS.length ? 'このパソコンの鍵は、登録されていません。このパソコンでは、URLを作れません。' : '鍵はできています。まだ登録していません（登録するまでは、しるしの無いURLも使えます）。'} />}
+              {linkKey ? <>
+                <label className="block font-bold" htmlFor="link-key-text">公開用の文字（見られても大丈夫。秘密の鍵は、このパソコンの外に出ません）</label>
+                <input id="link-key-text" readOnly value={linkKey.publicText} onFocus={(e) => e.currentTarget.select()} className={field + ' break-all font-mono'} />
+                <button type="button" onClick={() => void copy('key', linkKey.publicText)} className={btnSecondary}>{copied === 'key' ? '✓ コピーしました' : '公開用の文字をコピー'}</button>
+                {copyFailed === 'key' ? <ErrorLine>コピーできていません。上の四角をクリックして、Ctrl を押しながら C を押します。</ErrorLine> : null}
+                {keyTrusted ? null : <p className="text-[17px]">この文字を、作る人（Claude）に送ります。サイトに登録して、公開しなおすと、使えるようになります。</p>}
+              </> : null}
+              <button type="button" onClick={() => void createKey()} className={btnSecondary}>{linkKey ? '鍵を作り直す（パソコンを変えたとき・消えたときだけ）' : 'このパソコンで、リンクの鍵を作る（最初に1回だけ）'}</button>
+              {linkKeyNote ? (linkKeyNote.kind === 'ok' ? <OkLine>{linkKeyNote.text}</OkLine> : <ErrorLine>{linkKeyNote.text}</ErrorLine>) : null}
+              <p className="text-[17px]">鍵は、このパソコンの、このブラウザ（Chrome）の中だけにあります。ブラウザの「閲覧履歴データの削除」で「Cookie と他のサイトデータ」を消すと、鍵も消えます。消えたら、作り直して、新しい公開用の文字を送ってください。</p>
+            </div>
+          </Fold>
         </section>
 
         {urlReady ? <section className="space-y-3 rounded-2xl border-2 border-emerald-700 bg-emerald-50 p-4 text-emerald-950">

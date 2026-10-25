@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { publicEntryConfig, publicEntryReady } from '../core/publicEntry.ts';
 import { EXPECTED_RECEPTION_BUILD } from '../core/setupV3.ts';
+import { isLinkKeyText, linkSignatureOk, splitSignedHash } from '../core/linkSign.ts';
 
 const { chromium } = await import(process.env.TOS_PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TOS_TEST_BASE || 'http://127.0.0.1:4421';
@@ -101,6 +102,34 @@ try {
     await page.locator('summary', { hasText: '任意：本物の申し込みページでも' }).click();
     const testLink = await page.getByRole('link', { name: /テスト用の申し込みページを開く/ }).getAttribute('href');
     check(testLink.startsWith('/apply/#') && testLink.includes('protocol=3') && testLink.includes('mode=test') && !/entryKey/.test(testLink) && publicEntryReady(publicEntryConfig(testLink.slice('/apply/'.length))), 'optional test link is protocol 3 without a key');
+
+    // リンクの鍵（署名つきリンク）：鍵が無いあいだは、今までどおり署名なし。鍵を作ると、渡すURLとテスト用のURLに署名が付き、申し込みのページで開ける
+    check(!live.includes('&sig=') && !testLink.includes('&sig='), 'without a key the links carry no signature (as before)');
+    await page.locator('summary', { hasText: 'リンクの鍵' }).click();
+    await page.getByRole('button', { name: 'このパソコンで、リンクの鍵を作る（最初に1回だけ）' }).click();
+    await page.getByText('鍵を作りました。', { exact: false }).first().waitFor();
+    const keyText = await page.locator('#link-key-text').inputValue();
+    check(isLinkKeyText(keyText), 'the public key text is shown (' + keyText.length + ' chars)');
+    await page.getByRole('button', { name: '公開用の文字をコピー' }).click();
+    check((await page.evaluate(() => navigator.clipboard.readText())) === keyText, 'the public key text is copied');
+    await page.getByText('鍵はできています。まだ登録していません', { exact: false }).first().waitFor();
+    await page.waitForFunction(() => /&sig=[A-Za-z0-9_-]{86}&end=1$/.test(document.querySelector('input[aria-label="選手に渡すURL"]')?.value || ''));
+    await copyLive.click();
+    const signedLive = await page.evaluate(() => navigator.clipboard.readText());
+    const signedHash = new URL(signedLive).hash;
+    check(/&sig=[A-Za-z0-9_-]{86}&end=1$/.test(signedHash) && splitSignedHash(signedHash).body === new URL(live).hash, 'the live URL is the same link plus a signature just before end=1');
+    check(await linkSignatureOk(signedHash, [keyText]) && !(await linkSignatureOk(new URL(live).hash, [keyText])), 'the signature checks out with this key; the unsigned link would not');
+    const signedTest = await page.getByRole('link', { name: /テスト用の申し込みページを開く/ }).getAttribute('href');
+    check(await linkSignatureOk(signedTest.slice('/apply/'.length), [keyText]), 'the test link is signed too');
+    const applyPage = await context.newPage();
+    await applyPage.goto(signedLive);
+    await applyPage.getByText('架空テスト大会', { exact: false }).first().waitFor();
+    check((await applyPage.getByText('このページでは申し込めません').count()) === 0, 'the apply page opens the signed link');
+    await applyPage.close();
+    await page.reload();
+    await page.getByText('いまここ 3 / 3').waitFor();
+    await page.locator('summary', { hasText: 'リンクの鍵' }).click();
+    check((await page.locator('#link-key-text').inputValue()) === keyText, 'the key stays in this browser after a reload');
 
     // 設定ファイル・復元
     await page.locator('summary', { hasText: '別のパソコンで続ける' }).click();
