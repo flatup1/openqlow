@@ -33,9 +33,18 @@ d.body.insertBefore(b,d.body.firstChild);
 },10000);
 }catch(e){}})();`;
 
+/**
+ * 上の 1) だけを、<head> の中でも先にする。<body> の中の補助は、スタイルを読んだあとで動くので、その前の一瞬、黒い色のままになることがあった（試験 P11 で、たまに見えた）。
+ * ここでは、色の切り替えの印だけを付ける（theme-color の meta は、まだ読まれていないことがあるので、下の補助がする）
+ */
+const HEAD_THEME_SCRIPT = `(function(){try{if(/^\\/(apply|private)(\\/|$)/.test(location.pathname)){var h=document.documentElement;h.setAttribute('data-theme','light');h.setAttribute('data-theme-boot','1');}}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: HEAD_THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full bg-[#07090d] text-slate-100 antialiased">
         <script dangerouslySetInnerHTML={{ __html: BOOT_SCRIPT }} />
         <noscript>
