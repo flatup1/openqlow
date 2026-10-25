@@ -1,2 +1,3 @@
 # 全部の確認（uizin-eventos/scripts/verify-private-all.sh）に合格した、uizin-eventos フォルダの中身の番号。書くのは、そのスクリプトだけ（手で書かない）。
 # 1行に1つ：中身の番号（git rev-parse HEAD:uizin-eventos）  確かめた日時  そのときのコミット
+ff3459b5859020533c61319a352b628e795a9a7f  2026-10-25T00:35+0000  45bee39
