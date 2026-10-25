@@ -1258,6 +1258,8 @@ scenario('PRIVATE-D', 'PRIVATE', 'forgetting to save, closing, reloading', async
     const open = btn(page, '試合当日の画面を開く').first();
     const locked = await isLocked(open);
     const pagesBefore = ctx.pages().length;
+    // 押す前に、ボタンを画面のまん中へ（force で押すので、下の帯の下にあると、帯を押してしまい、何も起きない。人は帯の下のボタンを押せない）
+    await open.evaluate((el) => el.scrollIntoView({ block: 'center' })).catch(() => {}); await settle(300);
     await open.click({ force: true }).catch(() => {}); await settle(1500);
     const stored = await idbGet(page, id);
     const opened = ctx.pages().length > pagesBefore || page.url().includes('/live/');
