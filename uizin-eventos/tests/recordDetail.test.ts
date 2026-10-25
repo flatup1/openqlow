@@ -12,6 +12,7 @@ import { LINK_END_KEY, publicEntryConfig, publicEntryHash, type PublicEntryConfi
 import { ACCEPTED_RECEPTION_BUILDS, EXPECTED_RECEPTION_BUILD, supportsRecordDetail } from '../core/setupV3.ts';
 import { detailFromText, countOf, kickTextOf, RECORD_LOSS_NOTE, recordIsWrong, recordLine, recordProblems, recordReviewPairs, type KickText } from '../app/components/recordDetailText.ts';
 import { unguardCell } from '../core/privateTournament.ts';
+import { DEFAULT_CLASS_SETTINGS, suggestClass } from '../core/classRules.ts';
 
 const full = (over: Partial<RecordDetail> = {}): RecordDetail => ({
   v: 1,
@@ -125,7 +126,7 @@ test('画面の数字：全角も読む。読めない字は NaN。聞くのは�
   for (const win of ['', 'ぜろ', '5']) assert.ok(recordDetailProblems(detailFromText({ games: '4', win }, [], [])).length > 0, '勝ち「' + win + '」（空・数でない・試合数より多い）は、直す');
   const others = detailFromText({ games: '0', win: '' }, [{ sport: ' 空手 ', games: '12', win: '7' }], []).others;
   assert.deepEqual(others, [{ sport: '空手', games: 12, win: 7, loss: 5, draw: 0, noResult: 0 }], '他の格闘技も、試合数と勝ちだけ');
-  assert.deepEqual(kickTextOf({ games: 4, win: 3, loss: 1, draw: 0 }), { games: '4', win: '3' }, '下書きを戻すときも、試合数と勝ちだけ');
+  assert.deepEqual(kickTextOf({ games: 4, win: 3, loss: 1, draw: 0 }), { games: '4', win: '3', draw: '' }, '下書きを戻すとき、引き分け0は空に戻す');
   // 送る JSON：Googleの受付（.gs）が、これまでと同じ決まりで受ける形（負けは試合数−勝ち、引き分け・勝敗なしは 0）
   assert.equal(
     packRecordDetail(detailFromText({ games: '4', win: '3' }, [{ sport: '空手', games: '3', win: '1' }], [])),
@@ -174,7 +175,7 @@ test('recordLine：○戦○勝○敗。敗＝試合数−勝ち。全勝は0敗
 });
 
 test('「敗」の一言：試合数から勝ちを引いた数で、引き分けも入る、と言う。確認の画面は、戦に出る行があるときだけ出す', () => {
-  assert.equal(RECORD_LOSS_NOTE, '「敗」は、試合数から勝ちを引いた数です（引き分けも入ります）。');
+  assert.equal(RECORD_LOSS_NOTE, '「敗」は、試合数から勝ちと引き分けを引いた数です。');
   const page = readFileSync(new URL('../app/apply/page.tsx', import.meta.url), 'utf8');
   assert.match(page, /\{recordOn && \(detailNow\.kick\.games > 0 \|\| detailNow\.others\.length > 0\) \? <p id="review-record-note" className="mt-2 text-\[1\.0625rem\] text-slate-700">\{RECORD_LOSS_NOTE\}<\/p> : null\}/, '新しいリンクで、戦に出る行があるときだけ');
   // 送る形・シート・準備の画面は、変えていない（出す場所は確認の画面だけ）
@@ -232,9 +233,10 @@ test('parseRecordDetailCsv: 文字の欄（競技名・大会名・階級・成�
 });
 
 test('kickTextOf: 初試合（試合数0）の勝ちは空に戻す。ふつうの勝ちは、そのまま', () => {
-  assert.deepEqual(kickTextOf({ games: 0, win: 0, loss: 0, draw: 0 }), { games: '0', win: '' });
-  assert.deepEqual(kickTextOf({ games: 4, win: 0, loss: 4, draw: 0 }), { games: '4', win: '0' }, '4戦0勝は、勝ち0を入れた人');
-  assert.deepEqual(kickTextOf({ games: 4, win: 3, loss: 1, draw: 0 }), { games: '4', win: '3' });
+  assert.deepEqual(kickTextOf({ games: 0, win: 0, loss: 0, draw: 0 }), { games: '0', win: '', draw: '' });
+  assert.deepEqual(kickTextOf({ games: 4, win: 0, loss: 4, draw: 0 }), { games: '4', win: '0', draw: '' }, '4戦0勝は、勝ち0を入れた人');
+  assert.deepEqual(kickTextOf({ games: 4, win: 3, loss: 1, draw: 0 }), { games: '4', win: '3', draw: '' });
+  assert.deepEqual(kickTextOf({ games: 5, win: 3, loss: 1, draw: 1 }), { games: '5', win: '3', draw: '1' }, '引き分けがあれば、そのまま戻す');
 });
 
 test('recordIsWrong: 入れたのにまちがっているときだけ true。空・入力の途中は false（黄色の札を「入れる」でなく「直す」にする目安）', () => {
@@ -260,3 +262,45 @@ test('recordIsWrong: 入れたのにまちがっているときだけ true。空
   assert.equal(recordIsWrong(ok, [], [{ event: 'あ'.repeat(61), year: '', class: '', result: '' }]), true, '大会名が長すぎる');
 });
 
+
+/* ───────── 引き分け（2026-10-25 owner：引き分けも表示できる作りに） ───────── */
+test('引き分け：欄は空なら0。負け＝試合数−勝ち−引き分け。一行は「5戦3勝1敗1分」、0なら「5戦3勝2敗」。Googleの受付は、そのまま受ける', () => {
+  const k: KickText = { games: '5', win: '3', draw: '1' };
+  assert.deepEqual(detailFromText(k, [], []).kick, { games: 5, win: 3, loss: 1, draw: 1 });
+  assert.deepEqual(detailFromText({ games: '5', win: '3', draw: ' ' }, [], []).kick, { games: 5, win: 3, loss: 2, draw: 0 }, '空白だけは0');
+  assert.deepEqual(detailFromText({ games: '5', win: '3', draw: '１' }, [], []).kick.draw, 1, '全角も読む');
+  assert.deepEqual(detailFromText({ games: '0', win: '', draw: '2' }, [], []).kick, { games: 0, win: 0, loss: 0, draw: 0 }, '未経験は引き分けも見ない');
+  assert.deepEqual(recordDetailProblems(detailFromText(k, [], [])), []);
+  assert.equal(kickRecordText(detailFromText(k, [], []).kick), '5戦3勝1敗1分', 'シートの一行（.gs の recordDetailKickText_ も同じ形）');
+  assert.equal(kickRecordText(detailFromText({ games: '5', win: '3', draw: '' }, [], []).kick), '5戦3勝2敗');
+  assert.equal(recordLine(5, 3, 1), '5戦3勝1敗1分');
+  assert.equal(recordLine(5, 3, 2), '5戦3勝0敗2分');
+  assert.equal(recordLine(5, 3), '5戦3勝2敗');
+  assert.deepEqual(recordReviewPairs(detailFromText(k, [{ sport: '空手', games: '4', win: '1', draw: '2' }], []))[0], ['キックボクシング', '5戦3勝1敗1分']);
+  assert.deepEqual(recordReviewPairs(detailFromText(k, [{ sport: '空手', games: '4', win: '1', draw: '2' }], []))[1], ['他の格闘技：空手', '4戦1勝1敗2分']);
+  assert.equal(
+    packRecordDetail(detailFromText(k, [{ sport: '空手', games: '4', win: '1', draw: '2' }], [])),
+    '{"v":1,"kick":{"games":5,"win":3,"loss":1,"draw":1},"others":[{"sport":"空手","games":4,"win":1,"loss":1,"draw":2,"noResult":0}],"titles":[]}',
+  );
+  assert.deepEqual(kickFromRecordText('5戦3勝1敗1分'), { games: 5, win: 3, loss: 1, draw: 1 }, '一行から戻せる（準備の画面・下書き）');
+});
+
+test('引き分け：直す所の言い方。数字でない・勝ちと合わせて試合数より多い。空は直さない', () => {
+  assert.deepEqual(recordProblems({ games: '5', win: '3', draw: '' }, [], []), []);
+  assert.deepEqual(recordProblems({ games: '5', win: '3', draw: 'いち' }, [], []), ['キックボクシングの引き分けを、数字で入れてください（無ければ、空のままにします）。']);
+  assert.deepEqual(recordProblems({ games: '5', win: '3', draw: '3' }, [], []), ['キックボクシングの勝ちと引き分けを合わせた数が、試合数（5）より多くなっています。']);
+  assert.deepEqual(recordProblems({ games: '5', win: '6', draw: '' }, [], []), ['キックボクシングの勝ちが、試合数（5）より多くなっています。'], '勝ちだけで多いときは、今までの言い方');
+  assert.deepEqual(recordProblems({ games: '0', win: '' }, [{ sport: '空手', games: '3', win: '2', draw: '2' }], []), ['「空手」の勝ちと引き分けを合わせた数が、試合数（3）より多くなっています。']);
+  assert.equal(recordIsWrong({ games: '5', win: '3', draw: '' }, [], []), false);
+  assert.equal(recordIsWrong({ games: '5', win: '', draw: '1' }, [], []), false, '勝ちがまだ：入力の途中');
+  assert.equal(recordIsWrong({ games: '5', win: '3', draw: '3' }, [], []), true);
+  assert.equal(recordIsWrong({ games: '5', win: '3', draw: 'x' }, [], []), true);
+  assert.equal(recordIsWrong({ games: '0', win: '' }, [{ sport: '空手', games: '3', win: '1', draw: '5' }], []), true);
+});
+
+test('引き分けがあっても、A・Bクラスのすすめは勝ちの数だけで決める', () => {
+  const settings = { ...DEFAULT_CLASS_SETTINGS, enabled: true };
+  assert.deepEqual(suggestClass('5戦3勝1敗1分', settings), suggestClass('5戦3勝2敗', settings));
+  assert.equal(suggestClass('5戦3勝1敗1分', settings)?.wins, 3);
+  assert.deepEqual(suggestClass('5戦2勝0敗3分', settings), suggestClass('2勝0敗', settings));
+});

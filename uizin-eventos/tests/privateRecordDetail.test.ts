@@ -139,12 +139,15 @@ test('古い選手（くわしい戦績が無い人）の表示に使う値は�
   assert.equal(same.name, '架空R-001'); assert.equal(same.record, '2勝1敗'); assert.equal(same.weight, '60'); assert.equal(same.gym, 'テストジム');
 });
 
-test('くわしい戦績の文: キックは必ず1行（未経験は「試合数 0」）。他の格闘技・タイトルは、あるものだけ。出すのは試合数と勝ちだけ（負け・引き分け・勝敗なしは、表にあっても出さない）', () => {
+test('くわしい戦績の文: キックは必ず1行（未経験は「試合数 0」）。他の格闘技・タイトルは、あるものだけ。出すのは試合数と勝ち、引き分けはあるときだけ（負け・勝敗なしは出さない）', () => {
   const lines = recordDetailLines(detail);
   assert.equal(lines.kick, 'キックボクシング：試合数 4・勝ち 3');
   assert.deepEqual(lines.others, ['ムエタイ（他の格闘技）：試合数 2・勝ち 1']);
   assert.deepEqual(lines.titles, ['タイトル・入賞：架空カップ（2026年・ライト級）・優勝']);
   assert.deepEqual(recordDetailLines({ v: 1, kick: { games: 0, win: 0, loss: 0, draw: 0 }, others: [], titles: [] }), { kick: 'キックボクシング：未経験（試合数 0）', others: [], titles: [] });
+  const drawn = recordDetailLines({ v: 1, kick: { games: 5, win: 3, loss: 1, draw: 1 }, others: [{ sport: '空手', games: 4, win: 1, loss: 0, draw: 2, noResult: 1 }], titles: [] });
+  assert.equal(drawn.kick, 'キックボクシング：試合数 5・勝ち 3・引き分け 1', '引き分けがあれば出す（2026-10-25 owner）');
+  assert.deepEqual(drawn.others, ['空手（他の格闘技）：試合数 4・勝ち 1・引き分け 2'], '勝敗なしは出さない');
 });
 
 test('保存して読み直しても、くわしい戦績が消えない（保存データの形・バックアップのどちらも）', async () => {

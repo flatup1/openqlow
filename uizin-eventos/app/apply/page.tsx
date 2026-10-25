@@ -738,7 +738,7 @@ export default function PublicApply() {
   const payloadKey = JSON.stringify(postFields.filter(([name]) => name !== 'requestId'));
   const contactNow: ContactNow = { name: cname, phone, email };
   // くわしい戦績の欄に、何か入れてあるか（試合数・勝ち・足した行。「あり」にしただけで、何も書いていない行は、入力と数えない）
-  const recordTyped = recordOn && (Boolean(kickText.games.trim() || kickText.win.trim()) || (otherOn && otherRows.some((row) => row.sport.trim() || row.games.trim() || row.win.trim())) || (titleOn && titleRows.some((row) => row.event.trim() || row.year.trim() || row.class.trim() || row.result.trim())));
+  const recordTyped = recordOn && (Boolean(kickText.games.trim() || kickText.win.trim() || (kickText.draw ?? '').trim()) || (otherOn && otherRows.some((row) => row.sport.trim() || row.games.trim() || row.win.trim() || (row.draw ?? '').trim())) || (titleOn && titleRows.some((row) => row.event.trim() || row.year.trim() || row.class.trim() || row.result.trim())));
   const athleteInput = [fighter.name, fighter.grade, fighter.age, fighter.height, fighter.weight, fighter.record, fighter.comment, fighter.musicUrl].some((v) => v.trim()) || Boolean(photo) || Boolean(chosenClass) || Boolean(division) || HANAMICHI_KEYS.some((key) => hn[key].trim()) || Boolean(birth.y || birth.m || birth.d) || recordTyped
     || pledgeAns.ticks.some(Boolean) || pledgeAns.guardian || pledgeAns.gymPermission || pledgeAns.gymConsent;
   const gymContactInput = [fighter.gym, contactName, contactPhone, contactEmail].some((v) => v.trim()) || consent || Boolean(gymNameRaw.trim() || gymPhoneRaw.trim());
