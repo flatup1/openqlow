@@ -243,9 +243,24 @@ await scenario('M3', 'new link: after a failed send the red lines name the row t
   const line = '「空手」の勝ちが、試合数（3）より多くなっています。';
   check((await page.getByText(line).count()) >= 1, 'the red list names the 競技 to fix');
   check((await markerOnRecord(page)) === 1, 'the marker is on 戦績 after the failed send');
+  // 直す欄は赤い枠で、上の赤い一覧とつながる（読み上げでも分かる）。正しい欄は赤くしない
+  const win0 = page.locator('#rd-other-win-0');
+  check((await win0.getAttribute('aria-invalid')) === 'true', 'the 勝ち field to fix is aria-invalid');
+  check(((await win0.getAttribute('aria-describedby')) ?? '').split(' ').includes('rd-problems'), 'the 勝ち field points at the red list');
+  check((await page.locator('#rd-other-games-0').getAttribute('aria-invalid')) === null, 'a correct field is not marked');
+  await win0.focus(); await settle(150);
+  check((await win0.evaluate((el) => getComputedStyle(el).boxShadow)) !== 'none', 'the focused record field shows the blue ring');
+  // 上にくっつく赤い箱の下に、キーボードで選んだ欄がかくれない（箱の下まで動く）
+  if (await page.locator('#apply-msg').count()) {
+    await page.locator('#rd-other-games-0').evaluate((el) => { window.scrollBy(0, el.getBoundingClientRect().top - 20); el.focus({ preventScroll: true }); });
+    await settle(250);
+    const gap = await page.evaluate(() => document.getElementById('rd-other-games-0').getBoundingClientRect().top - document.getElementById('apply-msg').getBoundingClientRect().bottom);
+    check(gap >= 0, 'a field chosen with the keyboard is not hidden under the red box (gap ' + Math.round(gap) + 'px)');
+  } else check(false, 'the red box at the top is shown after the failed send');
   await page.locator('#rd-other-win-0').fill('3');
   await leaveField(page); await settle(250);
   check((await page.getByText(line).count()) === 0, 'the red line is gone once 勝ち is fixed');
+  check((await page.locator('#rd-other-win-0').getAttribute('aria-invalid')) === null, 'the fixed field is no longer marked');
   check((await markerOnRecord(page)) === 0 && (await markerBoxes(page).count()) === 1, 'the marker moved on from 戦績');
 });
 

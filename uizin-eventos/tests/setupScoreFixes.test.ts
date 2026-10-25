@@ -135,7 +135,7 @@ test('3-ux: 「この選手を取り消す」は、すぐ消して「消しま�
 
 test('3-ux: 他のジム用の入力画面の文字は17px以上（text-sm・text-base を使わない）。ボタンは48px以上。黄色の「👉 次はここ」は、ほかの画面と同じ部品で、1つだけ', () => {
   assert.doesNotMatch(ENTRY, /\btext-(?:xs|sm|base)\b/);
-  assert.match(ENTRY, /const input = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-\[17px\]';/);
+  assert.match(ENTRY, /const input = 'mt-1 w-full rounded-xl border-2 border-slate-500 bg-white p-3 text-\[17px\]';/);
   assert.match(ENTRY, /<main className="min-h-screen bg-slate-50 px-4 py-8 text-\[17px\] text-slate-950">/, 'ふつうの文字（見出し・欄の名前）も17px');
   const css = read('app/globals.css');
   assert.match(css, /\.tos-danger-btn\{min-height:48px;/); assert.match(css, /\.tos-safe-btn\{min-height:56px;/);

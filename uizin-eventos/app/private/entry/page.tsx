@@ -11,7 +11,8 @@ import { NextSlot } from '../marks.tsx';
 import { checkNumber, fieldOfEntryError } from '../normalize.ts';
 
 type ReadyFighter = EntryFighter & { photoDataUrl: string };
-const input = 'mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-[17px]';
+// 枠は、薄い黄色の上でも見える濃さ（border-slate-500）
+const input = 'mt-1 w-full rounded-xl border-2 border-slate-500 bg-white p-3 text-[17px]';
 /**
  * 知らせ。ok＝緑の「✓」/ error＝赤の「✕」（何が足りないかを全部。head があれば、その見出し）/ removed＝赤の「✕ 消しました」と「元にもどす」（10秒だけ）。
  * 色だけにせず、いつも記号と言葉を付ける
@@ -134,9 +135,9 @@ export default function PrivateEntry() {
   return <main className="min-h-screen bg-slate-50 px-4 py-8 text-[17px] text-slate-950"><div className="mx-auto max-w-3xl">
     <header className="rounded-3xl bg-white p-6 shadow-sm"><p className="font-black text-emerald-700">🔐 選手エントリーシート（他のジム用の入力画面）</p><h1 className="mt-2 text-3xl font-black">上から順に入力するだけです</h1><p className="mt-3 text-[17px] leading-relaxed text-slate-700">入力した名前・体重・写真は、インターネットへ送信されません。この画面を閉じるまで、この端末の中だけで使います。</p><p id="entry-close-note" className="mt-2 text-[17px] font-bold leading-relaxed text-slate-900">閉じると、入れた選手は消えます。先に「提出ファイルを保存する」を押します。</p><div className="mt-4 rounded-xl bg-amber-50 p-4 font-bold text-amber-950">電話番号・メール・住所・生年月日・保護者名は入力しません。</div></header>
     {message ? (message.kind === 'removed'
-      ? <div role="status" className="tos-error sticky top-2 z-20 mt-4 text-[1.0625rem] shadow"><p className="m-0"><span aria-hidden="true">✕ </span>消しました：{message.fighter.name}さん。まちがえたときは、10秒のあいだに「元にもどす」を押します。</p><button id="entry-undo" type="button" onClick={undo} className="tos-safe-btn mt-2 w-full text-[17px] sm:w-auto">元にもどす</button></div>
+      ? <div role="status" className="tos-error sticky top-2 z-20 mt-4 max-h-[35vh] overflow-y-auto text-[1.0625rem] shadow"><p className="m-0"><span aria-hidden="true">✕ </span>消しました：{message.fighter.name}さん。まちがえたときは、10秒のあいだに「元にもどす」を押します。</p><button id="entry-undo" type="button" onClick={undo} className="tos-safe-btn mt-2 w-full text-[17px] sm:w-auto">元にもどす</button></div>
       : message.kind === 'error'
-      ? <div role="status" className="tos-error sticky top-2 z-20 mt-4 text-[1.0625rem] shadow"><p className="m-0"><span aria-hidden="true">✕ </span>{message.head ?? (message.lines.length > 1 ? 'まちがい：' + message.lines.length + 'か所を直してください。' : 'まちがい：')}</p><ul className="m-0 mt-1 list-none space-y-1 p-0">{message.lines.map((line) => <li key={line}>{line}</li>)}</ul></div>
+      ? <div role="status" className="tos-error sticky top-2 z-20 mt-4 max-h-[35vh] overflow-y-auto text-[1.0625rem] shadow"><p className="m-0"><span aria-hidden="true">✕ </span>{message.head ?? (message.lines.length > 1 ? 'まちがい：' + message.lines.length + 'か所を直してください。' : 'まちがい：')}</p><ul className="m-0 mt-1 list-none space-y-1 p-0">{message.lines.map((line) => <li key={line}>{line}</li>)}</ul></div>
       : <p role="status" className="tos-ok sticky top-2 z-20 mt-4 text-[1.0625rem] shadow"><span aria-hidden="true">✓ </span>{message.lines[0]}</p>) : null}
     <section className="mt-5 rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-2xl font-black">1. 選手を入力</h2><p className="mt-2 text-slate-600">「必須」はすべて入力してください。戦績がない選手は「初試合」と入力します。</p><div className="mt-4 grid gap-4 sm:grid-cols-2">
       {([['gym','ジム名 必須'],['name','選手名 必須'],['height','身長（cm）必須'],['weight','体重（kg）必須'],['record','戦績・競技歴 必須']] as const).map(([key,label]) => <label key={key} className="font-bold">{label}<input id={FIELD_ID[key]} className={input + ' bg-amber-50'} value={current[key]} inputMode={['height','weight'].includes(key) ? 'decimal' : undefined} onChange={(event)=>change(key,event.target.value)} /></label>)}

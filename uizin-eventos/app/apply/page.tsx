@@ -808,6 +808,23 @@ export default function PublicApply() {
       if (stuck) clearTimeout(stuck);
     };
   }, []);
+  useEffect(() => {
+    // 上にくっつくメッセージの箱（#apply-msg）の下に、選んだ欄がかくれたら、箱の下まで少しだけ動かす（Tab・Shift+Tab・キーボードの「前へ」）。
+    // 押して選んだときは、押した欄が見えているので動かさない（動かすと、押した所がずれる）
+    const reveal = (e: FocusEvent) => {
+      if (pointerDownRef.current) return;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (!target || target.id === 'apply-msg') return;
+      requestAnimationFrame(() => {
+        const bar = document.getElementById('apply-msg');
+        if (!bar || bar.contains(target)) return;
+        const under = bar.getBoundingClientRect().bottom + 8 - target.getBoundingClientRect().top;
+        if (under > 0) window.scrollBy(0, -under);
+      });
+    };
+    document.addEventListener('focusin', reveal);
+    return () => document.removeEventListener('focusin', reveal);
+  }, []);
 
   const clearError = (key: Key) => {
     setFieldErrors((old) => { if (!old[key]) return old; const rest = { ...old }; delete rest[key]; return rest; });

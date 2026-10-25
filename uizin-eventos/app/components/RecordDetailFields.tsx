@@ -12,7 +12,8 @@ import { countOf, emptyOtherText, emptyTitleText, type KickText, type OtherText,
 
 const box = 'rounded-2xl border-2 border-slate-400 bg-white p-4';
 const label = 'block text-[1.0625rem] font-bold text-slate-900';
-const input = 'mt-2 block w-full min-h-14 min-w-0 rounded-2xl border-2 border-slate-500 bg-white px-4 py-3 text-lg font-medium text-slate-950 outline-none';
+// 選んだ欄は、ほかの欄（申し込みのページの inputBase）と同じ青い輪郭。直す欄は、赤い太い枠（tos-input-error）
+const input = 'mt-2 block w-full min-h-14 min-w-0 rounded-2xl border-2 px-4 py-3 text-lg font-medium text-slate-950 outline-none transition placeholder:text-slate-500 focus:border-indigo-700 focus:ring-4 focus:ring-indigo-600';
 const choice = 'flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border-2 border-slate-500 bg-white px-4 text-lg font-bold';
 const plusBtn = 'min-h-12 w-full rounded-xl border-2 border-slate-900 bg-white px-4 text-[1.0625rem] font-bold text-slate-900';
 const minusBtn = 'min-h-12 rounded-xl border-2 border-slate-500 bg-white px-4 text-[1.0625rem] font-bold text-slate-900';
@@ -43,18 +44,25 @@ export function RecordDetailFields(p: Props): ReactNode {
   const winOver = games > 0 && Number.isInteger(kickWin) && kickWin > games;
   // 勝ちが試合数より多いときは、下の赤い一行（試合数と合わせて言う）で出しているので、同じことを2回は出さない
   const shownProblems = (p.problems ?? []).filter((text) => !(winOver && text.startsWith('キックボクシングの勝ちが、試合数')));
-  const numberField = (id: string, text: string, onText: (v: string) => void, name: string, hint?: string) => (
+  // 送ろうとして直す所があるときは、空の欄・数でない欄を赤い枠にして、上の赤い一覧（rd-problems）とつなぐ（読み上げでも、どの欄を直すか分かる）
+  const checking = (p.problems ?? []).length > 0;
+  const fieldLook = (bad: boolean, id: string, hint?: string, extra?: string) => ({
+    'aria-invalid': bad ? true : undefined,
+    'aria-describedby': [hint ? id + '-hint' : '', extra ?? '', bad && shownProblems.length ? 'rd-problems' : ''].filter(Boolean).join(' ') || undefined,
+    className: input + (bad ? ' tos-input-error' : ' border-slate-500 bg-white'),
+  });
+  const numberField = (id: string, text: string, onText: (v: string) => void, name: string, hint?: string, over = false, overId?: string) => (
     <div className="min-w-0">
       <label htmlFor={id} className={label}>{name}</label>
-      {hint ? <p className="text-[1.0625rem] text-slate-700">{hint}</p> : null}
-      <input id={id} inputMode="numeric" autoComplete="off" value={text} onChange={(e) => onText(e.target.value)} className={input} />
+      {hint ? <p id={id + '-hint'} className="text-[1.0625rem] text-slate-700">{hint}</p> : null}
+      <input id={id} inputMode="numeric" autoComplete="off" value={text} onChange={(e) => onText(e.target.value)} {...fieldLook(over || (checking && !Number.isInteger(countOf(text))), id, hint, over ? overId : undefined)} />
     </div>
   );
   const textField = (id: string, text: string, onText: (v: string) => void, name: string, hint?: string, placeholder?: string, numeric = false) => (
     <div className="min-w-0">
       <label htmlFor={id} className={label}>{name}</label>
-      {hint ? <p className="text-[1.0625rem] text-slate-700">{hint}</p> : null}
-      <input id={id} inputMode={numeric ? 'numeric' : undefined} autoComplete="off" placeholder={placeholder} value={text} onChange={(e) => onText(e.target.value)} className={input} />
+      {hint ? <p id={id + '-hint'} className="text-[1.0625rem] text-slate-700">{hint}</p> : null}
+      <input id={id} inputMode={numeric ? 'numeric' : undefined} autoComplete="off" placeholder={placeholder} value={text} onChange={(e) => onText(e.target.value)} {...fieldLook(checking && (numeric ? !/^\d{4}$/.test(text.normalize('NFKC').trim()) : !text.trim()), id, hint)} />
     </div>
   );
   const onOff = (name: string, on: boolean, setOn: (v: boolean) => void, onTurnOn: () => void, onTurnOff: () => void) => (
@@ -73,14 +81,14 @@ export function RecordDetailFields(p: Props): ReactNode {
   return (
     <div id="f-record" tabIndex={-1} className="min-w-0 space-y-6 outline-none" onBlur={(e) => { if (p.onLeave && !e.currentTarget.contains(e.relatedTarget as Node | null)) p.onLeave(); }}>
       <p className="text-lg font-black">戦績 必須</p>
-      {shownProblems.length ? <ul className="grid gap-2 rounded-2xl border-2 border-red-700 bg-white p-4 text-[1.0625rem] font-bold text-red-700">{shownProblems.map((text, i) => <li key={i}>✕ {text}</li>)}</ul> : null}
+      {shownProblems.length ? <ul id="rd-problems" className="grid gap-2 rounded-2xl border-2 border-red-700 bg-white p-4 text-[1.0625rem] font-bold text-red-700">{shownProblems.map((text, i) => <li key={i}>✕ {text}</li>)}</ul> : null}
 
       <section aria-labelledby="rd-kick-title" className={box}>
         <h3 id="rd-kick-title" className="text-lg font-black">【キックボクシングの戦績】</h3>
         <div className="mt-3 grid gap-4">
           {numberField('rd-kick-games', p.kick.games, (v) => p.setKick({ ...p.kick, games: v }), '試合数 必須', 'スパーリング大会も、試合数に入れてください。未経験の人は「0」と入れると、入力は完了です。')}
-          {showKickDetail ? numberField('rd-kick-win', p.kick.win, (v) => p.setKick({ ...p.kick, win: v }), '勝ち 必須', '勝った試合の数です。') : null}
-          {winOver ? <p className="text-[1.0625rem] font-bold text-red-700">勝ちが、試合数（{games}）より多くなっています。</p> : null}
+          {showKickDetail ? numberField('rd-kick-win', p.kick.win, (v) => p.setKick({ ...p.kick, win: v }), '勝ち 必須', '勝った試合の数です。', winOver, 'rd-kick-over') : null}
+          {winOver ? <p id="rd-kick-over" className="text-[1.0625rem] font-bold text-red-700">勝ちが、試合数（{games}）より多くなっています。</p> : null}
         </div>
       </section>
 
@@ -96,7 +104,7 @@ export function RecordDetailFields(p: Props): ReactNode {
               {textField('rd-other-sport-' + i, row.sport, (v) => setOtherAt(i, { sport: v }), '競技名 必須', undefined, '例：空手')}
               {/* 2つの欄は、縦に1列に並べる（横に並べると、説明の行数がちがう分、入力欄の高さがずれて見える） */}
               {numberField('rd-other-games-' + i, row.games, (v) => setOtherAt(i, { games: v }), '試合数 必須', 'スパーリング大会も入れます')}
-              {numberField('rd-other-win-' + i, row.win, (v) => setOtherAt(i, { win: v }), '勝ち 必須', '勝った試合の数です。')}
+              {numberField('rd-other-win-' + i, row.win, (v) => setOtherAt(i, { win: v }), '勝ち 必須', '勝った試合の数です。', checking && countOf(row.win) > countOf(row.games))}
               <button type="button" onClick={() => { const next = p.others.filter((_, j) => j !== i); p.setOthers(next); if (next.length === 0) p.setOtherOn(false); }} className={minusBtn}>この競技を消す</button>
             </div>
           ))}
