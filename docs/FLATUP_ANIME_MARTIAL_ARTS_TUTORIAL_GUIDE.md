@@ -84,7 +84,7 @@ FLATUP は「世界一初心者に優しい格闘技ジム」です。教則動�
 ```text
 [Duration]s | 16:9 or 9:16 | 2K
 
-[Reference]
+[Reference]   ← 番号は「そのカットでアップロードした順」。キャラシートの通し番号とは別物
 @image1 = strict character identity lock (face, hair, body proportions, uniform, exact colors). Never alter.
 @image2 = stance reference (optional)
 @image3 = environment style lock (dojo / gym)
@@ -121,9 +121,18 @@ no pain expression, no shouting coach, no shoes, no text, no watermark.
 Maintain anatomical accuracy for teaching purpose.
 ```
 
-### 5-2. FLATUP準拠の Subject ブロック（ブランド動画用）
+### 5-2. Subject ブロックは用途で使い分ける（取り違え注意）
 
-キャラクター仕様は `FLATUP_GYM_ANIME_ART_BIBLE.md` が正本です。
+FLATUP には体型の異なる2シリーズがあります。**この教則ガイドで作るのは下の表の「教則・アクション」のほうです。**
+
+| 用途 | 頭身 | Subject ブロックの入手先 |
+|---|---|---|
+| **教則・アクション**（このガイドの対象） | 6.5〜7頭身 | **`docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` §5** |
+| ブランド動画13話 | 2.5頭身ちび | 下記のブロック（`FLATUP_GYM_ANIME_ART_BIBLE.md` が正本） |
+
+**教則動画を作るなら、下のちび版は使いません。** 参照先のキャラクターシートから Subject を取ってください。ちび体型では体重移動・膝の角度・軸足の向きが読み取れず、教則として機能しません。
+
+以下はブランド動画13話用のブロックです（参考として掲載）。
 
 ```text
 [Subject]
@@ -139,7 +148,7 @@ adult body proportions, angry expression, wearing shoes, wearing earrings,
 long gloves with fingers, sparring against a person, CGI.
 ```
 
-ブランド動画（13話シリーズ）と教則動画でスタイルを混ぜないこと。教則は等身を上げた通常アニメ体型でも可だが、**1シリーズ内では必ず統一** する。
+ブランド動画（13話シリーズ）と教則動画でスタイルを混ぜないこと。教則の体型は **6.5〜7頭身に確定済み**（キャラクターシート §2）。**1シリーズ内では必ず統一** する。
 
 ---
 
@@ -219,6 +228,8 @@ Constraints: no swinging the leg without lifting the knee, no dropped hands, no 
 
 ### 6-5. ミット打ちの受け方（2人・安全表現）
 
+**このカットだけ2人分のキャラシートが必要です。** 生徒役の作り方は `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` §9 を参照。
+
 ```text
 10s | 16:9 | 2K
 @image1 = coach identity lock. @image2 = student identity lock. Never swap or blend the two.
@@ -239,7 +250,7 @@ Constraints: no strikes to the face or body of a person, no aggressive or shouti
 
 ## 7. 量産ワークフロー
 
-1. **キャラクターシート固定（最重要）**: 正面・斜め45度・側面・背面・構え・技の途中の **5〜9枚** を静止画で作り、毎回 `@image1〜` に指定する。ここが品質の8割を決める。
+1. **キャラクターシート固定（最重要）**: 正面・斜め45度・側面・背面・構え・技の途中の **5〜9枚** を静止画で作り、毎回 `@image1〜` に指定する。ここが品質の8割を決める。**コピペ用プロンプトは `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md`**。
 2. **技リスト化**: 1本1技。カリキュラム順（構え → 前蹴り → ジャブ → ストレート → ミドル）に並べる。
 3. **絵コンテ**: 難しい技は9〜16コマの静止画を先に作り、Image-to-Video に渡す。
 4. **短尺生成**: 6〜10秒で「構え → 技 → 復帰」。1技につき3〜4本作って良い1本を選ぶ。
@@ -351,6 +362,7 @@ Constraints: no strikes to the face or body of a person, no aggressive or shouti
 
 - `docs/FLATUP_ANIME_HIGH_INTENSITY_ACTION_GUIDE.md` — 高強度アクション演出（OP・ハイライト用）
 - `docs/FLATUP_ANIME_MOTION_TRANSFER_GUIDE.md` — 実写→アニメのモーション参照
+- `docs/FLATUP_ANIME_INSTRUCTOR_CHARACTER_SHEET.md` — 参照画像9枚の生成プロンプト（最初にこれを作る）
 - `FLATUP_GYM_ANIME_ART_BIBLE.md` — キャラクター統一基準（正本）
 - `docs/FLATUP_ANIMATION_BIBLE.md` — 物語・映像・トーンの基準
 - `docs/FLATUP_CHARACTER_CONSISTENCY_RULE.md` — 一貫性の絶対ルール
