@@ -52,6 +52,9 @@ assert(saved.includes(queuePath), "returns publish queue path with saved files")
 assert.deepEqual(queue.destinations, ["google_business", "threads", "line_voom"]);
 assert.equal(queue.status, "queued_for_owner");
 
+// 二重の「OK」は、保存や承認記録をやり直さずに断る。
+await assert.rejects(approveRecord("FG-20260530-001", "OK FG-20260530-001 all"), /already saved/);
+
 await rm(tmp, { recursive: true, force: true });
 
 console.log("daily approval tests passed");

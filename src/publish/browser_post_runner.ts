@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { BrowserPostJob } from "./browser_post_job.js";
+import { withStateLock } from "../reply_drafts/lock.js";
+import { browserPostJobsLockKey, type BrowserPostJob } from "./browser_post_job.js";
 
 type BrowserPostStatus = BrowserPostJob["status"] | "published" | "failed";
 
@@ -59,7 +60,15 @@ function asPendingJob(job: StoredBrowserPostJob): BrowserPostJob {
   };
 }
 
-export async function runBrowserPostJobs(
+export function runBrowserPostJobs(
+  root: string,
+  id: string,
+  opts: BrowserPostRunnerOptions,
+): Promise<BrowserPostRunnerResult> {
+  return withStateLock(browserPostJobsLockKey(root, id), () => runUnlocked(root, id, opts));
+}
+
+async function runUnlocked(
   root: string,
   id: string,
   opts: BrowserPostRunnerOptions,

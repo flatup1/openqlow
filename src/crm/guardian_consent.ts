@@ -12,8 +12,10 @@
 // LINE会話フローの配線は src/line_bot/（Codex担当領域）で行う。本モジュールは
 // 純粋なロジックとデータのみを提供し、LINE APIには一切依存しない。
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 
 /** 保護者同意が必要になる年齢の境界（これ未満が未成年扱い） */
 export const GUARDIAN_CONSENT_AGE_THRESHOLD = 18;
@@ -449,7 +451,8 @@ async function writeAll(filePath: string, list: GuardianConsent[]): Promise<void
   await mkdir(path.dirname(filePath), { recursive: true });
   // 一時ファイルに書き切ってから rename（同一ディレクトリ内なので原子的）。
   // 保存の途中で中断しても同意履歴が壊れない。
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
+  // 名前は毎回変える。固定名だと、同時に書いたとき互いの一時ファイルを奪い合って rename が失敗する。
+  const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmpPath, JSON.stringify(list, null, 2) + "\n", "utf8");
   await rename(tmpPath, filePath);
 }
@@ -467,34 +470,37 @@ export function openGuardianConsentStore(
 
   return {
     async create(input) {
-      const list = await readAll(filePath);
-      const nextId = list.reduce((max, c) => Math.max(max, c.id), 0) + 1;
-      const at = stamp();
-      const normalized = normalizeGuardianConsentInput(input);
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`guardian-consent:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const nextId = list.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+        const at = stamp();
+        const normalized = normalizeGuardianConsentInput(input);
 
-      // 生年月日が入っていれば同意時点の年齢を確定して残す。
-      if (!normalized.ageAtConsent && normalized.birthDate) {
-        normalized.ageAtConsent = calculateAge(normalized.birthDate, now()) ?? null;
-      }
-      // 管理番号は未指定なら採番する。
-      if (!normalized.managementNumber) {
-        normalized.managementNumber = formatManagementNumber(nextId, now());
-      }
-      // 両方チェック済みなら、この時点で同意成立として日時と状態を確定する。
-      if (isConsentComplete(normalized) && !normalized.consentedAt) {
-        normalized.consentedAt = at;
-        if (normalized.status === "pending") normalized.status = "consented";
-      }
+        // 生年月日が入っていれば同意時点の年齢を確定して残す。
+        if (!normalized.ageAtConsent && normalized.birthDate) {
+          normalized.ageAtConsent = calculateAge(normalized.birthDate, now()) ?? null;
+        }
+        // 管理番号は未指定なら採番する。
+        if (!normalized.managementNumber) {
+          normalized.managementNumber = formatManagementNumber(nextId, now());
+        }
+        // 両方チェック済みなら、この時点で同意成立として日時と状態を確定する。
+        if (isConsentComplete(normalized) && !normalized.consentedAt) {
+          normalized.consentedAt = at;
+          if (normalized.status === "pending") normalized.status = "consented";
+        }
 
-      const consent: GuardianConsent = {
-        id: nextId,
-        ...normalized,
-        createdAt: at,
-        updatedAt: at,
-      };
-      list.push(consent);
-      await writeAll(filePath, list);
-      return consent;
+        const consent: GuardianConsent = {
+          id: nextId,
+          ...normalized,
+          createdAt: at,
+          updatedAt: at,
+        };
+        list.push(consent);
+        await writeAll(filePath, list);
+        return consent;
+      });
     },
 
     async getAll() {
@@ -520,39 +526,45 @@ export function openGuardianConsentStore(
     },
 
     async update(id, patch) {
-      const list = await readAll(filePath);
-      const index = list.findIndex(c => c.id === id);
-      if (index < 0) return undefined;
-      const current = list[index];
-      const normalized = normalizeGuardianConsentInput({ ...current, ...patch });
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`guardian-consent:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const index = list.findIndex(c => c.id === id);
+        if (index < 0) return undefined;
+        const current = list[index];
+        const normalized = normalizeGuardianConsentInput({ ...current, ...patch });
 
-      // 更新で両方チェックが揃ったら、その瞬間を同意成立とする。
-      if (isConsentComplete(normalized) && !normalized.consentedAt) {
-        normalized.consentedAt = stamp();
-        if (normalized.status === "pending") normalized.status = "consented";
-      }
-      // 紙の署名日が入ったら状態を進める（原本確保）。
-      if (normalized.paperSignedAt && normalized.status === "consented") {
-        normalized.status = "paper_signed";
-      }
+        // 更新で両方チェックが揃ったら、その瞬間を同意成立とする。
+        if (isConsentComplete(normalized) && !normalized.consentedAt) {
+          normalized.consentedAt = stamp();
+          if (normalized.status === "pending") normalized.status = "consented";
+        }
+        // 紙の署名日が入ったら状態を進める（原本確保）。
+        if (normalized.paperSignedAt && normalized.status === "consented") {
+          normalized.status = "paper_signed";
+        }
 
-      const updated: GuardianConsent = {
-        ...normalized,
-        id: current.id,
-        createdAt: current.createdAt,
-        updatedAt: stamp(),
-      };
-      list[index] = updated;
-      await writeAll(filePath, list);
-      return updated;
+        const updated: GuardianConsent = {
+          ...normalized,
+          id: current.id,
+          createdAt: current.createdAt,
+          updatedAt: stamp(),
+        };
+        list[index] = updated;
+        await writeAll(filePath, list);
+        return updated;
+      });
     },
 
     async remove(id) {
-      const list = await readAll(filePath);
-      const next = list.filter(c => c.id !== id);
-      if (next.length === list.length) return false;
-      await writeAll(filePath, next);
-      return true;
+      // 「読む→変える→書く」を1件ずつ順番に行う。同時に来ると片方が消え、idも重複する。
+      return withStateLock(`guardian-consent:${filePath}`, async () => {
+        const list = await readAll(filePath);
+        const next = list.filter(c => c.id !== id);
+        if (next.length === list.length) return false;
+        await writeAll(filePath, next);
+        return true;
+      });
     },
   };
 }

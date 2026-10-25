@@ -147,9 +147,14 @@ export async function saveCrmLog(session: ConversationSession, options: CrmLogRe
   const fileName = `${dateJst}.md`;
   const filePath = path.join(dir, fileName);
 
+  // 追記は appendFile で行う。「読んで全部書き直す」方式だと、書いている途中で落ちたとき
+  // 1日分のログが消え、同時に終わった2件は片方が消える。
+  // 新規作成は "wx"（無いときだけ作る）にして、同時に作っても上書きし合わない。
   let appended = false;
   try {
-    const existing = await fs.readFile(filePath, "utf-8");
+    await fs.writeFile(filePath, markdown, { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     // 既存があれば区切り線 + 追記。frontmatter は重複させない（追記分は素のセクションのみ）。
     const appendBlock = [
       "",
@@ -159,14 +164,8 @@ export async function saveCrmLog(session: ConversationSession, options: CrmLogRe
       "",
       markdown.replace(/^---[\s\S]*?---\n/, ""), // front matter を剥がす
     ].join("\n");
-    await fs.writeFile(filePath, existing + appendBlock);
+    await fs.appendFile(filePath, appendBlock);
     appended = true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      await fs.writeFile(filePath, markdown);
-    } else {
-      throw error;
-    }
   }
 
   const stats = await fs.stat(filePath);

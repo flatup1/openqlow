@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
 import type { DraftRecord } from "../types.js";
 
 export async function saveRecord(root: string, record: DraftRecord): Promise<string> {
@@ -50,4 +51,14 @@ export async function readRecord(root: string, id: string): Promise<RecordReadRe
 export async function loadRecord(root: string, id: string): Promise<DraftRecord | undefined> {
   const result = await readRecord(root, id);
   return result.status === "ok" ? result.record : undefined;
+}
+
+/**
+ * 同じ下書きへの「読む→変える→書く」を、1件ずつ順番に行わせる。
+ *
+ * 承認・却下・修正が同時に来ると、後から書いた方が古い内容で上書きして、
+ * 先の変更を消す（却下済みが「保存済み」に戻る、など）。
+ */
+export function withRecordLock<T>(root: string, id: string, task: () => Promise<T>): Promise<T> {
+  return withStateLock(`record:${root}:${id}`, task);
 }

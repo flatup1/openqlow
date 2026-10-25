@@ -111,4 +111,15 @@ function record(id: string, status: DraftRecord["status"], createdAt: string): D
   );
 }
 
+// 目印が壊れている・空のとき、最新の保留へ落として承認しない。
+for (const broken of ["{こわれた", "", '{"recordedAt":"x"}']) {
+  const root = await makeRoot();
+  await saveRecord(root, record("FG-20260603-041", "pending_approval", "2026-06-02T20:00:00.000Z"));
+  await saveRecord(root, record("FG-20260603-042", "pending_approval", "2026-06-02T21:00:00.000Z"));
+  await writeFile(path.join(root, "state", "last_approval_candidate.json"), broken, "utf8");
+
+  assert.equal(await expandApprovalShortcut("ok", root), undefined, `目印が読めない(${JSON.stringify(broken)})ときは承認しない`);
+  assert.equal(await expandRejectionShortcut("no", root), undefined);
+}
+
 console.log("approval shortcut tests passed");
