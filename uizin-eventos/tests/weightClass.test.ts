@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  boutWeightWarning, canonWeightClass, cleanDivisionName, DEFAULT_DIVISIONS, DEFAULT_WEIGHT_SETTINGS, divisionHasClasses, divisionNameProblem, findDivision, isDefaultWeightSettings,
+  boutWeightWarning, canonWeightClass, cleanDivisionName, DEFAULT_DIVISIONS, DEFAULT_WEIGHT_SETTINGS, DIVISION_LABEL, divisionHasClasses, divisionNameProblem, findDivision, isDefaultWeightSettings, isDivisionError,
   normalizeDivision, normalizeDivisionLoose, normalizeWeightClass, normalizeWeightClassLoose, parseClassList, parseWeightClass, parseWeightSettings, weightChoiceError, weightClassLabel,
   weightClassToken, weightSettingsToParam, weightsFromParam, weightTag, WEIGHT_LIMITS, type WeightSettings,
 } from '../core/weightClass.ts';
@@ -55,7 +55,7 @@ test('階級のならび: 区切りいろいろ・全角・「なし」・まち
   const many = parseClassList(Array.from({ length: 21 }, (_, i) => '-' + (30 + i)).join('、')); assert.ok(many.problems.some((p) => /多すぎます/.test(p)));
 });
 
-test('初期の表は、CKA Vol.6の要項どおり（7区分）', () => {
+test('初期の表は、CKA Vol.7（2026年12月20日大会）の要項どおり（7区分）', () => {
   assert.deepEqual(DEFAULT_DIVISIONS.map((d) => d.name), ['小学生以下', '中学生女子', '中学生男子', '高校生・一般女子', '高校生・一般男子', '花道・女子（40歳以上）', '花道・男子（40歳以上）']);
   const tokens = (name: string) => findDivision(name, S)!.classes.map(weightClassToken).join(',');
   assert.equal(tokens('小学生以下'), '');
@@ -88,8 +88,15 @@ test('設定の読み取り：リンク・pingの入れ物から、正しいも�
 });
 
 test('選びかたの検査：区分が先、階級はその区分のものだけ。階級のない区分は階級を問わない', () => {
-  assert.equal(weightChoiceError('', '', S), '区分を選んでください。');
-  assert.equal(weightChoiceError('宇宙人', '37kg以下', S), '区分は、えらべるものから選んでください。');
+  assert.equal(weightChoiceError('', '', S), '出場区分を選んでください。', '選手に見える言い方は「出場区分」（owner 修正願 2026-10-22）');
+  assert.equal(weightChoiceError('宇宙人', '37kg以下', S), '出場区分は、えらべるものから選んでください。');
+  // /private/entry/ の見出しは、いまも「区分」。そこは、言い方を渡して、見出しと文を合わせる
+  assert.equal(weightChoiceError('', '', S, '区分'), '区分を選んでください。'); assert.equal(weightChoiceError('宇宙人', '37kg以下', S, '区分'), '区分は、えらべるものから選んでください。');
+  // 申し込みページは、文の頭の言葉で赤を出す欄を決める。頭の言葉は、文と同じ元（DIVISION_LABEL）を見る
+  assert.equal(DIVISION_LABEL, '出場区分');
+  assert.ok(isDivisionError(weightChoiceError('', '', S)) && isDivisionError(weightChoiceError('宇宙人', '37kg以下', S)));
+  assert.ok(!isDivisionError(weightChoiceError('中学生男子', '', S)) && !isDivisionError(weightChoiceError('中学生男子', '99kg以下', S)), '階級の文は、階級の欄');
+  assert.ok(isDivisionError('区分を選んでください。', '区分') && !isDivisionError('区分を選んでください。'), '古い言い方は、言い方を渡したときだけ');
   assert.equal(weightChoiceError('中学生男子', '', S), '階級を選んでください。');
   assert.equal(weightChoiceError('中学生男子', '99kg以下', S), '階級は、えらべるものから選んでください。');
   assert.equal(weightChoiceError('中学生男子', '37kg以下', S), '');
@@ -202,6 +209,7 @@ test('他ジム入力画面のリンク（ws・logo）と、名簿ZIPの列', ()
   assert.equal(entryConfigFromSearch('music=off&grade=optional&age=optional&comment=optional&ws=%5B').weights, undefined, 'こわれた ws は、使わない');
   assert.equal(entryWeightError({ id: '1', gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '' }, DEFAULT_ENTRY_CONFIG), '');
   assert.equal(entryWeightError({ id: '1', gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '', division: '中学生男子' }, config), '階級を選んでください。');
+  assert.equal(entryWeightError({ id: '1', gym: '', name: '', grade: '', age: '', height: '', weight: '', record: '', comment: '', musicUrl: '' }, config), '出場区分を選んでください。', '/private/entry/ の見出しも「出場区分」：その画面の文は、見出しと同じ言い方（申し込みページと同じ元）');
   const csv = entryCsv([{ id: 'E1', gym: 'ジム', name: '甲', grade: '', age: '', height: '170', weight: '60', record: '初', comment: '', musicUrl: '', fighterClass: 'Aクラス', division: '中学生男子', weightClass: '37kg以下' }], true, true);
   const lines = csv.replace(/^\uFEFF/, '').split('\r\n');
   assert.deepEqual(lines[0].split(',').map((c) => c.slice(1, -1)), [...ENTRY_HEADERS_WITH_WEIGHT]);

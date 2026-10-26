@@ -74,7 +74,7 @@ const nodeBackup = (value, password) => {
 };
 const nodeOpen = (text, password) => {
   const p = JSON.parse(text);
-  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), 250_000, 32, 'sha256');
+  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), p.iterations ?? 250_000, 32, 'sha256');
   const buf = Buffer.from(p.data, 'base64');
   const d = createDecipheriv('aes-256-gcm', key, Buffer.from(p.iv, 'base64'));
   d.setAuthTag(buf.subarray(buf.length - 16));
@@ -281,10 +281,24 @@ async function audit(page, label, { primary = 1, tapLinks = true } = {}) {
   return a;
 }
 /** Press Tab until the focused element matches; every stop is checked for a visible focus ring and not hiding under the bar. */
+/**
+ * RING を測る。帯に隠れて見えたときだけ、画面の動き（ゆっくり動く移動の途中）が止まるのを待って、もう一度測る（最大1.5秒）。
+ * 動いている途中の一瞬ではなく、止まったあとの位置で決める（止まったあとも隠れていれば、失敗のまま）。
+ */
+async function ringSettled(page) {
+  const first = await page.evaluate(RING);
+  if (!first.hiddenByBar) return first;
+  await page.evaluate(() => new Promise((resolve) => {
+    let last = scrollY, still = 0, frames = 0;
+    const tick = () => { frames++; if (scrollY === last) still++; else { still = 0; last = scrollY; } if (still >= 8 || frames > 90) resolve(); else requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }));
+  return page.evaluate(RING);
+}
 async function tabUntil(page, { sel, text }, max = 400, log = []) {
   for (let i = 0; i < max; i++) {
     await page.keyboard.press('Tab');
-    const r = await page.evaluate(RING);
+    const r = await ringSettled(page);
     log.push(r);
     const hit = await page.evaluate(({ sel, text }) => { const e = document.activeElement; if (!e || e === document.body || e === document.documentElement) return false; if (sel && !(e.matches(sel) || e.closest(sel))) return false; if (text && !(e.innerText || '').includes(text) && !(e.getAttribute('aria-label') || '').includes(text)) return false; return true; }, { sel, text });
     if (hit) return true;
@@ -828,7 +842,7 @@ scenario('I', 'backup and restore round trip', async (vp) => {
     check(/\.tournament\.enc$/.test(d.suggestedFilename()) && d.suggestedFilename().includes(id), 'backup file name ends with .tournament.enc and has the event id (' + d.suggestedFilename() + ')');
     file = await readFile(await d.path(), 'utf8');
   });
-  check((await notices(A)).includes('ファイルを保存しました'), 'backup shows a visible success sign');
+  check((await notices(A)).includes('保存を始めました'), 'backup shows a visible success sign');
   // "F01" is only 3 base64 letters: it appears by pure chance inside random ciphertext of a photo-sized file (flaky),
   // so test the text outside the ciphertext for it, and test the decoded ciphertext bytes for long, unambiguous strings.
   const envelope = JSON.parse(file), cipherBytes = Buffer.from(envelope.data, 'base64');
@@ -1028,7 +1042,7 @@ scenario('L', 'keyboard-only main path with visible focus', async (vp) => {
   await type('キーボード大会');
   check(await tabUntil(page, { sel: '#field-date' }, 10, log), 'Tab reaches the date field');
   await type('20271003');
-  await page.keyboard.press('Tab'); log.push(await page.evaluate(RING));
+  await page.keyboard.press('Tab'); log.push(await ringSettled(page));
   check(await val(page, '#field-date') === '2027年10月3日', 'date digits become a Japanese date by keyboard');
   check(await tabUntil(page, { sel: '#pick-file' }, 120, log), 'Tab reaches the roster file picker');
   await settle(400);
@@ -1043,7 +1057,7 @@ scenario('L', 'keyboard-only main path with visible focus', async (vp) => {
   // r2-134: 名簿を入れた直後、フォーカスは、もう「＋ 試合を追加」にある（黄色の「次はここ」と同じ所）。そこにいるなら、Tab を押さずに、そのまま Enter を押す
   await settle(300);
   const focusOnAdd = await page.evaluate(() => document.activeElement?.id === 'add-bout');
-  if (focusOnAdd) log.push(await page.evaluate(RING));
+  if (focusOnAdd) log.push(await ringSettled(page));
   check(focusOnAdd || await tabUntil(page, { text: '＋ 試合を追加' }, 300, log), (focusOnAdd ? 'after the import the keyboard focus is already on ＋ 試合を追加 (r2-134)' : 'Tab reaches ＋ 試合を追加'));
   await page.keyboard.press('Enter');
   await settle(500);
@@ -1256,7 +1270,7 @@ scenario('SU', 'setup page: typed URL survives failures; layout', async (vp) => 
   await p3.getByText('いまここ 2 / 3').first().waitFor();
   // step 2 puts the cursor in the URL box by itself; step back once so Tab still has to reach it by keyboard
   const autoFocused = await p3.evaluate(() => document.activeElement && document.activeElement.id === 'endpoint');
-  if (autoFocused) { log.push(await p3.evaluate(RING)); await p3.keyboard.press('Shift+Tab'); }
+  if (autoFocused) { log.push(await ringSettled(p3)); await p3.keyboard.press('Shift+Tab'); }
   check(await tabUntil(p3, { sel: '#endpoint' }, 80, log), 'Tab reaches the URL box' + (autoFocused ? ' (the cursor was already put there; went back one stop and Tab came back)' : ''));
   await p3.keyboard.insertText(ENDPOINT);
   await p3.getByText('✓ つながりました。次は「次へ進む」を押します。').first().waitFor({ timeout: 8000 });

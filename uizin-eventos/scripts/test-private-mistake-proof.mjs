@@ -117,7 +117,7 @@ const nodeBackup = (value, password) => {
 };
 const nodeOpen = (text, password) => {
   const p = JSON.parse(text);
-  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), 250_000, 32, 'sha256');
+  const key = pbkdf2Sync(password, Buffer.from(p.salt, 'base64'), p.iterations ?? 250_000, 32, 'sha256');
   const buf = Buffer.from(p.data, 'base64');
   const d = createDecipheriv('aes-256-gcm', key, Buffer.from(p.iv, 'base64'));
   d.setAuthTag(buf.subarray(buf.length - 16));
@@ -1258,6 +1258,8 @@ scenario('PRIVATE-D', 'PRIVATE', 'forgetting to save, closing, reloading', async
     const open = btn(page, '試合当日の画面を開く').first();
     const locked = await isLocked(open);
     const pagesBefore = ctx.pages().length;
+    // 押す前に、ボタンを画面のまん中へ（force で押すので、下の帯の下にあると、帯を押してしまい、何も起きない。人は帯の下のボタンを押せない）
+    await open.evaluate((el) => el.scrollIntoView({ block: 'center' })).catch(() => {}); await settle(300);
     await open.click({ force: true }).catch(() => {}); await settle(1500);
     const stored = await idbGet(page, id);
     const opened = ctx.pages().length > pagesBefore || page.url().includes('/live/');
@@ -1395,7 +1397,7 @@ scenario('PRIVATE-E', 'PRIVATE', 'backup password, restore wrong things', async 
     let downloads = 0; page.on('download', () => { downloads++; });
     await backupBtn(page).dblclick(); await settle(2500);
     check(downloads === 1, 'E21: one file for a double press (' + downloads + ')');
-    check(/ファイルを保存しました|保存しました/.test(await notices(page) + await text(page)), 'E21: a green line says the file was saved');
+    check(/保存を始めました。ダウンロードの中に「[^」]+」があるか、見ます/.test(await notices(page) + await text(page)), 'E21: a green line says the file was saved');
     return 'downloads ' + downloads;
   });
   await ctx.close();
@@ -1839,7 +1841,29 @@ const openApply = async (ctx, over = {}, mode = 'live', hash = null) => {
   await settle(500);
   return page;
 };
-const fillField = async (page, key, value) => { const el = page.locator('#f-' + key); await el.fill(value); await el.blur(); };
+/**
+ * 戦績だけは、新しい版のシートのリンク（くわしい戦績の欄）なら、キックの数に直して入れる。古い1行の欄のリンクなら、そのまま文字を入れる。
+ * 『初試合』＝試合数0／『3勝1敗』＝試合数4・勝ち3（聞くのは試合数と勝ちだけ。負けは、画面が 試合数−勝ち で作る）／ほかの文字（<script> など）は、「他の格闘技」の競技名に入れて、文字として扱われるかを見る
+ */
+async function fillRecordDetail(page, value) {
+  const kick = value.match(/^(\d+)勝(\d+)敗(?:(\d+)分)?$/);
+  if (value === '初試合') await page.locator('#rd-kick-games').fill('0');
+  else if (kick) {
+    const [w, l, d] = [Number(kick[1]), Number(kick[2]), Number(kick[3] ?? 0)];
+    await page.locator('#rd-kick-games').fill(String(w + l + d));
+    await page.locator('#rd-kick-win').fill(String(w));
+  } else {
+    await page.locator('#rd-kick-games').fill('0');
+    await page.getByRole('radio', { name: 'あり', exact: true }).first().check();
+    await page.locator('#rd-other-sport-0').fill(value);
+    for (const [part, v] of [['games', '1'], ['win', '1']]) await page.locator('#rd-other-' + part + '-0').fill(v);
+  }
+  await page.evaluate(() => { const el = document.activeElement; if (el && el.blur) el.blur(); });
+}
+const fillField = async (page, key, value) => {
+  if (key === 'record' && await page.locator('#rd-kick-games').count()) { await fillRecordDetail(page, value); return; }
+  const el = page.locator('#f-' + key); await el.fill(value); await el.blur();
+};
 /** a careful student: everything right. skip = field keys to leave empty. */
 async function fillApply(page, o = {}, { photo = true, consent = true, skip = [] } = {}) {
   const v = { ...GOOD, ...o };
@@ -1967,7 +1991,10 @@ scenario('APPLY-B', 'APPLY', 'numbers, phone, email typed the wrong way', async 
   }
   const eitherCases = [
     ['N24', '電話番号の前に「TEL:」と書く', 'contactPhone', 'TEL:090-1234-5678', '09012345678', /電話/],
-    ['N25', '身長をメートルで「1.7m」と書く', 'height', '1.7m', null, /身長|cm|センチ|数字|範囲|〜|から/],
+    // R6a-4（採点からの最適化）：m（メートル）と書いた「1.7m」は、170 に自動で直す。単位のない「1.7」は、m かどうか分からないので直さず、赤で「cm で入れてください。例：170」と言う
+    // 赤い線を探す言葉は「身長・cm・センチ」だけにする。前の N24 で残った電話番号の赤い線（「…数字だけで…」）を、身長の赤い線と取りちがえない
+    ['N25', '身長をメートルで「1.7m」と書く', 'height', '1.7m', '170', /身長|cm|センチ/],
+    ['N25b', '身長を単位なしで「1.7」と書く', 'height', '1.7', null, /身長|cm|センチ/],
     ['N28', 'メールの前に「mailto:」が付いている', 'contactEmail', 'mailto:dummy@example.com', 'dummy@example.com', /メール/],
     ['N29', '身長を「170センチ」', 'height', '170センチ', '170', /身長/],
   ];
@@ -2141,7 +2168,7 @@ scenario('APPLY-D', 'APPLY', 'sending: double press, offline, edit after checkin
     await page.close();
     return short(al.join(' | '), 100);
   });
-  await mistake({ id: 'X04', screen: ASCR, vp: V, op: 'ページを閉じる・戻る・再読み込み', what: '入力の途中で閉じる／戻る／更新する', risk: 'P1', guard: '「このページを離れますか」が出る。入力はこの端末に残らない（個人情報）ので、ページで「入力は消えます」と言っておく' }, null, async () => {
+  await mistake({ id: 'X04', screen: ASCR, vp: V, op: 'ページを閉じる・戻る・再読み込み', what: '入力の途中で閉じる／戻る／更新する', risk: 'P1', guard: '「このページを離れますか」が出る。入力は、このタブの中（sessionStorage）にだけ一時的に覚える（選手の欄だけ。連絡先・写真・同意のチェックなどは途中では覚えない。localStorage には残さない）ので、ページで「入力は消えます」と言っておく' }, null, async () => {
     const page = await openApply(ctx);
     check(/入力は消えます/.test(await text(page)), 'X04: the page warns beforehand that reloading erases the input');
     check(page.__dlg.log.length === 0, 'X04: nothing asked while the form is empty');

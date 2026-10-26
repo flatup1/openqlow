@@ -281,9 +281,9 @@ test('クラス: 古い設定タブ（11行だけ）でも動く。クラスの�
     const before = JSON.stringify(h.rows('設定'));
     h.call('setupTournament');
     assert.equal(JSON.stringify(h.rows('設定').slice(0, 12)), before, '古い設定タブの12行は1マスも書き換えない');
-    assert.equal(h.rows('設定').length, 29, 'クラスの8行と、階級分け・ロゴの9行だけが、いちばん下に足される');
+    assert.equal(h.rows('設定').length, 35, 'クラスの8行と、階級分け・ロゴの9行と、花道の追加情報の1行と、誓約書の4行と、花道のルールの1行だけが、いちばん下に足される');
     assert.deepEqual(h.rows('設定').slice(12, 20).map((r) => r[0]), CLASS_LABELS);
-    assert.deepEqual(h.rows('設定').slice(20).map((r) => r[0]), ['階級分け', 'ロゴ', '階級：小学生以下', '階級：中学生女子', '階級：中学生男子', '階級：高校生・一般女子', '階級：高校生・一般男子', '階級：花道・女子（40歳以上）', '階級：花道・男子（40歳以上）']);
+    assert.deepEqual(h.rows('設定').slice(20).map((r) => r[0]), ['階級分け', 'ロゴ', '階級：小学生以下', '階級：中学生女子', '階級：中学生男子', '階級：高校生・一般女子', '階級：高校生・一般男子', '階級：花道・女子（40歳以上）', '階級：花道・男子（40歳以上）', '花道の追加情報', '誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール']);
     assert.equal(h.rows('設定').find((r) => r[0] === 'クラス分け')![1], 'なし', '足した行の初期値は「なし」');
   }
 });
@@ -447,8 +447,8 @@ test('クラス: 古い申込ページ（クラスを送らない）から「あ
 
 test('クラス: 新しい版にすると、古い版で済ませた自動テストはやり直しになる（1回だけ）', () => {
   const h = harness(); h.ready(ON);
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261019\.6';/);
-  assert.equal(ping(h).build, '3.20261019.6');
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261026\.3';/);
+  assert.equal(ping(h).build, '3.20261026.3');
   h.props.set('lastTestBuild', '3.20261004.4');
   assert.equal(h.call('statusInfo_').testComplete, false);
   assert.throws(() => h.call('openEntries'), /先にテスト申込1件/);
@@ -465,7 +465,7 @@ test('クラス: 古い版で作った表（クラス列なし・古い自動テ
   makeOld(h); h.props.set('lastTestBuild', '3.20261004.4'); h.settingsSheet().rows.length = 12;
   h.call('setupTournament');
   const body = ping(h);
-  assert.equal(body.testComplete, true); assert.equal(body.build, '3.20261019.6'); assert.equal('classMode' in body, false);
+  assert.equal(body.testComplete, true); assert.equal(body.build, '3.20261026.3'); assert.equal('classMode' in body, false);
   assert.equal(h.rows(TEST)[0][18], 'クラス'); assert.equal(h.rows(TEST_OS)[0][11], 'クラス');
   assert.equal(h.rows(TEST).at(-1)![18], '');
   h.call('openEntries'); h.call('saveEntry_', h.params('live'));

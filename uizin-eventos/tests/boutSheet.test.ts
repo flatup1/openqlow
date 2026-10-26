@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { A3_MM, DEFAULT_SHOW, PER_PAGE, ROW_GAP_MM, buildSheet, clampPerPage, columnsOf, charEm, fitCenter, fitNameMm, fitSide, fitText, fitTitleMm, sideHeightMm, textWidthEm, wrapLines, pageCount, paginate, pagesIfTarget, parseSheetOptions, parseSheetPrefs, perPageForPages, perPageLimit, rangeText, resolvePerPage, rowsOf, sheetBouts, sheetMetrics, sheetNotes, sheetSide, suggestPerPage, type SheetBout } from '../core/boutSheet.ts';
-import { emptyTournament, isLocalTournament, mergeFighters, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
+import { emptyTournament, isLocalTournament, type LocalBout, type LocalFighter, type LocalTournament } from '../core/privateTournament.ts';
 import { mergeKeepExisting, restoreConfirmText, sameExceptProgress } from '../app/private/logic.ts';
 import { buildRow, musicState, nowModel, summarizeMusic } from '../app/private/live/listLogic.ts';
 
@@ -74,7 +74,7 @@ test('個人情報は通さない：電話・生年月日・健康・同意・�
 
 test('載せる項目：写真・所属ジム・クラス/階級・ルールは、会長が決める。氏名はいつも載る', () => {
   const f = fighter('r1', { fighterClass: 'Aクラス', division: '中学生男子', weightClass: '37kg以下' });
-  const all = sheetSide(f, DEFAULT_SHOW);
+  const all = sheetSide(f, { ...DEFAULT_SHOW, photo: true }); // 顔写真は、はじめは「出さない」。ここは「出す」に切りかえたときの姿
   assert.deepEqual(all, { state: 'ok', name: '架空r1', gym: '架空ジムr1', photo: PHOTO, tag: 'Aクラス　中学生男子・37kg以下' });
   const none = sheetSide(f, { photo: false, gym: false, classLine: false, rule: false });
   assert.deepEqual(none, { state: 'ok', name: '架空r1', gym: '', photo: '', tag: '' }, '氏名だけは残る');
@@ -158,8 +158,6 @@ test('欠場（absent）：保存の検査を通る。真偽以外は断る。�
   assert.equal(isLocalTournament(ok), true);
   const bad = tournament(1); (bad.fighters[0] as unknown as Record<string, unknown>).absent = 'yes';
   assert.equal(isLocalTournament(bad), false);
-  const merged = mergeFighters([fighter('r1', { absent: true })], [fighter('r1', { name: '新しい名前' })]);
-  assert.equal(merged[0].name, '新しい名前'); assert.equal(merged[0].absent, true);
   const result = mergeKeepExisting([fighter('r1', { absent: true })], [fighter('r1', { name: '別の名前' })]);
   assert.equal(result.merged[0].absent, true, '前からいる人は、黙って変えない');
   assert.equal(result.overwritten[0].name, '別の名前'); assert.equal(result.overwritten[0].absent, true, '書きかえても、欠場は消えない');
@@ -395,14 +393,14 @@ test('欠場の流れ：画面の自動取り込みは欠場の変化を見の�
 test('写真は、その選手についている：赤の写真は赤の選手、青の写真は青の選手（入れかわらない）。欠場の人の写真は出ない', () => {
   const data = tournament(3);
   data.fighters = data.fighters.map((f) => ({ ...f, photoDataUrl: 'data:image/jpeg;base64,/9j/' + f.id }));
-  const bouts = sheetBouts(data, DEFAULT_SHOW);
+  const bouts = sheetBouts(data, { ...DEFAULT_SHOW, photo: true }); // 写真を「出す」に切りかえたとき（はじめは「出さない」）
   bouts.forEach((b, i) => {
     assert.equal(b.red.photo, 'data:image/jpeg;base64,/9j/r' + (i + 1), '赤の写真');
     assert.equal(b.blue.photo, 'data:image/jpeg;base64,/9j/b' + (i + 1), '青の写真');
     assert.equal(b.red.name, '架空r' + (i + 1)); assert.equal(b.blue.name, '架空b' + (i + 1));
   });
   const absent = { ...data, fighters: data.fighters.map((f) => f.id === 'b2' ? { ...f, absent: true } : f) };
-  assert.equal(sheetBouts(absent, DEFAULT_SHOW)[1].blue.photo, '', '欠場の人の写真は出ない');
+  assert.equal(sheetBouts(absent, { ...DEFAULT_SHOW, photo: true })[1].blue.photo, '', '欠場の人の写真は出ない（写真を「出す」にしていても）');
 });
 
 test('欠場の人の文字：札（クラス・区分・階級）は出さず、「欠場」の札のぶん少し高い。入場曲は出さない。コピーから戻すとき、欠場の入れかわりも知らせる', () => {
@@ -417,4 +415,47 @@ test('欠場の人の文字：札（クラス・区分・階級）は出さず�
   const backup = { ...base, fighters: base.fighters.map((f) => f.id === 'r1' ? { ...f, absent: true } : f) };
   const current = { ...base, fighters: base.fighters.map((f) => f.id === 'b2' ? { ...f, absent: true } : f) };
   assert.match(restoreConfirmText({ restored: backup, current, dirty: false, everSaved: true }), /1人の「欠場」の印が、コピーにはありません/, '人数が同じでも、欠場の入れかわりを知らせる');
+});
+
+/* ───────── R8-2：顔写真は、はじめは「出さない」。覚えてある設定は、勝手に変えない ───────── */
+
+test('R8-2 顔写真は、はじめは「出さない」。ほかの項目（所属ジム・クラス/区分/階級＝出す、ルール＝出さない）は、今までどおり', () => {
+  assert.deepEqual(DEFAULT_SHOW, { photo: false, gym: true, classLine: true, rule: false });
+  assert.equal(parseSheetPrefs(null).show.photo, false); assert.equal(parseSheetOptions(null, 30).show.photo, false);
+  assert.deepEqual(parseSheetPrefs(null).show, DEFAULT_SHOW);
+  // 壊れた覚え・変な値のときも、はじめの状態（写真は出さない）
+  for (const raw of ['{oops', '"x"', '[1,2]', 'null', '{}', JSON.stringify({ show: 5 }), JSON.stringify({ show: { photo: 'yes' } }), JSON.stringify({ show: { photo: 1 } }), JSON.stringify({ show: [] })]) assert.equal(parseSheetPrefs(raw).show.photo, false, raw);
+  // 写真を「出す」にしていない大会の一覧表には、写真が1枚も入らない
+  const data = tournament(4); data.fighters = data.fighters.map((f) => ({ ...f, photoDataUrl: PHOTO }));
+  const bouts = sheetBouts(data, DEFAULT_SHOW);
+  assert.ok(bouts.every((b) => b.red.photo === '' && b.blue.photo === ''), 'はじめの状態では、写真は一覧表のデータに入らない');
+  assert.ok(!JSON.stringify(buildSheet(data, { perPage: 4, orientation: 'portrait', show: DEFAULT_SHOW })).includes('data:image'), '写真のデータは、どこにも入らない');
+});
+
+test('R8-2 すでに覚えてある設定（localStorage の tos-sheet:<大会の名札>）は、そのまま読む。「出す」にしてあれば出す・「出さない」にしてあれば出さない', () => {
+  assert.equal(parseSheetPrefs(JSON.stringify({ orientation: 'portrait', show: { photo: true, gym: true, classLine: true, rule: false } })).show.photo, true, '前に「出す」にしてあった大会は、そのまま「出す」');
+  assert.equal(parseSheetPrefs(JSON.stringify({ orientation: 'portrait', show: { photo: false, gym: true, classLine: true, rule: false } })).show.photo, false);
+  assert.deepEqual(parseSheetPrefs(JSON.stringify({ orientation: 'landscape', perPage: 6, show: { photo: true, gym: false, classLine: false, rule: true } })), { orientation: 'landscape', show: { photo: true, gym: false, classLine: false, rule: true }, count: 6, pages: null }, '覚えた4つの✔は、そのまま');
+  // 写真の✔だけが書かれていない覚え（ほかの✔はある）は、はじめの状態（写真は出さない）。ほかの✔は、書いてあるとおり
+  assert.deepEqual(parseSheetPrefs(JSON.stringify({ show: { gym: false } })).show, { photo: false, gym: false, classLine: true, rule: false });
+  assert.deepEqual(parseSheetPrefs(JSON.stringify({ show: { photo: true } })).show, { photo: true, gym: true, classLine: true, rule: false }, '写真だけ「出す」のとき、ほかはこれまでの初期値');
+  const data = tournament(2); data.fighters = data.fighters.map((f) => ({ ...f, photoDataUrl: PHOTO }));
+  const on = parseSheetOptions(JSON.stringify({ show: { photo: true } }), 2);
+  assert.equal(sheetBouts(data, on.show)[0].red.photo, PHOTO);
+});
+
+test('R8-2 写真を出さなくても、表の形・ページ割りは崩れない（写真の場所を取らず、氏名の場所が広がる）。写真ありと、試合の数・ページ数は同じ', () => {
+  const data = tournament(30);
+  data.fighters = data.fighters.map((f, i) => ({ ...f, name: f.name + 'の長い名前の人' + i, photoDataUrl: i % 3 ? PHOTO : '' }));
+  for (const orientation of ['portrait', 'landscape'] as const) for (const perPage of [4, 8, 12]) {
+    const off = buildSheet(data, { perPage, orientation, show: DEFAULT_SHOW }), on = buildSheet(data, { perPage, orientation, show: { ...DEFAULT_SHOW, photo: true } });
+    assert.equal(off.pages.length, on.pages.length, orientation + perPage + ' ページ数は同じ');
+    assert.deepEqual(off.pages.map((p) => p.bouts.map((b) => b.number)), on.pages.map((p) => p.bouts.map((b) => b.number)), '試合の並びは同じ');
+    assert.deepEqual(off.pages.map((p) => p.range), on.pages.map((p) => p.range));
+    const mOff = sheetMetrics(perPage, orientation, false), mOn = sheetMetrics(perPage, orientation, true);
+    assert.equal(mOff.photoW, 0); assert.equal(mOff.photoH, 0); assert.ok(mOn.photoW > 0);
+    assert.equal(mOff.cellW, mOn.cellW); assert.equal(mOff.cellH, mOn.cellH); assert.equal(mOff.rows, mOn.rows); assert.equal(mOff.columns, mOn.columns);
+    assert.ok(mOff.sideW === mOn.sideW, '選手の場所の幅は同じ。写真のぶんだけ、氏名の場所が広がる');
+    for (const b of off.pages.flatMap((p) => p.bouts)) for (const side of [b.red, b.blue]) { assert.equal(side.photo, ''); assert.ok(side.name.length > 0); }
+  }
 });

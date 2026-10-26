@@ -138,11 +138,12 @@ test('設定の読み取り: 設定に直しものがある間も、ping は直�
 
 /* ───────── r1-60 / 88：黄色の言葉を使わず、印で言う。シートにも印をつける ───────── */
 
-test('設定タブ: 書く7つのB列に色（#fff2a8）と「✎ ここに書く」の印、列の幅・折り返し・1行目の固定。画面の文は色の名前で言わない', () => {
+test('設定タブ: 書く6つのB列に色（#fff2a8）と「✎ ここに書く」の印、列の幅・折り返し・1行目の固定。画面の文は色の名前で言わない', () => {
   const h = harness(); h.call('onOpen');
   const sheet = h.settingsSheet();
   const labels = sheet.rows.slice(1).map((r: string[]) => r[0]);
-  const write = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切', '入場曲'];
+  // R4（owner 決定 2026-10-22）：入場曲は、はじめから「なし」が入るので、書く行から外した（7つ → 6つ）
+  const write = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切'];
   for (const label of labels) {
     const row = labels.indexOf(label) + 2;
     const painted = sheet.backgrounds.get(row + ':2');
@@ -152,11 +153,11 @@ test('設定タブ: 書く7つのB列に色（#fff2a8）と「✎ ここに書�
   assert.deepEqual([...sheet.columnWidths.entries()], [[1, 160], [2, 380], [3, 520]]);
   assert.equal(sheet.frozenRows, 1);
   assert.ok(!PAGE_TEXT.includes('黄色'), '画面の文に「黄色」という色の名前を使わない（印の名前で言う）');
-  assert.match(PAGE, /C列に\{WRITE_MARK\}と書いてある7つの行/);
+  assert.match(PAGE, /C列に\{WRITE_MARK\}と書いてある6つの行/);
   // 画面のセル番号（B2〜B29）は、シートの行の順番と同じ
   const cells: Record<string, string> = { ...CELL, ...CLASS_CELL, ...WEIGHT_CELL };
-  // 番号を持つのは、消されない行まで（区分の行「階級：…」は、主催者が消せるので、番号を持たない）
-  labels.forEach((label: string, i: number) => { if (/^階級：/.test(label)) assert.equal(cells[label], undefined, label + ' は消せる行：番号を持たない'); else assert.equal(cells[label], 'B' + (i + 2), label); });
+  // 番号を持つのは、消されない行まで（区分の行「階級：…」は、主催者が消せるので、番号を持たない。その下の「花道の追加情報」も、区分の行の数で動くので、番号を持たない）
+  labels.forEach((label: string, i: number) => { if (/^階級：/.test(label) || label === '花道の追加情報' || ['誓約書', '保護者の同意', 'ジム責任者の同意', '誓約書の文の確認', '花道のルール'].includes(label)) assert.equal(cells[label], undefined, label + ' は動く行：番号を持たない'); else assert.equal(cells[label], 'B' + (i + 2), label); });
 });
 
 /* ───────── r1-61：古い設定タブの自己修復と、画面の黄色の注意 ───────── */
@@ -166,9 +167,9 @@ test('古い設定タブ: クラスの8行と、階級分け・ロゴの行だ�
   const sheet = h.settingsSheet();
   sheet.rows.length = 12; sheet.rows[1][1] = '私の大会';
   h.call('onOpen'); h.call('onOpen');
-  assert.equal(sheet.rows.length, 29, '17行（クラス8＋階級分け・区分7・ロゴ）足されて、2回目以降は増えない');
+  assert.equal(sheet.rows.length, 35, '23行（クラス8＋階級分け・区分7・ロゴ＋花道の追加情報＋誓約書の4行＋花道のルール）足されて、2回目以降は増えない');
   assert.equal(sheet.rows[1][1], '私の大会');
-  assert.equal(sheet.rows[12][0], 'クラス分け'); assert.equal(sheet.rows[19][0], '上のクラスにする勝ち数'); assert.equal(sheet.rows[20][0], '階級分け'); assert.equal(sheet.rows[21][0], 'ロゴ'); assert.equal(sheet.rows[28][0], '階級：花道・男子（40歳以上）');
+  assert.equal(sheet.rows[12][0], 'クラス分け'); assert.equal(sheet.rows[19][0], '上のクラスにする勝ち数'); assert.equal(sheet.rows[20][0], '階級分け'); assert.equal(sheet.rows[21][0], 'ロゴ'); assert.equal(sheet.rows[28][0], '階級：花道・男子（40歳以上）'); assert.equal(sheet.rows[29][0], '花道の追加情報'); assert.equal(sheet.rows[30][0], '誓約書'); assert.equal(sheet.rows[33][0], '誓約書の文の確認');
   h.fill();
   const old = harness(); old.call('onOpen'); old.fill(); old.call('setupTournament');
   old.settingsSheet().rows.length = 12;
@@ -333,7 +334,7 @@ test('設定タブの説明と画面の見本は、同じ例を使う（大会�
   assert.match(hint('大会名'), /例：第3回 青空ジム大会/);
   assert.match(PAGE, /\['大会名', 'B2', 'write', '第3回 青空ジム大会'\]/, '画面の見本の絵も、同じ大会名の例');
   assert.ok(!hint('入場曲').includes('聞く'), '入場曲：「聞く」と書かない');
-  assert.match(hint('入場曲'), /リンクを書いてもらうか/);
+  assert.match(hint('入場曲'), /リンクを書いてもらうときだけ/);
   assert.match(hint('上のクラスのルール'), /ワンアタックはキャッチ後に1回だけ|ワンアタック（キャッチ後に1回だけ攻撃できる）/, '例をコピーしても、ワンアタックの説明が消えない');
 });
 
@@ -367,7 +368,7 @@ test('タブの名前: 設定の画面は「選手の受付をつくる」、当
 
 test('ZIPの名前: 画面と文書は、本物の名前（Tournament_OS_〜.zip）で言う。「選手名簿.zip」と教えない', () => {
   for (const path of ['app/private/page.tsx', 'app/private/logic.ts', 'app/private/setup/page.tsx']) assert.ok(!read(path).includes('選手名簿.zip'), path);
-  assert.match(GS, /exportRows_\(rows,resources\.folder,'Tournament_OS_'\)/);
+  assert.match(GS, /exportRows_\(rows,resources\.folder,'Tournament_OS_',/);
   assert.match(PAGE, new RegExp('const MENU_ZIP = \'④ OS用の名簿ZIPを作る\''));
   assert.ok(GS.includes(".addItem('④ OS用の名簿ZIPを作る', 'menuExport')"), '画面のメニューの名前は、シートのメニューと同じ');
 });
@@ -529,7 +530,7 @@ test('r2-60 / r2-75: Googleが言う「設定」の直しものは、すべて�
   const cls = harness(); cls.call('onOpen'); cls.fill({ クラス分け: 'あり', 上のクラスの名前: 'あ'.repeat(13) });
   assert.match(settingLines(code(() => cls.call('setupTournament')).message).map((l) => l.fixes.join('')).join(''), /上のクラスの名前」は12文字までにしてください（セル B14）/);
   // 足りない欄
-  const empty = harness(); empty.call('onOpen');
+  const empty = harness(); empty.call('onOpen'); empty.setSetting('入場曲', ''); // R4：入場曲ははじめから「なし」が入るので、「空」の場合は自分で空にする
   const miss = settingLines(code(() => empty.call('setupTournament')).message)[0].fixes;
   assert.ok(miss.includes('会場（B4）：書いてありません。例：○○体育館 のように入れる'));
   assert.ok(miss.some((f) => f.startsWith('入場曲（B9）：書いてありません。')), '入場曲（あり／なしを選ぶ）の長い名前でも、B9');
@@ -634,7 +635,7 @@ test('r2-64: 「設定」タブが空になっても、シートを開く・①�
   const h = harness(); h.call('onOpen');
   h.settingsSheet().rows.length = 0;
   h.call('onOpen');
-  assert.equal(h.settingsSheet().rows.length, 29, '見出し1行＋項目28行');
+  assert.equal(h.settingsSheet().rows.length, 35, '見出し1行＋項目34行');
   assert.deepEqual(h.rows('設定')[1].slice(0, 1), ['大会名']);
   assert.match(code(() => h.call('setupTournament')).message, /次の欄を入れてください/);
   const again = harness(); again.call('onOpen'); again.settingsSheet().rows.length = 0;

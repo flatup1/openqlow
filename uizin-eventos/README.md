@@ -87,7 +87,7 @@ npm run verify      # 単体テスト → 画面のビルド（TypeScript検査�
 npm run verify:all  # 全部：型チェック・単体テスト・build:private・画面の確認(scripts/test-*.mjs 全部)・validate-ai-os（約30分。--fast なら約15分短い）
 
 # 個別に走らせるとき
-npm run test        # 中核ロジックのテスト（依存ゼロ・ネットワーク不要）
+npm run test        # 中核ロジックのテスト（ネットワーク不要。件数は増えるので、書かない）
 npm run build       # 画面を out/ に静的書き出し
 npm run typecheck   # tsc 単体（Next の型が要るので build のあとに実行する）
 # lint は無い（ESLint は入れていません。型は typecheck、公開前の検査は verify:private-build が見ます）

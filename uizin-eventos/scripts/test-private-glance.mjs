@@ -125,7 +125,7 @@ try {
     const file = await (await download).createReadStream();
     const chunks = []; for await (const c of file) chunks.push(c);
     const encrypted = Buffer.concat(chunks);
-    check((await page.getByText('ファイルを保存しました').count()) > 0, tag + ': a copy file can be made with the second password box left empty');
+    check((await page.getByText('保存を始めました').count()) > 0, tag + ': a copy file can be made with the second password box left empty');
     // 確認は画面の中の箱。まず「やめる」で何も変わらないこと、次に「今の内容を消して、コピーに戻す」で戻ること
     const nativeDialogs = [];
     page.on('dialog', (d) => { if (d.type() !== 'beforeunload') nativeDialogs.push(d.message()); d.dismiss().catch(() => {}); });

@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, pingUrl, settingLines, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
+import { ACCEPTED_RECEPTION_BUILDS, CELL, CLASS_CELL, diagnose, entryConfigFromPing, entryConfigProblem, EXPECTED_RECEPTION_BUILD, exportSetup, importSetup, isOldBrowser, isTemplateCopyLink, parsePing, parsePingText, PING_TIMEOUT_MS, pingUrl, PLEDGE_UNCONFIRMED_ADVICE, pledgeDiagnosis, recordTextCaution, settingLines, supportsHanamichi, supportsRecordDetail, supportsWeightClasses, templateCopyLink, WRITE_MARK, type Diagnosis, type Ping } from '../../../core/setupV3.ts';
 import { isAppsScriptUrl, publicEntryHash } from '../../../core/publicEntry.ts';
 import { DEFAULT_CLASS_SETTINGS } from '../../../core/classRules.ts';
 import { weightSettingsToParam } from '../../../core/weightClass.ts';
 import { formatDateInput } from '../../../core/dateInput.ts';
 import { readPrivateEvent } from '../../lib/privateStore.ts';
+import { loadLinkKey, makeLinkKey, type StoredLinkKey } from '../../lib/linkKeyStore.ts';
+import { signLinkHash, TRUSTED_LINK_KEYS } from '../../../core/linkSign.ts';
 import { isPastDate, isTitleReal } from '../logic.ts';
 
 /*
@@ -29,7 +31,7 @@ const GO2_NAME = '「準備できました」と出た → 次へ';
 /** クラス分けが入る前の、いちばん古い版か（ACCEPTED_RECEPTION_BUILDS の先頭）。階級分けが入る前の版は、クラスは使える */
 const lacksClasses = (build: string): boolean => build === ACCEPTED_RECEPTION_BUILDS[0];
 const COPY_STEPS = 'パソコン：上の四角をクリックして、Ctrl を押しながら A（全部えらぶ）、つづけて Ctrl を押しながら C（コピー）。Macは Ctrl のかわりに ⌘（コマンド）キー。スマホ：四角を長く押して「コピー」。';
-const CARD_LABELS = ['作業1：Googleでコピーを作る', '作業2：「設定」タブに書く（B列の7つの行）', '作業3：メニュー「① 最初の設定」を押す', '作業4：「準備できました」と出るのを確かめる'];
+const CARD_LABELS = ['作業1：Googleでコピーを作る', '作業2：「設定」タブに書く（B列の6つの行）', '作業3：メニュー「① 最初の設定」を押す', '作業4：「準備できました」と出るのを確かめる'];
 const OP_LABELS = ['操作1：Apps Scriptを開く', '操作2：「新しいデプロイ」を押す', '操作3：URLの「コピー」を押す'];
 const GOOD_URL = 'https://script.google.com/macros/s/…/exec';
 /** 全部の入力・ボタン・リンク・summary で同じ、濃くて太い枠。 */
@@ -264,6 +266,11 @@ export default function SetupV3() {
   const [tpl, setTpl] = useState<'loading' | 'ok' | 'none'>('loading');
   const [ownerSheet, setOwnerSheet] = useState('');
   const [ping, setPing] = useState<Ping | null>(null);
+  /** 申し込みのリンクに署名する鍵（このパソコンのブラウザの中）。undefined＝読みこみ中、null＝無い */
+  const [linkKey, setLinkKey] = useState<StoredLinkKey | null | undefined>(undefined);
+  const [linkKeyNote, setLinkKeyNote] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
+  /** 署名したリンク（署名の前のリンク → 署名つき）。署名は少し待つので、できたものをここに入れる */
+  const [signed, setSigned] = useState<Record<string, string>>({});
   const [pingError, setPingError] = useState<PingError | null>(null);
   const [checking, setChecking] = useState(false);
   const [pasted, setPasted] = useState('');
@@ -313,6 +320,10 @@ export default function SetupV3() {
   const [copyOpened, setCopyOpened] = useState(false);
   const downloadedAt = useRef(0);
   const seq = useRef(0);
+  /** いまGoogleの返事を待っている確かめ（止めるための印）。待っていないときは null */
+  const pendingPing = useRef<AbortController | null>(null);
+  /** 「もう一度確かめる」を最後に押した時刻（2回押し・3回押しを、1回にまとめるため） */
+  const manualAt = useRef(0);
   const lastTickAt = useRef(0);
   const copyTimer = useRef<number | undefined>(undefined);
   const urlRef = useRef<HTMLInputElement>(null);
@@ -413,11 +424,17 @@ export default function SetupV3() {
   const check = async (mode: 'manual' | 'auto' | 'poll' = 'manual') => {
     let url: string;
     try { url = pingUrl(endpoint); } catch { if (mode !== 'poll') { setPing(null); if (mode === 'manual') setPingError('url'); } return; }
+    // 手で押したときは、待っている確かめを止めてから、新しく確かめる（押しても何も起きない、にしない）
+    if (mode === 'manual') pendingPing.current?.abort();
     const mine = ++seq.current;
     const checked = endpoint;
+    // Googleが答えないまま20秒たったら、待つのをやめる。つながらないときと同じ案内（'net'）になり、「自動で確かめられないとき」が開く
+    const controller = new AbortController();
+    pendingPing.current = controller;
+    const timer = window.setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
     if (mode !== 'poll') setChecking(true);
     try {
-      const response = await fetch(url, { cache: 'no-store' });
+      const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
       const next = parsePing(await response.json());
       if (mine !== seq.current) return;
       setFromPaste(false);
@@ -434,6 +451,8 @@ export default function SetupV3() {
       setPing(null);
       setPingError(classifyPingError(error));
     } finally {
+      window.clearTimeout(timer);
+      if (pendingPing.current === controller) pendingPing.current = null;
       if (mine === seq.current) setChecking(false);
     }
   };
@@ -541,7 +560,45 @@ export default function SetupV3() {
   };
   const canGo = (n: number) => n <= step || (n === 2 && reached >= 2) || (n === 3 && reached >= 2 && !blocked);
 
-  const link = (mode: 'test' | 'live') => { try { return ping ? '/apply/' + publicEntryHash(entryConfigFromPing(ping, endpoint, mode)) : ''; } catch { return ''; } };
+  /** 署名の前のリンク（# から） */
+  const rawHash = (mode: 'test' | 'live') => { try { return ping ? publicEntryHash(entryConfigFromPing(ping, endpoint, mode)) : ''; } catch { return ''; } };
+  /** このパソコンの鍵が、サイトに登録した鍵（TRUSTED_LINK_KEYS）か */
+  const keyTrusted = !!linkKey && TRUSTED_LINK_KEYS.includes(linkKey.publicText);
+  /** 鍵を登録したあとで、このパソコンに その鍵が無い：リンクは作らない（作っても、申し込みのページが止める） */
+  const keyMissing = TRUSTED_LINK_KEYS.length > 0 && linkKey !== undefined && !keyTrusted;
+  /**
+   * 選手に渡すリンク（/apply/#…）。鍵があれば署名つき（署名ができるまでは空）。鍵が無く、まだ1つも登録していないときは、今までどおり署名なし。
+   * 鍵を登録したあとで、このパソコンに その鍵が無いときは空（作らない）
+   */
+  const link = (mode: 'test' | 'live') => {
+    const hash = rawHash(mode);
+    if (!hash || linkKey === undefined || keyMissing) return '';
+    if (!linkKey) return '/apply/' + hash;
+    return signed[hash] ? '/apply/' + signed[hash] : '';
+  };
+  useEffect(() => { let alive = true; void loadLinkKey().then((key) => { if (alive) setLinkKey(key); }); return () => { alive = false; }; }, []);
+  const testHash = rawHash('test'), liveHash = rawHash('live');
+  useEffect(() => {
+    if (!linkKey) return;
+    let alive = true;
+    const todo = [testHash, liveHash].filter((hash) => hash && !signed[hash]);
+    if (!todo.length) return;
+    void Promise.all(todo.map((hash) => signLinkHash(hash, linkKey.privateKey).then((done) => [hash, done] as const)))
+      .then((pairs) => { if (alive) setSigned((prev) => ({ ...prev, ...Object.fromEntries(pairs) })); })
+      .catch(() => { if (alive) setLinkKeyNote({ kind: 'bad', text: 'リンクに署名できませんでした。このページを読みこみ直してください。直らないときは、下の「リンクの鍵」で鍵を作り直します。' }); });
+    return () => { alive = false; };
+  }, [linkKey, testHash, liveHash, signed]);
+  const createKey = async () => {
+    if (linkKey && !window.confirm('このパソコンには、もう鍵があります。作り直すと、前の鍵で作ったリンクは、登録を変えたあと使えなくなります。作り直しますか？')) return;
+    try {
+      const key = await makeLinkKey();
+      setSigned({}); setLinkKey(key);
+      setLinkKeyNote({ kind: 'ok', text: '鍵を作りました。下の「公開用の文字」をコピーして、作る人（Claude）に送ってください。' });
+    } catch {
+      setLinkKeyNote({ kind: 'bad', text: '鍵を作れませんでした。Chrome の、ふつうのウィンドウ（シークレットではない）で開いて、もう一度押してください。' });
+    }
+  };
+
   const copy = async (key: string, text: string) => {
     window.clearTimeout(copyTimer.current);
     try {
@@ -550,7 +607,7 @@ export default function SetupV3() {
       copyTimer.current = window.setTimeout(() => setCopied(''), 5000);
     } catch {
       setCopied(''); setCopyFailed(key);
-      window.setTimeout(() => { const box = key === 'line' ? lineBoxRef.current : liveBoxRef.current; box?.focus(); box?.select(); }, 0);
+      window.setTimeout(() => { const box = key === 'line' ? lineBoxRef.current : key === 'key' ? document.getElementById('link-key-text') as HTMLInputElement | null : liveBoxRef.current; box?.focus(); box?.select(); }, 0);
     }
   };
   /** ひな形の文を、同じ画面のファイルから読む（外へは出ない） */
@@ -917,13 +974,21 @@ export default function SetupV3() {
 
   const sheetRows: ReadonlyArray<readonly [string, string, string, string]> = [
     ['大会名', 'B2', 'write', '第3回 青空ジム大会'], ['開催日', 'B3', 'write', '2027年10月3日'], ['会場', 'B4', 'write', '○○体育館'], ['会場の地図URL', 'B5', 'skip', '書かなくてOK（空のままでいい）'],
-    ['主催者名', 'B6', 'write', '○○ジム'], ['問い合わせ先', 'B7', 'write', '03-0000-0000'], ['申込締切', 'B8', 'write', '2027年9月20日'], ['入場曲', 'B9', 'write', 'あり か なし を▼から選ぶ'],
-    ['学年', 'B10', 'skip', '書かなくてOK（はじめから「必須」が入っています）'], ['年齢', 'B11', 'skip', '書かなくてOK（はじめから「必須」が入っています）'], ['意気込み', 'B12', 'skip', '書かなくてOK（はじめから「必須」が入っています）'],
+    ['主催者名', 'B6', 'write', '○○ジム'], ['問い合わせ先', 'B7', 'write', '03-0000-0000'], ['申込締切', 'B8', 'write', '2027年9月20日'], ['入場曲', 'B9', 'skip', '書かなくてOK（はじめから「なし」が入っています）。選手に入場曲のリンクを書いてもらうときだけ、▼から「あり」を選ぶ'],
+    ['学年', 'B10', 'skip', '書かなくてOK（はじめから「必須」が入っています）。選手が書かなくてもよいときだけ、▼から「任意」を選ぶ'], ['年齢', 'B11', 'skip', '書かなくてOK（はじめから「必須」が入っています）。選手が書かなくてもよいときだけ、▼から「任意」を選ぶ'], ['意気込み', 'B12', 'skip', '書かなくてOK（はじめから「必須」が入っています）。選手が書かなくてもよいときだけ、▼から「任意」を選ぶ'],
     ['クラス分け', 'B13', 'skip', '分けるときだけ「あり」（はじめは「なし」）'],
     ['（この下）', '', 'more', 'クラスの行が7つ続きます（B14〜B20）。はじめから入っています'],
     ['階級分け', 'B21', 'skip', '分けるときだけ「あり」（はじめは「なし」）'],
     ['ロゴ', 'B22', 'skip', '出すときだけ「あり」（はじめは「なし」）'],
     ['（この下）', '', 'more', '区分の行が7つ（B23〜B29）続きます。はじめから入っています'],
+    // いちばん下の行。区分の行は増やしたり消したりできるので、セルの番号は言わない
+    ['花道の追加情報', '', 'skip', '花道の質問をするときだけ「あり」（はじめは「なし」）'],
+    // その下の行。誓約書の4行は、最後に□の✔を出すときだけ「あり」。花道のルールの1行は、はじめから入っています
+    ['誓約書', '', 'skip', '誓約書の□を出すときだけ「あり」（はじめは「なし」）'],
+    ['保護者の同意', '', 'skip', '書かなくてOK（はじめから「18歳未満のみ」が入っています）'],
+    ['ジム責任者の同意', '', 'skip', '書かなくてOK（はじめから「あり」が入っています）'],
+    ['誓約書の文の確認', '', 'skip', '文を原本と見比べたあとで「済み」にする（はじめは「まだ」）'],
+    ['花道のルール', '', 'skip', '書かなくてOK（はじめから文が入っています。会長が確認します）'],
   ];
   /** クラスが使えないGoogle側のとき（古いコピー・古い版）に出す黄色の注意。クラスを使わない大会には、関係ない */
   const classCaution = !ping ? null
@@ -937,6 +1002,13 @@ export default function SetupV3() {
     : ping.weightRows === false ? <Caution className="mt-3" lead="このシートには、階級分け・ロゴの行がありません。"><p>階級分け（体重で分けたグループ）やロゴを使うときは、新しいひな形をもう一度コピーします（手順1）。使わないときは、このままで大丈夫です。</p></Caution>
     : !supportsWeightClasses(ping) && stage !== 'old-build' ? <Caution className="mt-3" lead="このシートは古い版で、階級分け・ロゴに対応していません。"><p>階級分け（体重で分けたグループ）やロゴを使う大会は、新しいひな形をもう一度コピーします（手順1）。いま使っているシートをそのまま使うときは、ジムの担当者が、そのシートの Apps Script のプログラムを新しい版に入れかえて、「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。使わないときは、このままで大丈夫です。</p></Caution>
     : null;
+  // くわしい戦績（キック・他の格闘技・タイトル）は、新しい版の受付だけが受け取る。古い版でも申し込みは今までどおり受け付ける（くわしい欄が出ないだけ）
+  // くわしい戦績を受け取れる1つ前の版（3.20261024.1）は、シートの戦績の1行を「3勝2敗」の形で書く（申し込みの確認は「5戦3勝2敗」）。止めずに、新しい版にする方法を、黄色の注意1つで言う
+  const recordText = recordTextCaution(ping);
+  const recordCaution = !ping || stage === 'old-build' ? null
+    : recordText ? <div id="record-text-note"><Caution className="mt-3" lead={recordText.lead}><p>{recordText.body}</p></Caution></div>
+    : supportsRecordDetail(ping) ? null
+    : <Caution className="mt-3" lead="くわしい戦績（キック・他の格闘技・タイトル）は、新しい版のシートで使えます。"><p>今のシートのままでも、申し込みは受け付けます（戦績は、今までどおり1行の欄になります）。使うときは、ひな形をもう一度コピーするか、Apps Scriptを新しい版にして「デプロイを管理」→ 鉛筆 →「新バージョン」→「デプロイ」を押します。</p></Caution>;
   /** 読み取り欄の「階級分け」「ロゴ」の言葉。クラス分けの行と同じ作り（✓ できた／✕ 直す／⚠ このシートでは使えない／なし） */
   const weightRowText = weights && !configProblem ? '✓ あり（' + weights.divisions.length + '区分）。申し込みページに出ます'
     : ping?.weightMode && !ping.weights ? '✕ あり（でも、区分と階級の表を申し込みページに入れられません。シートの「設定」タブの「階級：…」の行を直して、「もう一度確かめる」を押します）'
@@ -947,6 +1019,13 @@ export default function SetupV3() {
   const logoRowText = ping?.logo ? (configProblem ? 'あり（上の「✕」の文のとおりに直すと、申し込みページと当日の画面に出ます）' : '✓ あり（申し込みページと当日の画面に出ます）')
     : ping?.weightRows === false || (ping && !supportsWeightClasses(ping)) ? '⚠ このシートでは、ロゴを使えません'
     : 'なし（ロゴは出しません）';
+  /** 読み取り欄の「花道の追加情報」の言葉。✓ あり／なし。古い版のシートは「あり」かどうかを ping で言えない（行が無い・読まれない）ので、警告は出さず、前と同じ「なし」と読む */
+  const hanamichiRowText = ping?.hanamichiMode && supportsHanamichi(ping) ? (configProblem ? 'あり（上の「✕」の文のとおりに直すと、申し込みページに出ます）' : '✓ あり（花道の区分を選んだ人にだけ、追加の質問が出ます）')
+    : 'なし（追加の質問は出しません）';
+  /** 誓約書の診断の1行。「なし」・この版が対応していない・文が読めない（そのときは、赤い直しものが出る）ときは、何も足さない */
+  const pledgeDiag = pledgeDiagnosis(ping);
+  /** 選手の画面が、入力の途中では覚えない物（「選手に送る前の説明」で言う）。このシートにある物だけ名前を出す：「なし」の大会の説明に、花道・誓約書の言葉を出さない */
+  const keptNot = ['連絡先', '写真', '同意のチェック', ...(ping?.hanamichiMode && supportsHanamichi(ping) ? ['花道の答え'] : []), ...(pledgeDiag ? ['誓約書の✔'] : []), ...(pledgeDiag?.gym ? ['ジム責任者の欄'] : [])].join('・');
   const musicText = ping?.music === true ? 'あり' : ping?.music === false ? 'なし' : '（シートにありません）';
   const modeText = (v?: string) => (v === 'required' ? '必ず書く' : v === 'off' ? '聞かない' : '書いても、書かなくてもOK');
 
@@ -1050,9 +1129,11 @@ export default function SetupV3() {
   </div>;
 
   const recheckPrimary = here('recheck') || here('recheck-fix');
-  const recheckBtn = (cls: string) => <button type="button" aria-disabled={!urlOk || checking || undefined} aria-busy={checking} onClick={() => {
+  const recheckBtn = (cls: string) => <button type="button" aria-disabled={!urlOk || undefined} aria-busy={checking} onClick={() => {
     if (!urlOk) { setWarn({ key: 'recheck', text: 'まだ押せません：' + (endpoint.trim() && urlWrong ? '上の「✕」の文のとおりに、URLを直してください。' : '先に、上の欄にURLを貼ってください。') }); setUrlTarget(true); jumpToUrl(); return; }
-    if (checking) return;
+    // 2回押し・3回押し（1秒の間）は、1回にまとめる。それより後に押したら、待っている確かめを止めて、新しく確かめる（Googleが答えないまま、止まらない）
+    if (checking && Date.now() - manualAt.current < 1000) return;
+    manualAt.current = Date.now();
     void check('manual');
   }} className={cls}>もう一度確かめる</button>;
 
@@ -1072,7 +1153,7 @@ export default function SetupV3() {
       <header className="rounded-2xl border-2 border-slate-300 bg-white p-3 sm:p-6">
         <p className="mb-2 rounded-xl border-2 border-indigo-700 bg-indigo-50 px-3 py-2 text-[17px] font-bold text-indigo-950">いま作っている大会：{title || ping?.title || 'まだ名前なし'}</p>
         <h1 className="text-balance text-2xl font-bold sm:text-3xl"><span aria-hidden="true">🥊 </span>{PAGE_NAME}</h1>
-        {step === 1 ? <p className="mt-2">15分くらいで終わります。順番にボタンを押すだけです。</p> : null}
+        {step === 1 ? <><p className="mt-2">はじめての人は、約30分かかります。順番にボタンを押すだけです。</p><p className="mt-1 text-[17px] text-slate-700">約30分は目安です。まだ測っていません。人によって変わります。</p></> : null}
         <p className={'mt-2 rounded-xl border-2 border-slate-300 bg-slate-50 px-3 py-2 text-[17px] font-medium text-slate-900 ' + (step === 2 ? 'hidden sm:block' : '')}><span aria-hidden="true">🛡 </span>入れた文字は、この画面とGoogleの中だけで使います。</p>
       </header>
 
@@ -1134,10 +1215,10 @@ export default function SetupV3() {
           <ol className="list-decimal space-y-2 pl-6">
             <li className="font-bold">シートの下に「設定」タブができるまで、10秒待ちます。</li>
             <li>コピーしたシートの左下にある <b>「設定」</b> という文字を押します。表が出ます。</li>
-            <li>下の絵と同じ行の、右の列（B列）に書きます。C列に{WRITE_MARK}と書いてある7つの行です。</li>
+            <li>下の絵と同じ行の、右の列（B列）に書きます。C列に{WRITE_MARK}と書いてある6つの行です。</li>
           </ol>
-          <p className="font-bold">この絵は見本です。B列の、{WRITE_MARK}と書いてある7つの行に書きます。</p>
-          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある7つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。階級分けとロゴの行も、そのあとに入っています。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
+          <p className="font-bold">この絵は見本です。B列の、{WRITE_MARK}と書いてある6つの行に書きます。</p>
+          <div role="img" aria-label="「設定」タブの絵。必ず書くのは、右の列（B列）の、「✎ ここに書く」と書いてある6つの行です。「クラス分け」から下に、クラスの行が8つ、はじめから入っています。階級分けとロゴの行も、そのあとに入っています。いちばん下に、花道の追加情報、誓約書、花道のルールの行があります。左の列には書きません。" className="tos-pic overflow-hidden text-[17px]">
             <p aria-hidden="true" className="tos-pic-tag bg-slate-100 px-3 py-1">📷 Googleのシートの絵（ここには書けません）</p>
             <div aria-hidden="true" className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-400 bg-slate-100 font-bold"><div className="px-3 py-1">項目（A列）</div><div className="border-l-2 border-slate-400 px-3 py-1">値（B列）</div></div>
             {sheetRows.map(([k, cell, kind, v], i) => <div aria-hidden="true" key={k + i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t-2 border-slate-300">
@@ -1146,13 +1227,15 @@ export default function SetupV3() {
             </div>)}
           </div>
           <p className="tos-danger">✕ 左の列（A列）には書かない。B列の、{WRITE_MARK}の行だけに書く</p>
-          <p>必ず書くのは7つです。日にちは「2027年10月3日」のように書きます（年は見本です。本当の日にちを書きます）。</p>
+          <p>必ず書くのは6つです。日にちは「2027年10月3日」のように書きます（年は見本です。本当の日にちを書きます）。</p>
           <p className="text-[17px] text-slate-700">（2027-10-03 でも 2027/10/3 でも大丈夫です。数字は全角でもOKです）</p>
           <p>この大会でAクラス・Bクラスに分けるときだけ、表の下のほうの「クラス分け」（B13）を「あり」にします。はじめは「なし」です。クラスの名前・条件・ルールは、はじめから入っています。直したいときだけ書き換えます。</p>
           <Example>{DEFAULT_CLASS_SETTINGS.upper.name}：{DEFAULT_CLASS_SETTINGS.upper.condition.split('（')[0]}・{DEFAULT_CLASS_SETTINGS.upper.rule}。{DEFAULT_CLASS_SETTINGS.lower.name}：{DEFAULT_CLASS_SETTINGS.lower.condition.split('（')[0]}（初出場もここ）・{DEFAULT_CLASS_SETTINGS.lower.rule}。</Example>
           <p className="text-[17px] text-slate-700">（クラスの行は、新しいひな形をコピーしたときだけあります。古いコピーにはありません。そのときは、クラスなしで受け付けます）</p>
           <p id="weights-howto">選手に区分と階級（階級＝体重で分けたグループ）を選んでもらうときだけ、「階級分け」を「あり」にします。申し込みページと当日の画面にロゴを出すときだけ、「ロゴ」を「あり」にします。どちらも、はじめは「なし」です。区分と階級の表は、はじめから入っています。直したいときだけ書き換えます。</p>
           <p className="text-[17px] text-slate-700">（階級分け・ロゴの行も、新しいひな形をコピーしたときだけあります。古いコピーにはありません。そのときは、階級分け・ロゴなしで受け付けます）</p>
+          <p id="hanamichi-howto">花道の選手に、アナウンスで使う追加の質問をするときだけ、いちばん下の「花道の追加情報」を「あり」にします（A列が「花道の追加情報」の行のB列）。「階級分け」が「あり」で、区分の名前に「花道」が入っているときだけ使えます。はじめは「なし」です。</p>
+          <p id="pledge-howto">申し込みの最後に、誓約書の□（✔を入れる欄）を出すときだけ、「誓約書」を「あり」にします（A列が「誓約書」の行のB列）。はじめは「なし」です。「あり」にして「① 最初の設定」を押すと、「誓約書」というタブができて、文が入ります。この文は、原本から写した文字です。会長が原本と見比べて、まちがいがあれば、「誓約書」タブで直します。見比べて、よければ、「誓約書の文の確認」を「済み」にします。「済み」にするまで、本番の申し込みは受け付けません（テスト用は動きます）。</p>
           <p>まちがえたり、書き忘れたりしても大丈夫です。次の画面で「ここを直してください」と教えます。</p>
         </StepCard>
 
@@ -1262,8 +1345,11 @@ export default function SetupV3() {
             <div className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">クラス分け</dt><dd className="break-words text-lg font-bold">{classes && !configProblem ? '✓ あり（' + classes.upper.name + '／' + classes.lower.name + '）。申し込みページに出ます' : ping.classMode ? '✕ あり（でも、クラスの内容を申し込みページに入れられません。シートの「設定」タブのクラスの欄を直して、「もう一度確かめる」を押します）' : ping.classRows === false ? '⚠ このシートには、クラスの行がありません' : 'なし（クラスは分けません）'}</dd></div>
             <div id="read-weights" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">階級分け</dt><dd className="break-words text-lg font-bold">{weightRowText}</dd></div>
             <div id="read-logo" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">ロゴ</dt><dd className="break-words text-lg font-bold">{logoRowText}</dd></div>
+            <div id="read-hanamichi" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">花道の追加情報</dt><dd className="break-words text-lg font-bold">{hanamichiRowText}</dd></div>
+            {/* 誓約書は「あり」のときだけ1行足す。「なし」のときは、行を足さない（いまと同じ） */}
+            {pledgeDiag && !configProblem ? <div id="read-pledge" className="rounded-xl border-2 border-slate-300 bg-white px-3 py-2"><dt className="text-[17px] text-slate-700">誓約書</dt><dd className={'break-words text-lg font-bold' + (pledgeDiag.confirmed ? '' : ' text-red-700')}>{pledgeDiag.confirmed ? '✓ ' : '✕ '}{pledgeDiag.line.replace(/^誓約書：/, '')}</dd></div> : null}
           </dl>
-          {/* いちばん古い版のシートは、クラスも階級分けも使えない。直し方は同じ（ひな形をコピーし直す）なので、黄色は1つだけ */}
+          {/* いちばん古い版のシートは、クラスも階級分けも花道の追加情報も使えない。直し方は同じ（ひな形をコピーし直す）なので、黄色は1つだけ */}
           {classCaution ?? weightCaution}
           <p className="mt-3">違っていたら、シートの「設定」タブを直して、「もう一度確かめる」を押します。</p>
         </section> : null}
@@ -1335,7 +1421,14 @@ export default function SetupV3() {
           {classes && !configProblem ? <OkLine>クラス分け：あり（{classes.upper.name}／{classes.lower.name}）。申し込みページに出ます。</OkLine> : null}
           {weights && !configProblem ? <OkLine>階級分け：あり（{weights.divisions.length}区分）。申し込みページに出ます。</OkLine> : null}
           {ping?.logo && !configProblem ? <OkLine>ロゴ：あり。申し込みページと当日の画面に出ます。</OkLine> : null}
+          {ping?.hanamichiMode && supportsHanamichi(ping) && !configProblem ? <OkLine>花道の追加情報：あり。花道の区分を選んだ人にだけ、追加の質問が出ます。</OkLine> : null}
+          {/* 花道の選手にはクラスを選ばせず、シートの「花道のルール」の1行を見せる。その文は、原本から写した仮の文なので、会長の確認が要る（黄色の注意。止めない） */}
+          {ping?.hanamichiRule && classes && !configProblem ? <div id="hanamichi-rule-note"><Caution lead={<>花道のルール：{ping.hanamichiRule.length > 30 ? ping.hanamichiRule.slice(0, 30) + '…' : ping.hanamichiRule}（原本から写した仮の文。会長の確認が必要）</>} /></div> : null}
+          {/* 誓約書：「あり」のときだけ1行。会長の確認が「済み」なら緑の✓、「まだ」なら赤い✕（URLは出す。止めるのは、申し込みページとGoogleの受付）。リンクが長すぎるときは、上の赤い「設定の直しもの」が1文で言う */}
+          {pledgeDiag && !configProblem ? (pledgeDiag.confirmed ? <OkLine>{pledgeDiag.line}。</OkLine> : <ErrorLine id="pledge-unconfirmed-note">{pledgeDiag.line}。<span className="mt-1 block">{PLEDGE_UNCONFIRMED_ADVICE}</span></ErrorLine>) : null}
           {classCaution ?? weightCaution}
+          {recordCaution}
+          {keyMissing && diagnosis?.ok ? <ErrorLine id="link-key-missing">このパソコンでは、選手に渡すURLを作れません。登録した「リンクの鍵」が、このパソコンのブラウザにありません。鍵を作ったパソコン（Chrome）で、この画面を開いてください。</ErrorLine> : null}
           {urlReady ? <>
             {staleCopy ? <ErrorLine>先に送ったURLは古い内容です。新しいURLを送り直します。</ErrorLine> : null}
             {copyFailed === 'live' ? <ErrorLine>コピーできていません。</ErrorLine> : null}
@@ -1344,9 +1437,9 @@ export default function SetupV3() {
           {warnLine('copy')}
           {mark('copy', urlReady
             ? <button type="button" aria-describedby="live-reason" onClick={() => void copy('live', liveUrl)} className={here('copy') || here('copy-new') ? btnPrimary : copiedFresh ? btnDone : btnSecondary}>{copied === 'live' ? '✓ コピーしました（もう一度押せます）' : '完成：選手へ渡すURLをコピー'}</button>
-            : <button type="button" aria-disabled="true" aria-describedby="live-reason" onClick={() => setWarn({ key: 'copy', text: stage === 'closed' ? 'まだ押せません：受付が終わっています' : 'まだ押せません：シートで「② 受付を開始」を押す' })} className={btnOff}>完成：選手へ渡すURLをコピー</button>)}
+            : <button type="button" aria-disabled="true" aria-describedby="live-reason" onClick={() => setWarn({ key: 'copy', text: stage === 'closed' ? 'まだ押せません：受付が終わっています' : keyMissing && diagnosis?.ok ? 'まだ押せません：このパソコンには、リンクの鍵がありません' : 'まだ押せません：シートで「② 受付を開始」を押す' })} className={btnOff}>完成：選手へ渡すURLをコピー</button>)}
           <div id="live-reason" className="space-y-1">
-            {!urlReady ? <Why>{stage === 'closed' ? 'まだ押せません：受付が終わっています。選手には渡しません' : 'まだ押せません：シートで「② 受付を開始」を押す'}</Why>
+            {!urlReady ? <Why>{stage === 'closed' ? 'まだ押せません：受付が終わっています。選手には渡しません' : keyMissing && diagnosis?.ok ? 'まだ押せません：このパソコンには、リンクの鍵がありません' : 'まだ押せません：シートで「② 受付を開始」を押す'}</Why>
               : copyFailed === 'live' ? <p className="text-[17px]">{COPY_STEPS}</p>
               : copiedFresh ? <OkLine>コピー済み {copiedAt}</OkLine>
               : <p className="text-[17px]">このURLを、選手にLINEなどで送ります。</p>}
@@ -1357,7 +1450,32 @@ export default function SetupV3() {
             {copyFailed === 'line' ? <ErrorLine>コピーできていません。</ErrorLine> : null}
             {mark('copy-manual', <textarea ref={lineBoxRef} readOnly aria-label="LINEで送る文章" value={lineText} rows={3} onFocus={(e) => e.currentTarget.select()} className={field + ' break-all'} />)}
             {copyFailed === 'line' ? <p className="text-[17px]">{COPY_STEPS}</p> : null}
+            <Box tone="info" id="apply-memory-note">
+              <p className="font-bold">選手に送る前に、知っておくこと：選手のスマホに、一時的に残るもの</p>
+              <p className="text-[17px]">選手の申し込み画面は、入力の途中では、選手の欄（ジム名・選手名・身長・体重など）だけを、そのスマホのそのページの中にだけ、一時的に覚えておけます。{keptNot}は、途中では覚えません。「消す」を押すか、ページ（タブ）を閉じると、消えます。送ったあとは、受付番号が出なかったときに戻せるよう、60分だけ残します（「この表示を消す」を押しても、消えます）。</p>
+              <p className="text-[17px]">送ったあと、もう1人申し込む人のために、ジム名と連絡先を、そのスマホのそのタブの中に60分だけ覚えます。タブを閉じると消えます。{pledgeDiag?.gym ? '個人情報の同意のチェックと、ジム責任者の名前・電話も、いっしょに覚えます。' : '個人情報の同意のチェックも、いっしょに覚えます。'}</p>
+              <p className="text-[17px]">共用の端末（ジムのタブレットなど）では、「変える」を押すか、タブを閉じるように、選手に伝えてください。このメモは、ネットには送りません。送った申し込みの保存先は、これまでと同じ、主催者のGoogleのシートとドライブだけです。</p>
+            </Box>
           </> : null}
+          <Fold id="link-key" title="リンクの鍵（このパソコンで作ったURLだけを使えるようにする）" openSignal={keyMissing || !!linkKeyNote}>
+            <div className="space-y-3 p-4 pt-0">
+              <p className="text-[17px]">選手に渡すURLに、このパソコンだけが付けられる「しるし」（署名）を付けます。登録したあとは、しるしの無いURL（ほかの人が作ったニセのURLや、登録の前に作ったURL）は、申し込みのページが止めます。</p>
+              {linkKey === undefined ? <p className="text-[17px]">⏳ 鍵を調べています…</p>
+                : !linkKey ? <p className="text-[17px]">このパソコンには、まだ鍵がありません。{TRUSTED_LINK_KEYS.length ? '' : '鍵を登録するまでは、今までどおり、しるしの無いURLも使えます。'}</p>
+                : keyTrusted ? <OkLine>このパソコンの鍵は、登録ずみです。作るURLには、しるしが付きます。</OkLine>
+                : <Caution lead={TRUSTED_LINK_KEYS.length ? 'このパソコンの鍵は、登録されていません。このパソコンでは、URLを作れません。' : '鍵はできています。まだ登録していません（登録するまでは、しるしの無いURLも使えます）。'} />}
+              {linkKey ? <>
+                <label className="block font-bold" htmlFor="link-key-text">公開用の文字（見られても大丈夫。秘密の鍵は、このパソコンの外に出ません）</label>
+                <input id="link-key-text" readOnly value={linkKey.publicText} onFocus={(e) => e.currentTarget.select()} className={field + ' break-all font-mono'} />
+                <button type="button" onClick={() => void copy('key', linkKey.publicText)} className={btnSecondary}>{copied === 'key' ? '✓ コピーしました' : '公開用の文字をコピー'}</button>
+                {copyFailed === 'key' ? <ErrorLine>コピーできていません。上の四角をクリックして、Ctrl を押しながら C を押します。</ErrorLine> : null}
+                {keyTrusted ? null : <p className="text-[17px]">この文字を、作る人（Claude）に送ります。サイトに登録して、公開しなおすと、使えるようになります。</p>}
+              </> : null}
+              <button type="button" onClick={() => void createKey()} className={btnSecondary}>{linkKey ? '鍵を作り直す（パソコンを変えたとき・消えたときだけ）' : 'このパソコンで、リンクの鍵を作る（最初に1回だけ）'}</button>
+              {linkKeyNote ? (linkKeyNote.kind === 'ok' ? <OkLine>{linkKeyNote.text}</OkLine> : <ErrorLine>{linkKeyNote.text}</ErrorLine>) : null}
+              <p className="text-[17px]">鍵は、このパソコンの、このブラウザ（Chrome）の中だけにあります。ブラウザの「閲覧履歴データの削除」で「Cookie と他のサイトデータ」を消すと、鍵も消えます。消えたら、作り直して、新しい公開用の文字を送ってください。</p>
+            </div>
+          </Fold>
         </section>
 
         {urlReady ? <section className="space-y-3 rounded-2xl border-2 border-emerald-700 bg-emerald-50 p-4 text-emerald-950">

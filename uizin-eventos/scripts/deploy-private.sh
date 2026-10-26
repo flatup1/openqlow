@@ -2,6 +2,7 @@
 # Tournament OS（会長向けの準備・申込の画面）を、Cloudflare Pages「tournament-os-v3」だけに公開する。
 # 公開先は、この1つに固定。古い uizin-eventos や Worker には、さわらない。
 # 使い方:  npm run deploy:private   （最後に「yes」と打つまで、公開しない）
+#          オーナーの Mac からは bash ~/openqlow-a3/uizin-eventos/scripts/owner-deploy.sh（決めた枝を取ってきて、これを動かす）
 set -euo pipefail
 
 PROJECT="tournament-os-v3"
@@ -39,15 +40,28 @@ echo "   コミット : $COMMIT"
 GS_BUILD="$(grep -m1 -oE "RECEPTION_BUILD = '[0-9.]+'" "$OUT/templates/Tournament_OS_Google受付_v3.gs" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" || echo '?')"
 echo "   ひな形の build : ${GS_BUILD}   （コピー元のシートの Apps Script の上から2行目と、同じか見くらべてください。docs/クラス区分_設定の入れ方.md の最後の章）"
 echo "   中身     : 準備の画面・設定の画面・当日の画面・選手の申込画面だけ。名簿・写真・連絡先は入りません。"
-# 検証ずみの指紋（bash scripts/verify-private-all.sh が、全部合格したときに書く）と、いまの指紋を見くらべる
+# 検証ずみかを、2つの道で見る。
+#   ① 検証ずみの指紋（この作業場所で bash scripts/verify-private-all.sh が、全部合格したときに書く .verify-ok）が、いまの指紋と同じ
+#   ② このフォルダがコミットずみ（変更も、まだ追跡していないファイルも無い）で、その中身の番号が、検証ずみの一覧
+#      （リポジトリのいちばん上の uizin-eventos-verified-trees.txt。verify-private-all.sh が書いて、コミットする）にある
+#      オーナーの Mac（scripts/owner-deploy.sh で取ってきた場所）には .verify-ok が無いので、ふつうは ② で見分ける
 STAMP_NOW="$(bash "$ROOT_DIR/scripts/tree-stamp.sh")"
 STAMP_OK="$(cat "$ROOT_DIR/.verify-ok" 2>/dev/null || true)"
+TREE_NOW="$(bash "$ROOT_DIR/scripts/tree-stamp.sh" --tree 2>/dev/null || true)"
+LIST="$(bash "$ROOT_DIR/scripts/tree-stamp.sh" --list 2>/dev/null || true)"
+LISTED=""
+if [ -n "$TREE_NOW" ] && [ -n "$LIST" ]; then LISTED="$(grep -E -m1 "^${TREE_NOW}([[:space:]]|$)" "$LIST" 2>/dev/null || true)"; fi
 WORD="yes"
 if [ "$STAMP_NOW" = "$STAMP_OK" ]; then
   echo "   検証     : ✓ このコミット・この中身で、bash scripts/verify-private-all.sh は全部合格しています。"
+elif [ -n "$LISTED" ]; then
+  # 一覧の1行：中身の番号  確かめた日時  そのときのコミット
+  read -r _ VERIFIED_AT VERIFIED_COMMIT _ <<< "$LISTED" || true
+  echo "   検証     : ✓ この中身（コミットずみ・変更なし）は、全部の確認に合格した記録があります（${VERIFIED_AT:-?}・コミット ${VERIFIED_COMMIT:-?}。${LIST##*/}）。"
 else
   WORD="yes-unverified"
   echo "   ⚠ 検証   : このコミット・この中身では、全部の検証が合格していません（またはまだ動かしていません）。" >&2
+  echo "     検証ずみの一覧（${LIST:-使えません}）にも、この中身はありません（コミットしていない変更があるときは、一覧では見分けません）。" >&2
   echo "     先に bash scripts/verify-private-all.sh を動かしてください。それでも公開するときは、下で ${WORD} と打ちます。" >&2
 fi
 printf "公開してよいですか？ よければ %s と打って Enter: " "$WORD"

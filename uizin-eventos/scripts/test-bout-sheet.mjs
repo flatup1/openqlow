@@ -74,8 +74,11 @@ async function seed(ctx, value) {
   await idbPut(boot, value);
   await boot.close();
 }
-async function openSheet(ctx, id, { wait = true } = {}) {
+async function openSheet(ctx, id, { wait = true, photos = true } = {}) {
   const page = await ctx.newPage();
+  // 顔写真は、はじめは「出さない」（R8-2）。写真を見る場面は、はっきり「出す」にしてから開く：会長が「小さな顔写真」に✔を入れたのと同じ、このブラウザの覚え（tos-sheet:<大会の名札>）に書く。
+  // すでに覚えがあるときは書き換えない（「覚えた設定を勝手に変えない」場面のため）。photos: false は、はじめの状態そのものを見る場面（新しい場面 R）
+  if (photos) await page.addInitScript(([key, value]) => { try { if (!localStorage.getItem(key)) localStorage.setItem(key, value); } catch { /* 試験の準備だけ */ } }, ['tos-sheet:' + id, JSON.stringify({ orientation: 'portrait', show: { photo: true, gym: true, classLine: true, rule: false } })]);
   await page.goto(base + '/private/sheet/?event=' + id);
   await page.locator('main').waitFor({ timeout: 15000 });
   if (wait) await page.waitForFunction(() => !document.body.innerText.includes('このパソコンのデータを読んでいます'), null, { timeout: 15000 });
@@ -195,12 +198,12 @@ scenario('B', 'options: 1ページの試合数, 3枚 / 4枚 / 自動, orientatio
   await shot(p, 'B-landscape');
   await p.getByRole('button', { name: /縦/ }).click(); await settle(200);
   // what to show
-  await p.getByLabel('所属ジム').uncheck(); await p.getByLabel('小さな顔写真').uncheck(); await p.getByLabel('ルール').check(); await settle(200);
+  await p.getByLabel('ジム名', { exact: true }).uncheck(); await p.getByLabel('小さな顔写真').uncheck(); await p.getByLabel('ルール').check(); await settle(200);
   const shown = await p.evaluate(() => ({ gyms: document.querySelectorAll('.sheet-gym').length, photos: document.querySelectorAll('.sheet-photo').length, names: document.querySelectorAll('.sheet-name').length }));
   check(shown.gyms === 0 && shown.photos === 0 && shown.names === 24, 'B gym off / photo off: names stay, gyms and photo boxes go (' + JSON.stringify(shown) + ')');
   // remembered
   await p.reload(); await p.locator('#sheet-per-page').waitFor(); await settle(300);
-  check(!(await p.getByLabel('所属ジム').isChecked()) && !(await p.getByLabel('小さな顔写真').isChecked()) && await p.getByLabel('ルール').isChecked(), 'B the choices are remembered after a reload');
+  check(!(await p.getByLabel('ジム名', { exact: true }).isChecked()) && !(await p.getByLabel('小さな顔写真').isChecked()) && await p.getByLabel('ルール').isChecked(), 'B the choices are remembered after a reload');
   check((await p.locator('#sheet-per-page').inputValue()) === '6', 'B the number per page is remembered after a reload');
   await ctx.close();
 });
@@ -429,13 +432,13 @@ scenario('H2', 'print button lock: while the small photos are not ready the butt
 scenario('I', 'no bouts / no such tournament / the way back: plain words, no print button, a link to the prep screen', async () => {
   const ctx = await newCtx(DESKTOP);
   await seed(ctx, T('sh-i-empty', {}));
-  const p = await openSheet(ctx, 'sh-i-empty');
+  const p = await openSheet(ctx, 'sh-i-empty', { photos: false });
   const t = await bodyText(p);
   check(/対戦カードがありません/.test(t) && (await p.locator('#sheet-print').count()) === 0, 'I no bouts: it says so and there is no print button');
   check(/準備の画面へもどる/.test(t) && (await p.locator('a[href*="/private/?event=sh-i-empty"]').count()) >= 1, 'I a link back to the prep screen of this tournament');
   const yellowEmpty = await markers(p);
   check(yellowEmpty.length === 1 && /準備の画面へもどる/.test(yellowEmpty[0]), 'I no bouts: exactly one yellow 👉 次はここ: back to the prep screen (' + short(yellowEmpty.join('|'), 80) + ')');
-  const q = await openSheet(ctx, 'sh-i-missing');
+  const q = await openSheet(ctx, 'sh-i-missing', { photos: false });
   const t2 = await bodyText(q);
   check(/この大会は、このブラウザにありません/.test(t2) && /^✕/m.test(t2), 'I an unknown tournament: a red ✕ sentence');
   const yellowMissing = await markers(q);
@@ -598,7 +601,7 @@ scenario('M', 'options are remembered per tournament (landscape, 自動, 3枚); 
   await big.getByRole('button', { name: /横/ }).click(); await settle(200);
   check((await big.locator('#sheet-pages-3').getAttribute('aria-disabled')) === null, 'M in landscape the same button can be pressed');
   // a screen with a tournament that does not exist does not write anything
-  const none = await openSheet(ctx, 'sh-m-nothing');
+  const none = await openSheet(ctx, 'sh-m-nothing', { photos: false });
   const keys = await none.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('tos-sheet:')));
   check(!keys.includes('tos-sheet:sh-m-nothing'), 'M nothing is stored for a tournament that does not exist');
   await ctx.close();
@@ -750,7 +753,7 @@ scenario('Q', 'text that is cut: usual long names / romaji / gyms fit at the def
   extreme.fighters[0] = { ...extreme.fighters[0], name: 'あ'.repeat(90) };
   await seed(ctx, extreme);
   const e = await openSheet(ctx, 'sh-q2');
-  check(/第1試合は、名前・所属ジム・クラスの文字が長くて、紙の上で一部が「…」と切れます/.test(await e.locator('#sheet-cut-note').innerText()), 'Q an extreme name is warned in words with the bout number before printing');
+  check(/第1試合は、名前・ジム名・クラスの文字が長くて、紙の上で一部が「…」と切れます/.test(await e.locator('#sheet-cut-note').innerText()), 'Q an extreme name is warned in words with the bout number before printing');
   check((await e.locator('.sheet-noprint .tos-ok').count()) === 0, 'Q no green ✓ while something is cut');
   await e.close();
   // 320px: a long Latin name in two bouts must not make the page scroll sideways (the 2-bouts warning carries the name)
@@ -764,6 +767,83 @@ scenario('Q', 'text that is cut: usual long names / romaji / gyms fit at the def
   check(sw.sw <= sw.cw, 'Q 320px: no sideways scroll with a very long Latin name in the 「2つ以上の試合」 warning (' + sw.sw + ' vs ' + sw.cw + ')');
   await small.close();
   await ctx.close();
+});
+
+scenario('R', 'R8-2 photos are OFF at first: no photo boxes, an unchecked 「小さな顔写真」, no note; switching ON shows one yellow line (words, not colour only) and the photos; a saved choice is never changed; the layout holds', async () => {
+  const NOTE = '顔写真が、壁に貼る紙に載ります。申し込みページの『使い道』にも書いてあります。';
+  for (const vp of [DESKTOP, PHONE, SMALL]) {
+    const ctx = await newCtx(vp);
+    const id = 'sh-r-' + vp.width;
+    await seed(ctx, tournament(id, 6, { photo: 'all' }));
+    const p = await openSheet(ctx, id, { photos: false });
+    await settle(300);
+    const t = 'R@' + vp.width + ' ';
+    // 1) first state: off
+    check(!(await p.getByLabel('小さな顔写真').isChecked()), t + 'the 「小さな顔写真」 box is NOT checked at first');
+    check((await p.getByLabel('ジム名', { exact: true }).isChecked()) && (await p.getByLabel('クラス・区分・階級').isChecked()) && !(await p.getByLabel('ルール').isChecked()), t + 'the other three choices keep their first state (gym ✓, class/division ✓, rule –)');
+    const off = await p.evaluate(() => ({ boxes: document.querySelectorAll('.sheet-photo').length, imgs: document.querySelectorAll('.sheet-photo img').length, names: document.querySelectorAll('.sheet-name').length, gyms: document.querySelectorAll('.sheet-gym').length, pages: document.querySelectorAll('.sheet-page').length, textW: Math.round(document.querySelector('.sheet-text').getBoundingClientRect().width), html: document.documentElement.outerHTML.includes('data:image/jpeg') }));
+    check(off.boxes === 0 && off.imgs === 0 && !off.html, t + 'no photo box, no image, and no photo data anywhere on the page (' + JSON.stringify(off) + ')');
+    check(off.names === 12 && off.gyms === 12, t + 'names and gyms are all there (' + off.names + ' names, ' + off.gyms + ' gyms)');
+    check((await p.locator('#sheet-photo-note').count()) === 0 && !(await bodyText(p)).includes(NOTE), t + 'no photo note while photos are off');
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), t + 'no sideways scroll with photos off');
+    const markOff = (await markers(p)).length;
+    // 2) switch ON: one yellow line, the photos
+    await p.getByLabel('小さな顔写真').check(); await photosReady(p); await settle(200);
+    check((await p.locator('#sheet-photo-note').count()) === 1, t + 'switching ON shows exactly one note');
+    const note = await p.locator('#sheet-photo-note').evaluate((el) => ({ text: el.innerText.replace(/\s+/g, ' ').trim(), role: el.getAttribute('role'), cls: el.className, font: parseFloat(getComputedStyle(el).fontSize), mark: el.textContent.includes('⚠'), near: (() => { const box = document.querySelector('input[type=checkbox]'); const a = el.getBoundingClientRect(), b = box.getBoundingClientRect(); return Math.round(a.top - b.bottom); })() }));
+    check(note.text.endsWith(NOTE), t + 'the note says the sentence as agreed (' + short(note.text, 90) + ')');
+    check(/tos-caution/.test(note.cls) && note.mark && note.font >= 16.99 && note.role === 'status', t + 'the note is the yellow caution (⚠ and words, 17px+, announced as status): ' + note.cls + ' ' + note.font + 'px');
+    check(note.near >= 0 && note.near < 400, t + 'the note sits close to the checkboxes (' + note.near + 'px below the first box)');
+    const on = await p.evaluate(() => ({ boxes: document.querySelectorAll('.sheet-photo').length, imgs: document.querySelectorAll('.sheet-photo img').length, pages: document.querySelectorAll('.sheet-page').length, textW: Math.round(document.querySelector('.sheet-text').getBoundingClientRect().width) }));
+    check(on.boxes === 12 && on.imgs === 12, t + 'photos ON: a box and an image for every fighter (' + on.boxes + '/' + on.imgs + ')');
+    check(on.pages === off.pages, t + 'the number of pages is the same ON and OFF (' + on.pages + ' / ' + off.pages + ')');
+    check(off.textW > on.textW, t + 'without the photo the name column is wider (' + off.textW + 'px vs ' + on.textW + 'px): the layout uses the space');
+    check((await markers(p)).length === markOff, t + 'the note adds no 👉 marker (' + markOff + ' → ' + (await markers(p)).length + ')');
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), t + 'no sideways scroll with photos on');
+    // the note is on the screen only: not printed
+    await p.emulateMedia({ media: 'print' });
+    check(await p.locator('#sheet-photo-note').evaluate((el) => getComputedStyle(el).display === 'none' || el.closest('.sheet-noprint') !== null), t + 'the note is not part of the printed paper');
+    await p.emulateMedia({ media: 'screen' });
+    // 3) switch OFF again: the note and the photos go
+    await p.getByLabel('小さな顔写真').uncheck(); await settle(200);
+    check((await p.locator('#sheet-photo-note').count()) === 0 && (await p.locator('.sheet-photo').count()) === 0, t + 'switching OFF removes the note and the photo boxes');
+    // 4) remembered: ON survives a reload (the note too), OFF survives a reload
+    await p.getByLabel('小さな顔写真').check(); await settle(200);
+    await p.reload(); await p.locator('#sheet-per-page').waitFor(); await settle(300);
+    check((await p.getByLabel('小さな顔写真').isChecked()) && (await p.locator('#sheet-photo-note').count()) === 1, t + 'ON is remembered after a reload (the note comes back)');
+    await p.getByLabel('小さな顔写真').uncheck(); await settle(200);
+    await p.reload(); await p.locator('#sheet-per-page').waitFor(); await settle(300);
+    check(!(await p.getByLabel('小さな顔写真').isChecked()) && (await p.locator('#sheet-photo-note').count()) === 0, t + 'OFF is remembered after a reload');
+    await ctx.close();
+  }
+  // 5) a choice saved BEFORE this change is never changed: ON stays ON, OFF stays OFF, other events are not touched
+  {
+    const ctx = await newCtx(DESKTOP);
+    await seed(ctx, tournament('sh-r-saved-on', 4, { photo: 'all' })); await seed(ctx, tournament('sh-r-saved-off', 4, { photo: 'all' })); await seed(ctx, tournament('sh-r-fresh', 4, { photo: 'all' }));
+    const boot = await ctx.newPage(); await boot.goto(base + '/private/setup/?event=seed-boot');
+    await boot.evaluate(() => {
+      localStorage.setItem('tos-sheet:sh-r-saved-on', JSON.stringify({ orientation: 'landscape', show: { photo: true, gym: false, classLine: true, rule: true }, perPage: 6 }));
+      localStorage.setItem('tos-sheet:sh-r-saved-off', JSON.stringify({ orientation: 'portrait', show: { photo: false, gym: true, classLine: true, rule: false } }));
+    }); await boot.close();
+    const on = await openSheet(ctx, 'sh-r-saved-on', { photos: false }); await photosReady(on);
+    check((await on.getByLabel('小さな顔写真').isChecked()) && !(await on.getByLabel('ジム名', { exact: true }).isChecked()) && (await on.getByLabel('ルール').isChecked()) && (await on.locator('#sheet-photo-note').count()) === 1, 'R saved ON (with other saved choices): everything is read as it was saved, the note shows');
+    const off = await openSheet(ctx, 'sh-r-saved-off', { photos: false });
+    check(!(await off.getByLabel('小さな顔写真').isChecked()) && (await off.locator('.sheet-photo').count()) === 0, 'R saved OFF: stays OFF');
+    const fresh = await openSheet(ctx, 'sh-r-fresh', { photos: false });
+    check(!(await fresh.getByLabel('小さな顔写真').isChecked()) && (await fresh.locator('.sheet-photo').count()) === 0, 'R an event with no saved choice: OFF');
+    const stored = await fresh.evaluate(() => JSON.parse(localStorage.getItem('tos-sheet:sh-r-saved-on') || '{}'));
+    check(stored.show && stored.show.photo === true && stored.orientation === 'landscape', 'R the saved ON choice is still saved as ON (not rewritten to OFF): ' + JSON.stringify(stored).slice(0, 100));
+    await ctx.close();
+  }
+  // 6) printing still works with photos off (the print button is open, no waiting for photos)
+  {
+    const ctx = await newCtx(DESKTOP);
+    await seed(ctx, tournament('sh-r-print', 4, { photo: 'all' }));
+    const p = await openSheet(ctx, 'sh-r-print', { photos: false });
+    const btn = p.locator('#sheet-print');
+    check((await btn.count()) === 1 && !(await btn.getAttribute('aria-disabled')), 'R photos OFF: the print button is open at once (nothing to wait for)');
+    await ctx.close();
+  }
 });
 
 /* ───────────────────────── runner ───────────────────────── */

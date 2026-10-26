@@ -123,7 +123,7 @@ try {
   check(/^safety-a-nodate\.tournament\.enc$/.test(file.suggestedFilename()), 'The file name has the event number and nodate: ' + file.suggestedFilename());
   const encrypted = await readFile(await file.path());
   check(!encrypted.toString().includes('架空赤選手'), 'The copy is ciphertext');
-  await status('ファイルを保存しました').waitFor();
+  await status('保存を始めました').waitFor();
 
   // 別の大会の画面には戻さない
   await page.goto(base + '/private/?event=safety-b');

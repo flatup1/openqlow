@@ -1,3 +1,8 @@
+# Tournament OS の Worker（短い申込URL /a/コード と、作る画面 /short-link）。公開は npm run worker:deploy:tournament。
+# 手順は ../docs/DEPLOY.md の「6. 短い申込URL」。
+# 秘密（鍵）はこのファイルに書かないこと。短いURLを作る鍵は、必ず secret で入れる（当日の進行の操作キーとは別の文字）:
+#   npx wrangler secret put SHORT_LINK_KEY --config worker/wrangler.tournament.toml
+
 name = "tournament-os-api"
 main = "index.ts"
 compatibility_date = "2026-09-01"
@@ -9,15 +14,27 @@ SHEET_ID = ""
 SHEET_EVENT = "event"
 SHEET_MATCHES = "matches"
 SHEET_MUSIC = "music"
+# よその画面から、この Worker を呼んでよい場所。古い大会の画面（/admin/ /entry/ /live/。2026-09 に公開した tournament-os-2vx）のためのもの。
+# 短いURLのためには、変えなくてよい：作る画面（/short-link）は、この Worker 自身が配り、同じ場所だけを呼ぶ。/a/コード は、ふつうのページの移動。
+# 申込ページ・準備画面（tournament-os-v3）は、この Worker を呼ばない（public/_headers の connect-src で止めてある）ので、ここには足さない。
 ALLOWED_ORIGINS = "https://tournament-os-2vx.pages.dev"
 
 [[durable_objects.bindings]]
 name = "EVENT_ROOM"
 class_name = "EventRoom"
 
+# 短い申込URLの行き先だけを置く箱（大会の状態とは別。/a/コード の行き先）。wrangler.toml と同じ
+[[durable_objects.bindings]]
+name = "SHORT_LINKS"
+class_name = "ShortLinks"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["EventRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ShortLinks"]
 
 [observability]
 enabled = true

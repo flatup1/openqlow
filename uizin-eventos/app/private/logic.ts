@@ -5,8 +5,10 @@ import { classNameKey, classState, cleanClassLabel, DEFAULT_CLASS_SETTINGS, norm
 import { dateDigits, formatDateInput, isCompleteDate } from '../../core/dateInput.ts';
 import { classesFromParam, DEFAULT_ENTRY_CONFIG, type EntryFieldMode, type EntryFormConfig } from '../../core/entryPackage.ts';
 import { boutWeightWarning, cleanDivisionName, cleanWeightText, divisionKey, findDivision, normalizeDivisionLoose, normalizeWeightClass, normalizeWeightClassLoose, WEIGHT_LIMITS, weightSettingsToParam, weightsFromParam, type WeightSettings } from '../../core/weightClass.ts';
+import { parseRecordDetailCsv, recordDetailProblems, RECORD_KIND, type RecordDetail } from '../../core/recordDetail.ts';
+import { toRowsIndexed } from '../../core/csv.ts';
 import { isValidEventId } from './eventId.ts';
-import { checkMusic, checkNumber, FIELD_LABEL, type FieldKey } from './normalize.ts';
+import { checkMusic, checkNumber, FIELD_LABEL, shorten, type FieldKey } from './normalize.ts';
 
 export const UNSET_TITLE = '大会名未設定';
 export const FALLBACK_ERROR = 'うまくいきませんでした。もう一度やってみてください。直らないときは、ジムの担当者に連絡してください。';
@@ -75,6 +77,8 @@ export function sameExceptProgress(a: LocalTournament, b: LocalTournament): bool
   const fighterKeys = ['id', 'gym', 'name', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl', 'photoDataUrl'] as const;
   for (let i = 0; i < a.fighters.length; i++) for (const key of fighterKeys) if (a.fighters[i][key] !== b.fighters[i][key]) return false;
   for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].fighterClass ?? '') !== (b.fighters[i].fighterClass ?? '') || (a.fighters[i].absent === true) !== (b.fighters[i].absent === true)) return false;
+  // くわしい戦績がちがうときも、「進み具合だけのちがい」とは言わない（ほかの画面の名簿の取り込みを、静かに取り込まないため）
+  for (let i = 0; i < a.fighters.length; i++) if (!recordDetailSame(a.fighters[i].recordDetail, b.fighters[i].recordDetail)) return false;
   for (let i = 0; i < a.fighters.length; i++) if ((a.fighters[i].division ?? '') !== (b.fighters[i].division ?? '') || (a.fighters[i].weightClass ?? '') !== (b.fighters[i].weightClass ?? '')) return false;
   const boutKeys = ['id', 'redId', 'blueId', 'className', 'rule'] as const;
   for (let i = 0; i < a.bouts.length; i++) for (const key of boutKeys) if (a.bouts[i][key] !== b.bouts[i][key]) return false;
@@ -221,6 +225,72 @@ export function pickZipRoster(entries: ReadonlyArray<readonly [string, string]>)
   return { csv: top[0], photos };
 }
 
+/* ───────── くわしい戦績（名簿ZIPの records.csv）。無い・読めないときは、何も付けない（名簿は別に読むので、エラーにしない） ───────── */
+
+/** records.csv の大きさの上限。これより大きいものは読まない（名簿は止めない） */
+export const RECORDS_CSV_MAX_BYTES = 5 * 1024 * 1024;
+/** records.csv の名前（players.csv と同じく、いちばん外か、フォルダ1つの中。大文字・小文字は気にしない） */
+export const isRecordsCsvName = (name: string): boolean => /^(?:[^/]+\/)?records\.csv$/i.test(name);
+
+/** 名簿（players.csv）と同じフォルダにある records.csv の、ZIP の中の名前（無ければ null）。名簿のある場所に合わせる（写真と同じ決め方） */
+export function recordsCsvEntry(entries: ReadonlyArray<readonly [string, string]>, rosterRaw: string): string | null {
+  const roster = zipEntryName(rosterRaw);
+  const prefix = roster.includes('/') ? roster.slice(0, roster.indexOf('/') + 1) : '';
+  const want = (prefix + 'records.csv').toLowerCase();
+  const hit = entries.find(([, name]) => isRecordsCsvName(name) && name.toLowerCase() === want);
+  return hit ? hit[0] : null;
+}
+
+/** records.csv を読んだ結果。unreadable＝ファイルが読めない・見出しが違う。skipped＝決まりに合わなくて付けなかった受付の数 */
+export type RecordDetailsRead = { details: Map<string, RecordDetail>; unreadable: boolean; skipped: number };
+
+/**
+ * records.csv（UTF-8）を、受付番号ごとのくわしい戦績にする。読めないときは空（何も付けない）。
+ * 見出しが違うときは、ぜんぶ読まない。キックの1行が無い受付・決まりに合わない行がある受付は、その受付だけ付けない（一部だけ出さない）。
+ */
+export function readRecordDetails(bytes: Uint8Array | undefined): RecordDetailsRead {
+  const found = new Map<string, RecordDetail>();
+  if (!bytes) return { details: found, unreadable: false, skipped: 0 };
+  try {
+    const text = new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
+    const parsed = parseRecordDetailCsv(text);
+    if (!parsed.ok) return { details: found, unreadable: true, skipped: 0 };
+    // キックの1行は、受付ごとに必ずある（受付の決まり）。キックの行が無い受付は、未経験と読まない
+    const withKick = new Set(toRowsIndexed(text).rows.filter(({ row }) => row['種類'] === RECORD_KIND.kick).map(({ row }) => row['受付番号']));
+    for (const [receipt, detail] of parsed.byReceipt) if (withKick.has(receipt) && recordDetailProblems(detail).length === 0) found.set(receipt, detail);
+    return { details: found, unreadable: false, skipped: parsed.byReceipt.size - found.size };
+  } catch { /* 読めないときは、何も付けない（名簿は別に読める） */ }
+  return { details: new Map(), unreadable: true, skipped: 0 };
+}
+export const recordDetailsFromCsv = (bytes: Uint8Array | undefined): Map<string, RecordDetail> => readRecordDetails(bytes).details;
+
+/** 受付番号（＝管理番号。前後の空白は無視）で、選手に付ける。付かなかった人は、そのまま（何も足さない） */
+export function recordDetailOnFighters(fighters: LocalFighter[], details: Map<string, RecordDetail>): LocalFighter[] {
+  if (!details.size) return fighters;
+  return fighters.map((fighter) => {
+    const detail = details.get(fighter.id.trim());
+    return detail ? { ...fighter, recordDetail: detail } : fighter;
+  });
+}
+
+/** 2つのくわしい戦績が同じか（どちらも無いときは同じ） */
+export const recordDetailSame = (a: RecordDetail | undefined, b: RecordDetail | undefined): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * 準備の画面の「くわしい戦績」の文（1行ずつ）。キックは必ず1行。他の格闘技・タイトルは、あるものだけ。
+ * 出すのは「試合数」「勝ち」と、引き分けがあるときだけ「引き分け」（2026-10-25 owner：引き分けも表示できるように）。
+ * 負け・勝敗なしは出さない（申し込み画面は、負けを聞かず、試合数−勝ち−引き分けとして送る）
+ */
+export type RecordDetailLines = { kick: string; others: string[]; titles: string[] };
+export function recordDetailLines(detail: RecordDetail): RecordDetailLines {
+  const k = detail.kick;
+  const drawPart = (draw: number): string => (draw > 0 ? '・引き分け ' + draw : '');
+  const kick = k.games === 0 ? 'キックボクシング：未経験（試合数 0）' : 'キックボクシング：試合数 ' + k.games + '・勝ち ' + k.win + drawPart(k.draw);
+  const others = detail.others.map((o) => o.sport + '（他の格闘技）：試合数 ' + o.games + '・勝ち ' + o.win + drawPart(o.draw));
+  const titles = detail.titles.map((t) => 'タイトル・入賞：' + t.event + '（' + t.year + '年・' + t.class + '）・' + t.result);
+  return { kick, others, titles };
+}
+
 /** 写真エラーを、次にやることつきの固定文に直す */
 export function photoErrorText(error: unknown): string {
   const text = error instanceof Error ? error.message : '';
@@ -272,13 +342,17 @@ export function nextAction(s: NextActionState & { halfSide?: 'red' | 'blue' }): 
 
 export type SaveLine = { tone: 'ok' | 'warn' | 'bad' | 'neutral'; text: string; short: string };
 
-/** pending: 「この選手を追加」を押す前の入力・直している途中の入力がある（保存の対象には、まだ入っていない） */
-export function saveLine(s: { conflict: boolean; saveState: SaveState; dirty: boolean; everSaved: boolean; savedClock: string; pending?: boolean }): SaveLine {
+/**
+ * pending: 「この選手を追加」を押す前の入力（true か 'manual'）・直している途中の入力（'edit'）がある（保存の対象には、まだ入っていない）。
+ * 直している途中のときは、「追加」と言わない（「直す」の中の入力なので）
+ */
+export function saveLine(s: { conflict: boolean; saveState: SaveState; dirty: boolean; everSaved: boolean; savedClock: string; pending?: boolean | 'manual' | 'edit' }): SaveLine {
   if (s.conflict) return { tone: 'bad', text: '✕ 保存できません：別の画面で内容が変わりました', short: '✕ 保存できません' };
   if (s.saveState === 'saving') return { tone: 'neutral', text: '⏳ 保存中…（そのままお待ちください）', short: '⏳ 保存中…' };
   if (s.saveState === 'failed') return { tone: 'bad', text: '✕ 保存失敗（入れた内容は画面に残っています）', short: '✕ 保存失敗' };
   if (s.dirty) return { tone: 'warn', text: '● 未保存（入れた内容は、まだ保存していません）', short: '● 未保存' };
   if (!s.everSaved) return { tone: 'warn', text: '● 未保存（まだ一度も保存していません）', short: '● 未保存' };
+  if (s.pending === 'edit') return { tone: 'warn', text: '● 未保存（直している途中の内容が、まだ入っていません）', short: '● 未保存' };
   if (s.pending) return { tone: 'warn', text: '● 未保存（選手の入力が、まだ追加されていません）', short: '● 未保存' };
   return { tone: 'ok', text: '✓ 保存済み ' + s.savedClock, short: '✓ 保存済み ' + s.savedClock };
 }
@@ -332,6 +406,8 @@ export type MergeKeepResult = {
   classesFilled: number;
   /** 区分・階級が空だった人に、ファイルの区分・階級を足した人数（クラスと同じ。親が申し込みで選んだ値なので、黙って足してよい） */
   weightsFilled: number;
+  /** くわしい戦績を足した人の数（前からいて、くわしい戦績が無かった人だけ） */
+  recordsFilled: number;
   /** merged が今の名簿と変わるか（変わらなければ、画面を「未保存」にしない） */
   changed: boolean;
   /** 管理番号はちがうが、名前とジムが前からいる人と同じ人（管理番号の空欄で行がずれたときに起こる）。既定では足さない */
@@ -363,7 +439,7 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
   const lookalikeIds = new Set(lookalike.map((fighter) => fighter.id));
   const added = fresh.filter((fighter) => !lookalikeIds.has(fighter.id));
   const differs: FighterDiff[] = [];
-  let same = 0, photosFilled = 0, classesFilled = 0, weightsFilled = 0;
+  let same = 0, photosFilled = 0, classesFilled = 0, weightsFilled = 0, recordsFilled = 0;
   const merged = current.map((fighter) => {
     const next = incomingById.get(fighter.id);
     if (!next) return fighter;
@@ -387,11 +463,15 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
       else if (!sameWeightText(mineW, theirsW)) fields.push({ label: '階級', from: mineW, to: theirsW });
     }
     if (next.photoDataUrl && fighter.photoDataUrl && next.photoDataUrl !== fighter.photoDataUrl) fields.push({ label: '写真', from: 'あり', to: '別の写真' });
+    // くわしい戦績：前から入っている分は黙って変えない。ちがうときだけ「ちがい」に出す（書きかえを選んだときに、ファイルの分になる）
+    if (fighter.recordDetail && next.recordDetail && !recordDetailSame(fighter.recordDetail, next.recordDetail)) fields.push({ label: 'くわしい戦績', from: 'あり', to: '別の内容' });
     if (fields.length) differs.push({ name: fighter.name || '名前なし', fields }); else same++;
     let out = fighter;
     if (!fighter.photoDataUrl && next.photoDataUrl) { photosFilled++; out = { ...out, photoDataUrl: next.photoDataUrl }; }
     if (fillClass) { classesFilled++; out = { ...out, fighterClass: theirs }; }
     if (fillD || fillW) { weightsFilled++; out = { ...out, ...(fillD ? { division: theirsD } : {}), ...(fillW ? { weightClass: theirsW } : {}) }; }
+    // くわしい戦績が無かった人には、ファイルの分を足す（空欄を埋めるのと同じ。入っている分は、そのまま）
+    if (!fighter.recordDetail && next.recordDetail) { recordsFilled++; out = { ...out, recordDetail: next.recordDetail }; }
     return out;
   });
   const all = merged.concat(added);
@@ -407,9 +487,11 @@ export function mergeKeepExisting(current: LocalFighter[], incoming: LocalFighte
     // 区分・階級の列が無いファイルでも、前の区分・階級を消さない
     if (!(next.division ?? '').trim() && (fighter.division ?? '').trim() && !hasDivisionColumn) out.division = fighter.division;
     if (!(next.weightClass ?? '').trim() && (fighter.weightClass ?? '').trim() && !hasWeightClassColumn) out.weightClass = fighter.weightClass;
+    // くわしい戦績は、名簿のファイルには無い（records.csv は別）。ファイルに無い人は、前の戦績を消さない（欠場と同じ）
+    if (!next.recordDetail && fighter.recordDetail) out.recordDetail = fighter.recordDetail;
     return out;
   }).concat(added);
-  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, weightsFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0 || weightsFilled > 0, lookalike };
+  return { added: added.length, same, differs, merged: all, overwritten, photosFilled, classesFilled, weightsFilled, recordsFilled, changed: added.length > 0 || photosFilled > 0 || classesFilled > 0 || weightsFilled > 0 || recordsFilled > 0, lookalike };
 }
 
 /** 書きかえで「何が変わるか」を見せる順番。このアプリで大事なもの（クラス・体重・戦績・名前）が先 */
@@ -459,9 +541,13 @@ export function overwriteBoxText(differs: FighterDiff[]): BoxText {
 
 /* ───────── 手入力フォーム ───────── */
 
-/** 1つも入れていない手入力フォームか（二度押しで同じ説明が出続けないように） */
+/**
+ * 1つも入れていない手入力フォームか（二度押しで同じ説明が出続けないように）。
+ * 選ぶ欄（クラス・区分・階級）だけを選んだときも「入力あり」と見る（閉じる前の確認・未保存の印を出すため）
+ */
 export const isBlankFighterForm = (f: LocalFighter): boolean =>
-  (['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'] as const).every((key) => !f[key].trim());
+  (['name', 'gym', 'grade', 'age', 'height', 'weight', 'record', 'comment', 'musicUrl'] as const).every((key) => !f[key].trim())
+  && !(f.fighterClass ?? '').trim() && !(f.division ?? '').trim() && !(f.weightClass ?? '').trim();
 
 /* ───────── クラス（Aクラス・Bクラスなど）。個人情報ではない。無いときは、項目ごと無い（古い形のまま） ───────── */
 
@@ -602,16 +688,110 @@ export function weightChoiceTrouble(fighters: LocalFighter[], settings: WeightSe
   return { blank, unknown };
 }
 
+/* ───────── 試合カードの計算を、1回だけにする（カードは150枚・選手は300人になることがある。カードごとに作り直さない） ───────── */
+
+/**
+ * 選手ごとに、入っている試合の番号（0から・小さい順・同じ試合は1回）。試合カードの選ぶ欄の「もう第N試合に入っています」に使う。
+ * 試合が変わったときだけ、画面（page.tsx）が1回作る
+ */
+export function boutPlaces(bouts: LocalBout[]): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  bouts.forEach((bout, index) => {
+    for (const id of new Set([bout.redId, bout.blueId])) {
+      if (!id) continue;
+      const list = map.get(id);
+      if (list) list.push(index); else map.set(id, [index]);
+    }
+  });
+  return map;
+}
+
+/**
+ * 試合カードの選ぶ欄の、選手1人ずつの文字（管理番号 → 文字）。base＝「Aクラス 65kg 山田 太郎（ジム名）」の形の文字（cards.tsx が決める）。
+ * 「もう第N試合に入っています」などの印は、カードごとに、うしろに足す。
+ * 見た目が同じ選択肢（同じ名前・同じジム・同じ体重・同じクラス）には、管理番号を足して見分けられるようにする
+ * （全角・半角と空白のちがいは、見た目では同じなので、同じ選択肢として数える）。欠場の人には「（欠場）」を付ける
+ */
+export function fighterOptionLabels(fighters: LocalFighter[], base: (fighter: LocalFighter) => string): Map<string, string> {
+  const labels = fighters.map((fighter) => base(fighter));
+  const keys = labels.map((label) => label.normalize('NFKC').replace(/\s+/g, ''));
+  const labelCount = new Map<string, number>();
+  for (const key of keys) labelCount.set(key, (labelCount.get(key) ?? 0) + 1);
+  return new Map(fighters.map((fighter, i) => [fighter.id, labels[i] + ((labelCount.get(keys[i]) ?? 0) > 1 ? `（番号 ${shorten(fighter.id, 10)}）` : '') + (fighter.absent === true ? '（欠場）' : '')]));
+}
+
+/** その試合（index）のほかで、この人が入っている いちばん上の試合の番号（無ければ undefined） */
+export const firstOtherBout = (places: Map<string, number[]>, id: string, index: number): number | undefined => {
+  const list = places.get(id);
+  return !list ? undefined : list[0] !== index ? list[0] : list[1];
+};
+
+/**
+ * 同じ人（管理番号が同じ、または名前とジムが同じ）が、いくつの試合に入っているか（選手の管理番号ごと）。
+ * 試合カードの「ほかの試合にも出ます」に使う（core の boutWarnings と同じ数え方）。名簿か試合が変わったときだけ、画面が1回作る
+ */
+export function personBoutCounts(fighters: LocalFighter[], bouts: LocalBout[]): Map<string, number> {
+  const keyOf = new Map(fighters.map((fighter) => [fighter.id, sameFighterKey(fighter)]));
+  const byKey = new Map<string, number>(), byId = new Map<string, number>();
+  for (const bout of bouts) {
+    const keys = new Set<string>();
+    for (const id of new Set([bout.redId, bout.blueId])) {
+      if (!id) continue;
+      byId.set(id, (byId.get(id) ?? 0) + 1);
+      const key = keyOf.get(id);
+      if (key) keys.add(key);
+    }
+    for (const key of keys) byKey.set(key, (byKey.get(key) ?? 0) + 1);
+  }
+  // 名前が空の人は、管理番号だけで数える（名前とジムでは、同じ人と決められない）
+  return new Map(fighters.map((fighter) => { const key = keyOf.get(fighter.id) ?? ''; return [fighter.id, key ? byKey.get(key) ?? 0 : byId.get(fighter.id) ?? 0]; }));
+}
+
+/**
+ * 並びを変えずに、多くても limit 個ずつ、順番に動かす（名簿ZIPの写真を、全部いっしょに読みはじめて、メモリが一気にふくらまないように）。
+ * fn の中のまちがいは、fn が自分で受け止める（ここでは止めない）
+ */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => { while (next < items.length) { const at = next++; out[at] = await fn(items[at], at); } };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
+}
+
+/**
+ * 名簿ZIPの写真（'photos/<管理番号>.jpg' の形の名前 → 中身）を、管理番号 → [名前, 中身] の表にする（1回だけ作る。選手ごとに、全部の写真を探し直さない）。
+ * 同じ管理番号の写真が2つあるときは、先のものを使う（今までの探し方と同じ）
+ */
+export function photosById<T>(photos: Record<string, T>): Map<string, readonly [string, T]> {
+  const map = new Map<string, readonly [string, T]>();
+  for (const [name, bytes] of Object.entries(photos)) {
+    const id = name.replace(/^photos\//, '').replace(/\.[^.]+$/, '');
+    if (!map.has(id)) map.set(id, [name, bytes] as const);
+  }
+  return map;
+}
+
+/**
+ * ZIPの中の players.csv（名簿だけ）を選んだように見えるか。CSVの道では、写真と records.csv を読まない。
+ * ファイル名が players.csv のときだけ（大文字・小文字は気にしない）。見出しの「管理番号」では決めない
+ * （会長の練習用の名簿や、自分で作った名簿にも、管理番号の列があるため。そのときに「ZIPを選び直して」とは言わない）
+ */
+export function rosterOnlyFromZip(fileName: string): boolean {
+  return isRosterCsvName(zipEntryName(fileName));
+}
+
+/** コピーのファイルのパスワードの見本（画面の「例：」）。見本のままのパスワードでは、新しいコピーを作らない（見本は公開のページに書いてあり、だれでも戻せてしまう） */
+export const SAMPLE_PASSWORD = 'hanabi2027x';
+/** 見本のままか（全角・半角、大文字・小文字、前後の空白のちがいは、同じと見る）。戻すときは見ない（前に見本で作ったコピーも、戻せる） */
+export const isSamplePassword = (value: string): boolean => value.normalize('NFKC').trim().toLowerCase() === SAMPLE_PASSWORD;
+
+/** Safari（Chrome ではない WebKit）か。Safari は、その画面を7日ほど開かないと、画面が書いた保存を消すことがある */
+export const isSafariBrowser = (userAgent: string): boolean =>
+  /AppleWebKit\//.test(userAgent) && /Safari\//.test(userAgent) && !/Chrome\/|Chromium\/|CriOS\/|Edg\/|EdgiOS\/|EdgA\/|FxiOS\/|OPR\/|OPiOS\/|SamsungBrowser\/|Android/.test(userAgent);
+
 /** 赤と青で区分か階級がちがう試合か（どちらかが空なら、ちがうと言わない。core の boutWeightWarning と同じ決め方） */
 export const weightMixAt = (bout: LocalBout, byId: Map<string, LocalFighter>): boolean => boutWeightWarning(byId.get(bout.redId), byId.get(bout.blueId)) !== '';
-
-/** 区分・階級がちがう試合の番号（0から）。止めない注意なので、数えて知らせるだけ */
-export function weightMixIndexes(bouts: LocalBout[], fighters: LocalFighter[]): number[] {
-  const byId = new Map(fighters.map((fighter) => [fighter.id, fighter]));
-  const found: number[] = [];
-  bouts.forEach((bout, index) => { if (weightMixAt(bout, byId)) found.push(index); });
-  return found;
-}
 
 /** 「区分・階級がちがう組が2つあります（第1・第3試合）。…」。おすすめの組み合わせのあとの、赤い注意の文 */
 export function weightMixText(indexes: number[]): string {
@@ -1007,11 +1187,21 @@ export function excelCellText(cell: unknown): { text: string; wasDate: boolean }
   return { text: String(cell ?? ''), wasDate: false };
 }
 
-/** 取り込みエラーを「見出し」と「くわしい文」に分ける（くわしい文は importErrorText と同じ。末尾の「変えていません」だけ除く） */
-export function importErrorParts(error: unknown, fileName: string, blockedHeaders: string[] = []): { head: string; detail: string; hint: string } {
+/** 読み込み部品が開けなかったとき、ネットが切れているなら（offline）、こちらの文にする。開き直すと、ネットが無いので、この画面そのものが出なくなるため */
+export const OFFLINE_IMPORT = {
+  head: 'ネットにつながっていません',
+  detail: 'つながってから、もう一度ファイルを選びます（開き直さないでください。ネットが無いと、この画面が出なくなります）。名簿と保存したデータは消えません。',
+} as const;
+
+/**
+ * 取り込みエラーを「見出し」と「くわしい文」に分ける（くわしい文は importErrorText と同じ。末尾の「変えていません」だけ除く）。
+ * offline＝ネットが切れている（navigator.onLine が false）。読み込み部品が開けない（stale）ときだけ、「開き直す」ではなく「つながってから選び直す」と言う
+ */
+export function importErrorParts(error: unknown, fileName: string, blockedHeaders: string[] = [], offline = false): { head: string; detail: string; hint: string } {
   const full = importErrorText(error, blockedHeaders);
   const detail = full.replace(KEEP, '').trim();
   const kind = importProblemKind(error);
+  if (kind === 'stale' && offline) return { head: OFFLINE_IMPORT.head, detail: OFFLINE_IMPORT.detail, hint: '' };
   const words = blockedWords(blockedHeaders);
   switch (kind) {
     case 'ext': return { head: 'これは名簿ではありません（' + fileName + '）', detail, hint: '' };
@@ -1039,7 +1229,9 @@ export type Follow =
   | { kind: 'review'; n?: number }
   | { kind: 'pw' };
 
-export type MarkerWhere = 'none' | 'conflict' | 'chooser' | 'bar' | 'bar-copy' | 'title' | 'file' | 'add-bout' | 'bout' | 'photo' | 'review' | 'pw' | 'reload';
+export type MarkerWhere = 'none' | 'conflict' | 'chooser' | 'bar' | 'bar-copy' | 'title' | 'file' | 'add-bout' | 'bout' | 'photo' | 'review' | 'pw' | 'reload' | 'edit' | 'manual';
+/** まだ保存の対象に入っていない入力。edit＝「直す」の中で書きかえた途中（id＝その人）/ manual＝「1人ずつ入れる」の、追加する前の入力 */
+export type PendingInput = { kind: 'edit'; id: string } | { kind: 'manual' };
 export type Marker = {
   where: MarkerWhere;
   /** 黄色のバッジの文（「👉 次はここ：」のあと） */
@@ -1062,6 +1254,8 @@ export type MarkerInput = {
   titleMissing: boolean;
   /** 保存失敗の知らせに「コピーのファイルを作る」ボタンが出ているか（出ていなければ、黄色は「もう一度保存」に置く） */
   copyButton?: boolean;
+  /** 直している途中・追加する前の入力（無ければ null）。あるときは、保存・開く・開いたあと より先に、それを入れてもらう */
+  pending?: PendingInput | null;
 };
 
 const sideWord = (side: 'red' | 'blue') => (side === 'red' ? '赤' : '青');
@@ -1087,6 +1281,13 @@ export function pickMarker(a: MarkerInput): Marker {
   const { na } = a;
   if (na.kind === 'save' && a.saveState === 'failed') return a.copyButton === false ? { where: 'bar', label: 'もう一度 保存' } : { where: 'bar-copy', label: 'コピーのファイルを作る' };
   if (na.kind === 'save' && a.saveState === 'saving') return { where: 'bar', label: '保存が終わるまで待つ' };
+  // 直している途中の内容・追加する前の入力は、まだ保存の対象に入っていない。保存や「開く」より先に、それを入れてもらう
+  // （入れないまま試合当日の画面を開くと、前の内容（古い体重など）のまま開く）
+  if (a.pending && (na.key === 'save' || na.key === 'fix' || na.key === 'open' || na.key === 'done')) {
+    return a.pending.kind === 'edit'
+      ? { where: 'edit', id: a.pending.id, label: '「この内容で直す」を押す', barLabel: '直している所へ行く' }
+      : { where: 'manual', label: '「この選手を追加」を押す（いらないときは、入れた内容を消す）', barLabel: '入れている所へ行く' };
+  }
   // 空の試合カード（赤も青も空）が画面で待っているときは、保存や「開く」より先に、その赤コーナーを選ぶ（黄色はいつも1つ）
   if (a.blankIndex >= 0 && (na.key === 'bouts' || na.key === 'save' || na.key === 'fix' || na.key === 'open')) {
     return { where: 'bout', index: a.blankIndex, side: 'red', label: '第' + (a.blankIndex + 1) + '試合の赤コーナーを選ぶ', barLabel: '赤コーナーを選ぶ' };
@@ -1105,7 +1306,7 @@ export function pickMarker(a: MarkerInput): Marker {
       if (a.fix) return { where: 'bout', index: a.fix.index, side: a.fix.side, label: '第' + (a.fix.index + 1) + '試合の' + sideWord(a.fix.side) + 'コーナーを選び直す', barLabel: '直すところへ行く' };
       return a.titleMissing ? { where: 'title', label: 'ここに大会の名前を入れる' } : { where: 'bar', label: '直すところを見る' };
     case 'open': return { where: 'bar', label: '試合当日の画面を開く' };
-    // 開いたあと：黄色は消さない。当日は、開いた画面で試合を進める（ここで もう一度押すと、もう1つ開く）
+    // 開いたあと：黄色は消さない。当日は、開いた画面で試合を進める（黄色の中には、押すボタンを置かない。「もう1つ開く」は、黄色の外の ふつうのボタン）
     case 'done': return { where: 'bar', label: '当日は、開いた画面で試合を進める' };
     default: return { where: 'none', label: '' };
   }

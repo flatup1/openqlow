@@ -2,6 +2,7 @@ import { fingerprint, INVISIBLE_KEEP_JOINERS_RE, normalizeKey, pick, stripInvisi
 import type { EntryFormConfig } from './entryPackage.ts';
 import { cleanClassLabel, DEFAULT_CLASS_SETTINGS, normalizeClassLoose, parseClassSettings } from './classRules.ts';
 import { cleanDivisionName, cleanWeightText, parseWeightClass, parseWeightSettings, WEIGHT_LIMITS } from './weightClass.ts';
+import { isStoredRecordDetail, type RecordDetail } from './recordDetail.ts';
 
 export type LocalFighter = {
   id: string;
@@ -22,6 +23,8 @@ export type LocalFighter = {
   weightClass?: string;
   /** 欠場（出ない）。true のときだけ入る。対戦一覧表・当日の画面・準備の画面が、この人を「欠場」と言う。名簿の取り込みでも消さない */
   absent?: boolean;
+  /** くわしい戦績（キック・他の格闘技・タイトル/入賞歴）。名簿ZIPの records.csv から、受付番号（管理番号）で付く。ないときは項目ごと無い（古い申し込み） */
+  recordDetail?: RecordDetail;
 };
 
 export type LocalBout = {
@@ -181,19 +184,6 @@ export function importFighters(csv: string): ImportResult {
   return { fighters, blockedHeaders: [], hasClassColumn, hasDivisionColumn, hasWeightClassColumn, cut, unreadHeaders, skippedLines };
 }
 
-/** Re-import by receipt, retaining cards and fighters absent from this file. Never guess by name. */
-export function mergeFighters(current: LocalFighter[], incoming: LocalFighter[]): LocalFighter[] {
-  if (new Set(incoming.map(fighter=>fighter.id)).size !== incoming.length) throw new Error('同じ管理番号が2つあります。元の名簿は変えていません。');
-  const updates = new Map(incoming.map(fighter=>[fighter.id,fighter]));
-  const existing = new Set(current.map(fighter=>fighter.id));
-  const combined = current.map(fighter=>{
-    const next=updates.get(fighter.id);
-    return next ? {...next,photoDataUrl:next.photoDataUrl||fighter.photoDataUrl,...(fighter.absent?{absent:true}:{})} : fighter;
-  }).concat(incoming.filter(fighter=>!existing.has(fighter.id)));
-  if(combined.length>3000)throw new Error('名簿が3000人を超えます。元の名簿は変えていません。');
-  return combined;
-}
-
 export function contractWeight(red: LocalFighter | undefined, blue: LocalFighter | undefined): string {
   const parse = (value: string | undefined) => Number(String(value ?? '').trim().replace(/kg$/i, '').trim());
   const weights = [parse(red?.weight), parse(blue?.weight)];
@@ -240,6 +230,49 @@ export function boutWarnings(bout: LocalBout, fighters: LocalFighter[], bouts: L
     if (count > 1) warnings.push(f.name + ' が ' + count + ' 試合に入っています。');
   });
   return warnings;
+}
+
+/**
+ * 全部の試合の「気をつけたいところ」を、まとめて作る。答えは、1試合ずつ boutWarnings を呼んだときと同じ（単体テストで、ばらばらの名簿で比べる）。
+ * 名簿の表（管理番号→選手・同じ人の印）と、同じ人が入っている試合の数を、先に1回だけ数えるので、試合数×試合数×人数で重くならない（300人・150試合で約0.2秒→約1ミリ秒）
+ */
+export function boutWarningsAll(fighters: LocalFighter[], bouts: LocalBout[]): string[][] {
+  // fighters.find と同じく、同じ管理番号が2人いたら、先の人を使う
+  const byId = new Map<string, LocalFighter>();
+  for (const f of fighters) if (!byId.has(f.id)) byId.set(f.id, f);
+  const keyOf = (f: LocalFighter): string => sameFighterKey(f);
+  // 同じ人（名前とジムが同じ）が入っている試合の数・同じ管理番号が入っている試合の数（1試合に2回いても1と数える）
+  const boutsByKey = new Map<string, number>(), boutsById = new Map<string, number>();
+  for (const bout of bouts) {
+    const keys = new Set<string>();
+    for (const id of new Set([bout.redId, bout.blueId])) {
+      if (!id) continue;
+      boutsById.set(id, (boutsById.get(id) ?? 0) + 1);
+      const person = byId.get(id);
+      const key = person ? keyOf(person) : '';
+      if (key) keys.add(key);
+    }
+    for (const key of keys) boutsByKey.set(key, (boutsByKey.get(key) ?? 0) + 1);
+  }
+  const parse = (value: string | undefined) => Number(String(value ?? '').trim().replace(/kg$/i, '').trim());
+  return bouts.map((bout) => {
+    const red = byId.get(bout.redId), blue = byId.get(bout.blueId);
+    const warnings: string[] = [];
+    if (red && blue) {
+      const a = parse(red.weight), b = parse(blue.weight);
+      if (Number.isFinite(a) && Number.isFinite(b) && a >= 10 && b >= 10 && Math.abs(a - b) >= WEIGHT_GAP_WARN_KG) warnings.push('体重差が ' + (Math.round(Math.abs(a - b) * 10) / 10) + 'kg あります（' + red.name + ' ' + a + 'kg / ' + blue.name + ' ' + b + 'kg）。');
+      if (gymKey(red.gym) && gymKey(red.gym) === gymKey(blue.gym)) warnings.push('同じジム（' + red.gym.trim() + '）の選手どうしです。');
+      if (red.id !== blue.id && keyOf(red) && keyOf(red) === keyOf(blue)) warnings.push('赤と青が、同じ人かもしれません（' + red.name + '・名前もジムも同じです）。');
+    }
+    [red, blue].forEach((f) => { if (f?.absent === true) warnings.push((f.name.trim() || '名前未入力') + ' さんは欠場です。相手を決め直すか、この試合を消してください。'); });
+    [red, blue].forEach((f) => {
+      if (!f) return;
+      const key = keyOf(f);
+      const count = key ? boutsByKey.get(key) ?? 0 : boutsById.get(f.id) ?? 0;
+      if (count > 1) warnings.push(f.name + ' が ' + count + ' 試合に入っています。');
+    });
+    return warnings;
+  });
 }
 
 export function safeMusicUrl(value: string): string {
@@ -289,5 +322,6 @@ export function isLocalTournament(value: unknown): value is LocalTournament {
   if (data.entryConfig?.weights !== undefined && !isStoredWeights(data.entryConfig.weights)) return false;
   if (data.entryConfig?.logo !== undefined && typeof data.entryConfig.logo !== 'boolean') return false;
   if (data.schema !== 1 || !text(data.eventId) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(data.eventId) || ![data.title,data.venue,data.date].every(text) || !Number.isFinite(data.updatedAt) || !Number.isInteger(data.currentBout) || data.currentBout<0 || !Array.isArray(data.fighters) || !Array.isArray(data.bouts) || data.fighters.length>3000 || data.bouts.length>3000 || data.currentBout>=Math.max(1,data.bouts.length)) return false;
-  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && (fighter.division === undefined || (typeof fighter.division === 'string' && fighter.division.length <= 40)) && (fighter.weightClass === undefined || (typeof fighter.weightClass === 'string' && fighter.weightClass.length <= 40)) && (fighter.absent === undefined || typeof fighter.absent === 'boolean') && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
+  // くわしい戦績は「形」だけを見る（isStoredRecordDetail）。申し込みの決まりで見ると、決まりを変えたとき、前の版の戦績が1人いるだけで、大会もコピーのファイルも読めなくなる
+  return data.fighters.every((fighter) => fighter && ['id','gym','name','grade','age','height','weight','record','comment','musicUrl'].every((key) => text(fighter[key as keyof LocalFighter])) && fighter.id.length>0 && (fighter.fighterClass === undefined || (typeof fighter.fighterClass === 'string' && fighter.fighterClass.length <= 40)) && (fighter.division === undefined || (typeof fighter.division === 'string' && fighter.division.length <= 40)) && (fighter.weightClass === undefined || (typeof fighter.weightClass === 'string' && fighter.weightClass.length <= 40)) && (fighter.absent === undefined || typeof fighter.absent === 'boolean') && (fighter.recordDetail === undefined || isStoredRecordDetail(fighter.recordDetail)) && typeof fighter.photoDataUrl==='string' && (!fighter.photoDataUrl || /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(fighter.photoDataUrl) && fighter.photoDataUrl.length<=1_800_100)) && data.bouts.every((bout) => bout && ['id','redId','blueId','className','rule'].every((key) => text(bout[key as keyof LocalBout])) && bout.id.length>0) && new Set(data.fighters.map(fighter=>fighter.id)).size===data.fighters.length && new Set(data.bouts.map(bout=>bout.id)).size===data.bouts.length;
 }

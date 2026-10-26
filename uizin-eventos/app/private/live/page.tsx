@@ -91,6 +91,8 @@ export default function PrivateLive() {
   const [savingRow,setSavingRow]=useState<number|null>(null);
   const savingRef=useRef(false);
   const curRef=useRef<number|null>(null);
+  // いま持っている大会データの保存の番号（updatedAt）。同じ番号の「変わりました」の知らせ（自分の保存など）では、写真ぜんぶ入りのデータを読み直さない
+  const seenAtRef=useRef<number|null>(null);
   // 同じ向きのボタンが続けて押されたとき（ダブルタップ）、2つ進まないように
   const lastPress=useRef<{dir:string;at:number}|null>(null);
   const [repeatNote,setRepeatNote]=useState(false);
@@ -183,9 +185,11 @@ export default function PrivateLive() {
   const load=(fromWatch=false)=>void readPrivateEvent(eventId).then((value)=>{
     if(fromWatch&&value&&curRef.current!==null&&value.currentBout!==curRef.current)setRemote(true);
     curRef.current=value?value.currentBout:null;
+    seenAtRef.current=value?value.updatedAt:null;
     setData(value);setReadFailed(false);setLoaded(true);
   }).catch(()=>{setReadFailed(true);setLoaded(true);});
-  useEffect(()=>{ load(); return watchPrivateEvent(eventId,()=>load(true)); },[eventId]);
+  // 知らせに保存の番号があり、いま持っているデータと同じなら、読み直さない。番号の無い知らせ（消した・前の版の部品）は、今までどおり読み直す
+  useEffect(()=>{ load(); return watchPrivateEvent(eventId,(updatedAt?:number)=>{ if(typeof updatedAt==='number'&&updatedAt===seenAtRef.current)return; load(true); }); },[eventId]);
   const bout=data?.bouts[data.currentBout];
   // 行から開いたあと: 画面の一番上へ戻し、「第N試合」にフォーカスを置く（読み上げ・キーボードのため）
   useEffect(()=>{
@@ -244,7 +248,7 @@ export default function PrivateLive() {
   const jump=async(index:number,via:MoveVia|'undo'):Promise<boolean>=>{
     if(savingRef.current||index<0||index>=data.bouts.length)return false;
     savingRef.current=true;setSaving(true);const next={...data,currentBout:index};
-    try{const saved=await writePrivateEvent(next);curRef.current=saved.currentBout;setData(saved);setNotice(null);setUndo(null);setRemote(false);return true;}
+    try{const saved=await writePrivateEvent(next);curRef.current=saved.currentBout;setData(saved);seenAtRef.current=saved.updatedAt;setNotice(null);setUndo(null);setRemote(false);return true;}
     catch(error){
       if(error instanceof PrivateSaveConflict){load();setNotice({kind:'conflict'});}
       else setNotice({kind:'save',via,index:via==='list'?index:undefined,...saveFailNotice(via,data.currentBout)});

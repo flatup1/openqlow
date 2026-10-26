@@ -217,7 +217,7 @@ await scenario('P3', 'Back after sending: message, timer, new request id, reset'
   check(!!(await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).count()) && !(await page.getByRole('button', { name: 'この内容で送る', exact: true }).count()), 'P3 after a change the button is 「入力内容を確認する →」 (the read-over screen comes first, r2-11)');
   check(/受付番号が出なかった方は、直して送って大丈夫です/.test(t) && /受付番号が出た方は、もう申し込み済みです/.test(t), 'P3 the note separates 出なかった方 (may correct) from 出た方 (already applied)');
   check(!/別の人の申し込みになります|変えないでください|この新しい内容で送る/.test(t), 'P3 the old "do not change / another person" wording is gone');
-  check(!!(await page.getByRole('button', { name: '別の人を申し込む（入力を消して、最初から）', exact: true }).count()), 'P3 the 「別の人を申し込む」 button is there');
+  check(!!(await page.getByRole('button', { name: '別の人を申し込む（選手の入力だけ消す）', exact: true }).count()), 'P3 the 「別の人を申し込む」 button is there');
   await page.getByRole('button', { name: '入力内容を確認する →', exact: true }).click();
   await page.getByRole('heading', { name: '送る前の確認', exact: true }).waitFor({ timeout: 5000 });
   check(ctx.__posts.length === 2, 'P3 r2-11: pressing 「入力内容を確認する →」 after a change sends NOTHING; the review screen opens first (' + ctx.__posts.length + ' posts)');
@@ -228,12 +228,12 @@ await scenario('P3', 'Back after sending: message, timer, new request id, reset'
   await page.getByText('受付番号の画面が出ましたか').first().waitFor({ timeout: 8000 });
   // 「別の人を申し込む」: empty form, back at the top, green sign, focus on the first field (r1-14)
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.getByRole('button', { name: '別の人を申し込む（入力を消して、最初から）', exact: true }).click();
+  await page.getByRole('button', { name: '別の人を申し込む（選手の入力だけ消す）', exact: true }).click();
   await settle(300);
-  check((await val(page, '#f-gym')) === '' && (await val(page, '#f-name')) === '', 'P3 reset empties the form');
+  check((await val(page, '#f-name')) === '' && (await val(page, '#f-gym')) !== '' && (await val(page, '#f-contactName')) !== '', 'P3 reset empties the athlete\'s fields and keeps the gym name and the contact (R9-2)');
   check(await page.evaluate(() => window.scrollY < 40), 'P3 reset scrolls back to the top');
   check((await greenLines(page)).some((x) => x.includes('入力を消しました')), 'P3 reset shows a green ✓ 入力を消しました (' + short((await greenLines(page)).join('|'), 80) + ')');
-  check(await page.evaluate(() => document.activeElement && document.activeElement.id === 'f-gym'), 'P3 reset puts the cursor in the first field');
+  check(await page.evaluate(() => document.activeElement && document.activeElement.id === 'f-name'), 'P3 reset puts the cursor in the first empty field (the athlete\'s name; the gym is kept)');
   await ctx.close();
 });
 
@@ -434,7 +434,10 @@ await scenario('P12', 'wording, one 👉, 17px, pill', [SMALL, PHONE, DESKTOP], 
   check(/📍/.test(t) || vp.width >= 640, 'P12 the step bar uses 📍 いまここ');
   check(!/申込/.test(t), 'P12 one spelling: 申し込み, never 申込 (' + short((t.match(/.{6}申込.{6}/) || [''])[0], 40) + ')');
   check(!/読んでね|先に答えます|約3分で終わります）/.test(t), 'P12 no childish / odd phrases');
-  check(/約3分で終わります/.test(t) && !/主催：[^\n]*約3分/.test(t), 'P12 「約3分で終わります」 is on its own line, not glued to the organiser');
+  // R6a-1（採点からの最適化）：測っていない「約3分」は言わない。かわりに事実：用意するもの（写真）と、入力の数（下の「入力 N/M」の M と同じ数）
+  check(/用意するもの：顔写真1枚。入力は全部で\d+個です。/.test(t) && !/約3分/.test(t) && !/主催：[^\n]*用意するもの/.test(t), 'P12 「用意するもの：顔写真1枚。入力は全部で◯個です。」 is on its own line, and no 約3分 promise is left');
+  const countSaid = (t.match(/入力は全部で(\d+)個です。/) || [])[1], countBar = (t.match(/入力 \d+\/(\d+)/) || [])[1];
+  check(Boolean(countSaid) && countSaid === countBar, 'P12 the number in the header equals the M of 「入力 N/M」 (' + countSaid + ' vs ' + countBar + ')');
   check(/条件とルールを読んで、合うほうを選んでください/.test(t) && !/自分で決めてかまいません/.test(t), 'P12 class hint reads 「条件とルールを読んで、合うほうを選んでください」');
   const pill = await page.evaluate(() => { const e = [...document.querySelectorAll('span')].find((x) => x.textContent.includes('⏰')); if (!e) return null; return parseFloat(getComputedStyle(e).borderTopLeftRadius); });
   check(pill !== null && pill <= 24, 'P12 the deadline pill is not an egg (radius ' + pill + 'px)');
@@ -612,7 +615,11 @@ await scenario('P17', 'reopen after a send: yellow, both branches, no green', [P
   const t = await bodyText(again);
   check(/さっき、申し込みを送りました。/.test(t), 'P17 the banner is there');
   check(/受付番号の画面が出た方：申し込み済みです。同じ人を、もう一度送らないでください。/.test(t), 'P17 branch 1: receipt number appeared -> done, do not send again');
-  check(/「送れませんでした」と出た方、何も出なかった方：入れた文字と写真は、消えています。最初から入れ直して、送ってください。/.test(t), 'P17 branch 2: failed -> typing is cleared, fill in again and send');
+  // 送った控え（60分）があれば、戻すボタンと「ボタンで戻せます」。無ければ「消えています。入れ直して」
+  const canRestore = (await again.getByRole('button', { name: '受付番号が出なかったときだけ：さっきの選手の入力を戻す（写真は選び直し）' }).count()) === 1;
+  check(canRestore
+    ? /「送れませんでした」と出た方、何も出なかった方：選手の入力は、下の灰色のボタンで戻せます（写真は、選び直します）。戻したら、中身を見てから送ってください。（ジム名と連絡先は、残っていることがあります）/.test(t)
+    : /「送れませんでした」と出た方、何も出なかった方：選手の入力と写真は、消えています。選手の分を入れ直して、送ってください。（ジム名と連絡先は、残っていることがあります）/.test(t), 'P17 branch 2: failed -> says how to get the athlete\'s typing back (the restore button when the sent copy exists, otherwise fill in again) (restore button: ' + canRestore + ')');
   const banner = await again.evaluate(() => { const e = [...document.querySelectorAll('.tos-caution')].find((x) => /さっき、申し込みを送りました/.test(x.innerText)); const okOne = [...document.querySelectorAll('.tos-ok')].some((x) => /さっき/.test(x.innerText)); return { yellow: !!e, green: okOne }; });
   check(banner.yellow && !banner.green, 'P17 the banner is a yellow caution, not a green ✓');
   check((await again.getByRole('button', { name: '別の選手を申し込む', exact: false }).count()) === 0 && !/別の選手を申し込む/.test(t), 'P17 the old name 「別の選手を申し込む」 is gone');
@@ -713,7 +720,7 @@ await scenario('P21', 'photo error, weight hint, gym hint, map link, 使い道',
   check((weightBox.match(/試合に出る体重/g) || []).length === 1, 'P21 the weight field says it once (' + short(weightBox, 100) + ')');
   check(/試合に出る体重（kg）です。わからない時は、今の体重を入れてください。/.test(weightBox), 'P21 the one weight sentence includes 「わからない時は、今の体重」');
   const gymBox = await page.locator('#f-gym').evaluate((e) => e.closest('[class*="relative"]').innerText.replace(/\s+/g, ' '));
-  check(/通っていない時は「無所属」と入れてください/.test(gymBox), 'P21 the gym field says what to write with no gym (' + short(gymBox, 100) + ')');
+  check(/ジムに所属していない人は、参加できません。/.test(gymBox) && !/無所属/.test(gymBox), 'P21 the gym field says people with no gym cannot take part (' + short(gymBox, 100) + ')');
   const link = page.locator('a', { hasText: '架空体育館' });
   const box = await link.boundingBox();
   check(box && box.height >= 44, 'P21 the map link is at least 44px tall (' + (box && box.height) + ')');

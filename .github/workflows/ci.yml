@@ -88,4 +88,11 @@ jobs:
           cache: npm
           cache-dependency-path: uizin-eventos/package-lock.json
       - run: npm ci
-      - run: npm run verify
+      # 型チェック → 単体テスト → 公開用フォルダを作って自動チェック（build:private の中で next build と check-private-build.mjs が動く）。
+      # どれもブラウザは使わない。画面の確認（scripts/test-*.mjs）は、手元の npm run verify:all で動かす
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Private build and gate
+        run: npm run build:private

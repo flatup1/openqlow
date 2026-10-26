@@ -1,6 +1,13 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261019.6';
+const RECEPTION_BUILD = '3.20261026.3';
 const MIN_FREE_BYTES = 200 * 1024 * 1024;
+/**
+ * 「設定」タブの「花道のルール」を新しく作るときだけ入れる初期の文。原本（募集要項 Vol.7）の言葉を並べた仮の文で、owner が「OK」と答えたもの（2026-10-22）。
+ * 花道の選手には、クラス（A/B）を選ばせない。かわりに、この1行を灰色の説明で見せる。すでにあるマスは書き換えない。会長が確認して、設定タブの上で直す。
+ */
+const HANAMICHI_RULE_INITIAL = '花道（シニア）のルール：90秒×2ラウンド（インターバル1分）。蹴り足キャッチ・回転技・顔面への膝蹴りは禁止です。';
+/** 花道のルールの長さの上限（length で数える）。core/hanamichi.ts の HANAMICHI_RULE_MAX と同じ */
+const HANAMICHI_RULE_MAX_ = 120;
 /** 会長が書くのは「設定」タブの、この表のB列だけ。画面（OS）側では、同じ内容を二重に入力しません。 */
 const SETTING_ROWS = [
   ['大会名', '', '✎ ここに書く。例：第3回 青空ジム大会'],
@@ -10,7 +17,7 @@ const SETTING_ROWS = [
   ['主催者名', '', '✎ ここに書く。例：○○ジム'],
   ['問い合わせ先', '', '✎ ここに書く。選手に見えます。電話番号か、LINEのURL'],
   ['申込締切', '', '✎ ここに書く。例：2027年9月20日（開催日と同じか、その前の日）'],
-  ['入場曲', '', '✎ ここに書く（▼から「あり」か「なし」を選びます）。選手に入場曲のリンクを書いてもらうかどうかを、最初に決めます'],
+  ['入場曲', 'なし', 'あり／なし。はじめは「なし」。選手に入場曲のリンクを書いてもらうときだけ、▼から「あり」を選びます'],
   ['学年', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
   ['年齢', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
   ['意気込み', '必須', '必須／任意／なし。はじめは「必須」（選手に必ず書いてもらいます）。聞かないときだけ「なし」、書かなくてもよいときは「任意」を選びます'],
@@ -30,7 +37,16 @@ const SETTING_ROWS = [
   ['階級：高校生・一般女子', '-40、-43、-46、-50、-53、-56、-59、-62、-65', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
   ['階級：高校生・一般男子', '-50、-53、-56、-59、-62、-65、-68、-71、-74、-77、-80、-85、無差別', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
   ['階級：花道・女子（40歳以上）', '-40、-45、-50、-55、-60、+60', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
-  ['階級：花道・男子（40歳以上）', '-55、-60、-65、-70、-75、-80、-85、無差別', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前']
+  ['階級：花道・男子（40歳以上）', '-55、-60、-65、-70、-75、-80、-85、無差別', '階級を「、」か「,」で区切って書く。-37 は37kg以下、+60 は60kgをこえる、無差別 も書ける。「なし」と書くと、階級は選ばせない（体重が近い人どうしで組む）。使わない区分は、この行ごと消す。A列の「階級：」のあとが、選手に見える区分の名前'],
+  // いちばん下に足した行（既存の行の位置は動かさない）。「あり」にすると、花道の区分を選んだ人にだけ、追加の質問が出る
+  ['花道の追加情報', 'なし', '「あり」にすると、区分の名前に「花道」が入っている区分を選んだ人にだけ、追加の質問が出ます。'],
+  // 誓約書の行（花道の行のあと。既存の行の位置は動かさない）。文は「誓約書」タブに書く（「① 最初の設定」が、「あり」のときにタブを作る）
+  ['誓約書', 'なし', 'なし／あり。「あり」にすると、申し込みの最後に、誓約書の□が出ます。選手が□ぜんぶに✔を入れないと、先へ進めません。文は「誓約書」タブに書きます（▼から選びます）'],
+  ['保護者の同意', '18歳未満のみ', '18歳未満のみ／全員／なし。「誓約書」が「あり」のときだけ意味があります。「18歳未満のみ」のときは、「年齢」を「必須」か「任意」にしてください（年齢が分からない人には、保護者の同意を求めます）'],
+  ['ジム責任者の同意', 'あり', 'あり／なし。「誓約書」が「あり」のときだけ意味があります。「あり」だと、選手に、ジム責任者のお名前・携帯電話・許可の確認を入れてもらいます'],
+  ['誓約書の文の確認', 'まだ', 'まだ／済み。「誓約書」タブの文を、原本と見比べて、まちがいがなければ「済み」にします。「まだ」のあいだは、本番の申し込みを受け付けません（テスト用は動きます）。文を直したら、新しい申し込みリンクを作ってください'],
+  // 花道のルールの行（誓約書の行のあと。既存の行の位置は動かさない）。▼の選択欄は無い（長い文を1つ書く）。クラス分けが「あり」で、花道の区分があるときだけ使う
+  ['花道のルール', HANAMICHI_RULE_INITIAL, '原本から写した仮の文です。会長が確認してください。クラス分けが「あり」で、区分の名前に「花道」が入っているときだけ使います。花道の選手には、クラスを選ばせず、この1行だけを見せます。120文字までです']
 ];
 const SELFTEST_JPEG = '/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAIAAgDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALIAP//Z';
 let SETTINGS_CACHE_ = null;
@@ -40,6 +56,8 @@ let SETTINGS_REBUILT_ = false;
 let SETUP_NOTES_ = [];
 /** 学年・年齢・意気込みの書き方。「必須」「任意」「なし」。マスが空のときは、はじめの決まりの「必須」（うっかり消しても、聞きもれがないように） */
 function mode_(text) { const v = String(text || '').trim(); return v === 'なし' ? 'off' : v === '任意' ? 'optional' : 'required'; }
+/** 保護者の同意の書き方。「なし」「全員」「18歳未満のみ」。マスが空のときは、はじめの決まりの「18歳未満のみ」。ほかの言葉は、いちばんかたい「全員」（聞きもれがないように） */
+function guardianMode_(text) { const v = String(text || '').trim(); return v === 'なし' ? 'none' : v === '' || v === '18歳未満のみ' ? 'under18' : 'all'; }
 function dateIso_(text) {
   const t = String(text || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); }).trim();
   let y, m, d;
@@ -50,9 +68,9 @@ function dateIso_(text) {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? '' : iso;
 }
 /** 「▼から選ぶ」欄にする項目。選び間違い・入れ間違いを防ぐ。 */
-const DROPDOWNS = [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']], ['階級分け', ['なし', 'あり']], ['ロゴ', ['なし', 'あり']]];
-/** 会長が必ず書く7つ（B列）。色と「✎ ここに書く」の印をつける。 */
-const WRITE_LABELS = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切', '入場曲'];
+const DROPDOWNS = [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['なし', 'あり']], ['階級分け', ['なし', 'あり']], ['ロゴ', ['なし', 'あり']], ['花道の追加情報', ['なし', 'あり']], ['誓約書', ['なし', 'あり']], ['保護者の同意', ['18歳未満のみ', '全員', 'なし']], ['ジム責任者の同意', ['あり', 'なし']], ['誓約書の文の確認', ['まだ', '済み']]];
+/** 会長が必ず書く6つ（B列）。色と「✎ ここに書く」の印をつける。入場曲は、はじめから「なし」が入っているので、ここに入れない。 */
+const WRITE_LABELS = ['大会名', '開催日', '会場', '主催者名', '問い合わせ先', '申込締切'];
 function applyDropdowns_(sheet, labels) {
   // 使えない環境でも、設定は読めるので止めない。
   try {
@@ -62,7 +80,7 @@ function applyDropdowns_(sheet, labels) {
     });
   } catch (_) { /* 選択欄が作れなくても、手で入れられる */ }
 }
-/** 見た目：書く7つのB列に色（#fff2a8）、列の幅、文字の折り返し、1行目の固定。つくるときだけ。使えない環境でも止めない。 */
+/** 見た目：書く6つのB列に色（#fff2a8）、列の幅、文字の折り返し、1行目の固定。つくるときだけ。使えない環境でも止めない。 */
 function formatSettings_(sheet) {
   try {
     SETTING_ROWS.forEach(function (row, i) { if (WRITE_LABELS.indexOf(row[0]) >= 0) sheet.getRange(i + 2, 2).setBackground('#fff2a8'); });
@@ -189,7 +207,7 @@ function S_() {
   if (SETTINGS_CACHE_) return SETTINGS_CACHE_;
   const props = PropertiesService.getScriptProperties(), id = props.getProperty('spreadsheetId');
   if (!id) throw adminError_('setup', '「Tournament OS」メニューの「① 最初の設定」を押してください。');
-  const sheet = SpreadsheetApp.openById(id).getSheetByName('設定');
+  const book = SpreadsheetApp.openById(id), sheet = book.getSheetByName('設定');
   if (!sheet) throw adminError_('setup', '「設定」タブが見つかりません。「① 最初の設定」を押してください。');
   // 古い設定タブ（11行）でも読める：行が足りない分は空として読む。会長が行を足していても、名前で探す（60行まで）。
   const count = Math.max(1, Math.min(60, (typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : typeof sheet.getMaxRows === 'function' ? sheet.getMaxRows() : SETTING_ROWS.length + 1) - 1));
@@ -207,7 +225,9 @@ function S_() {
     divisions.push({ name: divisionName_(m[1]), text: String(row[1]).trim(), classes: parsed.classes, none: parsed.none, problems: parsed.problems });
   });
   const weights = { enabled: v['階級分け'] === 'あり', divisions: divisions };
-  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, classRows: classRows, weights: weights, weightRows: weightRows, logo: v['ロゴ'] === 'あり', raw: v };
+  // 誓約書：「あり」のときだけ、「誓約書」タブの文も読む（なし・行が無いときは、何も読まない）。ジム責任者の同意の空は「あり」、確認の空は「まだ」（どちらも安全側）
+  const pledge = v['誓約書'] === 'あり';
+  SETTINGS_CACHE_ = { eventId: props.getProperty('eventId') || '', tournamentName: v['大会名'], date: dateIso_(v['開催日']), venue: v['会場'], venueUrl: v['会場の地図URL'], organizer: v['主催者名'], contact: v['問い合わせ先'], deadline: dateIso_(v['申込締切']), music: v['入場曲'] === 'あり', grade: mode_(v['学年']), age: mode_(v['年齢']), comment: mode_(v['意気込み']), classes: classes, classRows: classRows, weights: weights, weightRows: weightRows, logo: v['ロゴ'] === 'あり', hanamichi: v['花道の追加情報'] === 'あり', hanamichiRule: v['花道のルール'] || '', hanamichiRuleRow: Object.prototype.hasOwnProperty.call(v, '花道のルール'), pledge: pledge, guardianMode: guardianMode_(v['保護者の同意']), gymMode: v['ジム責任者の同意'] !== 'なし', pledgeConfirmed: v['誓約書の文の確認'] === '済み', pledgeTab: pledge ? readPledgeTab_(book) : null, raw: v };
   return SETTINGS_CACHE_;
 }
 /** 設定の間違いを、直す場所つきで返す。空なら問題なし。 */
@@ -222,7 +242,7 @@ function settingsProblems_(s) {
   if (!raw['入場曲']) missing.push('入場曲（あり／なしを選ぶ）');
   if (s.date && s.deadline && s.deadline > s.date) bad.push('「申込締切」は、開催日と同じか、それより前にしてください');
   if (s.venueUrl && !/^https:\/\/(?:share\.google|maps\.app\.goo\.gl|www\.google\.com\/maps)(?:\/|$)/.test(s.venueUrl)) bad.push('「会場の地図URL」は、Googleマップの共有URLにするか、空にしてください');
-  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']], ['階級分け', ['あり', 'なし']], ['ロゴ', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
+  [['入場曲', ['あり', 'なし']], ['学年', ['必須', '任意', 'なし']], ['年齢', ['必須', '任意', 'なし']], ['意気込み', ['必須', '任意', 'なし']], ['クラス分け', ['あり', 'なし']], ['階級分け', ['あり', 'なし']], ['ロゴ', ['あり', 'なし']], ['花道の追加情報', ['あり', 'なし']], ['誓約書', ['あり', 'なし']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
   // クラスの欄は「クラス分け＝あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）
   if (raw['クラス分け'] === 'あり') {
     const sides = [['上', '上のクラス'], ['下', '下のクラス']], norm = function (t) { return String(t || '').normalize('NFKC').trim().toLowerCase(); };
@@ -263,6 +283,34 @@ function settingsProblems_(s) {
       d.problems.forEach(function (problem) { bad.push('「' + label + '」：' + problem); });
     });
   }
+  // 花道の追加情報は「あり」のときだけ調べる：花道の区分を選べること（階級分けが「あり」で、区分の名前に「花道」が入った行がある）。なし・空のときは、何が入っていても止めない
+  if (raw['花道の追加情報'] === 'あり') {
+    const hn = (s.weights && s.weights.enabled && s.weights.divisions) || [];
+    if (!hn.some(function (d) { return isHanamichiName_(d.name); })) bad.push('「花道の追加情報」が「あり」ですが、選べる区分に「花道」の入った名前がありません（「階級分け」を「あり」にして、区分の名前に「花道」を入れるか、A列が「花道の追加情報」の行のB列を「なし」にしてください）');
+  }
+  // 花道のルールは、クラス分けが「あり」で、選べる区分に「花道」の入った名前があるときだけ調べる（花道の選手には、クラスを選ばせず、この1行を見せるため）。ほかのときは、何が入っていても止めない。1つの問題＝1つの文（文の中に「。」を入れない）
+  if (hanamichiRuleApplies_(s)) {
+    const rule = String(s.hanamichiRule || '').trim();
+    if (!rule) bad.push('「花道のルール」が空です（A列が「花道のルール」の行のB列に、花道の選手に見せる1行を書いてください）');
+    else if (rule.length > HANAMICHI_RULE_MAX_) bad.push('「花道のルール」は' + HANAMICHI_RULE_MAX_ + '文字までにしてください（A列が「花道のルール」の行のB列を、いまの' + rule.length + '文字から短くしてください）');
+  }
+  // 誓約書は「あり」のときだけ調べる（なし・空のときは、何が入っていても止めない）。1つの問題＝1つの文（文の中に「。」を入れない）。直すマスを言う
+  if (raw['誓約書'] === 'あり') {
+    [['保護者の同意', ['18歳未満のみ', '全員', 'なし']], ['ジム責任者の同意', ['あり', 'なし']], ['誓約書の文の確認', ['まだ', '済み']]].forEach(function (pair) { if (raw[pair[0]] && pair[1].indexOf(raw[pair[0]]) < 0) bad.push('「' + pair[0] + '」は、' + pair[1].join('／') + 'のどれかにしてください'); });
+    const tab = s.pledgeTab;
+    if (!tab) bad.push('「誓約書」が「あり」ですが、「誓約書」タブがありません（「① 最初の設定」を押して作るか、使わないなら、A列が「誓約書」の行のB列を「なし」にしてください）');
+    else {
+      if (!tab.items.length) bad.push('「誓約書」タブのA列（A2〜A9）に、誓約の項目が1つもありません（原本のとおりに、1マスに1項目ずつ書いてください）');
+      else if (tab.items.length > PLEDGE_LIMITS_.items) bad.push('「誓約書」タブの項目が' + tab.items.length + '個あります（' + PLEDGE_LIMITS_.items + '個までなので、A2〜A9に収めてください）');
+      const longCells = tab.items.map(function (text, i) { return text.length > PLEDGE_LIMITS_.item ? 'A' + tab.rows[i] : ''; }).filter(Boolean);
+      if (longCells.length) bad.push('「誓約書」タブの項目が長すぎます（1項目' + PLEDGE_LIMITS_.item + '文字までなので、' + longCells.join('・') + 'のマスを短くしてください）');
+      const total = tab.items.concat([tab.guardian, tab.gym]).reduce(function (sum, text) { return sum + text.length; }, 0);
+      if (total > PLEDGE_LIMITS_.total) bad.push('「誓約書」タブの文字の合計が多すぎます（項目と、保護者・ジム責任者の文を合わせて' + PLEDGE_LIMITS_.total + '文字までなので、いまの' + total + '文字を短くしてください）');
+      if (s.guardianMode !== 'none' && !tab.guardian) bad.push('「保護者の同意」が「なし」ではないのに、「誓約書」タブのB2（保護者の同意の文）が空です（文を書くか、「保護者の同意」を「なし」にしてください）');
+      if (s.gymMode && !tab.gym) bad.push('「ジム責任者の同意」が「あり」なのに、「誓約書」タブのC2（ジム責任者の同意の文）が空です（文を書くか、「ジム責任者の同意」を「なし」にしてください）');
+    }
+    if (s.guardianMode === 'under18' && s.age === 'off') bad.push('「保護者の同意」が「18歳未満のみ」ですが、「年齢」が「なし」です（年齢を聞かないと18歳未満かどうか分からないので、「年齢」を「必須」か「任意」にするか、「保護者の同意」を「全員」か「なし」にしてください）');
+  }
   // 長すぎる文は、選手に渡すURLに入らない。どの欄かを言う
   [['大会名', 300], ['会場', 300], ['主催者名', 300], ['問い合わせ先', 300], ['会場の地図URL', 500]].forEach(function (pair) { if (String(raw[pair[0]] || '').length > pair[1]) bad.push('「' + pair[0] + '」は' + pair[1] + '文字までにしてください'); });
   const out = [];
@@ -280,6 +328,548 @@ function assertOwner_() {
 }
 /** 4つの表と、その1行目（見出し）。順番はそのまま使う。 */
 const TABLES = [['申込原本（個人情報あり）', PRIVATE_HEADERS], ['OS取込用（連絡先なし）', OS_HEADERS], ['テスト申込', PRIVATE_HEADERS], ['テストOS取込用', OS_HEADERS]];
+/* ---------- 花道の追加情報（core/hanamichi.ts と同じ決まり。tests/gasHanamichi.test.ts が、同じ答えになることを確かめる） ---------- */
+/** 区分の名前に「花道」が入っているか（全角・半角・空白・見えない文字のちがいは見ない） */
+function isHanamichiName_(name) { return divisionKey_(name).indexOf('花道') >= 0; }
+/**
+ * 花道のルールを使う設定か：「花道のルール」の行があり、クラス分けが「あり」で、階級分けが「あり」、選べる区分に「花道」の入った名前がある（花道の選手には、クラスを選ばせない）。
+ * 行そのものが無い昔のシートは、「まだルールを決めていない」と読む（動かなくならない。花道の選手も、今までどおりクラスを選ぶ）。行があって空のときだけ、設定の問題
+ */
+function hanamichiRuleApplies_(s) {
+  return Boolean(s.hanamichiRuleRow && s.classes.enabled && s.weights.enabled && s.weights.divisions.some(function (d) { return isHanamichiName_(d.name); }));
+}
+/**
+ * 12項目の表（POSTの鍵・シートの列は、この順）。必須／任意を変えたいときは、required を1行ずつ直す。
+ * 職業と他格闘歴だけ任意。needs＝その項目が空でないときだけ要る（リングネームが空なら、フリガナは要らない）。個人情報なので、ログには出さない。
+ */
+const HANAMICHI_ITEMS_ = [
+  { key: 'hnNameKana', label: '氏名のフリガナ', required: true, max: 60, kind: 'kana' },
+  { key: 'hnGymKana', label: '所属ジムのフリガナ', required: true, max: 60, kind: 'kana' },
+  { key: 'hnRing', label: 'リングネーム', required: true, max: 60, kind: 'text' },
+  { key: 'hnRingKana', label: 'リングネームのフリガナ', required: true, max: 60, kind: 'kana', needs: 'hnRing' },
+  { key: 'hnBirth', label: '生年月日', required: true, max: 10, kind: 'date' },
+  { key: 'hnKickYears', label: 'キック歴（年）', required: true, max: 2, kind: 'number' },
+  { key: 'hnPerWeek', label: '練習頻度（週に何回）', required: true, max: 2, kind: 'number' },
+  { key: 'hnOther', label: '他格闘歴', required: false, max: 60, kind: 'text' },
+  { key: 'hnJob', label: '職業', required: false, max: 60, kind: 'text' },
+  { key: 'hnHobby', label: '趣味・特技', required: true, max: 60, kind: 'text' },
+  { key: 'hnReason', label: '始めた理由・良かった所', required: true, max: 300, kind: 'longtext' },
+  { key: 'hnMessage', label: 'メッセージ', required: true, max: 300, kind: 'longtext' }
+];
+/** 花道プロフィールの見出し：最初の4つは本体の申し込みの値、あとは上の表の順 */
+const HANAMICHI_HEADERS_ = ['受付番号', '申込日時', '所属ジム', '選手名'].concat(HANAMICHI_ITEMS_.map(function (item) { return item.label; }));
+/** 個人情報の別タブ（本番とテスト）。「花道の追加情報」が「あり」のときだけ、① が作る。3つ目の true＝全マスを文字の形にする */
+const HANAMICHI_TABLES_ = [['花道プロフィール', HANAMICHI_HEADERS_, true], ['テスト花道プロフィール', HANAMICHI_HEADERS_, true]];
+const HANAMICHI_MISSING_ = '花道の追加の質問に、答えていない所があります。申込ページにもどって、入れてから、もう一度送ってください。';
+const HANAMICHI_BAD_ = '花道の追加の質問に、まちがいがある所があります。申込ページにもどって、直してから、もう一度送ってください。';
+/** 自動テストの1件が花道の区分に当たるときだけ付ける、架空の答え */
+const SELFTEST_HANAMICHI_ = { hnNameKana: 'ジドウテスト', hnGymKana: 'ジドウテスト', hnRing: '自動テスト', hnRingKana: 'ジドウテスト', hnBirth: '1980-01-01', hnKickYears: '1', hnPerWeek: '1', hnOther: '', hnJob: '', hnHobby: 'テスト', hnReason: 'テスト', hnMessage: 'テスト' };
+/** 見る表。「花道の追加情報」が「あり」のときだけ花道のタブも、「誓約書」が「あり」のときだけ誓約の記録のタブも見る（なしのときは、これまでの4つだけ） */
+function tables_() { const s = S_(); let all = TABLES; if (s.hanamichi) all = all.concat(HANAMICHI_TABLES_); if (s.pledge) all = all.concat(PLEDGE_TABLES_); return all; }
+/** 表の見出しを調べる。個人情報のタブ（3つ目が true）は、あるときは1マスも書き換えない：右はしの見出しが空でも、書き足さず、直すマスとして言う */
+function tableCheck_(book, pair) {
+  const check = headerCheck_(book, pair[0], pair[1]);
+  return pair[2] && check.state === 'old' ? { state: 'bad', name: check.name, sheet: check.sheet, headers: check.headers, index: check.from, expected: check.headers[check.from], actual: '', inserted: false, rowGone: false } : check;
+}
+/** 個人情報のタブは、全マスを「文字」の形にする（生年月日・数字が、日付や数に変わらないように）。使えない環境でも止めない */
+function textFormatTab_(sheet, cols) {
+  try { sheet.getRange(1, 1, typeof sheet.getMaxRows === 'function' ? sheet.getMaxRows() : 1000, cols).setNumberFormat('@'); } catch (_) { /* 形が付けられなくても、1行ごとに文字の形で書く */ }
+}
+/** 実在する日で、今日（日本時間）より後ではない日か。2月30日・未来の日・1900年より前は false。年齢は見ない */
+function realPastDate_(y, m, d) {
+  if (![y, m, d].every(function (n) { return Number.isInteger(n); }) || y < 1900 || m < 1 || m > 12 || d < 1) return false;
+  const day = new Date(Date.UTC(y, m - 1, d)), jst = new Date(Date.now() + 9 * 3600 * 1000);
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) return false;
+  return day.getTime() <= Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate());
+}
+/** 12項目の値をそろえる（見えない文字・改行・前後の空白。数字と日付は全角も半角に）。リングネームが空なら、そのフリガナも空 */
+function hanamichiClean_(p) {
+  const out = {};
+  HANAMICHI_ITEMS_.forEach(function (item) { const text = norm_(p[item.key]); out[item.key] = item.kind === 'number' || item.kind === 'date' ? text.normalize('NFKC').trim() : text; });
+  HANAMICHI_ITEMS_.forEach(function (item) { if (item.needs && !out[item.needs]) out[item.key] = ''; });
+  return out;
+}
+/** 12項目を調べる。missing＝必須なのに空の項目／bad＝文字数・数字・実在する日のまちがい。年齢は確かめない */
+function hanamichiErrors_(clean) {
+  const missing = [], bad = [];
+  HANAMICHI_ITEMS_.forEach(function (item) {
+    const text = clean[item.key];
+    if (!text) { if (item.required && (!item.needs || clean[item.needs])) missing.push(item.key); return; }
+    if (item.kind === 'date') { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text); if (!m || !realPastDate_(Number(m[1]), Number(m[2]), Number(m[3]))) bad.push(item.key); }
+    else if (item.kind === 'number') { if (!/^\d{1,2}$/.test(text)) bad.push(item.key); }
+    else if (text.length > item.max) bad.push(item.key);
+  });
+  return { missing: missing, bad: bad };
+}
+/** 花道の追加情報を聞く申し込みか：設定が「あり」で、選ばれた区分（設定タブにある名前）に「花道」が入っているとき。それ以外は、花道の値が送られても、見ずに捨てる */
+function hanamichiApplies_(p) {
+  if (!S_().hanamichi) return false;
+  const d = findDivision_(norm_(p.division));
+  return Boolean(d) && isHanamichiName_(d.name);
+}
+/** 自動テストの1件が選ぶ区分が花道のときだけ、架空の答えを付ける（付けないと、赤い失敗になる） */
+function selfTestHanamichi_(s) {
+  const pick = selfTestDivision_(s);
+  return s.hanamichi && pick.division && isHanamichiName_(pick.division) ? SELFTEST_HANAMICHI_ : {};
+}
+/** 花道プロフィールに1行書く。同じ受付番号の行があれば、何もしない（再送で行を増やさない）。個人情報なので、ログには出さない */
+function saveHanamichiRow_(sheet, values, p) {
+  if (findRow_(sheet, 1, values[0])) return;
+  const clean = hanamichiClean_(p), width = HANAMICHI_HEADERS_.length;
+  const row = [values[0], values[1], values[3], values[4]].concat(HANAMICHI_ITEMS_.map(function (item) { return clean[item.key]; })).map(function (value) { return clean_(value, 2000); });
+  const newRow = sheet.getLastRow() + 1;
+  ensureRows_(sheet, newRow);
+  sheet.getRange(newRow, 1, 1, width).setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, width).setValues([row]);
+  SpreadsheetApp.flush();
+  const saved = findRow_(sheet, 1, values[0]);
+  if (!saved || JSON.stringify(sheet.getRange(saved, 1, 1, width).getDisplayValues()[0].map(retryNorm_)) !== JSON.stringify(row.map(retryNorm_))) throw entryError_('storage', '花道の追加情報の保存を確認できませんでした。', true);
+}
+/* ---------- 誓約書（core/pledge.ts と同じ決まり。tests/gasPledge.test.ts が、同じ答えになることを確かめる） ---------- */
+/** 文の置き場のタブ。A2〜A9＝項目（最大8個・1項目120字まで）、B2＝保護者（連帯責任者）の同意の文、C2＝団体・ジム責任者の同意の文。文の合計は700字まで（長さは length で数える） */
+const PLEDGE_TAB = '誓約書';
+const PLEDGE_LIMITS_ = { items: 8, item: 120, total: 700 };
+const PLEDGE_GYM_NAME_MAX_ = 40;
+/**
+ * 「誓約書」タブをはじめて作るときだけ入れる文。owner が原本から貼った文字（2026-10-22）のまま。AIが書いた文ではない。直さない（「することし」も貼られたまま）。
+ * すでにタブがあるときは、1マスも触らない。会長が原本と見比べて、タブの上で直す。
+ */
+const PLEDGE_INITIAL_ITEMS = [
+  '上記大会出場に関して万が一事故が発生した場合は、主催者に対し一切の責任や賠償を求めないこと',
+  '勝敗に関する一切の判断を主催者に一任し、本大会のルールと規定に従うこと',
+  '大会中に撮影した写真や動画等の著作権は主催者に帰属することし、自己の判断でSNS等に転載しない事',
+  '試合に際し、身体的な接触により相手もしくは関係者に病気を媒介するような感染症を持っていないこと',
+  '上記申し込み事項や誓約事項に虚偽がないこと'
+];
+const PLEDGE_INITIAL_GUARDIAN = '上記のものが本試合に出場すること、上記誓約内容に同意致します。';
+const PLEDGE_INITIAL_GYM = '上記の者が試合に出場することに同意し、上記誓約内容に同意致します。';
+const PLEDGE_HEADINGS_ = ['誓約書の項目（原本のとおりに、1項目ずつ。1マス＝1項目）', '保護者（連帯責任者）の同意の文', '団体・ジム責任者の同意の文'];
+const PLEDGE_MEMO_ = 'この文は、owner が原本から貼った文字です（2026-10-22）。会長が原本と見比べて、まちがいがあれば直してください。直したら、「設定」タブの「誓約書の文の確認」を「済み」にして、新しい申し込みリンクを作ってください。';
+/** 誓約の記録の見出し（この順）。ほかの人（ジム責任者）の個人情報が入るので、OS取込用・名簿ZIP・申込原本には出さない */
+const PLEDGE_HEADERS_ = ['受付番号', '申込日時', '選手名', '確認した項目', '保護者の同意', 'ジム責任者の名前', 'ジム責任者の電話', '許可の念押し', '同意した文', '文の指紋'];
+/** 誓約の記録の別タブ（本番とテスト）。「誓約書」が「あり」のときだけ、① が作る。3つ目の true＝全マスを文字の形にする */
+const PLEDGE_TABLES_ = [['誓約記録', PLEDGE_HEADERS_, true], ['テスト誓約記録', PLEDGE_HEADERS_, true]];
+/** 申し込みページが送る誓約書の鍵（「なし」のときは1つも付いてこない） */
+const PLEDGE_POST_KEYS_ = ['pledge', 'pledgeItems', 'pledgeGuardian', 'gymName', 'gymPhone', 'gymPermission', 'pledgeGym', 'pledgeHash', 'pledgeGuardianMode', 'pledgeGymMode'];
+/** ジムに入っていない人の言い方（全角・半角をそろえ、空白を取ったあと）。そのもの＝_ ／ ふくむ＝_PHRASES_。core/pledge.ts の UNAFFILIATED_NAMES・UNAFFILIATED_PHRASES と同じ。ジムに所属していない人は参加できないので、断る */
+const PLEDGE_UNAFFILIATED_ = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', 'なし', '無し', 'ない', '無', 'フリー', '個人'];
+const PLEDGE_UNAFFILIATED_PHRASES_ = ['無所属', 'むしょぞく', 'ムショゾク', '所属なし', '所属無し', 'しょぞくなし', 'ショゾクナシ', '所属してない', '所属していない', '所属してません', '所属していません', '所属しておりません', 'ジムなし', 'ジム無し', '道場なし', '道場無し', '通ってない', '通っていない'];
+/** 断る言葉（core/pledge.ts の UNAFFILIATED_TEXT と同じ。あとに「申込ページにもどって」を足す） */
+const UNAFFILIATED_TEXT_ = 'ジムに所属していない人は、参加できません。通っているジム・道場の名前を入れてください。';
+const PLEDGE_YES_ = 'はい';
+const PLEDGE_NO_NEED_ = '不要';
+const PLEDGE_ITEMS_BAD_ = '誓約書の確認（✔）が、すべてそろっていません。申し込みページにもどって、各項目の□に✔を入れてください。';
+const PLEDGE_GUARDIAN_BAD_ = '保護者（連帯責任者）の同意の確認（✔）が入っていません。申し込みページにもどって、✔を入れてください。';
+const PLEDGE_CHANGED_ = '誓約書の設定が、リンクを作ったあとで変わりました。主催者から、新しい申し込みリンクをもらってください。';
+const PLEDGE_OLD_ = '誓約書の文が、リンクを作ったあとで変わりました。主催者から、新しい申し込みリンクをもらってください。';
+const PLEDGE_UNCONFIRMED_ = '主催者が、誓約書の文をまだ確認していません。送れません。';
+const PLEDGE_GYM_CHECK_ = 'ジム責任者の同意の確認（✔）が入っていません。申し込みページにもどって、✔を入れてください。';
+const PLEDGE_GYM_NAME_ = 'ジム責任者のお名前を、40文字までで入れてください。';
+const PLEDGE_GYM_PHONE_ = 'ジム責任者の携帯電話を、ハイフンなしの11けたで入れてください（070・080・090で始まる番号です）。';
+const PLEDGE_PERMISSION_ = 'ジム責任者の許可をとっているか、確認のチェックが必要です。';
+/** 「誓約書」タブを読む（2行目から60行目まで）。タブが無ければ null。空のマスは飛ばす。rows＝項目が書いてあった行の番号（直すマスを言うため） */
+function readPledgeTab_(book) {
+  const sheet = book.getSheetByName(PLEDGE_TAB);
+  if (!sheet) return null;
+  const last = typeof sheet.getLastRow === 'function' ? sheet.getLastRow() : 2;
+  const cells = sheet.getRange(2, 1, Math.max(1, Math.min(60, last) - 1), 3).getDisplayValues(), items = [], rows = [];
+  cells.forEach(function (row, i) { const text = norm_(row[0]); if (text) { items.push(text); rows.push(i + 2); } });
+  return { items: items, rows: rows, guardian: norm_(cells[0][1]), gym: norm_(cells[0][2]) };
+}
+/** 「誓約書」＝あり で、タブがまだ無いときだけ、タブを作って初期の文を入れる。すでにタブがあるときは、1マスも触らない（空でも・直してあっても） */
+function ensurePledgeSheet_(book) {
+  if (!S_().pledge || book.getSheetByName(PLEDGE_TAB)) return;
+  const sheet = book.insertSheet(PLEDGE_TAB);
+  textFormatTab_(sheet, 5);
+  sheet.getRange(1, 1, 1, 3).setValues([PLEDGE_HEADINGS_]).setFontWeight('bold');
+  sheet.getRange(2, 1, PLEDGE_INITIAL_ITEMS.length, 1).setValues(PLEDGE_INITIAL_ITEMS.map(function (text) { return [text]; }));
+  sheet.getRange(2, 2, 1, 1).setValues([[PLEDGE_INITIAL_GUARDIAN]]);
+  sheet.getRange(2, 3, 1, 1).setValues([[PLEDGE_INITIAL_GYM]]);
+  sheet.getRange(1, 5, 2, 1).setValues([['メモ'], [PLEDGE_MEMO_]]);
+  try {
+    [380, 320, 320, 40, 420].forEach(function (width, i) { sheet.setColumnWidth(i + 1, width); });
+    sheet.getRange(1, 1, 12, 5).setWrap(true);
+    sheet.setFrozenRows(1);
+  } catch (_) { /* 見た目が付けられなくても、文は読める */ }
+  SETUP_NOTES_.push('「誓約書」タブを作りました。タブの文を原本と見比べて、まちがいがなければ、「設定」タブの「誓約書の文の確認」を「済み」にしてください。');
+}
+/** 文のひとまとめ（JSON の文字）。ping の pledgeCanon。指紋はこの文字から作る */
+function pledgeCanon_(s) { const tab = s.pledgeTab; return JSON.stringify({ items: tab.items, guardian: tab.guardian, gym: tab.gym }); }
+/** 文の指紋：いまの pledgeCanon の SHA-256（16進の小文字64字）。リンクの plf と、送られた pledgeHash を比べる（会長が文を直したら、古いリンクでは申し込めない） */
+function pledgeHash_(s) { return hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, pledgeCanon_(s), Utilities.Charset.UTF_8)); }
+function pledgeAge_(age) {
+  const text = String(age == null ? '' : age).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').trim();
+  if (!/^\d{1,3}$/.test(text)) return 0;
+  const n = Number(text);
+  return n >= 1 && n <= 120 ? n : 0;
+}
+/** 保護者の同意が要るか：なし→要らない／全員→要る／18歳未満のみ→年齢が18未満のとき。年齢が空・読めない・121以上は「要る」（安全側）。core/pledge.ts の guardianNeeded と同じ */
+function guardianNeeded_(mode, age) {
+  if (mode === 'none') return false;
+  if (mode === 'all') return true;
+  const n = pledgeAge_(age);
+  return n === 0 || n < 18;
+}
+/** ジム責任者の携帯電話を、数字だけの形にする（全角・ハイフン・空白はOK）。070／080／090で始まる11けたでなければ ''。core/pledge.ts の gymPhoneNormal と同じ */
+function gymPhoneNormal_(raw) {
+  const d = String(raw == null ? '' : raw).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').trim().replace(/[\s\-ー－―‐‑–—−]/g, '');
+  return /^0[789]0\d{8}$/.test(d) ? d : '';
+}
+function gymPhoneOk_(raw) { return gymPhoneNormal_(raw) !== ''; }
+/** ジム名が「ジムに入っていない」の言い方か（core/pledge.ts の isUnaffiliated と同じ） */
+function isUnaffiliated_(gym) {
+  const key = String(gym == null ? '' : gym).replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g, '').normalize('NFKC').replace(/\s+/g, '');
+  return PLEDGE_UNAFFILIATED_.indexOf(key) >= 0 || PLEDGE_UNAFFILIATED_PHRASES_.some(function (phrase) { return key.indexOf(phrase) >= 0; });
+}
+/**
+ * リンクを作ったあとで、「保護者の同意」「ジム責任者の同意」が厳しくなっていないか。ページが送る pledgeGuardianMode・pledgeGymMode は、リンクの plg・plm と同じ値。
+ * 「いまの設定は✔を求めるのに、このリンクのページには、その欄が出ない」ときだけ true（古いページには✔を入れる場所が無い。「✔を入れてください」と言っても行き止まり）。
+ * ゆるくなった分は、ページに余分な欄があるだけなので、true にしない。鍵が付いてこない・読めないときは、調べない（false）
+ */
+function pledgeLinkStale_(p, s) {
+  const mode = String(p.pledgeGuardianMode == null ? '' : p.pledgeGuardianMode).trim(), gymMode = String(p.pledgeGymMode == null ? '' : p.pledgeGymMode).trim();
+  if ((mode === 'none' || mode === 'under18' || mode === 'all') && guardianNeeded_(s.guardianMode, p.age) && !guardianNeeded_(mode, p.age)) return true;
+  return gymMode === 'off' && s.gymMode;
+}
+/** 誓約書の鍵が1つでも（空でなく）付いてきたか */
+function pledgeKeysSent_(p) { return PLEDGE_POST_KEYS_.some(function (key) { return String(p[key] == null ? '' : p[key]).trim() !== ''; }); }
+/** 記録に残す「同意した文」：そのとき✔した文。項目（番号つき）と、✔した保護者・ジム責任者の文 */
+function pledgeAgreedText_(tab, guardian, gym) {
+  return tab.items.map(function (text, i) { return (i + 1) + '. ' + text; }).concat(guardian ? ['【保護者の同意】' + tab.guardian] : [], gym ? ['【ジム責任者の同意】' + tab.gym] : []).join('\n');
+}
+/**
+ * 新しい申込の、誓約書の検査。保存の前（鍵の確認・カウンター・写真の前）に呼ぶ。投げたら、何も書かれない。
+ * 「なし」のとき：誓約書の鍵が付いてきたら断る（古いリンク。誓約したつもりで記録が無い事故を防ぐ）。付いてこなければ null（今までと同じ）。
+ * 「あり」のとき：本番で文の確認が「まだ」→ pledgeconfirm／文の指紋がちがう→ pledgeold／✔の漏れ→ pledge／ジム責任者の欄→ gym・permission。記録に書く内容を返す。
+ */
+function pledgeCheck_(p) {
+  const s = S_();
+  if (!s.pledge) { if (pledgeKeysSent_(p)) throw entryError_('pledge', PLEDGE_CHANGED_, false); return null; }
+  if (p.mode === 'live' && !s.pledgeConfirmed) throw entryError_('pledgeconfirm', PLEDGE_UNCONFIRMED_, false);
+  const tab = s.pledgeTab;
+  if (!tab || !tab.items.length || tab.items.length > PLEDGE_LIMITS_.items) throw adminError_('setup', '「誓約書」タブの文を確認してください。「① 最初の設定」を押してください。');
+  const hash = pledgeHash_(s);
+  if (String(p.pledgeHash == null ? '' : p.pledgeHash) !== hash) throw entryError_('pledgeold', PLEDGE_OLD_, false);
+  if (pledgeLinkStale_(p, s)) throw entryError_('pledgeold', PLEDGE_CHANGED_, false);
+  const expected = tab.items.map(function (_, i) { return String(i + 1); }).join(',');
+  if (String(p.pledge == null ? '' : p.pledge) !== 'yes' || String(p.pledgeItems == null ? '' : p.pledgeItems) !== expected) throw entryError_('pledge', PLEDGE_ITEMS_BAD_, false);
+  const guardian = guardianNeeded_(s.guardianMode, p.age);
+  if (guardian && p.pledgeGuardian !== 'yes') throw entryError_('pledge', PLEDGE_GUARDIAN_BAD_, false);
+  // ジム責任者の欄は、「ジム責任者の同意」が「あり」のときだけ求める（ジムに入っていない人は、申込の時点で断っている）
+  const asked = s.gymMode;
+  let gymName = '', gymPhone = '';
+  if (asked) {
+    gymName = norm_(p.gymName); gymPhone = gymPhoneNormal_(p.gymPhone);
+    if (p.pledgeGym !== 'yes') throw entryError_('gym', PLEDGE_GYM_CHECK_, false);
+    if (!gymName || gymName.length > PLEDGE_GYM_NAME_MAX_) throw entryError_('gym', PLEDGE_GYM_NAME_, false);
+    if (!gymPhone) throw entryError_('gym', PLEDGE_GYM_PHONE_, false);
+    if (p.gymPermission !== 'yes') throw entryError_('permission', PLEDGE_PERMISSION_, false);
+  }
+  return { items: expected, guardian: guardian, gymName: gymName, gymPhone: gymPhone, asked: asked, hash: hash, text: pledgeAgreedText_(tab, guardian, asked) };
+}
+/** 自動テストの1件が誓約書に答えるときの、架空の✔・名前・電話（付けないと、赤い失敗になる）。「なし」のときは何も付けない */
+function selfTestPledge_(s) {
+  if (!s.pledge || !s.pledgeTab) return {};
+  const out = { pledge: 'yes', pledgeItems: s.pledgeTab.items.map(function (_, i) { return String(i + 1); }).join(','), pledgeHash: pledgeHash_(s), pledgeGuardianMode: s.guardianMode, pledgeGymMode: s.gymMode ? 'on' : 'off' };
+  if (guardianNeeded_(s.guardianMode, '20')) out.pledgeGuardian = 'yes';
+  if (s.gymMode) { out.pledgeGym = 'yes'; out.gymName = '自動テスト'; out.gymPhone = '09000000000'; out.gymPermission = 'yes'; }
+  return out;
+}
+/** 誓約の記録に1行書く。同じ受付番号の行があれば、何もしない（再送で行を増やさない）。ジム責任者の名前・電話があるので、ログには出さない */
+function savePledgeRow_(sheet, values, rec) {
+  if (findRow_(sheet, 1, values[0])) return;
+  const width = PLEDGE_HEADERS_.length;
+  const row = [values[0], values[1], values[4], rec.items, rec.guardian ? PLEDGE_YES_ : PLEDGE_NO_NEED_, rec.gymName, rec.gymPhone, rec.asked ? PLEDGE_YES_ : PLEDGE_NO_NEED_, rec.text, rec.hash].map(function (value) { return clean_(value, 2000); });
+  const newRow = sheet.getLastRow() + 1;
+  ensureRows_(sheet, newRow);
+  sheet.getRange(newRow, 1, 1, width).setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, width).setValues([row]);
+  SpreadsheetApp.flush();
+  const saved = findRow_(sheet, 1, values[0]);
+  if (!saved || JSON.stringify(sheet.getRange(saved, 1, 1, width).getDisplayValues()[0].map(retryNorm_)) !== JSON.stringify(row.map(retryNorm_))) throw entryError_('storage', '誓約書の記録の保存を確認できませんでした。', true);
+}
+/* ---------- くわしい戦績（core/recordDetail.ts と同じ決まり。tests/gasRecordDetail.test.ts が、同じ答えになることを確かめる） ---------- */
+/** 本番の「戦績詳細」と、テストの「テスト戦績詳細」。tables_() の必須の一覧には入れない（古いシートの点検の結果を変えないため）。 */
+const RECORD_TABLE = '戦績詳細', RECORD_TEST_TABLE = 'テスト戦績詳細';
+/** 見出し（この順）。core/recordDetail.ts の RECORD_DETAIL_HEADERS と同じ。名簿ZIPの records.csv も、この見出し */
+const RECORD_DETAIL_HEADERS = ['受付番号', '申込日時', '種類', '競技名・大会名', '試合数', '勝ち', '負け', '引き分け', '勝敗なし', '獲得年', '階級', 'タイトル名・入賞成績'];
+/** 種類の名前（core/recordDetail.ts の RECORD_KIND と同じ） */
+const RECORD_KIND = { kick: 'キック', other: '他の格闘技', title: 'タイトル・入賞' };
+/** 上限（core/recordDetail.ts の RECORD_DETAIL_LIMITS と同じ） */
+const RECORD_LIMITS = { games: 999, others: 5, titles: 5, sport: 20, event: 60, class: 30, result: 60, yearMin: 1900, yearMax: 2100 };
+const RECORD_DETAIL_VERSION = 1;
+const RECORD_DETAIL_UNREADABLE_ = 'くわしい戦績の中身が読めません。';
+const RECORD_DETAIL_TAIL_ = '申込ページにもどって、直してから、もう一度送ってください。';
+/** くわしい戦績の欄が送られてきたか。空（空白だけも）か欄が無いときは、古い申込と同じに動く */
+function recordDetailSent_(p) { return String(p.recordDetail == null ? '' : p.recordDetail).trim() !== ''; }
+/** 数の決まり：0〜999 の整数（数の型のときだけ。文字の「3」は数ではない） */
+function recordDetailCount_(value) { return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= RECORD_LIMITS.games; }
+/** 文字の決まり：空白だけは不可。前後の空白を除いた長さが max まで */
+function recordDetailText_(value, max) { return typeof value === 'string' && value.trim() !== '' && value.trim().length <= max; }
+/** 中身の決まりに合わない所を、画面と同じ言い方で返す。合っていれば空の配列（core/recordDetail.ts の recordDetailProblems と同じ決まり） */
+function recordDetailProblems_(d) {
+  const out = [];
+  if (!d || typeof d !== 'object') return [RECORD_DETAIL_UNREADABLE_];
+  const kick = d.kick;
+  if (!kick || !recordDetailCount_(kick.games)) out.push('キックボクシングの試合数を、数字で入れてください（未経験は「0」）。');
+  else if (kick.games > 0) {
+    if (!recordDetailCount_(kick.win) || !recordDetailCount_(kick.loss) || !recordDetailCount_(kick.draw)) out.push('キックボクシングの勝ち・負け・引き分けを、数字で入れてください。');
+    else if (kick.win + kick.loss + kick.draw !== kick.games) out.push('キックボクシングの勝ち・負け・引き分けの合計が、試合数と合っていません（試合数 ' + kick.games + '）。');
+  } else if (!recordDetailCount_(kick.win) || kick.win !== 0 || kick.loss !== 0 || kick.draw !== 0) out.push('未経験（試合数0）のときは、勝ち・負け・引き分けは入れません。');
+  const others = Array.isArray(d.others) ? d.others : null;
+  if (!others) out.push('他の格闘技の欄が読めません。');
+  else {
+    if (others.length > RECORD_LIMITS.others) out.push('他の格闘技は、' + RECORD_LIMITS.others + 'つまでです。');
+    others.slice(0, RECORD_LIMITS.others).forEach(function (o) {
+      const sport = o ? o.sport : undefined, games = o ? o.games : undefined;
+      if (!recordDetailText_(sport, RECORD_LIMITS.sport)) out.push('他の格闘技の競技名を入れてください（' + RECORD_LIMITS.sport + '字まで）。');
+      if (!recordDetailCount_(games) || games < 1) out.push('他の格闘技の試合数は、1以上の数字で入れてください。');
+      else if (![o.win, o.loss, o.draw, o.noResult].every(function (n) { return recordDetailCount_(n); })) out.push('他の格闘技の勝ち・負け・引き分け・勝敗なしを、数字で入れてください。');
+      else if (o.win + o.loss + o.draw + o.noResult !== games) out.push('「' + sport + '」の勝ち・負け・引き分け・勝敗なしの合計が、試合数と合っていません（試合数 ' + games + '）。');
+    });
+  }
+  const titles = Array.isArray(d.titles) ? d.titles : null;
+  if (!titles) out.push('タイトル・入賞歴の欄が読めません。');
+  else {
+    if (titles.length > RECORD_LIMITS.titles) out.push('タイトル・入賞歴は、' + RECORD_LIMITS.titles + 'つまでです。');
+    titles.slice(0, RECORD_LIMITS.titles).forEach(function (t) {
+      const year = t ? t.year : undefined;
+      if (!recordDetailText_(t ? t.event : undefined, RECORD_LIMITS.event)) out.push('タイトル・入賞歴の大会名を入れてください（' + RECORD_LIMITS.event + '字まで）。');
+      if (!Number.isInteger(year) || year < RECORD_LIMITS.yearMin || year > RECORD_LIMITS.yearMax) out.push('獲得年は、4けたの数字で入れてください。');
+      if (!recordDetailText_(t ? t.class : undefined, RECORD_LIMITS.class)) out.push('タイトル・入賞歴の階級を入れてください（' + RECORD_LIMITS.class + '字まで）。');
+      if (!recordDetailText_(t ? t.result : undefined, RECORD_LIMITS.result)) out.push('タイトル名または入賞成績を入れてください（' + RECORD_LIMITS.result + '字まで）。');
+    });
+  }
+  return out;
+}
+/**
+ * 送られた JSON を読む（core/recordDetail.ts の parseRecordDetail と同じ）。数字は、全角も半角も受ける：JSON の数字のところ（引用符の外）の全角を半角にしてから読む。
+ * 読めたときは { detail }。読めない・決まりに合わないときは { error }（画面に出す文）。
+ */
+function recordDetailRead_(text) {
+  if (typeof text !== 'string' || text.trim() === '' || text.length > 20000) return { error: RECORD_DETAIL_UNREADABLE_ + RECORD_DETAIL_TAIL_ };
+  const json = text.replace(/("(?:[^"\\]|\\.)*")|([０-９]+)/g, function (all, quoted, digits) {
+    return quoted ? quoted : digits.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 65248); });
+  });
+  let d = null;
+  try { d = JSON.parse(json); } catch (_) { d = null; }
+  if (!d || typeof d !== 'object' || d.v !== RECORD_DETAIL_VERSION) return { error: RECORD_DETAIL_UNREADABLE_ + RECORD_DETAIL_TAIL_ };
+  const problems = recordDetailProblems_(d);
+  if (problems.length) return { error: 'くわしい戦績に、まちがいがある所があります。' + problems[0] + RECORD_DETAIL_TAIL_ };
+  return { detail: {
+    v: RECORD_DETAIL_VERSION,
+    kick: { games: d.kick.games, win: d.kick.win, loss: d.kick.loss, draw: d.kick.draw },
+    others: d.others.map(function (o) { return { sport: o.sport.trim(), games: o.games, win: o.win, loss: o.loss, draw: o.draw, noResult: o.noResult }; }),
+    titles: d.titles.map(function (t) { return { event: t.event.trim(), year: t.year, class: t.class.trim(), result: t.result.trim() }; })
+  } };
+}
+/** 読めた中身だけを返す。読めないときは null（比べるための関数） */
+function recordDetailParse_(text) { return recordDetailRead_(text).detail || null; }
+/**
+ * くわしい戦績の検査（保存の前）。送られていなければ null（古い申込と同じ）。送られていて決まりに合わなければ、何も書かずに断る（'input'）。
+ * 合っていれば中身を返し、申込の record は、キックの1行（「4戦3勝1敗」「初試合」。3.20261024.2 から）にそろえる。
+ */
+function recordDetailCheck_(p) {
+  if (!recordDetailSent_(p)) return null;
+  const read = recordDetailRead_(String(p.recordDetail));
+  if (read.error) throw entryError_('input', read.error, false);
+  p.record = recordDetailKickText_(read.detail.kick);
+  return read.detail;
+}
+/** キックの戦績の1行（core/recordDetail.ts の kickRecordText と同じ）。試合数0は「初試合」。例：「4戦3勝1敗」（前の版の引き分けつきは「4戦2勝1敗1分」） */
+function recordDetailKickText_(kick) { if (kick.games === 0) return '初試合'; return kick.games + '戦' + kick.win + '勝' + kick.loss + '敗' + (kick.draw > 0 ? kick.draw + '分' : ''); }
+/**
+ * キックの1行を、数にもどす（core/recordDetail.ts の kickFromRecordText と同じ）。合わなければ null。
+ * いまの形「4戦3勝1敗」「4戦2勝1敗1分」と、前の形「3勝1敗」「2勝1敗1分」（3.20261024.1 までが、シートに書いた形）と、「初試合」を読む。「戦」があるときは、勝ち・負け・引き分けの合計と合うときだけ
+ */
+function recordDetailKickFromText_(text) {
+  const t = String(text == null ? '' : text).trim();
+  if (t === '初試合') return { games: 0, win: 0, loss: 0, draw: 0 };
+  const m = /^(?:(\d{1,3})戦)?(\d{1,3})勝(\d{1,3})敗(?:(\d{1,3})分)?$/.exec(t);
+  if (!m) return null;
+  const win = Number(m[2]), loss = Number(m[3]), draw = m[4] ? Number(m[4]) : 0, games = win + loss + draw;
+  if (m[1] !== undefined && Number(m[1]) !== games) return null;
+  if (games < 1 || games > RECORD_LIMITS.games) return null;
+  return { games: games, win: win, loss: loss, draw: draw };
+}
+/** 同じ申込の再送のくらべ用：保存した戦績の1行（前の形でも、いまの形でも）が、送られたキックの数と同じか */
+function recordDetailKickSame_(stored, kick) {
+  const k = recordDetailKickFromText_(retryNorm_(stored));
+  return Boolean(k) && k.games === kick.games && k.win === kick.win && k.loss === kick.loss && k.draw === kick.draw;
+}
+/** 1件を、表の行（見出しの順）に分ける（core/recordDetail.ts の recordDetailRows と同じ）。キックは必ず1行。他の格闘技・タイトルは、1つにつき1行 */
+function recordDetailRows_(receiptNo, submittedAt, detail) {
+  const blank = function () { return RECORD_DETAIL_HEADERS.map(function () { return ''; }); };
+  const rows = [], kick = blank();
+  kick[0] = receiptNo; kick[1] = submittedAt; kick[2] = RECORD_KIND.kick; kick[3] = 'キックボクシング';
+  kick[4] = String(detail.kick.games); kick[5] = String(detail.kick.win); kick[6] = String(detail.kick.loss); kick[7] = String(detail.kick.draw);
+  rows.push(kick);
+  detail.others.forEach(function (o) {
+    const row = blank();
+    row[0] = receiptNo; row[1] = submittedAt; row[2] = RECORD_KIND.other; row[3] = o.sport;
+    row[4] = String(o.games); row[5] = String(o.win); row[6] = String(o.loss); row[7] = String(o.draw); row[8] = String(o.noResult);
+    rows.push(row);
+  });
+  detail.titles.forEach(function (t) {
+    const row = blank();
+    row[0] = receiptNo; row[1] = submittedAt; row[2] = RECORD_KIND.title; row[3] = t.event;
+    row[9] = String(t.year); row[10] = t.class; row[11] = t.result;
+    rows.push(row);
+  });
+  return rows;
+}
+/** 見出しの行の色（うすい青）。中身の行は、色を付けない */
+const RECORD_DETAIL_HEAD_COLOR_ = '#dbeafe';
+/**
+ * 「戦績詳細」の見た目（2026-10-26 owner：見やすく）：列の幅をそろえる・1行目（見出し）を固定する・見出しに色と太字。
+ * 文字は1マスも書き換えない（見た目だけ）。何回しても同じ。使えない環境でも止めない
+ */
+function recordDetailFormat_(sheet) { tabFormat_(sheet, RECORD_DETAIL_HEADERS, RECORD_DETAIL_HEAD_COLOR_); }
+/** 「戦績詳細」の表（本番・テスト）を、見出しつきで用意する。無ければ作り、中身が空なら見出しを書く（見出しの行は、警告つきで保護）。作ったときは、見た目もととのえる */
+function recordDetailSheetEnsure_(book, name) {
+  let sheet = book.getSheetByName(name);
+  if (!sheet) sheet = book.insertSheet(name);
+  if (sheet.getLastRow() === 0) {
+    textFormatTab_(sheet, RECORD_DETAIL_HEADERS.length);
+    sheet.getRange(1, 1, 1, RECORD_DETAIL_HEADERS.length).setValues([RECORD_DETAIL_HEADERS]).setFontWeight('bold');
+    try { sheet.getRange(1, 1, 1, RECORD_DETAIL_HEADERS.length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
+    recordDetailFormat_(sheet);
+  }
+  return sheet;
+}
+/**
+ * 「戦績詳細」の1行目が、この版の見出しと同じか。違えば、どの列が違うか（headerProblemError_ が使う形）を返す。同じなら null。
+ * 見方は、申込原本・OS取込用の headerCheck_ と同じ：途中に1列足された形（そこから先が、ひとつずつ右にずれて同じ）は inserted、左上が受付番号の形（1行目を消した）は rowGone
+ */
+function recordDetailHeaderCheck_(sheet, name) {
+  const n = RECORD_DETAIL_HEADERS.length, width = typeof sheet.getMaxColumns === 'function' ? Math.max(1, Math.min(n + 1, sheet.getMaxColumns())) : n + 1;
+  const row = sheet.getRange(1, 1, 1, width).getDisplayValues()[0].map(function (cell) { return String(cell); });
+  while (row.length < n) row.push('');
+  let index = 0;
+  while (index < n && row[index] === RECORD_DETAIL_HEADERS[index]) index++;
+  if (index === n) return null;
+  const inserted = row.length > n && JSON.stringify(row.slice(index + 1, n + 1)) === JSON.stringify(RECORD_DETAIL_HEADERS.slice(index));
+  const rowGone = index === 0 && /^(?:TEST-)?[A-Z0-9]{1,10}-[0-9A-F]{8,}$/.test(String(row[0]).trim());
+  return { state: 'bad', name: name, index: index, expected: RECORD_DETAIL_HEADERS[index], actual: rowGone ? '' : row[index], inserted: inserted, rowGone: rowGone };
+}
+/**
+ * 「戦績詳細」（本番・テスト）の見出しが、この版と同じかを、ping と ⑤ で言うために調べる。ちがうと、新しいリンク（rd=on）の申し込みは、保存の前に、すべて断られる
+ * （くわしい戦績つきの申込だけ。ほかの申込は、これまでどおり通る）。だから、必須の表（tables_）には入れず、ここで、直すタブ・マスを言う。
+ * 表が無い・空のときは、問題にしない（受付が作る）。ちがうときは、headerProblemError_ を投げる（ping が、タブ・マス・あるべき文字を返す）
+ */
+function recordDetailTabsCheck_() {
+  const id = PropertiesService.getScriptProperties().getProperty('spreadsheetId');
+  if (!id) return;
+  const book = SpreadsheetApp.openById(id);
+  [RECORD_TABLE, RECORD_TEST_TABLE].forEach(function (name) {
+    const sheet = book.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() === 0) return;
+    const bad = recordDetailHeaderCheck_(sheet, name);
+    if (bad) throw headerProblemError_(bad);
+  });
+}
+/**
+ * ① のあとの注意：「戦績詳細」の見出しがこの版と違うとき。止めずに言う（直すまで、くわしい戦績つきの申込は受けない）。
+ * 列が足されたとき・1行目が消えたときは、見出しを書き直させない（書き直すと、前からある行が1列ずれたまま残る／最初の申込の行を上書きする）
+ */
+function recordDetailHeaderNote_(bad) {
+  const letter = columnLetter_(bad.index);
+  const how = bad.rowGone ? '1行目の見出しが消えています。見出しを書き直さず、「⑤ いまの状態を見る」で、もどし方を見てください'
+    : bad.inserted ? letter + '列が足されています。' + letter + '列の上で右クリック →「列を削除」で、足した' + letter + '列を消してください'
+    : letter + '1 を「' + bad.expected + '」に直してください';
+  return '「' + bad.name + '」タブの見出しが、この版と違います（' + how + '）。直すまで、くわしい戦績つきの申し込みは受けられません。';
+}
+/* ---------- 見やすさ（2026-10-26 owner：列の幅・見出しの固定と色）と、マッチメイク用の「見るだけ」のタブ ---------- */
+/** 見出しの文字 → 列の幅（ピクセル）。ここに無い見出しは 120 */
+const TAB_WIDTHS_ = { '受付番号': 230, '管理番号': 230, '申込日時': 150, '大会ID': 130, '所属ジム': 150, 'ジム名': 150, '選手名': 140, '学年': 70, '年齢': 60, '身長': 60, '体重': 60, '体重(kg)': 80, '戦績・競技歴': 150, '戦績': 150, '試合への意気込み': 240, '入場曲URL（Apple Music推奨）': 200, '顔写真URL': 200, '連絡先氏名': 120, '連絡先電話番号': 130, '連絡先メールアドレス': 200, '同意': 50, 'リクエストID': 120, 'クラス': 90, '区分': 160, '階級': 100, '種類': 100, '競技名・大会名': 170, '試合数': 70, '勝ち': 60, '負け': 60, '引き分け': 80, '勝敗なし': 80, '獲得年': 70, 'タイトル名・入賞成績': 240, '確認した項目': 110, '同意した文': 300, '文の指紋': 120 };
+/**
+ * タブの見た目をととのえる：1行目（見出し）を固定・見出しに色と太字・列の幅を見出しに合わせる。文字は1マスも書き換えない（何回しても同じ）。使えない環境でも止めない。
+ * color＝見出しの色（受付が書くタブは、うすい青。見るだけのタブは、うすい緑）
+ */
+function tabFormat_(sheet, headers, color) {
+  try {
+    headers.forEach(function (name, i) { sheet.setColumnWidth(i + 1, Object.prototype.hasOwnProperty.call(TAB_WIDTHS_, name) ? TAB_WIDTHS_[name] : 120); });
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length).setBackground(color || RECORD_DETAIL_HEAD_COLOR_).setFontWeight('bold');
+  } catch (_) { /* 見た目が付けられなくても、受付は動く */ }
+}
+/** 受付が書くタブ（申込原本・OS取込用・テスト・花道・誓約）の見た目を、① のたびにととのえる。見出しが合っているタブだけ */
+function formatTables_(book) {
+  tables_().forEach(function (pair) { const check = tableCheck_(book, pair); if (check.state === 'ok') tabFormat_(check.sheet, pair[1]); });
+}
+const OS_TAB_ = 'OS取込用（連絡先なし）';
+/** 見るだけのタブの名前と見出し。中身は式（受付のタブを読むだけ。受付のタブには、何も書かない）。連絡先は出さない（OS取込用から読む） */
+const MATCH_TAB_ = 'マッチメイク表';
+const MATCH_HEADERS_ = ['区分', 'クラス', '体重(kg)', '階級', '選手名', 'ジム名', '戦績', '年齢', '学年', '身長', '管理番号'];
+const RECORD_VIEW_TAB_ = '戦績（選手名つき）';
+const RECORD_VIEW_HEADERS_ = ['受付番号', '選手名', 'ジム名'].concat(RECORD_DETAIL_HEADERS.slice(2));
+const VIEW_COLOR_ = '#dcfce7';
+/** 式の中のタブの名前（「'」でかこむ） */
+function tabRef_(name, range) { return "'" + name.replace(/'/g, "''") + "'!" + range; }
+/**
+ * マッチメイク表の式：OS取込用の申込を、区分 → クラス → 体重（軽い順）にならべる。体重は数にしてならべる（「100」が「65」より前に来ないように）。
+ * 列：区分(M)・クラス(L)・体重(G)・階級(N)・選手名(C)・ジム名(B)・戦績(H)・年齢(E)・学年(D)・身長(F)・管理番号(A)
+ */
+function matchFormula_() {
+  const os = function (col) { return tabRef_(OS_TAB_, col + '2:' + col); };
+  return '=ARRAYFORMULA(IFERROR(SORT(FILTER({' + [os('M'), os('L'), 'IFERROR(VALUE(' + os('G') + '),' + os('G') + ')', os('N'), os('C'), os('B'), os('H'), os('E'), os('D'), os('F'), os('A')].join(',') + '},' + os('A') + '<>""),1,TRUE,2,TRUE,3,TRUE),""))';
+}
+/** 戦績（選手名つき）の式：戦績詳細の行に、OS取込用の選手名・ジム名を、受付番号（＝管理番号）で付ける */
+function recordViewFormula_() {
+  const rec = function (range) { return tabRef_(RECORD_TABLE, range); };
+  const pick = function (col) { return 'IFERROR(VLOOKUP(' + rec('A2:A') + ',{' + tabRef_(OS_TAB_, 'A2:A') + ',' + tabRef_(OS_TAB_, col + '2:' + col) + '},2,FALSE),"")'; };
+  return '=ARRAYFORMULA(IFERROR(FILTER({' + [rec('A2:A'), pick('C'), pick('B'), rec('C2:L')].join(',') + '},' + rec('A2:A') + '<>""),""))';
+}
+/** 見るだけのタブを用意する（無ければ作る）。1行目の見出しと、A2 の式を、① のたびに書き直す（ほかのマスは触らない）。打ちまちがい防止に、警告つきで保護する */
+function ensureViewTab_(book, name, headers, formula) {
+  let sheet = book.getSheetByName(name);
+  const fresh = !sheet;
+  if (!sheet) sheet = book.insertSheet(name);
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(2, 1).setFormula(formula);
+  tabFormat_(sheet, headers, VIEW_COLOR_);
+  if (fresh) { try { sheet.getRange(1, 1, Math.max(2, typeof sheet.getMaxRows === 'function' ? sheet.getMaxRows() : 2), headers.length).protect().setDescription('見るだけのタブです。中身は、受付のタブから自動で作ります（ここに書かないでください）').setWarningOnly(true); } catch (_) { /* 保護できなくても、見られる */ } }
+  return sheet;
+}
+/** ① で、見やすさと見るだけのタブを用意する。どれかが失敗しても、① は止めない（受付には関係しないため） */
+function setupViews_(book) {
+  try { formatTables_(book); } catch (_) { /* 見た目だけ */ }
+  try { ensureViewTab_(book, MATCH_TAB_, MATCH_HEADERS_, matchFormula_()); } catch (_) { /* 見るだけのタブ */ }
+  try { ensureViewTab_(book, RECORD_VIEW_TAB_, RECORD_VIEW_HEADERS_, recordViewFormula_()); } catch (_) { /* 見るだけのタブ */ }
+}
+/** 受付の中で使う「戦績詳細」（本番かテスト）。無ければ作り、見出しがちがうときは止める（何も書かない） */
+function recordDetailSheetOf_(book, isTest) {
+  const name = isTest ? RECORD_TEST_TABLE : RECORD_TABLE, sheet = recordDetailSheetEnsure_(book, name), bad = recordDetailHeaderCheck_(sheet, name);
+  if (bad) throw headerProblemError_(bad);
+  return sheet;
+}
+/** 「戦績詳細」に、1件ぶんの行を書く。同じ受付番号の行があれば、何もしない（再送で行を増やさない）。見出しの12列だけを書く（連絡先・写真は入れない） */
+function recordDetailSaveRows_(sheet, values, detail) {
+  if (findRow_(sheet, 1, values[0])) return;
+  const width = RECORD_DETAIL_HEADERS.length, first = sheet.getLastRow() + 1;
+  const rows = recordDetailRows_(values[0], values[1], detail).map(function (row) { return row.map(function (cell) { return clean_(cell, 2000); }); });
+  ensureRows_(sheet, first + rows.length - 1);
+  sheet.getRange(first, 1, rows.length, width).setNumberFormat('@');
+  sheet.getRange(first, 1, rows.length, width).setValues(rows);
+  SpreadsheetApp.flush();
+  const saved = findRow_(sheet, 1, values[0]);
+  const back = saved ? sheet.getRange(saved, 1, rows.length, width).getDisplayValues().map(function (row) { return row.map(retryNorm_); }) : null;
+  if (!back || JSON.stringify(back) !== JSON.stringify(rows.map(function (row) { return row.map(retryNorm_); }))) throw entryError_('storage', 'くわしい戦績の保存を確認できませんでした。', true);
+}
+/**
+ * 名簿ZIPの records.csv の中身（UTF-8・BOM・引用は players.csv と同じ）。「戦績詳細」の表が無い・行が無いときは ''（付けない）。
+ * 見出しがちがうのに行があるときは、黙って落とさず、止める。
+ */
+function recordsCsvOf_(book) {
+  const sheet = book.getSheetByName(RECORD_TABLE);
+  if (!sheet || sheet.getLastRow() < 2) return '';
+  const width = RECORD_DETAIL_HEADERS.length;
+  const rows = sheet.getDataRange().getDisplayValues().map(function (row) { const out = []; for (let i = 0; i < width; i++) out.push(row[i] == null ? '' : String(row[i])); return out; });
+  if (JSON.stringify(rows[0]) !== JSON.stringify(RECORD_DETAIL_HEADERS)) throw new Error('「戦績詳細」タブの1行目（見出し）が、この版と違うので、ZIPを作れません。見出しを直してから、もう一度やってください。');
+  const body = rows.slice(1).filter(function (row) { return row.some(function (cell) { return cell !== ''; }); });
+  if (!body.length) return '';
+  return '﻿' + [rows[0]].concat(body).map(function (row) { return row.map(function (cell) { return '"' + clean_(cell, 2000).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+}
 /** 選手（保護者）に見せる文。見出しやタブの名前は、主催者だけが直せるので、選手には言わない。 */
 const PUBLIC_PROBLEM = 'ただいま受付に問題があります。主催者へご連絡ください。';
 function columnLetter_(index) { let n = index + 1, out = ''; while (n > 0) { const r = (n - 1) % 26; out = String.fromCharCode(65 + r) + out; n = Math.floor((n - 1) / 26); } return out; }
@@ -327,7 +917,8 @@ function adminError_(code, message, detail) { const error = entryError_(code, me
 /** 見出しの問題を、タブの名前・直すマス・あるべき文字つきの文にする。 */
 function headerProblemError_(check) {
   const name = check.name, quoted = '「' + name + '」タブ';
-  const real = name === TABLES[0][0] || name === TABLES[1][0];
+  // 本物の申込が入るタブ（テストのタブではないもの）。名前を変えて作り直すと、前の申込が名簿ZIPから消えるので、その道は教えない
+  const real = name === TABLES[0][0] || name === TABLES[1][0] || name === HANAMICHI_TABLES_[0][0] || name === PLEDGE_TABLES_[0][0] || name === RECORD_TABLE;
   if (check.state === 'missing') return adminError_('missing', quoted + 'が見つからない（または、空になっている）ので、受付を止めています。「① 最初の設定」を押すと、見出しだけの新しいタブを作ります。' + (real ? '申込が入っていたタブを消したときは、先にジムの担当者に聞いてください。' : ''), { tab: name });
   const letter = columnLetter_(check.index), cell = letter + '1';
   const shown = check.actual === '' ? '（空）' : '「' + check.actual.slice(0, 20) + '」';
@@ -351,6 +942,9 @@ function setupTournament() {
     SETTINGS_REBUILT_ = false; SETUP_NOTES_ = [];
     ensureSettingsSheet_(book);
     SETTINGS_CACHE_ = null;
+    // 「誓約書」＝あり で、タブがまだ無いときだけ、初期の文つきで作る（先に作らないと、「タブがありません」という直しもので止まってしまう）
+    ensurePledgeSheet_(book);
+    SETTINGS_CACHE_ = null;
     const problems = settingsProblems_(S_());
     if (problems.length) throw new Error('シートの「設定」タブを直してください。' + problems.join('。') + '。直したら、もう一度「① 最初の設定」を押してください。' + (fresh ? '（「設定」タブを作りました）' : SETTINGS_REBUILT_ ? '（「設定」タブが空だったので、作り直しました）' : ''));
     if (props.getProperty('ownerEmail') && props.getProperty('ownerEmail') !== owner) throw new Error('別の大会が入っています。このシートをもう一度コピーして、新しい大会を作ってください。');
@@ -361,17 +955,23 @@ function setupTournament() {
     SETTINGS_CACHE_ = null;
     if (!props.getProperty('accepting')) props.setProperty('accepting', 'false');
     // 先に全部の見出しを見て、1つでも違えば何も書き換えずに止まる（タブが無い・空なのは、ここで作り直すので止めない）
-    TABLES.forEach(function (pair) { const check = headerCheck_(book, pair[0], pair[1]); if (check.state === 'bad') throw headerProblemError_(check); });
-    TABLES.forEach(function (pair) {
-      const check = headerCheck_(book, pair[0], pair[1]);
+    tables_().forEach(function (pair) { const check = tableCheck_(book, pair); if (check.state === 'bad') throw headerProblemError_(check); });
+    tables_().forEach(function (pair) {
+      const check = tableCheck_(book, pair);
       if (check.state === 'missing') {
         const sheet = check.sheet || book.insertSheet(pair[0]);
         sheet.getRange(1, 1, 1, pair[1].length).setValues([pair[1]]).setFontWeight('bold');
         try { sheet.getRange(1, 1, 1, pair[1].length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
+        if (pair[2]) textFormatTab_(sheet, pair[1].length);
       } else if (check.state === 'old') upgradeHeader_(check.sheet, pair[1], check.from);
     });
     // 新しく書いた見出しを、Googleに確実に書き込ませてから、次の確認へ進む（書き込みが遅れて「申込原本が見つからない（または、空）」と出るのを防ぐ）
     SpreadsheetApp.flush();
+    // 「戦績詳細」（本番・テスト）は、無ければ見出しつきで作る。tables_() の必須の一覧には入れない。見出しがちがうときは止めず、完了のあとの注意で言う
+    // 見出しが合っているタブは、① のたびに見た目をととのえる（前からあるタブにも効く。文字は変えない）
+    [RECORD_TABLE, RECORD_TEST_TABLE].forEach(function (name) { const sheet = recordDetailSheetEnsure_(book, name), bad = recordDetailHeaderCheck_(sheet, name); if (bad) SETUP_NOTES_.push(recordDetailHeaderNote_(bad)); else recordDetailFormat_(sheet); });
+    // 見やすさ（全部の受付のタブ）と、マッチメイク用の見るだけのタブ（マッチメイク表・戦績（選手名つき））。失敗しても ① は止めない
+    setupViews_(book);
     // フォルダがゴミ箱にあるときは、作り直さずに「元に戻す」を案内する（中の写真を失わないため）。完全に消えていたら、新しく作る
     ['photoFolderId', 'testFolderId'].forEach(function (key) { if (folderState_(props.getProperty(key)) === 'trashed') throw adminError_('folder', FOLDER_GONE); });
     const photoState = folderState_(props.getProperty('photoFolderId'));
@@ -398,7 +998,8 @@ function selfTest_() {
   const resources = checkResources_();
   if (testComplete_(resources.book)) return true;
   const s = S_();
-  saveEntry_({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG });
+  // 2つ目の true＝① の自動テストの1件（「テスト申込」タブの件数の上限で、止めない）
+  saveEntry_(Object.assign({ protocol: '3', eventId: s.eventId, mode: 'test', requestId: Utilities.getUuid(), gym: '自動テスト', name: '自動テスト選手', grade: 'テスト', age: '20', height: '170', weight: '65', record: '自動テスト', comment: 'テスト', musicUrl: s.music ? 'https://music.apple.com/jp/album/selftest' : '', contactName: '自動テスト', contactPhone: '09000000000', contactEmail: 'selftest@example.invalid', consent: 'yes', website: '', fighterClass: s.classes.enabled ? 'upper' : '', division: selfTestDivision_(s).division, weightClass: selfTestDivision_(s).weightClass, photoDataUrl: 'data:image/jpeg;base64,' + SELFTEST_JPEG }, selfTestHanamichi_(s), selfTestPledge_(s)), true);
   if (!testComplete_(SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('spreadsheetId')))) throw new Error('自動テストを最後まで確認できませんでした。もう一度「① 最初の設定」を押してください。');
   return true;
 }
@@ -419,7 +1020,7 @@ function checkResources_(){
   if(props.getProperty('ownerEmail')!==owner||props.getProperty('eventId')!==S_().eventId)throw adminError_('setup','この大会の初期設定を確認してください。「① 最初の設定」を押してください。');
   const book=SpreadsheetApp.openById(props.getProperty('spreadsheetId')),sheetFile=DriveApp.getFileById(book.getId()),folder=folderOf_(props.getProperty('photoFolderId')),testFolder=folderOf_(props.getProperty('testFolderId'));
   if(!isPrivateOwned_(sheetFile,owner)||!isPrivateOwned_(folder,owner)||!isPrivateOwned_(testFolder,owner))throw adminError_('sharing','申込表と写真フォルダの共有を「制限付き・主催者本人だけ」にしてください。（シートの右上の「共有」と、Driveの「Tournament OS 顔写真」フォルダの両方です）');
-  const tables=TABLES.map(function(pair){return headerCheck_(book,pair[0],pair[1]);});
+  const tables=tables_().map(function(pair){return tableCheck_(book,pair);});
   // どれか1つでも違っていたら（タブが無い・空も含む）、何も書き換えずに止まる。全部そろって（または古い形だけ）のときだけ、足りない1マスを足す。
   tables.forEach(function(t){if(t.state==='bad'||t.state==='missing')throw headerProblemError_(t);});
   tables.forEach(function(t){if(t.state==='old')upgradeHeader_(t.sheet,t.headers,t.from);});
@@ -445,12 +1046,21 @@ function statusInfo_() {
     if (s.logo) info.logo = true;
     if (s.weights.enabled) { info.weightMode = true; info.weights = { enabled: true, divisions: s.weights.divisions.map(function (d) { return { name: d.name, classes: d.classes.slice() }; }) }; }
     if (s.classes.enabled) { info.classMode = true; info.classes = { enabled: true, upper: { name: s.classes.upper.name, condition: s.classes.upper.condition, rule: s.classes.upper.rule }, lower: { name: s.classes.lower.name, condition: s.classes.lower.condition, rule: s.classes.lower.rule }, upperMinWins: s.classes.upperMinWins }; }
+    // 花道のルール：クラス分けが「あり」で、花道の区分があり、問題がないときだけ、1行の文を足す（選手に見せる文。ほかのときは鍵が増えない）
+    if (hanamichiRuleApplies_(s)) info.hanamichiRule = String(s.hanamichiRule).trim();
+    // 花道の追加情報が「あり」で、問題がないときだけ、印を1つ足す（個人情報・項目名は返さない）
+    if (s.hanamichi) info.hanamichiMode = true;
+    // 誓約書が「あり」で、問題がないときだけ、印と文を足す（文は選手に見せるもの。「なし」のときは鍵が1つも増えない）
+    if (s.pledge) { info.pledgeMode = true; info.pledgeCanon = pledgeCanon_(s); info.pledgeHash = pledgeHash_(s); info.guardianMode = s.guardianMode; info.gymMode = s.gymMode; info.pledgeChecked = s.pledgeConfirmed; }
   }
   return info;
 }
 function showStatus() {
   const s = statusInfo_();
-  const text = ['設定：' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト：' + (s.testComplete ? '済み' : 'まだ'), '受付：' + (s.accepting ? '受付中' : s.closedBy === 'deadline' ? 'しめきりました（締切を過ぎています）' : '停止中'), '締切：' + (s.deadline || '未設定')].join('\n');
+  // 「戦績詳細」の見出しが崩れていたら、直すマスをいっしょに言う（新しいリンクの申し込みが、すべて断られてしまうため）
+  let recordNote = '';
+  try { recordDetailTabsCheck_(); } catch (error) { recordNote = '\n戦績詳細：' + String(error && error.message ? error.message : error); }
+  const text = ['設定：' + (s.ready ? (s.settingsProblem ? '直す所があります（' + s.settingsProblem + '）' : '済み') : 'まだ（① 最初の設定を押す）'), '自動テスト：' + (s.testComplete ? '済み' : 'まだ'), '受付：' + (s.accepting ? '受付中' : s.closedBy === 'deadline' ? 'しめきりました（締切を過ぎています）' : '停止中'), '締切：' + (s.deadline || '未設定')].join('\n') + recordNote;
   Logger.log(text);
   try { SpreadsheetApp.getUi().alert('いまの状態', text, SpreadsheetApp.getUi().ButtonSet.OK); } catch (_) {}
   return s;
@@ -502,7 +1112,7 @@ function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.action === 'ping') {
     let body;
-    try { body = statusInfo_(); } catch (error) {
+    try { body = statusInfo_(); recordDetailTabsCheck_(); } catch (error) {
       body = { app: 'tournament-os', protocol: 3, build: RECEPTION_BUILD, ready: false, error: error.code || 'error' };
       // 見出しの問題だけ、直すタブとマスを画面に伝える（タブの名前と、あるべき見出しだけ。申込の中身・メールは入れない）
       if (error.detail && (error.code === 'headers' || error.code === 'missing')) { body.errorTab = String(error.detail.tab || ''); if (error.detail.cell) body.errorCell = String(error.detail.cell); if (error.detail.expected) body.errorExpected = String(error.detail.expected); if (error.detail.inserted) body.errorInserted = true; if (error.detail.rowGone) body.errorRowGone = true; }
@@ -533,8 +1143,13 @@ function doPost(e){
   try{return resultPage_(saveEntry_(p),'',null,p);}
   catch(error){console.error('Tournament OS受付: '+(error.code||'storage'));return resultPage_('',error.code?(error.publicMessage||error.message):'Googleへの保存を最後まで確認できませんでした。',error,p);}
 }
-/** 送られた「upper／lower」の印から、設定タブの今の名前を返す。送られた文字そのものは保存しない。 */
-function classLabel_(p){const c=S_().classes;if(!c.enabled)return'';return p.fighterClass==='upper'?c.upper.name:c.lower.name;}
+/**
+ * 花道の区分を選んだ申込か：クラス分けが「あり」で、選ばれた区分（設定タブにある名前）に「花道」が入っているとき。
+ * 花道の選手には、クラス（A/B）を聞かない：求めない・調べない・送られてきても捨てて、保存するクラスは空にする。
+ */
+function classFree_(p){if(!S_().classes.enabled||!S_().hanamichiRuleRow)return false;const d=findDivision_(norm_(p.division));return Boolean(d)&&isHanamichiName_(d.name);}
+/** 送られた「upper／lower」の印から、設定タブの今の名前を返す。送られた文字そのものは保存しない。花道の区分のときは、送られていても空 */
+function classLabel_(p){const c=S_().classes;if(!c.enabled||classFree_(p))return'';return p.fighterClass==='upper'?c.upper.name:c.lower.name;}
 /** 見えない文字（向きの印・幅ゼロの空白など）を取り、改行を \n にそろえ、前後の空白を取る。画面（申し込みページ）の決まりと同じ。フォームの送信は、改行を \r\n にするので、そろえないと文字数が1つずつ増える。 */
 function norm_(value){return String(value==null?'':value).replace(/\r\n?/g,'\n').replace(/[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g,'').trim();}
 const FIELD_JA_={gym:'ジム名',name:'選手名',height:'身長',weight:'体重',record:'戦績',grade:'学年',age:'年齢',comment:'意気込み',musicUrl:'入場曲のリンク',contactName:'お名前',contactPhone:'電話番号',contactEmail:'メールアドレス',photoDataUrl:'写真',requestId:'申込を確認する番号'};
@@ -551,12 +1166,13 @@ function emailOk_(v){
 /** クラスが選ばれているか。新しい申込のときだけ調べる（保存ずみの申込の再送は、設定が変わっていても確認だけする）。 */
 function checkClass_(p){
   const cs=S_().classes;
-  if(cs.enabled&&p.fighterClass!=='upper'&&p.fighterClass!=='lower')throw entryError_('class','クラスが選ばれていません。申込ページを開き直して、'+cs.upper.name+'か'+cs.lower.name+'を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
+  if(cs.enabled&&!classFree_(p)&&p.fighterClass!=='upper'&&p.fighterClass!=='lower')throw entryError_('class','クラスが選ばれていません。申込ページを開き直して、'+cs.upper.name+'か'+cs.lower.name+'を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
 }
 /** 保存ずみの申込の再送で、クラスが「変わった」と言うのは、保存した名前がいまも設定にあって、選んだ印とちがうときだけ。 */
 function classRetryOk_(stored,p){
   const c=S_().classes;
-  if(!c.enabled||!stored)return true;
+  // 花道の区分は、クラスを保存しない（送られていても捨てる）ので、くらべるものがない
+  if(!c.enabled||!stored||classFree_(p))return true;
   if(stored!==c.upper.name&&stored!==c.lower.name)return true;
   checkClass_(p);
   return stored===classLabel_(p);
@@ -572,7 +1188,7 @@ function findDivision_(name){
 function weightPick_(p){
   if(!S_().weights.enabled)return{division:'',weightClass:''};
   const d=findDivision_(norm_(p.division));
-  if(!d)throw entryError_('weight','区分が選ばれていません。申込ページを開き直して、区分を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
+  if(!d)throw entryError_('weight','出場区分が選ばれていません。申込ページを開き直して、出場区分を選んでから送ってください。リンクが途中で切れているかもしれません。そのときは、リンクをくれた人に、もう一度リンクをもらってください。',false);
   if(!d.classes.length)return{division:d.name,weightClass:''};
   const canon=weightCanon_(norm_(p.weightClass)).toLowerCase();
   const found=canon?d.classes.filter(function(c){return c.toLowerCase()===canon;})[0]:'';
@@ -601,26 +1217,44 @@ function phoneOk_(raw){
 }
 function validateEntry_(p){
   // 見えない文字・改行（\r\n）をそろえてから調べる。あとで保存する値も、同じそろえかたになる
-  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','division','weightClass'].forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
+  ['requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','division','weightClass'].concat(PLEDGE_POST_KEYS_).forEach(function(key){if(p[key]!=null)p[key]=norm_(p[key]);});
   if((p.protocol!=='2'&&p.protocol!=='3')||p.eventId!==S_().eventId||(p.mode!=='test'&&p.mode!=='live'))throw entryError_('event','大会の申し込みリンクが違います。主催者から新しいリンクをもらってください。',false);
   if(p.website)throw entryError_('spam','送信を受け付けられませんでした。',false);
   if(p.consent!=='yes')throw entryError_('consent','個人情報の取扱いへの同意が必要です。申込ページにもどって、同意のチェックを入れてください。',false);
   const request=text_(p,'requestId',100,true);if(!/^[\w-]{32,100}$/.test(request))throw entryError_('input','申込を確認する番号が正しくありません。',false);
+  // くわしい戦績（送られたときだけ）。決まりに合わなければ、何も書かずに断る。合っていれば、record をキックの1行にそろえてから、下の文字数の検査をする
+  recordDetailCheck_(p);
   const limits={gym:120,name:80,height:10,weight:10,record:300,contactName:100,contactPhone:30,contactEmail:200,photoDataUrl:1800100};
   Object.keys(limits).forEach(function(key){text_(p,key,limits[key],true);});
+  // ジムに所属していない人は参加できない（「無所属」「なし」などの言い方を断る。画面でも同じ言葉で断っている）
+  if(isUnaffiliated_(p.gym))throw entryError_('input','申込ページにもどって、ジム名を直してください。'+UNAFFILIATED_TEXT_,false);
   const height=Number(p.height),weight=Number(p.weight);
   if(!Number.isFinite(height)||height<50||height>250||!Number.isFinite(weight)||weight<10||weight>250||!phoneOk_(p.contactPhone)||!emailOk_(p.contactEmail))throw entryError_('input','身長・体重・電話番号・メールアドレスを確認してください。',false);
   if(p.age&&(!/^\d{1,3}$/.test(p.age)||Number(p.age)<1||Number(p.age)>120))throw entryError_('input','年齢を確認してください。',false);
   ['grade','age','comment'].forEach(function(key){text_(p,key,key==='comment'?500:30,S_()[key]==='required');});
   if(S_().music&&!/^https:\/\/(?:music\.apple\.com|(?:[\w-]+\.)?youtube\.com|youtu\.be)\//i.test(text_(p,'musicUrl',500,true)))throw entryError_('input','入場曲はApple MusicかYouTubeのURLを入力してください。',false);
+  // 花道の追加情報：設定が「あり」で、花道の区分を選んだときだけ調べる（ほかの区分で花道の値が送られても、調べず、保存せず、捨てる）
+  if(hanamichiApplies_(p)){const found=hanamichiErrors_(hanamichiClean_(p));if(found.missing.length)throw entryError_('hanamichi',HANAMICHI_MISSING_,false);if(found.bad.length)throw entryError_('hanamichi',HANAMICHI_BAD_,false);}
   return request;
 }
-function saveEntry_(p){
+/** 「テスト申込」タブに入れてよい件数。これより多いときは、テストの新しい申込を断る（① の自動テストの1件と、同じ申込の再送は、断らない） */
+const TEST_ENTRY_MAX_=200;
+const TEST_ENTRY_FULL_='テスト用の申し込みが'+TEST_ENTRY_MAX_+'件になったので、これ以上は受け付けません。本番の申し込みには関係ありません。主催者の方は、シートの「テスト申込」タブの、古いテストの行（2行目から下。1行目の見出しは残します）を消してから、「① 最初の設定」を押してください。';
+/** 1件を保存する。selfTest＝① の自動テストの1件のときだけ true（selfTest_ が付ける。申し込みページから来た申込〔doPost〕には、付かない） */
+function saveEntry_(p,selfTest){
   assertOwner_();const requestId=validateEntry_(p);
   return withLock_(function(){
     const props=PropertiesService.getScriptProperties(),resources=checkResources_(),isTest=p.mode==='test';
     const sheet=resources.book.getSheetByName(isTest?'テスト申込':'申込原本（個人情報あり）'),os=resources.book.getSheetByName(isTest?'テストOS取込用':'OS取込用（連絡先なし）');
     if(!sheet||!os)throw adminError_('setup','申込表が見つかりません。「① 最初の設定」を押してください。');
+    // 花道の追加情報（設定が「あり」で、花道の区分のときだけ）。タブが無ければ、何も書かずに止まる
+    const hn=hanamichiApplies_(p),hnSheet=hn?resources.book.getSheetByName(HANAMICHI_TABLES_[isTest?1:0][0]):null;
+    if(hn&&!hnSheet)throw adminError_('setup','花道プロフィールのタブが見つかりません。「① 最初の設定」を押してください。');
+    // 誓約書（「あり」のときだけ）。誓約の記録のタブが無ければ、何も書かずに止まる
+    const plSheet=S_().pledge?resources.book.getSheetByName(PLEDGE_TABLES_[isTest?1:0][0]):null;let pledgeRec=null;
+    if(S_().pledge&&!plSheet)throw adminError_('setup','誓約記録のタブが見つかりません。「① 最初の設定」を押してください。');
+    // くわしい戦績（送られたときだけ）。決まりを確かめ、「戦績詳細」の表を用意する（見出しがちがうときは、何も書かずに止まる）
+    const detail=recordDetailCheck_(p),detailSheet=detail?recordDetailSheetOf_(resources.book,isTest):null;
     // 本番の受付中に、設定タブが壊れたら（空にされた・名前が同じになった等）、新しい申込を受けない。選手には「少し待って」と言う
     if(!isTest&&settingsProblems_(S_()).length)throw entryError_('setup','ただいま受付を調整しています。少し待ってからもう一度送ってください。',true);
     const existing=findRow_(sheet,18,requestId);let values;
@@ -628,24 +1262,35 @@ function saveEntry_(p){
       values=sheet.getRange(existing,1,1,PRIVATE_HEADERS.length).getDisplayValues()[0];
       // 保存のときに付く守りの「'」や、改行の形（CRLF／LF）のちがいは、「変わった」ではない。両方を同じ形にそろえてくらべる
       const same=function(a,b){return JSON.stringify(a.map(retryNorm_))===JSON.stringify(b.map(retryNorm_));};
-      const expected=[String(p.gym).trim(),String(p.name).trim(),S_().grade==='off'?'':String(p.grade||'').trim(),S_().age==='off'?'':String(p.age||'').trim(),String(Number(p.height)),String(Number(p.weight)),String(p.record).trim(),S_().comment==='off'?'':String(p.comment||'').trim(),S_().music?String(p.musicUrl||'').trim():''];
+      // いまの設定が「なし」の項目（学年・年齢・意気込み・入場曲）は、くらべない（保存したあとに、会長が「なし」に変えても、同じ内容の再送を「変わった」と断らない）。「なし」の項目は、保存したままの値と同じとして扱う
+      const kept=function(off,index,text){return off?String(values[3+index]||''):text;};
+      // くわしい戦績つきの再送では、保存した戦績の1行が前の形（「3勝1敗」「2勝1敗1分」。3.20261024.1 が書いた形）でも、キックの数が同じなら、同じとして扱う（受付のコードを貼りかえる前後の再送を、「変わった」と断らない）
+      const record=detail&&recordDetailKickSame_(values[9],detail.kick)?String(values[9]):String(p.record).trim();
+      const expected=[String(p.gym).trim(),String(p.name).trim(),kept(S_().grade==='off',2,String(p.grade||'').trim()),kept(S_().age==='off',3,String(p.age||'').trim()),String(Number(p.height)),String(Number(p.weight)),record,kept(S_().comment==='off',7,String(p.comment||'').trim()),kept(!S_().music,8,String(p.musicUrl||'').trim())];
       if(!same(values.slice(3,12),expected)||!same(values.slice(13,17),[String(p.contactName).trim(),String(p.contactPhone).trim(),String(p.contactEmail).trim(),'yes'])||!classRetryOk_(String(values[18]||''),p)||!weightRetryOk_(String(values[19]||''),String(values[20]||''),p))throw entryError_('changed','送信後に入力内容が変わっています。新しく申し込み直さず、主催者へ訂正を依頼してください。',false);
       const photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),values[0],p.photoDataUrl,true);
       if(photoUrl!==values[12])throw entryError_('photo','保存済みの写真と申込表が一致しません。主催者へご連絡ください。',false);
+      // 前の送信が、誓約の記録の前で止まっていたら、再送で記録を足す（誓約書の鍵が付いているときだけ。記録がすでにあれば、何もしない）
+      if(plSheet&&!findRow_(plSheet,1,values[0])&&pledgeKeysSent_(p))pledgeRec=pledgeCheck_(p);
     }
     else{
       checkClass_(p);
       const weightChoice=weightPick_(p);
+      pledgeRec=pledgeCheck_(p);
       if(!isTest&&(props.getProperty('accepting')!=='true'||Date.now()>deadlineTime_()))throw entryError_('closed','現在、申し込みを受け付けていません。主催者へご連絡ください。',false);
       if(sheet.getLastRow()>3000)throw entryError_('capacity','受付件数が上限に達しました。主催者へご連絡ください。',false);
-      const minute=String(Math.floor(Date.now()/60000)),count=props.getProperty('rateMinute')===minute?Number(props.getProperty('rateCount')||0):0;
+      // テストの新しい申込は、「テスト申込」タブに200件あるときは受けない（テスト用のリンクは、だれでも作れるので、表や写真フォルダが いっぱいにならないように）。① の自動テストの1件は止めない
+      if(isTest&&!selfTest&&filledRows_(sheet)>=TEST_ENTRY_MAX_)throw entryError_('capacity',TEST_ENTRY_FULL_,false);
+      // 1分あたりの数は、本番とテストで別々に数える（テストの申込がたくさん来ても、本番の申込は止まらない）。テストは前からの鍵（rateMinute・rateCount）、本番は liveRateMinute・liveRateCount
+      const rateKey=isTest?'rate':'liveRate',minute=String(Math.floor(Date.now()/60000)),count=props.getProperty(rateKey+'Minute')===minute?Number(props.getProperty(rateKey+'Count')||0):0;
       if(count>=30)throw entryError_('busy','受付が混み合っています。少し待ってください。',true);
-      props.setProperties({rateMinute:minute,rateCount:String(count+1)});
+      const rate={};rate[rateKey+'Minute']=minute;rate[rateKey+'Count']=String(count+1);props.setProperties(rate);
       const receiptNo=receipt_(requestId,isTest),photoUrl=savePhoto_(props.getProperty(isTest?'testFolderId':'photoFolderId'),receiptNo,p.photoDataUrl);
       const common=[clean_(p.gym,120),clean_(p.name,80),S_().grade==='off'?'':clean_(p.grade,30),S_().age==='off'?'':clean_(p.age,3),String(Number(p.height)),String(Number(p.weight)),clean_(p.record,300),S_().comment==='off'?'':clean_(p.comment,500),S_().music?clean_(p.musicUrl,500):'',photoUrl];
       values=[receiptNo,new Date(),S_().eventId].concat(common).concat([clean_(p.contactName,100),clean_(p.contactPhone,30),clean_(p.contactEmail,200),'yes',requestId,clean_(classLabel_(p),40),clean_(weightChoice.division,40),clean_(weightChoice.weightClass,40)]);
       // Googleの自動変換で電話番号の先頭0や数字だけの選手名を失わない。
       const newRow=sheet.getLastRow()+1;
+      ensureRows_(sheet,newRow);
       sheet.getRange(newRow,3,1,PRIVATE_HEADERS.length-2).setNumberFormat('@');
       sheet.getRange(newRow,1,1,PRIVATE_HEADERS.length).setValues([values]);
       // 実際に書かれた電話番号が送った文字と違えば（先頭0が消えた等）、文字として書き直す。
@@ -654,18 +1299,36 @@ function saveEntry_(p){
       values=sheet.getRange(findRow_(sheet,18,requestId),1,1,PRIVATE_HEADERS.length).getDisplayValues()[0];
     }
     const osValues=osValuesOf_(values).map(function(value){return clean_(value,2000);}),osRow=findRow_(os,1,values[0]);
+    if(!osRow)ensureRows_(os,os.getLastRow()+1);
     os.getRange(osRow||os.getLastRow()+1,1,1,OS_HEADERS.length).setNumberFormat('@');
     if(osRow)os.getRange(osRow,1,1,OS_HEADERS.length).setValues([osValues]);else os.appendRow(osValues);
     SpreadsheetApp.flush();
     const savedRow=findRow_(os,1,values[0]);
     if(!savedRow||JSON.stringify(os.getRange(savedRow,1,1,OS_HEADERS.length).getDisplayValues()[0])!==JSON.stringify(osValuesOf_(values)))throw entryError_('storage','大会用の名簿の保存を確認できませんでした。',true);
+    // 既存の行を書いたあとに、花道プロフィールへ1行（同じ受付番号の行があれば、何もしない）
+    if(hn)saveHanamichiRow_(hnSheet,values,p);
+    // 誓約の記録は、その次に1行（同じ受付番号の行があれば、何もしない）
+    if(plSheet&&pledgeRec)savePledgeRow_(plSheet,values,pledgeRec);
+    // くわしい戦績の行は、いちばん最後に（同じ受付番号の行があれば、何もしない）
+    if(detail&&detailSheet)recordDetailSaveRows_(detailSheet,values,detail);
     if(isTest){props.setProperty('lastTestBuild',RECEPTION_BUILD);props.setProperty('lastTestRequest',requestId);}
     return values[0];
   });
 }
 /** 申込原本の1行から、OS取込用の1行（連絡先なし）を作る：管理番号・ジム名〜写真URL・クラス・区分・階級 */
 function osValuesOf_(values){return[values[0]].concat(values.slice(3,13),[values[18],values[19],values[20]]);}
+/**
+ * 書く行（lastRow）が、いまのタブの行数をこえるときは、先に行を足す。足さないと、書き込みが範囲の外で止まり、受付番号が出ない
+ * （「① 最初の設定」で作ったタブは1000行しかない。くわしい戦績は1件で最大11行書くので、いちばん先に足りなくなる）。appendRow は、自分で足すので、要らない。
+ */
+function ensureRows_(sheet, lastRow) {
+  if (typeof sheet.getMaxRows !== 'function' || typeof sheet.insertRowsAfter !== 'function') return;
+  const max = sheet.getMaxRows();
+  if (max < lastRow) sheet.insertRowsAfter(max, lastRow - max);
+}
 function findRow_(sheet,column,value){if(sheet.getLastRow()<2)return 0;const values=sheet.getRange(2,column,sheet.getLastRow()-1,1).getDisplayValues();for(let i=0;i<values.length;i++)if(values[i][0]===value)return i+2;return 0;}
+/** 2行目から下で、受付番号（A列）が入っている行の数。中身を消しただけの行（Delete キー）は、数えない */
+function filledRows_(sheet){if(sheet.getLastRow()<2)return 0;return sheet.getRange(2,1,sheet.getLastRow()-1,1).getDisplayValues().filter(function(row){return String(row[0]).trim()!=='';}).length;}
 function savePhoto_(folderId,receiptNo,dataUrl,requireExisting){
   const match=String(dataUrl).match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
   if(!match||match[1].length>1800000)throw entryError_('photo','写真を選び直してください。',false);
@@ -691,7 +1354,7 @@ function escape_(value){return String(value==null?'':value).replace(/[&<>"']/g,f
 function resultPage_(receiptNo,message,error,p){
   const success=Boolean(receiptNo),retry=!success&&(!error||error.retryable!==false);
   // まだ保存されていないと言い切れる失敗だけ「送れませんでした」。保存ずみかもしれない失敗（再送・写真）は、確認が必要と言う
-  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','weight','closed','capacity','setup','headers','missing','sharing','owner','folder'].indexOf(error.code)>=0;
+  const notSaved=!success&&!retry&&Boolean(error)&&['input','event','spam','consent','class','weight','hanamichi','closed','capacity','setup','headers','missing','sharing','owner','folder','pledge','pledgeconfirm','pledgeold','gym','permission'].indexOf(error.code)>=0;
   // 色と言葉の約束：成功は緑と ✓、失敗は赤と ✕、確認が必要なのは黄色と ⚠（色だけで伝えない）
   const tone=success?'ok':notSaved?'bad':'warn';
   const mark=success?'✓ ':notSaved?'✕ ':'⚠ ';
@@ -702,37 +1365,59 @@ function resultPage_(receiptNo,message,error,p){
   let contact='';try{contact=String(S_().contact||'');}catch(_){contact='';}
   if(retry){const endpoint=ScriptApp.getService().getUrl();if(/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint||'')){
     const fields=['protocol','eventId','entryKey','mode','requestId','gym','name','grade','age','height','weight','record','comment','musicUrl','contactName','contactPhone','contactEmail','consent','fighterClass','division','weightClass','photoDataUrl'];
-    retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ内容で、保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
+    // 花道の追加情報を聞く申込のときだけ、花道の12項目も、そのまま送り直す（なしのときは、これまでと同じ鍵だけ）
+    let hnFields=[];try{if(hanamichiApplies_(p))hnFields=HANAMICHI_ITEMS_.map(function(item){return item.key;});}catch(_){hnFields=[];}
+    // 誓約書が「あり」のときだけ、誓約書の鍵も、そのまま送り直す（なしのときは、これまでと同じ鍵だけ）
+    let plFields=[];try{if(S_().pledge)plFields=PLEDGE_POST_KEYS_;}catch(_){plFields=[];}
+    // くわしい戦績が送られたときだけ、その欄も送り直す（なしのときは、これまでと同じ鍵だけ）
+    let rdFields=[];try{if(recordDetailSent_(p))rdFields=['recordDetail'];}catch(_){rdFields=[];}
+    retryForm='<p>新しく申し込み直さず、下のボタンを押してください。同じ内容で、保存を確認・再開します。</p><form method="post" target="_top" action="'+escape_(endpoint)+'">'+fields.concat(hnFields,plFields,rdFields).map(function(key){return'<input type="hidden" name="'+key+'" value="'+escape_(String(p[key]||'').slice(0,key==='photoDataUrl'?1800100:key==='recordDetail'?20000:500))+'">';}).join('')+'<button>同じ申込を確認・再開する</button></form>';}}
   const guide=success?'受付番号が出ています。この画面の写真をとってください。この画面は閉じて大丈夫です。':notSaved?'受付番号は出ていません。直せるときは、ブラウザの「戻る」で申込ページにもどって直し、もう一度送ります。直せないときは、下の問い合わせ先へご連絡ください。':'受付番号が出るまで完了ではありません。解決しない場合は、下の問い合わせ先へご連絡ください。';
   const contactLine=contact?'<p>問い合わせ：'+escape_(contact)+'</p>':'';
   return HtmlService.createHtmlOutput('<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:32px 16px;background:#f1f5f9;color:#0f172a;text-align:center}.box{max-width:540px;margin:auto;border:4px solid '+frame+';border-radius:24px;padding:28px;background:'+fill+'}h1{font-size:26px}b{display:block;margin:20px 0;font-size:20px;overflow-wrap:anywhere}button{font-size:18px;font-weight:bold;padding:18px;border:0;border-radius:14px;background:#1d4ed8;color:white}p{line-height:1.8}</style></head><body><main class="box"><h1>'+mark+title+'</h1><b>'+escape_(detail)+'</b>'+retryForm+'<p>'+guide+'</p>'+contactLine+'</main></body></html>').setTitle(title).addMetaTag('viewport','width=device-width,initial-scale=1');
 }
 /** 主催者がOS用名簿と写真を自分のDriveへZIP保存する。連絡先は含めない。 */
 function exportTournament(){
+  // 時間の見張り（exportRows_）は、押したときから数える（ロックを待つ時間も、Googleの6分に入る）
+  const started=Date.now();
   return withLock_(function(){
     const resources=checkResources_(),sheet=resources.book.getSheetByName('OS取込用（連絡先なし）'),rows=sheet.getDataRange().getDisplayValues();
     if(rows.length<2)throw new Error('本番の申し込みはまだありません。テスト申込はこのファイルに混ぜません。');
-    return exportRows_(rows,resources.folder,'Tournament_OS_');
+    return exportRows_(rows,resources.folder,'Tournament_OS_',recordsCsvOf_(resources.book),started);
   });
 }
 /** 最後に保存確認できたテスト1件だけを、テスト写真フォルダへ書き出す。 */
 function exportTestTournament(){
+  const started=Date.now();
   return withLock_(function(){
     const resources=checkResources_(),props=PropertiesService.getScriptProperties();
     if(!testComplete_(resources.book))throw new Error('先にテスト申込1件と写真の保存を確認してください。');
     const original=resources.book.getSheetByName('テスト申込'),sourceRow=findRow_(original,18,props.getProperty('lastTestRequest'));
     const receipt=original.getRange(sourceRow,1).getDisplayValues()[0][0],sheet=resources.book.getSheetByName('テストOS取込用'),row=findRow_(sheet,1,receipt);
     const rows=[sheet.getRange(1,1,1,OS_HEADERS.length).getDisplayValues()[0],sheet.getRange(row,1,1,OS_HEADERS.length).getDisplayValues()[0]];
-    return exportRows_(rows,DriveApp.getFolderById(props.getProperty('testFolderId')),'TEST_Tournament_OS_');
+    return exportRows_(rows,DriveApp.getFolderById(props.getProperty('testFolderId')),'TEST_Tournament_OS_','',started);
   });
 }
-function exportRows_(rows,folder,prefix){
+/** 名簿ZIPを作ってよい時間（ミリ秒）。Googleは、1回の動きを6分で止める（止まると、英語の文が出て、ZIPもできない）。ZIPにまとめて保存する時間を残して、5分で、日本語の案内を出して止める */
+const EXPORT_TIME_LIMIT_MS_=5*60*1000;
+/** 時間の見張りで止めたときの文（何が起きたか・どうするか）。done＝写真を何枚まで入れたか、total＝写真の枚数 */
+function exportSlowText_(done,total){return'名簿ZIPを作るのに時間がかかりすぎたので、とちゅうで止めました（写真'+total+'枚のうち、'+done+'枚まで進みました。Googleは、1回に6分までしか動けません）。ZIPは、まだできていません。申し込みと写真は、そのまま残っています。少し時間をおいてから、もう一度「④ OS用の名簿ZIPを作る」を押してください。何度やっても止まるときは、ジムの担当者に連絡してください。';}
+/** started＝押したときの時刻（Date.now()）。無いときは、ここから数える */
+function exportRows_(rows,folder,prefix,recordsCsv,started){
+    const begin=typeof started==='number'?started:Date.now();
     // 右のはしの列（クラス・区分・階級）は、見出しがそろっている列だけ、CSVに付ける（古い表は、足りない列を付けない）。区分・階級は、階級分けが「あり」か、中身があるときだけ（使わない大会のCSVは、これまでと同じ形）
     const weightOn=S_().weights.enabled,used=function(i){return rows.slice(1).some(function(r){return String(r[i]||'')!=='';});},extra=[11,12,13].filter(function(i){return rows[0].length>i&&String(rows[0][i])===OS_HEADERS[i]&&(i===11||weightOn||used(i));}),csvRows=rows.map(function(r){return r.slice(0,10).concat(extra.map(function(i){return r[i];}));});
     const csv='\uFEFF'+csvRows.map(function(row){return row.map(function(cell){return'"'+clean_(cell,2000).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
     const files=[Utilities.newBlob(csv,'text/csv','players.csv')];
     let totalBytes=csv.length*3;
-    rows.slice(1).forEach(function(row){const who='受付番号 '+row[0]+'（'+String(row[2]||'').slice(0,20)+'）';const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。'+who);let file;try{file=DriveApp.getFileById(id[1]);}catch(_){throw new Error(who+' の写真が見つかりません（Googleドライブから消えています）。Googleドライブのゴミ箱に入っていないか、見てください。');}if(file.isTrashed())throw new Error(who+' の写真が、Googleドライブのゴミ箱に入っています。ゴミ箱を開いて「元に戻す」を押してから、もう一度やってください。');if(!isPrivateOwned_(file,assertOwner_()))throw new Error(who+' の写真の共有が、「制限付き」になっていません。写真の共有を「制限付き」に直してから、もう一度やってください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});
+    // くわしい戦績（records.csv）は、「戦績詳細」の表に行があるときだけ、players.csv のあとに付く（recordsCsvOf_ が '' のときは付けない）
+    if(recordsCsv){files.push(Utilities.newBlob(recordsCsv,'text/csv','records.csv'));totalBytes+=recordsCsv.length*3;}
+    // 写真の持ち主（主催者本人）の確認は、くり返しの前に1回だけ（1回の実行の中では、答えは変わらない）
+    const owner=assertOwner_(),photoRows=rows.slice(1),inFolder={};
+    // 写真フォルダの中を1回だけ見て、ファイルの番号（ID）→ファイルの表を作る（写真1枚ごとに、Googleドライブへ探しに行かない）。
+    // 使う写真は、今までどおり、名簿の行の写真URLの番号のファイル。表に無いとき（ほかのフォルダへ動かした・消えた等）や、表が作れないときは、今までどおり、その番号で1枚ずつ探す
+    try{const listed=folder.getFiles();while(listed.hasNext()){const f=listed.next();inFolder[f.getId()]=f;}}catch(_){/* 中が見られなくても、1枚ずつ探せば作れる */}
+    photoRows.forEach(function(row,done){if(Date.now()-begin>EXPORT_TIME_LIMIT_MS_)throw new Error(exportSlowText_(done,photoRows.length));const who='受付番号 '+row[0]+'（'+String(row[2]||'').slice(0,20)+'）';const id=String(row[10]).match(/\/d\/([\w-]+)/);if(!id)throw new Error('写真が見つかりません。'+who);let file=Object.prototype.hasOwnProperty.call(inFolder,id[1])?inFolder[id[1]]:null;if(!file){try{file=DriveApp.getFileById(id[1]);}catch(_){throw new Error(who+' の写真が見つかりません（Googleドライブから消えています）。Googleドライブのゴミ箱に入っていないか、見てください。');}}if(file.isTrashed())throw new Error(who+' の写真が、Googleドライブのゴミ箱に入っています。ゴミ箱を開いて「元に戻す」を押してから、もう一度やってください。');if(!isPrivateOwned_(file,owner))throw new Error(who+' の写真の共有が、「制限付き」になっていません。写真の共有を「制限付き」に直してから、もう一度やってください。');totalBytes+=file.getSize();if(totalBytes>80*1024*1024)throw new Error('写真の合計が80MBを超えています。大会名簿を分けて保存する必要があります。');files.push(file.getBlob().setName('photos/'+row[0]+'.jpg'));});
     const zipName=prefix+S_().eventId+'.zip', older=[], found=folder.getFilesByName(zipName);
     while(found.hasNext())older.push(found.next());
     const zip=folder.createFile(Utilities.zip(files,zipName));

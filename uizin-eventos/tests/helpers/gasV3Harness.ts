@@ -12,6 +12,8 @@ export type Opts = { ignoreTextFormat?: boolean };
 export function harness(opts: Opts = {}) {
   const props = new Map<string, string>(), resources = new Map<string, any>(), logs: string[] = [], zips: any[] = [];
   let currentOwner = owner, serial = 0, menu: string[] = [];
+  // 保存のロック（LockService）。ふつうは、いつも取れる（free=true）。試験で free を false にすると、tryLock が false を返す（待っても取れなかったときと同じ）。数は、取ろうとした回数・取れた回数・手放した回数
+  const lock = { free: true, tries: 0, acquired: 0, released: 0, lastWaitMs: -1 };
   const alerts: string[] = [], toasts: string[] = [], dialogs: { html: string; title: string; width?: number; height?: number }[] = []; let storage = { limit: 15 * 1024 ** 3, used: 1024 ** 3 };
   const iterator = (array: any[]) => { let i = 0; return { hasNext: () => i < array.length, next: () => array[i++] }; };
   const blob = (bytes: any, type: string, name: string) => ({ bytes: typeof bytes === 'string' ? Buffer.from(bytes) : Buffer.from(bytes), type, name, getBytes() { return [...this.bytes]; }, setName(v: string) { this.name = v; return this; } });
@@ -24,7 +26,9 @@ export function harness(opts: Opts = {}) {
       parents: [] as any[], getParents: () => iterator(r.parents),
       createFolder: (n: string) => { const c = resource('folder', n); c.parents.push(r); r.children.push(c); return c; },
       createFile: (v: any) => { const c = resource('file', v.name, v); c.parents.push(r); r.children.push(c); return c; },
-      getFilesByName: (n: string) => iterator(r.children.filter((c: any) => c.kind === 'file' && c.name === n && !c.trashed)) };
+      getFilesByName: (n: string) => iterator(r.children.filter((c: any) => c.kind === 'file' && c.name === n && !c.trashed)),
+      // フォルダの中のファイルの一覧。ゴミ箱の中のファイルも出す（きびしいほうに合わせる。出なくても、受付は番号で探しなおすので、同じ答え）。完全に消したファイル＝resources から消したものは、出ない
+      getFiles: () => iterator(r.children.filter((c: any) => c.kind === 'file' && resources.has(c.id))) };
     resources.set(id, r); return r;
   }
   function sheet(book: any, name: string): any {
@@ -34,22 +38,27 @@ export function harness(opts: Opts = {}) {
     const stored = (v: any, r: number, c: number, viaSetValue = false) => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v) && (formats.get(r + ':' + c) !== '@' || (opts.ignoreTextFormat && !viaSetValue)) ? Number(v) : v;
     const s: any = { name, rows: [] as any[][],
       maxRows: 1000, getMaxRows: () => s.maxRows,
+      // 本物のシートと同じ：行の数（maxRows）をこえる所へ書くと止まる（appendRow は、自分で足す）。insertRowsAfter で行を足してから書く
+      insertRowsAfter: (_after: number, howMany: number) => { s.maxRows += howMany; return s; },
       getLastRow: () => s.rows.length,
       appendRow: (values: any[]) => { const r = s.rows.length + 1; s.rows.push(values.map((v, c) => stored(v, r, c + 1))); },
       getDataRange: () => s.getRange(1, 1, s.rows.length, s.rows[0]?.length || 1),
       getRange: (r: number, c: number, n = 1, m = 1) => {
+        const inside = () => { if (r + n - 1 > s.maxRows) throw new Error('The coordinates of the range are outside the dimensions of the sheet.'); };
         const range: any = {
           getDisplayValues: () => Array.from({ length: n }, (_, i) => Array.from({ length: m }, (_, j) => String(s.rows[r - 1 + i]?.[c - 1 + j] ?? '').replace(/^'(?=[=+\-@])/u, ''))),
           getDisplayValue: () => range.getDisplayValues()[0][0],
-          setValues: (values: any[][]) => { values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
-          setValue: (v: any) => { s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
-          setNumberFormat: (f: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
+          setValues: (values: any[][]) => { inside(); values.forEach((row, i) => { s.rows[r - 1 + i] ??= []; row.forEach((v, j) => { s.rows[r - 1 + i][c - 1 + j] = stored(v, r + i, c + j); }); }); return range; },
+          setValue: (v: any) => { inside(); s.rows[r - 1] ??= []; s.rows[r - 1][c - 1] = stored(v, r, c, true); return range; },
+          setNumberFormat: (f: string) => { inside(); for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
           setFontWeight: () => range, setBackground: (color: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) backgrounds.set((r + i) + ':' + (c + j), color); return range; }, setWrap: () => range,
           setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; },
+          // 式は、データ（rows）とは別に覚える（本物のシートでも、式の答えは受付の書き込みとは別。試験は、どの式を書いたかを見る）
+          setFormula: (f: string) => { inside(); s.formulas.set(r + ':' + c, String(f)); return range; },
           protect: () => { const prot: any = { warningOnly: false, setDescription() { return prot; }, setWarningOnly(v: boolean) { prot.warningOnly = v; return prot; } }; s.protections.push({ r, c, n, m, prot }); return prot; } };
         return range;
       } };
-    s.validations = validations; s.formats = formats; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
+    s.formulas = new Map<string, string>(); s.validations = validations; s.formats = formats; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
     s.setColumnWidth = (c: number, w: number) => { s.columnWidths.set(c, w); return s; }; s.setFrozenRows = (n: number) => { s.frozenRows = n; return s; };
     book.sheets.set(name, s); return s;
   }
@@ -60,7 +69,7 @@ export function harness(opts: Opts = {}) {
   const api: any = {
     Session: { getEffectiveUser: () => ({ getEmail: () => currentOwner }) },
     PropertiesService: { getScriptProperties: () => propsApi },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
+    LockService: { getScriptLock: () => ({ tryLock: (waitMs: number) => { lock.tries++; lock.lastWaitMs = waitMs; if (!lock.free) return false; lock.acquired++; return true; }, releaseLock: () => { lock.released++; } }) },
     SpreadsheetApp: { newDataValidation: () => { const b: any = { list: [] as string[], requireValueInList: (l: string[]) => { b.list = l; return b; }, setAllowInvalid: (v: boolean) => { b.allowInvalid = v; return b; }, build: () => ({ list: b.list, allowInvalid: b.allowInvalid }) }; return b; }, getActiveSpreadsheet: () => book, openById: (id: string) => { assert.equal(id, bookFile.id); return book; }, flush: () => undefined,
       getUi: () => ({ ButtonSet: { OK: 'OK' }, showModalDialog: (output: any, title: string) => { dialogs.push({ html: String(output.html), title, width: output.width, height: output.height }); }, alert: (_t: string, message: string) => { alerts.push(String(message)); }, createMenu: (t: string) => { const m: any = { addItem: (label: string) => { menu.push(label); return m; }, addToUi: () => undefined }; menu = [t]; return m; } }) },
     DriveApp: { getStorageLimit: () => storage.limit, getStorageUsed: () => storage.used, Access: { PRIVATE: 'PRIVATE' }, createFolder: (n: string) => resource('folder', n), getFolderById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('folder missing'); return v; }, getFileById: (id: string) => { const v = resources.get(id); if (!v) throw new Error('file missing'); return v; } },
@@ -81,6 +90,6 @@ export function harness(opts: Opts = {}) {
   const params = (mode = 'test', over: Record<string, string> = {}) => ({ protocol: '3', eventId: eventId(), mode, requestId: randomUUID(), gym: '架空ジム', name: '架空選手', grade: '中3', age: '20', height: '170', weight: '65', record: '初試合', comment: 'がんばります', musicUrl: '', contactName: 'テスト太郎', contactPhone: '09000000000', contactEmail: 'test@example.com', consent: 'yes', website: '', photoDataUrl: 'data:image/jpeg;base64,' + JPEG.toString('base64'), ...over });
   // 会長の操作: コピーしたシートを開く（onOpen）→ 「設定」タブに入れる → 「① 最初の設定」
   const ready = (over: Record<string, string> = {}) => { call('onOpen'); fill(over); call('setupTournament'); };
-  return { api, props, resources, book, logs, zips, alerts, toasts, dialogs, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
+  return { api, props, resources, book, logs, zips, alerts, toasts, dialogs, lock, setStorage: (limit: number, used: number) => { storage = { limit, used }; }, call, params, fill, ready, setSetting, settingsSheet, eventId, menu: () => menu, setOwner: (v: string) => { currentOwner = v; }, rows: (n: string) => book.getSheetByName(n).rows as any[][] };
 }
 

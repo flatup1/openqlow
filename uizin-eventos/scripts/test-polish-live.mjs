@@ -406,6 +406,8 @@ scenario('P11', 'JavaScript off: a plain reason; the tabs have Japanese names; e
   // first paint: the html element is light on the match-day screen (no black flash before the script runs)
   const lp = await ctx2.newPage();
   await lp.goto(base + '/private/live/?event=pl-p11', { waitUntil: 'commit' });
+  // 色を見るのは、<body> ができたとき（画面に何かが描かれるのは、ここから）。それより前（<head> の CSS を読んだ直後）は、まだ何も描かれないので見ない（たまに黒を読んで、失敗していた）
+  await lp.waitForFunction(() => document.body !== null, null, { polling: 'raf' }).catch(() => {});
   const early = await lp.evaluate(() => getComputedStyle(document.documentElement).backgroundColor).catch(() => '');
   await settle(1000);
   const late = await lp.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);

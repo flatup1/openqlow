@@ -314,7 +314,7 @@ import { cleanClassLabel, classMixMessage, classNameKey, classState, normalizeCl
 import { CsvQuoteError, normalizeKey, parseCsv, toRows } from '../core/csv.ts';
 import { dateDigits, formatDateInput } from '../core/dateInput.ts';
 import { entryErrors } from '../core/entryPackage.ts';
-import { gymKey, mergeFighters } from '../core/privateTournament.ts';
+import { gymKey } from '../core/privateTournament.ts';
 import { dropBlankBouts as dropBlankBoutsCore } from '../core/boutSuggest.ts';
 import {
   BOUT_TEXT_MAX, classTrouble, dropBlankBouts, excelCellText, openLockReason, overwriteBoxText, overwriteConfirmText, refileLabel, restoreConfirmText, shortProblem, weightTrouble, weightTroubleText,
@@ -486,7 +486,8 @@ test('r2-31 / r2-154 「試合当日の画面を開く」が押せない理由�
   const page = src('app/private/page.tsx');
   assert.ok(!page.includes('上の「次にすること」と「直すところ」を見てください'));
   assert.ok(!page.includes("['保存', done4,"), '保存の行は、保存したら ✓（直すところが残っていても）');
-  assert.match(page, /\['保存', everSaved && !dirty,/);
+  // 直している途中・追加する前の入力があるうちは ✓ にしない（状態ラインと同じ「未保存」）
+  assert.match(page, /\['保存', everSaved && !dirty(?: && !pendingInput)?,/);
 });
 
 test('r2-33 / r2-114 読み込みに失敗したあとの黄色：使ったファイルの種類に合わせる。部品が開けないときは「画面が古い」と言う', () => {
@@ -607,7 +608,7 @@ test('r2-155 / r2-157 / r2-158 / r2-160 / r2-168 / r2-169 / r2-162 / r2-165 言�
   const page = src('app/private/page.tsx'), cards = src('app/private/cards.tsx'), logic = src('app/private/logic.ts');
   assert.match(page, /試合当日の画面＝選手の名前・写真・体重を、大きく映す画面です。/); assert.match(page, /対戦カード＝だれとだれが戦うかを書いた表です。/); assert.match(page, /開いても、試合は始まりません。/);
   assert.ok(!page.includes('対戦カードの画面に出る'));
-  assert.match(page, /じゅんびは、ぜんぶできました。あとは「試合当日の画面を開く」を押します。/); assert.ok(!page.includes('ぜんぶ終わりました'));
+  assert.match(page, /じゅんびの4つは、ぜんぶできました。あとは「試合当日の画面を開く」を押します。/); assert.ok(!page.includes('じゅんびは、ぜんぶできました'), '「じゅんびは、ぜんぶ」と言い切らない（コピーのファイル・USB・紙の一覧は、別の用意）'); assert.ok(!page.includes('ぜんぶ終わりました'));
   assert.ok(!logic.includes('（空の試合があります）'), '黄色の札は短く（第1試合の赤コーナーを選ぶ）');
   assert.match(src('app/private/marks.tsx'), /whiteSpace: 'nowrap'/, '第1試合 が途中で割れない');
   assert.match(cards, /体重がまだわからないので、試合当日の画面に「契約体重」が出ません。上の「体重を入れる」を押してください。/);
@@ -672,13 +673,50 @@ test('r2-32 / r2-139 保存データが読めない画面：?event= の番号を
   assert.ok(!page.includes('保存データが読めません（消えていません）'));
 });
 
-test('r2-156 / r2-164 開いたあとも、帯に「✓ 開きました（別のタブ）」と黄色が1つ。保存の同じ行を2回見せない', () => {
+test('r2-156 / r2-164 開いたあとも、帯に黄色が1つ（中は ✓ の文だけ。押すボタンは置かない）。「もう1つ開く」は黄色の外。保存の同じ行を2回見せない', () => {
   const page = src('app/private/page.tsx');
-  assert.match(page, /開きました（別のタブ）。もう一度押すと、もう1つ開きます。/);
+  // 黄色の枠の中：開いたあとは、✓ の文だけ（「黄色だけを押す」人が、当日の画面を いくつも開かないように）
+  const slot = page.slice(page.indexOf("<NextSlot active={here === 'bar'}"), page.indexOf('</NextSlot>', page.indexOf("<NextSlot active={here === 'bar'}")));
+  assert.match(slot, /key === 'done' && here === 'bar' \? <p className="tos-ok" role="status"><span aria-hidden="true">✓ <\/span>試合当日の画面は開いてあります。そちらのタブで進めます。<\/p>/);
+  // 「もう1つ開く」は、黄色の枠のあとの、ふつうの枠のボタン
+  const after = page.slice(page.indexOf('</NextSlot>', page.indexOf("<NextSlot active={here === 'bar'}")));
+  assert.match(after, /key === 'done' && here === 'bar' && !keyboardUp \? <div[^>]*>\s*<button type="button" onClick=\{onBarPrimary\} className=\{cls\(btn\.base, btn\.outline, 'shrink-0'\)\}>\{barLabel\}<\/button>/);
+  assert.match(after, /押すと、試合当日の画面が、もう1つ開きます（ふつうは押しません）。/);
+  assert.ok(!page.includes('開きました（別のタブ）。もう一度押すと、もう1つ開きます。'), '黄色の中のボタンで、もう1つ開く、とは言わない');
   assert.match(page, /saveShownAbove && 'sr-only'/);
   assert.equal(nextLabelOf('done'), 'もう1つ開く');
 });
 import { nextLabel as nextLabelOf } from '../app/private/logic.ts';
+
+test('下の帯に重なったキーボードのフォーカスを、見える所まで動かす（Tab で移ったときも、帯が大きくなったときも。まれな失敗の直し）', () => {
+  const page = src('app/private/page.tsx');
+  const helper = page.slice(page.indexOf('const revealAboveBar = '), page.indexOf('const measureChrome = () => {'));
+  const body = page.slice(page.indexOf('const measureChrome = () => {'), page.indexOf('useEffect(() => {\n    const el = barRef.current;'));
+  const effect = page.slice(page.indexOf('useEffect(() => {\n    const el = barRef.current;'), page.indexOf('// 帯の中身が変わったら、しまうのをやめて'));
+  assert.ok(helper.length > 200 && body.length > 200 && effect.length > 200, '3つの部品が見つかる');
+  // 帯の外にある欄が帯に重なっていたら、scroll-padding を使って動かす（ブラウザは、画面の中に入っていると動かさない）
+  assert.match(helper, /bar\.contains\(target\)/);
+  assert.match(helper, /at\.bottom > under\.top \+ 2 && at\.top < under\.bottom/);
+  assert.match(helper, /shown\.scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.match(helper, /type === 'file' \? target\.closest\('label'\)/, '見えないファイル選択は、ラベルで測る');
+  // マウス・指で押した直後（1秒）は動かさない（押している最中に画面が動くと、ボタン・ファイル選びが押せない。場面 G の「ファイルを選ぶ」が開かなかった）
+  assert.match(helper, /if \(Date\.now\(\) - pointerAtRef\.current < 1000\) return;/);
+  assert.match(page, /document\.addEventListener\('pointerdown', onPointerDown, true\)/);
+  assert.match(page, /document\.removeEventListener\('pointerdown', onPointerDown, true\)/);
+  // 帯が大きくなったとき（余白を直したあと）と、フォーカスが移ったときの、両方で呼ぶ
+  assert.ok(body.indexOf("setProperty('--bar-h'") < body.indexOf('revealAboveBar(document.activeElement)'), '余白を直してから動かす');
+  assert.match(effect, /addEventListener\('focusin', onFocusIn\)/);
+  assert.match(effect, /removeEventListener\('focusin', onFocusIn\)/, '画面を離れるときに外す');
+  // ゆっくり動く移動の最中に欄へ移ったときは、動き終わってから、もう一度見る（動き終わりの位置で帯に重なっていた。場面 L のまれな失敗の元）
+  assert.match(effect, /addEventListener\('scrollend', again, \{ once: true \}\)/);
+  assert.match(effect, /window\.setTimeout\(again, 800\)/, 'scrollend が来ないブラウザでも、少しあとで見る');
+  assert.match(effect, /document\.activeElement === target\) revealAboveBar\(target\)/, 'まだその欄にいるときだけ動かす');
+  assert.match(effect, /stopWatch\(\); observer\?\.disconnect\(\)/, '画面を離れるときに、待ちも外す');
+  // jump（ゆっくり動く移動）が移したフォーカスは、すぐには動かさない（動きを止めない）。動き終わってから見る
+  assert.match(effect, /if \(!jumpingRef\.current\) revealAboveBar\(target\);/);
+  assert.match(page, /jumpingRef\.current = true; try \{ el\.focus\(\{ preventScroll: true \}\); \} finally \{ jumpingRef\.current = false; \}/);
+  assert.match(readFileSync(join(ROOT2, 'app/globals.css'), 'utf8'), /scroll-padding-bottom: calc\(var\(--bar-h, 10rem\) \+ 1rem\)/, 'scrollIntoView が帯をよける元の決まり');
+});
 
 test('r2-140 verify-private-all.sh: ポートが使われていたら、何も確かめずに止まる。build をとばした／_headers なしの動かし方では 指紋を書かない', async () => {
   const script = join(ROOT2, 'scripts/verify-private-all.sh');
@@ -688,6 +726,7 @@ test('r2-140 verify-private-all.sh: ポートが使われていたら、何も�
   assert.match(check({ TOS_SKIP_BUILD: '1' }).stdout, /^stamp:no \(TOS_SKIP_BUILD=1/);
   assert.match(check({ TOS_PLAIN_SERVER: '1' }).stdout, /^stamp:no \(TOS_PLAIN_SERVER=1/);
   assert.match(check({ TOS_ONLY: 'test-polish-misc' }).stdout, /^stamp:no \(TOS_ONLY/);
+  assert.match(check({ TOS_SCENARIOS: 'M1' }).stdout, /^stamp:no \(TOS_SCENARIOS/, '場面だけ動かしたときも、指紋を書かない');
   assert.match(check({}, '--fast').stdout, /^stamp:no \(--fast/);
   // ポートが もう使われている
   const busy = createServer(); await new Promise<void>((resolve) => busy.listen(0, '127.0.0.1', resolve));
