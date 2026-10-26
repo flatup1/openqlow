@@ -53,10 +53,12 @@ export function harness(opts: Opts = {}) {
           setNumberFormat: (f: string) => { inside(); for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) formats.set((r + i) + ':' + (c + j), f); return range; },
           setFontWeight: () => range, setBackground: (color: string) => { for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) backgrounds.set((r + i) + ':' + (c + j), color); return range; }, setWrap: () => range,
           setDataValidation: (rule: any) => { validations.set(r + ':' + c, rule); return range; },
+          // 式は、データ（rows）とは別に覚える（本物のシートでも、式の答えは受付の書き込みとは別。試験は、どの式を書いたかを見る）
+          setFormula: (f: string) => { inside(); s.formulas.set(r + ':' + c, String(f)); return range; },
           protect: () => { const prot: any = { warningOnly: false, setDescription() { return prot; }, setWarningOnly(v: boolean) { prot.warningOnly = v; return prot; } }; s.protections.push({ r, c, n, m, prot }); return prot; } };
         return range;
       } };
-    s.validations = validations; s.formats = formats; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
+    s.formulas = new Map<string, string>(); s.validations = validations; s.formats = formats; s.backgrounds = backgrounds; s.columnWidths = new Map<number, number>(); s.frozenRows = 0; s.protections = [] as any[];
     s.setColumnWidth = (c: number, w: number) => { s.columnWidths.set(c, w); return s; }; s.setFrozenRows = (n: number) => { s.frozenRows = n; return s; };
     book.sheets.set(name, s); return s;
   }

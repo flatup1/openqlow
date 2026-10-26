@@ -11,6 +11,11 @@ import { publicEntryConfig, publicEntryHash, publicEntryLinkCut, publicEntryRead
 import { DEFAULT_CLASS_SETTINGS } from '../core/classRules.ts';
 import { DEFAULT_WEIGHT_SETTINGS } from '../core/weightClass.ts';
 
+/** ① が作る「見るだけ」のタブ（マッチメイク表・戦績（選手名つき）。3.20261026.3 から）。受付が書くタブの数を見る試験では、数えない（専用の試験は gasViews.test.ts） */
+const VIEW_TABS = ['マッチメイク表', '戦績（選手名つき）'];
+const dataTabs = (h: any): string[] => [...h.book.sheets.keys()].filter((name: string) => !VIEW_TABS.includes(name));
+
+
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
 const HN_TAB = '花道プロフィール', HN_TEST_TAB = 'テスト花道プロフィール';
 /** 足す前の「設定」タブの行（29行。花道の追加情報まで）。この並びも、B13・B21・B22・B30 の位置も動かさない */
@@ -90,24 +95,24 @@ test('golden 古いシート（誓約書の行が無い）: 開くと足りな�
 
 test('golden 「① 最初の設定」: 作るタブは6つだけ（申込原本・OS取込用・テスト申込・テストOS取込用・戦績詳細・テスト戦績詳細）。見出しの保護・プロパティの鍵も同じ。もう一度押しても同じ', () => {
   const h = harness(); h.ready();
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, 'シート1・設定・6つの表。花道・誓約書のタブは作らない');
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS, 'シート1・設定・6つの表。花道・誓約書のタブは作らない');
   assert.deepEqual(json(h.rows(PRIVATE)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(OS)[0]), OS_HEADERS);
   assert.deepEqual(json(h.rows(TEST)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(TEST_OS)[0]), OS_HEADERS);
   for (const name of [PRIVATE, OS, TEST, TEST_OS]) assert.equal(h.book.getSheetByName(name).protections.length, 1, name + ' の見出しは保護される');
   assert.equal(h.rows(PRIVATE).length, 1, '本番の表は見出しだけ'); assert.equal(h.rows(TEST).length, 2, 'テストは自動テストの1件');
   assert.deepEqual([...h.props.keys()], FROZEN_PROPS);
   h.call('setupTournament');
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS); assert.equal(h.rows(TEST).length, 2);
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS); assert.equal(h.rows(TEST).length, 2);
   h.call('openEntries'); assert.deepEqual([...h.props.keys()], [...FROZEN_PROPS, 'everOpened']);
   // クラス分け・階級分け・ロゴを「あり」にしても、タブは同じ
   const all = harness(); all.ready({ クラス分け: 'あり', 階級分け: 'あり', ロゴ: 'あり' });
-  assert.deepEqual([...all.book.sheets.keys()], FROZEN_SHEETS);
+  assert.deepEqual(dataTabs(all), FROZEN_SHEETS);
 });
 
 test('golden 「① 最初の設定」: 花道の追加情報＝あり のときは、花道の2つのタブが加わる（見出しの順・保護）。誓約書の語は、どのタブにも出ない', () => {
   const h = harness(); h.ready({ 階級分け: 'あり', 花道の追加情報: 'あり' });
   // 花道の2つは、くわしい戦績の2つより前に作られる（①の順）
-  assert.deepEqual([...h.book.sheets.keys()], ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB, RECORD_TAB, RECORD_TEST_TAB]);
+  assert.deepEqual(dataTabs(h), ['シート1', '設定', PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB, RECORD_TAB, RECORD_TEST_TAB]);
   for (const name of [HN_TAB, HN_TEST_TAB]) { assert.deepEqual(json(h.rows(name)), [HN_HEADERS]); assert.equal(h.book.getSheetByName(name).protections.length, 1); }
   const everything = JSON.stringify([...h.book.sheets.values()].filter((s: any) => s.name !== '設定').map((s: any) => s.rows));
   assert.ok(!/誓約/.test(everything), '誓約の語は、設定タブのほかには出ない');
@@ -134,7 +139,7 @@ test('golden 保存: 申込原本（21列）・OS取込用（14列）の値は�
   assert.deepEqual([...row.slice(3, 12), ...row.slice(13)], ['架空ジム', '架空選手', '中3', '20', '170', '65', '初試合', 'がんばります', '', 'テスト太郎', '09000000000', 'test@example.com', 'yes', p.requestId, '', '中学生男子', '37kg以下']);
   assert.match(row[12], /^https:\/\/drive\.google\.com\/file\/d\/res\d+\/view$/);
   assert.deepEqual([os[0], ...os.slice(1, 10), ...os.slice(11)], [receipt, '架空ジム', '架空選手', '中3', '20', '170', '65', '初試合', 'がんばります', '', '', '中学生男子', '37kg以下']);
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS);
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS);
   assert.equal(h.call('saveEntry_', p), receipt); assert.equal(h.rows(PRIVATE).length, 2); assert.equal(h.rows(OS).length, 2);
   // 学年などを「なし」にしたシートでも、同じ道で保存できる
   const quiet = harness(); quiet.ready({ 学年: 'なし', 年齢: 'なし', 意気込み: 'なし' }); quiet.call('openEntries');
@@ -182,7 +187,7 @@ test('golden 古いシート（誓約書の行が無い）: 受付も ping も�
   const receipt = h.call('saveEntry_', p);
   assert.equal(json(h.rows(PRIVATE).at(-1))[0], receipt);
   h.call('setupTournament');
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS);
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS);
   assert.equal(ping(h).settingsProblem, '');
   assert.equal(h.call('statusInfo_').testComplete, true);
 });
@@ -243,8 +248,8 @@ test('golden 申し込みページが送る鍵（photoDataUrl まで）は、足
 });
 
 test('golden core/setupV3: 版の一覧・pingの読み方・申し込みページへ渡す設定の鍵は、足す前のとおり（「なし」の読み取りに、誓約書の鍵は増えない）', () => {
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', '3.20261024.2']);
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.2');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', '3.20261024.2', '3.20261026.3']);
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261026.3');
   const base = { app: 'tournament-os', protocol: 3, build: EXPECTED_RECEPTION_BUILD, ready: true, accepting: true, eventId: 'tos-0123456789', testComplete: true, settingsProblem: '', title: 'テスト大会', date: '2099-12-01', venue: '体育館', venueUrl: '', organizer: '主催ジム', contact: '0200000000', deadline: '2099-11-30', music: false, grade: 'optional', age: 'optional', comment: 'optional' };
   const parsed = parsePing(base);
   assert.deepEqual(Object.keys(parsed), ['app', 'protocol', 'build', 'ready', 'accepting', 'eventId', 'testComplete', 'settingsProblem', 'storageProblem', 'title', 'date', 'venue', 'venueUrl', 'organizer', 'contact', 'deadline', 'music', 'grade', 'age', 'comment', 'error', 'classMode', 'classes', 'classRows', 'weightMode', 'weights', 'weightRows', 'logo', 'errorTab', 'errorCell', 'errorExpected', 'errorInserted', 'errorRowGone', 'closedBy']);

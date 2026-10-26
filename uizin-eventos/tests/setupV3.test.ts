@@ -166,8 +166,8 @@ test('クラス分け: 申込ページへ渡す設定にクラスが入り、読
   assert.throws(() => entryConfigFromPing(ping({ classMode: true, classes: longest, title: 'あ'.repeat(299), organizer: 'あ'.repeat(299), venue: 'あ'.repeat(299), contact: 'あ'.repeat(299) }), endpoint, 'live'), /^Error: 文が長すぎて、選手に渡すURLに入りません。「大会名」（セル B2）を短くしてください。$/);});
 
 test('クラス分け・階級分け: 古い版 3.20261004.4・3.20261010.5 も新しい版も受け付け、知らない版は古いと言う', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.2');
-  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', '3.20261024.2']);
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261026.3');
+  assert.deepEqual([...ACCEPTED_RECEPTION_BUILDS], ['3.20261004.4', '3.20261010.5', '3.20261019.6', '3.20261022.7', '3.20261024.1', '3.20261024.2', '3.20261026.3']);
   assert.equal(diagnose(ping({ build: '3.20261004.4' })).stage, 'need-open');
   assert.equal(diagnose(ping({ build: '3.20261004.4', accepting: true })).stage, 'ready');
   assert.equal(diagnose(ping({ build: '3.20261004.4', ready: false })).stage, 'not-setup');

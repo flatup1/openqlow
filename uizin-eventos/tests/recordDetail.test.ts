@@ -197,7 +197,7 @@ test('申し込みリンク：rd=on は、protocol 3 のときだけ読む。付
 });
 
 test('シートの版：くわしい戦績は 3.20261024.1 以降だけ（.2 も同じ）。前の版はそのまま使える（一覧に残っている）', () => {
-  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261024.2');
+  assert.equal(EXPECTED_RECEPTION_BUILD, '3.20261026.3');
   assert.ok((ACCEPTED_RECEPTION_BUILDS as readonly string[]).includes('3.20261024.1'), '前の版（3.20261024.1）も、まだ受け付ける');
   assert.ok((ACCEPTED_RECEPTION_BUILDS as readonly string[]).includes('3.20261022.7'), '花道と誓約書の版は、まだ受け付ける');
   assert.equal(supportsRecordDetail({ build: '3.20261022.7' }), false);

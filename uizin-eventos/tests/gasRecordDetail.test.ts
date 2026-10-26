@@ -8,13 +8,18 @@ import { harness } from './helpers/gasV3Harness.ts';
 import { kickRecordText, parseRecordDetail, parseRecordDetailCsv, recordDetailProblems, recordDetailRows, RECORD_DETAIL_HEADERS } from '../core/recordDetail.ts';
 import { recordDetailsFromCsv } from '../app/private/logic.ts';
 
+/** ① が作る「見るだけ」のタブ（マッチメイク表・戦績（選手名つき）。3.20261026.3 から）。受付が書くタブの数を見る試験では、数えない（専用の試験は gasViews.test.ts） */
+const VIEW_TABS = ['マッチメイク表', '戦績（選手名つき）'];
+const dataTabs = (h: any): string[] => [...h.book.sheets.keys()].filter((name: string) => !VIEW_TABS.includes(name));
+
+
 type H = ReturnType<typeof harness>;
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
 const REC = '戦績詳細', REC_TEST = 'テスト戦績詳細';
 const HEAD = [...RECORD_DETAIL_HEADERS];
 const json = (value: unknown): any => JSON.parse(JSON.stringify(value));
 const thrown = (fn: () => unknown): any => { try { fn(); } catch (e) { return e; } assert.fail('投げなかった'); };
-const tabs = (h: H) => [...h.book.sheets.keys()];
+const tabs = (h: H) => dataTabs(h);
 const rowsOf = (h: H, name: string): any[][] => h.book.getSheetByName(name).rows;
 const rowOf = (h: H, name: string, receipt: string): any => rowsOf(h, name).find((r: any[]) => r[0] === receipt);
 /** 表に見えている文字（getDisplayValues）。見出しの12列ぶん */

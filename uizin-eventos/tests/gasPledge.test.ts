@@ -9,6 +9,11 @@ import { harness, script } from './helpers/gasV3Harness.ts';
 import { guardianNeeded, GYM_NAME_MAX, gymPhoneNormal, gymPhoneOk, isUnaffiliated, parsePledgeCanon, PLEDGE_ERROR_CODES, PLEDGE_LIMITS, PLEDGE_POST_KEYS, UNAFFILIATED_NAMES, UNAFFILIATED_PHRASES, unpackPledge, packPledge } from '../core/pledge.ts';
 import { diagnose, parsePing, settingLines } from '../core/setupV3.ts';
 
+/** ① が作る「見るだけ」のタブ（マッチメイク表・戦績（選手名つき）。3.20261026.3 から）。受付が書くタブの数を見る試験では、数えない（専用の試験は gasViews.test.ts） */
+const VIEW_TABS = ['マッチメイク表', '戦績（選手名つき）'];
+const dataTabs = (h: any): string[] => [...h.book.sheets.keys()].filter((name: string) => !VIEW_TABS.includes(name));
+
+
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
 // くわしい戦績の表（①で作る。新しい版のシートだけ。誓約書・花道のタブのあとに作られる）
 const DETAIL = '戦績詳細', DETAIL_TEST = 'テスト戦績詳細';
@@ -42,7 +47,7 @@ const html = (h: H, params: any): string => String(h.call('doPost', { parameter:
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 const thrown = (fn: () => unknown): any => { try { fn(); } catch (e) { return e; } assert.fail('投げなかった'); };
 const without = (h: H, key: string) => { const rows = h.settingsSheet().rows; const i = rows.findIndex((r: any[]) => r[0] === key); assert.ok(i >= 0, key); rows.splice(i, 1); };
-const tabs = (h: H) => [...h.book.sheets.keys()];
+const tabs = (h: H) => dataTabs(h);
 const sizes = (h: H) => Object.fromEntries([PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB, TAB, REC, REC_TEST].map((n) => [n, h.book.getSheetByName(n)?.rows.length ?? -1]));
 /** 何も書かれていないことを言うための写し：全タブの中身・Driveの物の数・プロパティ（カウンターも） */
 const snap = (h: H) => JSON.stringify([[...h.book.sheets.entries()].map(([n, s]: [string, any]) => [n, s.rows]), h.resources.size, [...h.props.entries()]]);
@@ -792,5 +797,5 @@ test('禁止語: 外へ出る道・評価の道を使わない。新しい権限
   thrown(() => h.call('saveEntry_', entry(h, 'live', {}, { gymPermission: undefined }))); html(h, entry(h, 'live', {}, { gymName: '' }));
   assert.ok(!h.logs.join('\n').includes(GYM_NAME));
   // 版は 3.20261024.2（まだ公開していない）
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.2';/); assert.equal(ping(h).build, '3.20261024.2');
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261026\.3';/); assert.equal(ping(h).build, '3.20261026.3');
 });

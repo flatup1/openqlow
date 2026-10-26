@@ -1,5 +1,5 @@
 /** Tournament OS Google受付 v3。このシートをコピーして使います。コードを貼る必要はありません。 */
-const RECEPTION_BUILD = '3.20261024.2';
+const RECEPTION_BUILD = '3.20261026.3';
 const MIN_FREE_BYTES = 200 * 1024 * 1024;
 /**
  * 「設定」タブの「花道のルール」を新しく作るときだけ入れる初期の文。原本（募集要項 Vol.7）の言葉を並べた仮の文で、owner が「OK」と答えたもの（2026-10-22）。
@@ -718,7 +718,14 @@ function recordDetailRows_(receiptNo, submittedAt, detail) {
   });
   return rows;
 }
-/** 「戦績詳細」の表（本番・テスト）を、見出しつきで用意する。無ければ作り、中身が空なら見出しを書く（見出しの行は、警告つきで保護）。 */
+/** 見出しの行の色（うすい青）。中身の行は、色を付けない */
+const RECORD_DETAIL_HEAD_COLOR_ = '#dbeafe';
+/**
+ * 「戦績詳細」の見た目（2026-10-26 owner：見やすく）：列の幅をそろえる・1行目（見出し）を固定する・見出しに色と太字。
+ * 文字は1マスも書き換えない（見た目だけ）。何回しても同じ。使えない環境でも止めない
+ */
+function recordDetailFormat_(sheet) { tabFormat_(sheet, RECORD_DETAIL_HEADERS, RECORD_DETAIL_HEAD_COLOR_); }
+/** 「戦績詳細」の表（本番・テスト）を、見出しつきで用意する。無ければ作り、中身が空なら見出しを書く（見出しの行は、警告つきで保護）。作ったときは、見た目もととのえる */
 function recordDetailSheetEnsure_(book, name) {
   let sheet = book.getSheetByName(name);
   if (!sheet) sheet = book.insertSheet(name);
@@ -726,6 +733,7 @@ function recordDetailSheetEnsure_(book, name) {
     textFormatTab_(sheet, RECORD_DETAIL_HEADERS.length);
     sheet.getRange(1, 1, 1, RECORD_DETAIL_HEADERS.length).setValues([RECORD_DETAIL_HEADERS]).setFontWeight('bold');
     try { sheet.getRange(1, 1, 1, RECORD_DETAIL_HEADERS.length).protect().setDescription('見出しです。変えると受付が止まります').setWarningOnly(true); } catch (_) { /* 保護できなくても動く */ }
+    recordDetailFormat_(sheet);
   }
   return sheet;
 }
@@ -770,6 +778,64 @@ function recordDetailHeaderNote_(bad) {
     : bad.inserted ? letter + '列が足されています。' + letter + '列の上で右クリック →「列を削除」で、足した' + letter + '列を消してください'
     : letter + '1 を「' + bad.expected + '」に直してください';
   return '「' + bad.name + '」タブの見出しが、この版と違います（' + how + '）。直すまで、くわしい戦績つきの申し込みは受けられません。';
+}
+/* ---------- 見やすさ（2026-10-26 owner：列の幅・見出しの固定と色）と、マッチメイク用の「見るだけ」のタブ ---------- */
+/** 見出しの文字 → 列の幅（ピクセル）。ここに無い見出しは 120 */
+const TAB_WIDTHS_ = { '受付番号': 230, '管理番号': 230, '申込日時': 150, '大会ID': 130, '所属ジム': 150, 'ジム名': 150, '選手名': 140, '学年': 70, '年齢': 60, '身長': 60, '体重': 60, '体重(kg)': 80, '戦績・競技歴': 150, '戦績': 150, '試合への意気込み': 240, '入場曲URL（Apple Music推奨）': 200, '顔写真URL': 200, '連絡先氏名': 120, '連絡先電話番号': 130, '連絡先メールアドレス': 200, '同意': 50, 'リクエストID': 120, 'クラス': 90, '区分': 160, '階級': 100, '種類': 100, '競技名・大会名': 170, '試合数': 70, '勝ち': 60, '負け': 60, '引き分け': 80, '勝敗なし': 80, '獲得年': 70, 'タイトル名・入賞成績': 240, '確認した項目': 110, '同意した文': 300, '文の指紋': 120 };
+/**
+ * タブの見た目をととのえる：1行目（見出し）を固定・見出しに色と太字・列の幅を見出しに合わせる。文字は1マスも書き換えない（何回しても同じ）。使えない環境でも止めない。
+ * color＝見出しの色（受付が書くタブは、うすい青。見るだけのタブは、うすい緑）
+ */
+function tabFormat_(sheet, headers, color) {
+  try {
+    headers.forEach(function (name, i) { sheet.setColumnWidth(i + 1, Object.prototype.hasOwnProperty.call(TAB_WIDTHS_, name) ? TAB_WIDTHS_[name] : 120); });
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length).setBackground(color || RECORD_DETAIL_HEAD_COLOR_).setFontWeight('bold');
+  } catch (_) { /* 見た目が付けられなくても、受付は動く */ }
+}
+/** 受付が書くタブ（申込原本・OS取込用・テスト・花道・誓約）の見た目を、① のたびにととのえる。見出しが合っているタブだけ */
+function formatTables_(book) {
+  tables_().forEach(function (pair) { const check = tableCheck_(book, pair); if (check.state === 'ok') tabFormat_(check.sheet, pair[1]); });
+}
+const OS_TAB_ = 'OS取込用（連絡先なし）';
+/** 見るだけのタブの名前と見出し。中身は式（受付のタブを読むだけ。受付のタブには、何も書かない）。連絡先は出さない（OS取込用から読む） */
+const MATCH_TAB_ = 'マッチメイク表';
+const MATCH_HEADERS_ = ['区分', 'クラス', '体重(kg)', '階級', '選手名', 'ジム名', '戦績', '年齢', '学年', '身長', '管理番号'];
+const RECORD_VIEW_TAB_ = '戦績（選手名つき）';
+const RECORD_VIEW_HEADERS_ = ['受付番号', '選手名', 'ジム名'].concat(RECORD_DETAIL_HEADERS.slice(2));
+const VIEW_COLOR_ = '#dcfce7';
+/** 式の中のタブの名前（「'」でかこむ） */
+function tabRef_(name, range) { return "'" + name.replace(/'/g, "''") + "'!" + range; }
+/**
+ * マッチメイク表の式：OS取込用の申込を、区分 → クラス → 体重（軽い順）にならべる。体重は数にしてならべる（「100」が「65」より前に来ないように）。
+ * 列：区分(M)・クラス(L)・体重(G)・階級(N)・選手名(C)・ジム名(B)・戦績(H)・年齢(E)・学年(D)・身長(F)・管理番号(A)
+ */
+function matchFormula_() {
+  const os = function (col) { return tabRef_(OS_TAB_, col + '2:' + col); };
+  return '=ARRAYFORMULA(IFERROR(SORT(FILTER({' + [os('M'), os('L'), 'IFERROR(VALUE(' + os('G') + '),' + os('G') + ')', os('N'), os('C'), os('B'), os('H'), os('E'), os('D'), os('F'), os('A')].join(',') + '},' + os('A') + '<>""),1,TRUE,2,TRUE,3,TRUE),""))';
+}
+/** 戦績（選手名つき）の式：戦績詳細の行に、OS取込用の選手名・ジム名を、受付番号（＝管理番号）で付ける */
+function recordViewFormula_() {
+  const rec = function (range) { return tabRef_(RECORD_TABLE, range); };
+  const pick = function (col) { return 'IFERROR(VLOOKUP(' + rec('A2:A') + ',{' + tabRef_(OS_TAB_, 'A2:A') + ',' + tabRef_(OS_TAB_, col + '2:' + col) + '},2,FALSE),"")'; };
+  return '=ARRAYFORMULA(IFERROR(FILTER({' + [rec('A2:A'), pick('C'), pick('B'), rec('C2:L')].join(',') + '},' + rec('A2:A') + '<>""),""))';
+}
+/** 見るだけのタブを用意する（無ければ作る）。1行目の見出しと、A2 の式を、① のたびに書き直す（ほかのマスは触らない）。打ちまちがい防止に、警告つきで保護する */
+function ensureViewTab_(book, name, headers, formula) {
+  let sheet = book.getSheetByName(name);
+  const fresh = !sheet;
+  if (!sheet) sheet = book.insertSheet(name);
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(2, 1).setFormula(formula);
+  tabFormat_(sheet, headers, VIEW_COLOR_);
+  if (fresh) { try { sheet.getRange(1, 1, Math.max(2, typeof sheet.getMaxRows === 'function' ? sheet.getMaxRows() : 2), headers.length).protect().setDescription('見るだけのタブです。中身は、受付のタブから自動で作ります（ここに書かないでください）').setWarningOnly(true); } catch (_) { /* 保護できなくても、見られる */ } }
+  return sheet;
+}
+/** ① で、見やすさと見るだけのタブを用意する。どれかが失敗しても、① は止めない（受付には関係しないため） */
+function setupViews_(book) {
+  try { formatTables_(book); } catch (_) { /* 見た目だけ */ }
+  try { ensureViewTab_(book, MATCH_TAB_, MATCH_HEADERS_, matchFormula_()); } catch (_) { /* 見るだけのタブ */ }
+  try { ensureViewTab_(book, RECORD_VIEW_TAB_, RECORD_VIEW_HEADERS_, recordViewFormula_()); } catch (_) { /* 見るだけのタブ */ }
 }
 /** 受付の中で使う「戦績詳細」（本番かテスト）。無ければ作り、見出しがちがうときは止める（何も書かない） */
 function recordDetailSheetOf_(book, isTest) {
@@ -902,7 +968,10 @@ function setupTournament() {
     // 新しく書いた見出しを、Googleに確実に書き込ませてから、次の確認へ進む（書き込みが遅れて「申込原本が見つからない（または、空）」と出るのを防ぐ）
     SpreadsheetApp.flush();
     // 「戦績詳細」（本番・テスト）は、無ければ見出しつきで作る。tables_() の必須の一覧には入れない。見出しがちがうときは止めず、完了のあとの注意で言う
-    [RECORD_TABLE, RECORD_TEST_TABLE].forEach(function (name) { const bad = recordDetailHeaderCheck_(recordDetailSheetEnsure_(book, name), name); if (bad) SETUP_NOTES_.push(recordDetailHeaderNote_(bad)); });
+    // 見出しが合っているタブは、① のたびに見た目をととのえる（前からあるタブにも効く。文字は変えない）
+    [RECORD_TABLE, RECORD_TEST_TABLE].forEach(function (name) { const sheet = recordDetailSheetEnsure_(book, name), bad = recordDetailHeaderCheck_(sheet, name); if (bad) SETUP_NOTES_.push(recordDetailHeaderNote_(bad)); else recordDetailFormat_(sheet); });
+    // 見やすさ（全部の受付のタブ）と、マッチメイク用の見るだけのタブ（マッチメイク表・戦績（選手名つき））。失敗しても ① は止めない
+    setupViews_(book);
     // フォルダがゴミ箱にあるときは、作り直さずに「元に戻す」を案内する（中の写真を失わないため）。完全に消えていたら、新しく作る
     ['photoFolderId', 'testFolderId'].forEach(function (key) { if (folderState_(props.getProperty(key)) === 'trashed') throw adminError_('folder', FOLDER_GONE); });
     const photoState = folderState_(props.getProperty('photoFolderId'));

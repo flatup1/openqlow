@@ -7,6 +7,11 @@ import { harness, script } from './helpers/gasV3Harness.ts';
 import { HANAMICHI_BAD_MESSAGE, HANAMICHI_ITEMS, HANAMICHI_KEYS, HANAMICHI_MISSING_MESSAGE, HANAMICHI_SHEET_HEADERS, hanamichiClean, isHanamichiDivision, isRealPastDate, validateHanamichi } from '../core/hanamichi.ts';
 import { diagnose, parsePing, settingLines } from '../core/setupV3.ts';
 
+/** ① が作る「見るだけ」のタブ（マッチメイク表・戦績（選手名つき）。3.20261026.3 から）。受付が書くタブの数を見る試験では、数えない（専用の試験は gasViews.test.ts） */
+const VIEW_TABS = ['マッチメイク表', '戦績（選手名つき）'];
+const dataTabs = (h: any): string[] => [...h.book.sheets.keys()].filter((name: string) => !VIEW_TABS.includes(name));
+
+
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
 // くわしい戦績の表（①で作る。新しい版のシートだけ。花道の2つのあとに作られる）
 const DETAIL = '戦績詳細', DETAIL_TEST = 'テスト戦績詳細';
@@ -22,7 +27,7 @@ const html = (h: H, params: any): string => String(h.call('doPost', { parameter:
 const json = (value: unknown) => JSON.parse(JSON.stringify(value));
 const entry = (h: H, mode: 'test' | 'live', over: Record<string, string> = {}, hn: Record<string, string> = HN) => h.params(mode, { division: HN_DIVISION, weightClass: '-70', gym: '架空ジムA', name: '架空花道一郎', ...hn, ...over });
 const live = (over: Record<string, string> = {}) => { const h = harness(); h.ready({ ...ON, ...over }); h.call('openEntries'); return h; };
-const tabs = (h: H) => [...h.book.sheets.keys()];
+const tabs = (h: H) => dataTabs(h);
 const sizes = (h: H) => Object.fromEntries([PRIVATE, OS, TEST, TEST_OS, HN_TAB, HN_TEST_TAB].map((n) => [n, h.book.getSheetByName(n)?.rows.length ?? -1]));
 const thrown = (fn: () => unknown): any => { try { fn(); } catch (e) { return e; } assert.fail('投げなかった'); };
 const without = (h: H, key: string) => { const rows = h.settingsSheet().rows; const i = rows.findIndex((r: any[]) => r[0] === key); assert.ok(i >= 0, key); rows.splice(i, 1); };
@@ -509,9 +514,9 @@ test('結果の画面: 花道の失敗(hanamichi)は「保存していない」�
 
 /* ───────── 版・Googleの言葉 ───────── */
 
-test('版: build は 3.20261024.2。自動テストは版が変わるとやり直し（1回だけ）', () => {
-  assert.match(script, /const RECEPTION_BUILD = '3\.20261024\.2';/);
-  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261024.2');
+test('版: build は 3.20261026.3。自動テストは版が変わるとやり直し（1回だけ）', () => {
+  assert.match(script, /const RECEPTION_BUILD = '3\.20261026\.3';/);
+  const h = harness(); h.ready(ON); assert.equal(ping(h).build, '3.20261026.3');
   h.props.set('lastTestBuild', '3.20261019.6'); assert.equal(h.call('statusInfo_').testComplete, false);
   const rows = h.rows(TEST).length; h.call('setupTournament'); assert.equal(h.call('statusInfo_').testComplete, true); assert.equal(h.rows(TEST).length, rows + 1);
   h.call('setupTournament'); assert.equal(h.rows(TEST).length, rows + 1, 'もう増えない');

@@ -8,6 +8,11 @@ import { readFileSync } from 'node:fs';
 import { harness, script } from './helpers/gasV3Harness.ts';
 import { ACCEPTED_RECEPTION_BUILDS, diagnose, entryConfigFromPing, EXPECTED_RECEPTION_BUILD, parsePing, supportsWeightClasses } from '../core/setupV3.ts';
 
+/** ① が作る「見るだけ」のタブ（マッチメイク表・戦績（選手名つき）。3.20261026.3 から）。受付が書くタブの数を見る試験では、数えない（専用の試験は gasViews.test.ts） */
+const VIEW_TABS = ['マッチメイク表', '戦績（選手名つき）'];
+const dataTabs = (h: any): string[] => [...h.book.sheets.keys()].filter((name: string) => !VIEW_TABS.includes(name));
+
+
 const PRIVATE = '申込原本（個人情報あり）', OS = 'OS取込用（連絡先なし）', TEST = 'テスト申込', TEST_OS = 'テストOS取込用';
 /** 足す前の「設定」タブの行（29行）。この並びも、B21（階級分け）・B22（ロゴ）の位置も動かさない */
 const FROZEN_LABELS = ['大会名', '開催日', '会場', '会場の地図URL', '主催者名', '問い合わせ先', '申込締切', '入場曲', '学年', '年齢', '意気込み', 'クラス分け', '上のクラスの名前', '上のクラスの条件', '上のクラスのルール', '下のクラスの名前', '下のクラスの条件', '下のクラスのルール', '上のクラスにする勝ち数', '階級分け', 'ロゴ',
@@ -68,7 +73,7 @@ test('golden 設定タブ: ▼の欄・色・列の幅・固定行は、足す�
 
 test('golden 「① 最初の設定」: 作るタブは6つだけ（申込原本・OS取込用・テスト申込・テストOS取込用・戦績詳細・テスト戦績詳細）。見出しの保護・ping・プロパティの鍵も同じ', () => {
   const h = harness(); h.ready();
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, 'シート1・設定・6つの表。花道のタブは作らない');
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS, 'シート1・設定・6つの表。花道のタブは作らない');
   assert.deepEqual(json(h.rows(PRIVATE)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(OS)[0]), OS_HEADERS);
   assert.deepEqual(json(h.rows(TEST)[0]), PRIVATE_HEADERS); assert.deepEqual(json(h.rows(TEST_OS)[0]), OS_HEADERS);
   for (const name of [PRIVATE, OS, TEST, TEST_OS]) assert.equal(h.book.getSheetByName(name).protections.length, 1, name + ' の見出しは保護される');
@@ -76,7 +81,7 @@ test('golden 「① 最初の設定」: 作るタブは6つだけ（申込原本
   assert.deepEqual([...h.props.keys()], FROZEN_PROPS);
   // もう一度押しても、同じ（タブも行も増えない）
   h.call('setupTournament');
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS); assert.equal(h.rows(TEST).length, 2);
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS); assert.equal(h.rows(TEST).length, 2);
   h.call('openEntries'); assert.deepEqual([...h.props.keys()], [...FROZEN_PROPS, 'everOpened']);
 });
 
@@ -102,7 +107,7 @@ test('golden 保存: 申込原本（21列）・OS取込用（14列）の値は�
   assert.deepEqual([...row.slice(3, 12), ...row.slice(13)], ['架空ジム', '架空選手', '中3', '20', '170', '65', '初試合', 'がんばります', '', 'テスト太郎', '09000000000', 'test@example.com', 'yes', p.requestId, '', '中学生男子', '37kg以下']);
   assert.match(row[12], /^https:\/\/drive\.google\.com\/file\/d\/res\d+\/view$/);
   assert.deepEqual([os[0], ...os.slice(1, 10), ...os.slice(11)], [receipt, '架空ジム', '架空選手', '中3', '20', '170', '65', '初試合', 'がんばります', '', '', '中学生男子', '37kg以下']);
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS, '花道のタブは作らない');
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS, '花道のタブは作らない');
   const text = JSON.stringify([...h.book.sheets.values()].map((s: any) => s.rows));
   for (const secret of ['架空リング', '1980-01-01', '架空の職業', '架空のメッセージ']) assert.ok(!text.includes(secret), '捨てた値は、どの表にも残らない: ' + secret);
   // 同じ受付番号の再送でも、行は増えない
@@ -114,7 +119,7 @@ test('golden 保存: 区分に「花道」が入る区分を選んでも、「�
   const p = h.params('live', { division: '花道・男子（40歳以上）', weightClass: '-70' });
   const receipt = h.call('saveEntry_', p);
   assert.equal(json(h.rows(PRIVATE).at(-1))[19], '花道・男子（40歳以上）'); assert.equal(json(h.rows(PRIVATE).at(-1))[0], receipt);
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS);
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS);
   // 結果の画面も、これまでと同じ（成功は緑の ✓）
   const page = html(h, h.params('live', { division: '花道・男子（40歳以上）', weightClass: '-70' }));
   assert.match(page, /✓ 申し込みが完了しました/);
@@ -136,7 +141,7 @@ test('golden 古いシート（花道の行が無い）: 受付も ping も自�
   const receipt = h.call('saveEntry_', p);
   assert.equal(json(h.rows(PRIVATE).at(-1))[0], receipt);
   h.call('setupTournament');
-  assert.deepEqual([...h.book.sheets.keys()], FROZEN_SHEETS);
+  assert.deepEqual(dataTabs(h), FROZEN_SHEETS);
   assert.equal(ping(h).settingsProblem, '');
 });
 
