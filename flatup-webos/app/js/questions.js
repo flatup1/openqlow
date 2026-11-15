@@ -80,7 +80,6 @@ FLATUP.QUESTIONS = {
     next: "result",
     options: [
       { value: "weekday_morning", label: "平日の午前" },
-      { value: "weekday_noon",    label: "平日の昼" },
       { value: "weekday_night",   label: "平日の夜" },
       { value: "saturday",        label: "土曜日" },
       { value: "unknown",         label: "まだ分からない" }
