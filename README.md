@@ -39,6 +39,7 @@ The canonical handoff/spec is:
 ```bash
 npm install
 npm run daily
+npm run work-order                  # 今日AIに頼む仕事を1件だけ（根拠つき・依頼文つき）
 npm run dev -- generate
 npm run dev -- approve <post-id> "OK <post-id>"
 npm run dev -- revise <post-id> "revision note"
