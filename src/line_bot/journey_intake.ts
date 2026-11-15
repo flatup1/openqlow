@@ -28,6 +28,15 @@ const JOURNEY_ID_PATTERN = /^#?\s*(J-[a-f0-9]{10,16})\s*$/i;
 const MAX_LIST_VALUES = 3;
 
 // ---- 回答の正本キー（WebOS app/js/questions.js と一致させる） ----
+//
+// 例外が1つある。availability の weekday_noon（平日の昼）は、2026-10-12 に
+// WebOS の選択肢から外した（canon.ts のとおり平日の昼はスタッフ対応時間外で、
+// 体験ができないため）。それでもここには残す。
+//
+// 引き継ぎコードは発行から JOURNEY_TTL_DAYS（7日）有効なので、変更の前に
+// 発行されたコードには weekday_noon が入っている。ここから消すと、その
+// お客さまのコードだけが受け付けられなくなる。
+// 「一致させる」に従って消さないこと。発行はしない／受け取りはする、で正しい。
 
 const ANSWER_ENUMS: Record<string, ReadonlySet<string>> = {
   audience: new Set(["self", "kids", "family", "consult"]),
