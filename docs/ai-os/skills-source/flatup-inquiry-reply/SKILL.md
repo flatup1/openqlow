@@ -1,6 +1,6 @@
 ---
 name: flatup-inquiry-reply
-description: Use to draft a LINE, DM, or email reply to a FLATUP inquiry. Do not use to send, confirm a booking, diagnose health, or finalize fees, refunds, leave, or cancellation.
+description: Use to draft a LINE, DM, or email reply to a FLATUP inquiry.
 ---
 
 # FLATUP Inquiry Reply
@@ -19,3 +19,7 @@ Read `src/shared/canon.ts`, `docs/ai-os/canon/brand_voice.md`, and the actual in
 6. Label the result as draft-only and list any human confirmation.
 
 Do not invent availability, promises, outcomes, or testimonials.
+
+## Not for
+
+Do not use to send, confirm a booking, diagnose health, or finalize fees, refunds, leave, or cancellation.

@@ -87,8 +87,8 @@ export async function createMediaPublishCandidate(input: CreateMediaPublishCandi
     canonReferences: [
       {
         layer: "AGENTS.md",
-        canonPath: "AGENTS.md#Marketing Output Rules",
-        description: "FLATUPらしい投稿と人間確認ルール",
+        canonPath: "AGENTS.md#4-人間承認が要る操作",
+        description: "FLATUPらしい投稿（§1 原則）と人間確認ルール",
       },
     ],
   };

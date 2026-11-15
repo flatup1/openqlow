@@ -61,8 +61,8 @@ export async function createMorningPublishCandidate(
     canonReferences: [
       {
         layer: "AGENTS.md",
-        canonPath: "AGENTS.md#Daily openQLOW Dialogue",
-        description: "毎朝のopenQLOWヒアリングと人間確認ルール",
+        canonPath: "AGENTS.md#2-セッション開始時",
+        description: "毎朝のopenQLOWヒアリングと人間確認ルール（承認は §4）",
       },
     ],
   };

@@ -1,13 +1,14 @@
 ---
 name: flatup-daily-command
-description: Use when Jin wants today's top priorities or a morning command sheet for FLATUP. Do not use to execute sends, publishes, payments, or production changes.
+description: Use when Jin wants today's top priorities or a morning command sheet for FLATUP.
 ---
 
 # FLATUP Daily Command
 
 ## Read first
 
-`AGENTS.md`, `COORDINATION.md`, current task sources, and `docs/ai-os/canon/approval_matrix.md`.
+Today's sources only: Vault / daily log / CRM / GitHub, plus `docs/ai-os/canon/approval_matrix.md`.
+Mark every source you cannot reach as `未確認`. Do not re-read the constitution files.
 
 ## Procedure
 
@@ -23,3 +24,7 @@ description: Use when Jin wants today's top priorities or a morning command shee
 - 今日やる3件
 - 後回しと理由
 - JIN確認が必要なこと
+
+## Not for
+
+Do not use to execute sends, publishes, payments, or production changes.

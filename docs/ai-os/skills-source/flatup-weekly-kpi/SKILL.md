@@ -1,6 +1,6 @@
 ---
 name: flatup-weekly-kpi
-description: Use to summarize weekly FLATUP membership and funnel metrics from provided or connected data. Do not use to guess missing values, alter source data, approve spend, or contact customers.
+description: Use to summarize weekly FLATUP membership and funnel metrics from provided or connected data.
 ---
 
 # FLATUP Weekly KPI
@@ -19,3 +19,7 @@ Member count, inquiries, trial bookings, trials completed, enrollments, cancella
 6. Suggest up to three next actions, keeping spend and publication approval-gated.
 
 Use `docs/ai-os/templates/weekly_report.md`.
+
+## Not for
+
+Do not use to guess missing values, alter source data, approve spend, or contact customers.
