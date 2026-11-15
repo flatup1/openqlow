@@ -135,4 +135,19 @@ function baseSession(overrides: Partial<ConversationSession> = {}): Conversation
   assert.equal(titleCount, 2, "title が 2 回出現する（1 回目 + 追記）");
 }
 
+// テスト 7: 同時に終わった2件が、互いを消さない（新規作成も追記も）
+{
+  const tmpVault = await fs.mkdtemp(path.join(os.tmpdir(), "openqlow-vault3-"));
+  process.env.OBSIDIAN_VAULT_ROOT = tmpVault;
+  const sessions = ["山田 T.", "佐藤 K.", "鈴木 M.", "高橋 S."].map(name => baseSession({
+    genres: [{ type: "trial", data: { name }, answers: [{ key: "name", question: "?", answer: name }] }],
+  }));
+  const results = await Promise.all(sessions.map(session => saveCrmLog(session, { dateJst: "2026-05-24" })));
+  const content = await fs.readFile(results[0]!.filePath, "utf-8");
+  for (const name of ["山田 T.", "佐藤 K.", "鈴木 M.", "高橋 S."]) {
+    assert.ok(content.includes(name), `${name} のログが消えていない`);
+  }
+  assert.equal(results.filter(result => !result.appended).length, 1, "新規作成は1回だけ、残りは追記");
+}
+
 console.log("crm log generator tests passed");

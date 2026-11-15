@@ -82,4 +82,23 @@ await withTempEnv(async (root) => {
   assert.equal(saved.status, "rejected");
 });
 
+// 二重の「OK」・遅れた「NO」は例外にせず、理由を返す（例外だとLINEが再送し続ける）。
+await withTempEnv(async (root) => {
+  const id = "FG-20260608-402";
+  await saveRecord(root, pendingRecord(id));
+
+  const first = await executeApprovalText(`OK ${id} all`);
+  assert.equal(first.ok, true);
+
+  const again = await executeApprovalText(`OK ${id} all`);
+  assert.equal(again.ok, false);
+  assert.equal(again.action, "already_final");
+  assert.match(String(again.message), /保存済み/);
+
+  const lateNo = await executeApprovalText(`NO ${id}`);
+  assert.equal(lateNo.action, "already_final");
+  const kept = JSON.parse(await readFile(path.join(root, "state", `${id}.json`), "utf8"));
+  assert.equal(kept.status, "saved", "遅れた NO で保存済みを却下に戻さない");
+});
+
 console.log("approval dispatch tests passed");

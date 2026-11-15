@@ -1,5 +1,6 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { writeJsonAtomic } from "../state/atomic_json.js";
 import type { DraftRecord } from "../types.js";
 
 interface LastApprovalCandidate {
@@ -45,13 +46,30 @@ async function loadRecord(root: string, id: string): Promise<DraftRecord | undef
   }
 }
 
-async function loadLastApprovalCandidate(root: string): Promise<LastApprovalCandidate | undefined> {
-  const text = await readFile(path.join(root, "state", "last_approval_candidate.json"), "utf8").catch(() => "");
-  if (!text) return undefined;
+type CandidateMarker =
+  | { status: "none" }
+  | { status: "ok"; candidate: LastApprovalCandidate }
+  | { status: "unreadable" };
+
+/**
+ * 目印を読む。「無い」と「読めなかった」を分ける。
+ *
+ * 同じ扱いにすると、目印が読めないだけなのに「目印なし」と見なして、
+ * JINが見ていない下書きを「OK」で承認してしまう。
+ */
+async function loadLastApprovalCandidate(root: string): Promise<CandidateMarker> {
+  let text: string;
   try {
-    return JSON.parse(text) as LastApprovalCandidate;
+    text = await readFile(path.join(root, "state", "last_approval_candidate.json"), "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "ENOENT" || code === "ENOTDIR" ? { status: "none" } : { status: "unreadable" };
+  }
+  try {
+    const parsed = JSON.parse(text) as Partial<LastApprovalCandidate>;
+    return typeof parsed.id === "string" && parsed.id ? { status: "ok", candidate: parsed as LastApprovalCandidate } : { status: "unreadable" };
   } catch {
-    return undefined;
+    return { status: "unreadable" };
   }
 }
 
@@ -62,7 +80,8 @@ export async function rememberApprovalCandidate(root: string, id: string, now = 
     id,
     recordedAt: now.toISOString(),
   };
-  await writeFile(path.join(dir, "last_approval_candidate.json"), `${JSON.stringify(marker, null, 2)}\n`, "utf8");
+  // 途中で落ちても壊れた目印が残らないよう、置き換え方式で書く。
+  await writeJsonAtomic(path.join(dir, "last_approval_candidate.json"), marker);
 }
 
 /** 並べ替えの基準。日付が読めない記録を「いちばん新しい」にしない。 */
@@ -86,9 +105,11 @@ function createdAtValue(record: DraftRecord): number {
  * 分からないときは何も指さない（返事はそのままの文として扱われ、何も承認されない）。
  */
 export async function resolveCurrentDraftId(root: string): Promise<string | undefined> {
-  const last = await loadLastApprovalCandidate(root);
-  if (last) {
-    const lastRecord = await loadRecord(root, last.id);
+  const marker = await loadLastApprovalCandidate(root);
+  // 目印が読めないときは、何も指さない（最新の保留へ落とさない）。
+  if (marker.status === "unreadable") return undefined;
+  if (marker.status === "ok") {
+    const lastRecord = await loadRecord(root, marker.candidate.id);
     return lastRecord?.status === "pending_approval" ? lastRecord.id : undefined;
   }
 

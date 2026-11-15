@@ -215,7 +215,23 @@ async function testKidsSummaryAndGenderSkip(): Promise<void> {
   assert.ok(!summary.includes("性別")); // 未回答の行は出さない
 }
 
+async function testConcurrentCreatesKeepEveryJourney(): Promise<void> {
+  const dataDir = await makeDataDir();
+  try {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => createJourneyFromWebos({ answers: { audience: "self" } }, { dataDir })),
+    );
+    assert.ok(results.every(r => r.ok));
+    const saved = await readJourneys(dataDir);
+    assert.equal(saved.length, 10, "同時に届いても相談が1件も消えない");
+    assert.equal(new Set(saved.map(j => j.journey_id)).size, 10);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
 await testSanitizeAnswersDropsUnknownAndRequiresAudience();
+await testConcurrentCreatesKeepEveryJourney();
 await testCreateAndParseJourneyId();
 await testLinkNotifiesOwnerInJapaneseAndSavesLead();
 await testSameUserResendDoesNotDoubleNotify();

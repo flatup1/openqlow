@@ -2,7 +2,7 @@ import { parseApprovalCommand } from "../approval/command.js";
 import { expandApprovalShortcut, expandRejectionShortcut } from "../approval/shortcut.js";
 import { loadConfig } from "../config.js";
 import { createBrowserPanel } from "../publish/browser_panel.js";
-import { approveRecord, rejectRecord, requestRevision } from "../scheduler/daily.js";
+import { approveRecord, RecordAlreadyFinalError, rejectRecord, requestRevision } from "../scheduler/daily.js";
 import { executeLineCommand } from "./commands.js";
 
 function fallbackMessage(): string {
@@ -14,7 +14,26 @@ function fallbackMessage(): string {
   ].join("\n");
 }
 
+/** 二重・遅れた「OK」「NO」は例外にせず、理由を返す（例外だとLINEが再送し続ける）。 */
 async function handleParsedApproval(
+  parsed: NonNullable<ReturnType<typeof parseApprovalCommand>>,
+  okShortcutUsed: boolean,
+): Promise<Record<string, unknown>> {
+  try {
+    return await handleParsedApprovalUnguarded(parsed, okShortcutUsed);
+  } catch (error) {
+    if (!(error instanceof RecordAlreadyFinalError)) throw error;
+    const label = error.status === "saved" ? "保存済み" : "却下済み";
+    return {
+      ok: false,
+      action: "already_final",
+      id: error.id,
+      message: `OPENQLOW: ${error.id} はすでに${label}です。もう一度の操作はしていません。`,
+    };
+  }
+}
+
+async function handleParsedApprovalUnguarded(
   parsed: NonNullable<ReturnType<typeof parseApprovalCommand>>,
   okShortcutUsed: boolean,
 ): Promise<Record<string, unknown>> {

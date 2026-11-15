@@ -1,5 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { withStateLock } from "../reply_drafts/lock.js";
+import { readJsonIfExists, writeJsonAtomic } from "../state/atomic_json.js";
 import { loadRecord } from "../state/file_store.js";
 import type { PlatformDraft } from "../types.js";
 import { enqueueBrowserPostJobs, type BrowserPostJob } from "./browser_post_job.js";
@@ -50,34 +52,52 @@ async function loadQueue(root: string, id: string): Promise<PublishQueueEntry> {
   return JSON.parse(text) as PublishQueueEntry;
 }
 
-async function saveResult(root: string, result: FinalPublishResult): Promise<void> {
-  const dir = path.join(root, "state", "publish_results");
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, `${result.recordId}.json`), `${JSON.stringify(result, null, 2)}\n`, "utf8");
+function resultFile(root: string, id: string): string {
+  return path.join(root, "state", "publish_results", `${id}.json`);
 }
 
-export async function runFinalPublish(
+async function saveResult(root: string, result: FinalPublishResult): Promise<void> {
+  await mkdir(path.dirname(resultFile(root, result.recordId)), { recursive: true });
+  await writeJsonAtomic(resultFile(root, result.recordId), result);
+}
+
+export function runFinalPublish(
   root: string,
   id: string,
   opts: FinalPublishOptions = {},
+): Promise<FinalPublishResult> {
+  // 同じ下書きの最終投稿は同時に走らせない。二つが同時に「まだ投稿していない」と読むと、二重に投稿する。
+  return withStateLock(`final_publish:${root}:${id}`, () => runFinalPublishUnlocked(root, id, opts));
+}
+
+async function runFinalPublishUnlocked(
+  root: string,
+  id: string,
+  opts: FinalPublishOptions,
 ): Promise<FinalPublishResult> {
   const env = opts.env ?? process.env;
   const queue = await loadQueue(root, id);
   const record = await loadRecord(root, id);
   if (!record) throw new Error(`Record not found: ${id}`);
 
+  // 前回の結果を引き継ぐ。すでに投稿した宛先へは、もう一度投稿しない。
+  // 読めない結果ファイルは「まだ投稿していない」とは限らないので、例外のまま止める。
+  const previous = await readJsonIfExists<FinalPublishResult>(resultFile(root, id));
+
   const result: FinalPublishResult = {
     recordId: id,
-    published: [],
-    browserQueued: [],
+    published: previous?.published ? [...previous.published] : [],
+    // 途中で保存しても前回の記録を消さないよう、前回の値から始める（browserQueued は最後に上書きされる）。
+    browserQueued: previous?.browserQueued ? [...previous.browserQueued] : [],
     skipped: [],
-    createdAt: new Date().toISOString(),
+    createdAt: previous?.createdAt ?? new Date().toISOString(),
   };
 
   const browserDestinations: PublishDestination[] = [];
 
   for (const destination of queue.destinations) {
     if (destination === "threads") {
+      if (result.published.some(item => item.destination === destination)) continue;
       const mediaFile = queue.mediaFiles?.[0];
       if (queue.mediaFiles && queue.mediaFiles.length > 1) {
         browserDestinations.push(destination);
@@ -115,6 +135,8 @@ export async function runFinalPublish(
           fetchImpl: opts.fetchImpl,
         });
       result.published.push({ destination, externalId: published.postId });
+      // 投稿できたらすぐ記録する。あとの処理で落ちても、再実行で二重投稿しない。
+      await saveResult(root, result);
       continue;
     }
 

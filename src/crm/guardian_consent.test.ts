@@ -261,6 +261,14 @@ try {
   assert((await store.remove(2)) === true, "削除できる");
   assert((await store.remove(2)) === false, "二度目の削除は false");
   assert((await store.getAll()).length === 1, "残り1件");
+
+  // 同時に10件作っても、1件も消えず、idも管理番号も重複しない
+  const created = await Promise.all(
+    Array.from({ length: 10 }, (_, i) => store.create({ externalId: `U-concurrent-${i}`, minorName: `同時${i}` })),
+  );
+  assert(new Set(created.map(c => c.id)).size === 10, "同時に作ってもidが重複しない");
+  assert(new Set(created.map(c => c.managementNumber)).size === 10, "同時に作っても管理番号が重複しない");
+  assert((await store.getAll()).length === 11, "同時に作っても1件も消えない");
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

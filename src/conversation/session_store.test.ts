@@ -101,4 +101,15 @@ const userId = "test-user-001";
   assert.equal(loaded?.step, "awaiting_more_genre");
 }
 
+// テスト: 保存で一時ファイルが残らず、同時に保存しても読める
+{
+  const baseDir = await makeTempDir();
+  const store = new SessionStore({ baseDir });
+  const session = await store.start(userId, "/昨日の記録");
+  await Promise.all(Array.from({ length: 8 }, () => store.save(session)));
+  assert.ok(await store.load(userId), "同時に保存しても読める");
+  const names = await fs.readdir(baseDir);
+  assert.deepEqual(names.filter(name => name.endsWith(".tmp")), [], "一時ファイルが残らない");
+}
+
 console.log("session store tests passed");

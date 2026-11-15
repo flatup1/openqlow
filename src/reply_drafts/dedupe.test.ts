@@ -67,6 +67,36 @@ assert(await hasSeen(root, "line", "line:evt-3"), "新しい記録は残る");
 await fs.writeFile(seenStorePath(root, "line"), "{壊れている", "utf8");
 assert(!(await hasSeen(root, "line", "line:evt-3")), "壊れた台帳は空として扱う");
 assert(await markSeen(root, "line", "line:evt-4", later, 30), "壊れた台帳でも記録できる");
+{
+  const names = await fs.readdir(path.dirname(seenStorePath(root, "line")));
+  const kept = names.filter(name => name.startsWith("line_seen.json.corrupt-"));
+  assert(kept.length === 1, "壊れた台帳は消さずに退避する");
+  const original = await fs.readFile(path.join(path.dirname(seenStorePath(root, "line")), kept[0]!), "utf8");
+  assert(original === "{壊れている", "退避した中身は元のまま");
+}
+// 読むだけの確認（hasSeen）は、壊れた台帳を動かさない。同時に確認しても落ちない。
+{
+  const peekRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-peek-"));
+  await fs.mkdir(path.dirname(seenStorePath(peekRoot, "line")), { recursive: true });
+  await fs.writeFile(seenStorePath(peekRoot, "line"), "{壊れている", "utf8");
+  const results = await Promise.all(Array.from({ length: 5 }, () => hasSeen(peekRoot, "line", "line:evt-p")));
+  assert(results.every(seen => seen === false), "壊れた台帳は空として確認できる");
+  assert((await fs.readFile(seenStorePath(peekRoot, "line"), "utf8")) === "{壊れている", "読むだけでは台帳を動かさない");
+  await fs.rm(peekRoot, { recursive: true, force: true });
+}
+// 読めない台帳（ここではディレクトリ）は「無い」扱いにせず、例外で止める。
+{
+  const unreadableRoot = await fs.mkdtemp(path.join(os.tmpdir(), "reply-drafts-unreadable-"));
+  await fs.mkdir(seenStorePath(unreadableRoot, "line"), { recursive: true });
+  let threw = false;
+  try {
+    await markSeen(unreadableRoot, "line", "line:evt-x", later, 30);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "読めない台帳は空扱いにせず止める");
+  await fs.rm(unreadableRoot, { recursive: true, force: true });
+}
 
 await fs.rm(root, { recursive: true, force: true });
 console.log("reply_drafts dedupe tests passed");

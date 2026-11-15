@@ -57,6 +57,16 @@ try {
   const entries = await readdir(dir);
   assert(entries.length === 1 && entries[0] === "prospects.json", "no leftover temp files after writes");
 
+  // 同時に10件作っても、1件も消えず、idも重複しない
+  const before = (await store.getAll()).length;
+  const created = await Promise.all(
+    Array.from({ length: 10 }, (_, i) => store.create({ name: `同時${i}`, status: "new_inquiry" })),
+  );
+  const ids = new Set(created.map(p => p.id));
+  assert(ids.size === 10, "concurrent creates get distinct ids");
+  assert((await store.getAll()).length === before + 10, "no concurrent create is lost");
+  assert((await readdir(dir)).length === 1, "no leftover temp files after concurrent writes");
+
   console.log("crm store tests passed");
 } finally {
   await rm(dir, { recursive: true, force: true });
