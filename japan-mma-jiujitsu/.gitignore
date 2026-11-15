@@ -1,0 +1,8 @@
+# 会員さんが写っている写真は、掲載許可が確認できるまでGitに入れない。
+# （サイトは写真が無くても表示できる。写真の置き場所は README を参照）
+images/*.jpg
+images/*.jpeg
+images/*.png
+# 加工の途中で出る作業ファイル
+tools/out/
+__pycache__/
