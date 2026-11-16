@@ -180,6 +180,12 @@ h1 span{display:block}
 .hist-line li:last-child{border-top-color:#EC6268}
 .hist-line b{font-family:var(--display);font-weight:400;font-size:24px;line-height:1;letter-spacing:.03em;color:var(--washi);white-space:nowrap}
 :lang(zh-Hant) .hist-line b[data-t],:lang(zh-Hans) .hist-line b[data-t],:lang(ko) .hist-line b[data-t]{font-weight:900;font-size:20px;letter-spacing:0}
+.hist-photos{display:grid;grid-template-columns:8fr 8fr 3fr;gap:clamp(8px,1.4vw,20px)}
+.hist-photos:empty{display:none}
+.hist-photos figure{position:relative;aspect-ratio:2/1;overflow:hidden;border:1px solid rgba(237,233,224,.28)}
+.hist-photos figure.tall{aspect-ratio:3/4}
+.hist-photos img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 100%}
+.hist-rei{font-family:var(--mincho);font-weight:500;font-size:clamp(17px,1.7vw,21px);letter-spacing:.02em;color:rgba(237,233,224,.88)}
 .hist-note{font-size:14px;color:rgba(237,233,224,.62)}
 
 /* ---- safety + coach ---- */
@@ -295,6 +301,8 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
   .hist-line{grid-template-columns:minmax(0,1fr);gap:0}
   .hist-line li{grid-template-columns:104px minmax(0,1fr);gap:14px;align-items:baseline;padding-block:14px}
   .hist-line b{font-size:21px;white-space:normal}
+  .hist-photos{grid-template-columns:8fr 3fr}
+  .hist-photos figure:first-child{grid-column:1/-1}
   .how{grid-template-columns:minmax(0,1fr);gap:16px}
   .coach{grid-template-columns:minmax(0,1fr);justify-items:start}
   .seal{width:104px;height:104px;font-size:36px}
@@ -416,6 +424,8 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
         <li><b>1985 · 1993</b><span data-t="h3">Shooto and Pancrase are born from shoot wrestling, where leg locks are a main weapon.</span></li>
         <li><b data-t="h4y">2000s →</b><span data-t="h4">Fighters like Masakazu Imanari, nicknamed “Ashikan Judan” (10th dan of leg locks), carry them into MMA.</span></li>
       </ol>
+      <div class="hist-photos" id="dojoPhotos"></div>
+      <p class="hist-rei" data-t="histRei">Gi or no-gi, the manners are the same. Every class starts with a bow (rei).</p>
       <p class="hist-note" data-t="histNote">FLATUP GYM is not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.</p>
     </div>
   </div>
@@ -636,7 +646,8 @@ const CONFIG = {
     step1: "images/s1.jpg", step2: "images/s3.jpg", step3: "images/s5.jpg", step4: "",
     tech1: "images/t1.jpg", tech2: "images/t2.jpg", tech3: "images/t3.jpg",   // 足関節・三角絞め・腕十字の写真（空なら筆文字だけ）
     coach: "",
-    gallery: ["images/guest1.jpg","images/guest2.jpg","images/guest3.jpg"]   // 海外ゲストの写真
+    gallery: ["images/guest1.jpg","images/guest2.jpg","images/guest3.jpg"],   // 海外ゲストの写真
+    dojo: ["images/d1.jpg","images/d2.jpg","images/d3.jpg"]   // 道着の写真（歴史の欄の下・旧ジム）。tools/inkframe.py で墨絵風の白黒にしたもの。1・2枚目は横長、3枚目は縦長
   },
   /* 写真の説明文（目の不自由な方と検索エンジン向け・英語） */
   alt: {
@@ -648,7 +659,10 @@ const CONFIG = {
     tech3: "An armbar: one leg swings over to extend the arm",
     "images/guest1.jpg": "A member and a guest from abroad practicing grips in front of the green wall",
     "images/guest2.jpg": "A guest from abroad drilling a guard position with a partner",
-    "images/guest3.jpg": "A guest from abroad joining the warm-up drills"
+    "images/guest3.jpg": "A guest from abroad joining the warm-up drills",
+    "images/d1.jpg": "Ink drawing: members in gi kneeling in seiza on the mat",
+    "images/d2.jpg": "Ink drawing: members in gi bowing on the mat",
+    "images/d3.jpg": "Ink drawing: a white belt in a gi, fists raised"
   }
 };
 
@@ -689,7 +703,7 @@ footer:"Operated by FLATUP GYM, Narita. The kindest martial arts gym.",
 priceIs:"30 min {a}, 60 min {b}, 90 min {c} per person, for groups of 2 to 6. Coming alone: {sa}, {sb} or {sc}. Payment is online, in advance.",
 priceRange:"per person · 30, 60 or 90 min",coursesT:"Three courses",coursesLead:"Pick the time that fits your trip. Prices are per person, for groups of 2 to 6.",c30n:"Taster",c60n:"Leg locks",c90n:"Full course",c30d:"One technique: a leg lock entry.",c60d:"Leg locks and heel hooks.",c90d:"Leg locks, triangle and armbar.",incPickup:"Free pickup",incNoPickup:"No pickup",incVideo:"Your video",incNoVideo:"No video",best:"Best value",soloLbl:"Solo: {s}",choose:"Choose",perP:"per person",lCourse:"Course",minU:" min",busNote:"By bus: from Narita Station take the bus bound for AEON Mall, get off at AEON, then walk about 5 minutes.",
 galleryT:"Guests from abroad, on our mat",
-rulesT:"Before you step on the mat",ru1:"We explain the tap rule in English before anything else.",ru2:"You sign a short waiver when you arrive. It covers injury risk and filming.",ru3:"No class if you have been drinking or have an unhealed injury. If the coach has to turn you away on the day, you get a full refund.",ru4:"Worried about your heart or blood pressure? Please ask your doctor before you book.",ru5:"Please bring travel insurance that covers sports injuries.",histT:"Japan's long leg lock tradition",histLead:"Japan did not invent leg locks. Catch wrestling and sambo grew their own. But Japan has been working on them for a very long time.",h1:"Kodokan judo is founded. Ashi-garami, the leg entanglement, is one of its joint techniques.",h2y:"Later",h2:"Judo takes it out of competition. Ashi-garami is still one of its four forbidden techniques.",h3:"Shooto and Pancrase are born from shoot wrestling, where leg locks are a main weapon.",h4y:"2000s →",h4:"Fighters like Masakazu Imanari, nicknamed “Ashikan Judan” (10th dan of leg locks), carry them into MMA.",histNote:"FLATUP GYM is not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.",bk1:"Send your request",bk1d:"Pick a course and a date, then send the message below.",bk2:"A coach confirms",bk2d:"A person checks the date and your experience, then replies.",bk3:"Pay online, in advance",bk3d:"We send you a payment link. Your place is confirmed once you have paid.",bk4:"Come and train",bk4d:"We meet you at Narita Station on the 60 and 90-minute courses.",cancelNote:"Full refund up to 3 days before. Flight delayed? Full refund with the airline's notice.",lInj:"Injuries or health concerns (optional)",lInjS:"Injuries",injPh:"e.g. left knee",injNote:"Used only to plan a safe class, then deleted.",sendIg:"Send by Instagram DM",igCopied:"Message copied. Paste it into the DM.",qC:"What if I need to cancel?",aC:"Cancel up to 3 days before your class for a full refund. From 2 days before, there is no refund if you cancel for your own reasons. If we have to cancel, if the coach turns you away on the day for safety, or if your flight is delayed (show us the airline's notice), you get a full refund.",qI:"Is this Imanari's gym?",aI:"No. We are FLATUP GYM in Narita. We are not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.",fine:"Flights, hotels and tours are not included. We don't arrange or sell travel.",
+rulesT:"Before you step on the mat",ru1:"We explain the tap rule in English before anything else.",ru2:"You sign a short waiver when you arrive. It covers injury risk and filming.",ru3:"No class if you have been drinking or have an unhealed injury. If the coach has to turn you away on the day, you get a full refund.",ru4:"Worried about your heart or blood pressure? Please ask your doctor before you book.",ru5:"Please bring travel insurance that covers sports injuries.",histT:"Japan's long leg lock tradition",histLead:"Japan did not invent leg locks. Catch wrestling and sambo grew their own. But Japan has been working on them for a very long time.",h1:"Kodokan judo is founded. Ashi-garami, the leg entanglement, is one of its joint techniques.",h2y:"Later",h2:"Judo takes it out of competition. Ashi-garami is still one of its four forbidden techniques.",h3:"Shooto and Pancrase are born from shoot wrestling, where leg locks are a main weapon.",h4y:"2000s →",h4:"Fighters like Masakazu Imanari, nicknamed “Ashikan Judan” (10th dan of leg locks), carry them into MMA.",histRei:"Gi or no-gi, the manners are the same. Every class starts with a bow (rei).",histNote:"FLATUP GYM is not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.",bk1:"Send your request",bk1d:"Pick a course and a date, then send the message below.",bk2:"A coach confirms",bk2d:"A person checks the date and your experience, then replies.",bk3:"Pay online, in advance",bk3d:"We send you a payment link. Your place is confirmed once you have paid.",bk4:"Come and train",bk4d:"We meet you at Narita Station on the 60 and 90-minute courses.",cancelNote:"Full refund up to 3 days before. Flight delayed? Full refund with the airline's notice.",lInj:"Injuries or health concerns (optional)",lInjS:"Injuries",injPh:"e.g. left knee",injNote:"Used only to plan a safe class, then deleted.",sendIg:"Send by Instagram DM",igCopied:"Message copied. Paste it into the DM.",qC:"What if I need to cancel?",aC:"Cancel up to 3 days before your class for a full refund. From 2 days before, there is no refund if you cancel for your own reasons. If we have to cancel, if the coach turns you away on the day for safety, or if your flight is delayed (show us the airline's notice), you get a full refund.",qI:"Is this Imanari's gym?",aI:"No. We are FLATUP GYM in Narita. We are not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.",fine:"Flights, hotels and tours are not included. We don't arrange or sell travel.",
 msgTitle:"JAPAN MMA JIU-JITSU booking request"},
 "zh-Hant":{kicker:"MMA柔術體驗・日本成田",
 lead:"足關節技、足跟勾、三角絞、十字固。為MMA而生的無道服（No-Gi）柔術，在日本學，離成田機場很近。無對打，歡迎新手。",
@@ -725,7 +739,7 @@ footer:"營運：FLATUP GYM（成田）。世界最溫柔的格鬥技道館。",
 priceIs:"2至6人同行，每人：30分鐘 {a}、60分鐘 {b}、90分鐘 {c}。1人參加：{sa}、{sb}、{sc}。費用於線上預先支付。",
 priceRange:"/ 每人・30、60或90分鐘",coursesT:"三種課程",coursesLead:"依你的行程選擇時間。價格為每人費用（2至6人同行）。",c30n:"體驗課",c60n:"足關節技",c90n:"完整課程",c30d:"一個招式：足關節技的入門動作。",c60d:"足關節技與足跟勾。",c90d:"足關節技、三角絞與十字固。",incPickup:"免費接送",incNoPickup:"無接送",incVideo:"附紀念影片",incNoVideo:"無影片",best:"最划算",soloLbl:"1人參加：{s}",choose:"選擇",perP:"每人",lCourse:"課程",minU:"分鐘",busNote:"搭公車：從成田站搭往AEON Mall（永旺夢樂城）的公車，在AEON站下車，步行約5分鐘。",
 galleryT:"來自海外的客人，在我們的墊上",
-rulesT:"上墊之前",ru1:"開始前，我們會先用英語說明拍擊認輸（Tap）的規則。",ru2:"抵達後請簽署一份簡短的同意書，內容包含受傷風險與拍攝。",ru3:"飲酒後或有未痊癒的傷，無法上課。若教練當天基於安全考量婉拒，將全額退款。",ru4:"若擔心心臟或血壓，請在預約前先諮詢醫師。",ru5:"請投保涵蓋運動傷害的旅遊保險。",histT:"日本悠久的足關節技傳統",histLead:"足關節技並非日本發明，擒拿式摔角（Catch Wrestling）與桑搏也各自發展出自己的技術。但日本鑽研它的時間非常長。",h1:"講道館柔道創立。纏腿技「足緘」（Ashi-garami）是其關節技之一。",h2y:"之後",h2:"柔道將它排除在比賽之外。足緘至今仍是四個禁止技之一。",h3:"修斗與Pancrase從Shoot摔角中誕生，足關節技正是其主要武器。",h4y:"2000年代～",h4:"人稱「足關十段」的今成正和等選手，把足關節技帶進MMA。",histNote:"FLATUP GYM與今成正和選手及今成柔術沒有任何關係。",bk1:"送出申請",bk1d:"選擇課程與日期，送出下方訊息。",bk2:"教練確認",bk2d:"由真人確認日期與你的經驗後回覆。",bk3:"線上預先付款",bk3d:"我們會傳送付款連結。付款完成後，預約才算成立。",bk4:"來上課",bk4d:"60與90分鐘課程，我們到成田站接你。",cancelNote:"上課3天前取消可全額退款。航班延誤？出示航空公司通知即可全額退款。",lInj:"傷病或健康狀況（選填）",lInjS:"傷病",injPh:"例如：左膝",injNote:"僅用於安排安全的課程，課後即刪除。",sendIg:"用Instagram私訊傳送",igCopied:"訊息已複製，請貼到私訊中。",qC:"需要取消怎麼辦？",aC:"上課3天前取消，全額退款。2天前至當天因個人因素取消，恕不退款。若由我們取消、教練當天基於安全考量婉拒，或航班延誤（請出示航空公司通知），皆全額退款。",qI:"這是今成選手的道館嗎？",aI:"不是。我們是成田的FLATUP GYM，與今成正和選手及今成柔術沒有任何關係。",fine:"費用不含機票、住宿與行程。我們不代訂、也不販售旅遊產品。",
+rulesT:"上墊之前",ru1:"開始前，我們會先用英語說明拍擊認輸（Tap）的規則。",ru2:"抵達後請簽署一份簡短的同意書，內容包含受傷風險與拍攝。",ru3:"飲酒後或有未痊癒的傷，無法上課。若教練當天基於安全考量婉拒，將全額退款。",ru4:"若擔心心臟或血壓，請在預約前先諮詢醫師。",ru5:"請投保涵蓋運動傷害的旅遊保險。",histT:"日本悠久的足關節技傳統",histLead:"足關節技並非日本發明，擒拿式摔角（Catch Wrestling）與桑搏也各自發展出自己的技術。但日本鑽研它的時間非常長。",h1:"講道館柔道創立。纏腿技「足緘」（Ashi-garami）是其關節技之一。",h2y:"之後",h2:"柔道將它排除在比賽之外。足緘至今仍是四個禁止技之一。",h3:"修斗與Pancrase從Shoot摔角中誕生，足關節技正是其主要武器。",h4y:"2000年代～",h4:"人稱「足關十段」的今成正和等選手，把足關節技帶進MMA。",histRei:"無論穿不穿道服，禮儀都一樣。每堂課都從行禮（Rei）開始。",histNote:"FLATUP GYM與今成正和選手及今成柔術沒有任何關係。",bk1:"送出申請",bk1d:"選擇課程與日期，送出下方訊息。",bk2:"教練確認",bk2d:"由真人確認日期與你的經驗後回覆。",bk3:"線上預先付款",bk3d:"我們會傳送付款連結。付款完成後，預約才算成立。",bk4:"來上課",bk4d:"60與90分鐘課程，我們到成田站接你。",cancelNote:"上課3天前取消可全額退款。航班延誤？出示航空公司通知即可全額退款。",lInj:"傷病或健康狀況（選填）",lInjS:"傷病",injPh:"例如：左膝",injNote:"僅用於安排安全的課程，課後即刪除。",sendIg:"用Instagram私訊傳送",igCopied:"訊息已複製，請貼到私訊中。",qC:"需要取消怎麼辦？",aC:"上課3天前取消，全額退款。2天前至當天因個人因素取消，恕不退款。若由我們取消、教練當天基於安全考量婉拒，或航班延誤（請出示航空公司通知），皆全額退款。",qI:"這是今成選手的道館嗎？",aI:"不是。我們是成田的FLATUP GYM，與今成正和選手及今成柔術沒有任何關係。",fine:"費用不含機票、住宿與行程。我們不代訂、也不販售旅遊產品。",
 msgTitle:"JAPAN MMA JIU-JITSU 預約"},
 "zh-Hans":{kicker:"MMA柔术体验・日本成田",
 lead:"足关节技、足跟勾、三角绞、十字固。为MMA而生的无道服（No-Gi）柔术，在日本学，离成田机场很近。无对打，欢迎新手。",
@@ -761,7 +775,7 @@ footer:"运营：FLATUP GYM（成田）。世界最温柔的格斗技道馆。",
 priceIs:"2至6人同行，每人：30分钟 {a}、60分钟 {b}、90分钟 {c}。1人参加：{sa}、{sb}、{sc}。费用在线上预先支付。",
 priceRange:"/ 每人・30、60或90分钟",coursesT:"三种课程",coursesLead:"按你的行程选择时间。价格为每人费用（2至6人同行）。",c30n:"体验课",c60n:"足关节技",c90n:"完整课程",c30d:"一个招式：足关节技的入门动作。",c60d:"足关节技与足跟勾。",c90d:"足关节技、三角绞与十字固。",incPickup:"免费接送",incNoPickup:"无接送",incVideo:"附纪念视频",incNoVideo:"无视频",best:"最划算",soloLbl:"1人参加：{s}",choose:"选择",perP:"每人",lCourse:"课程",minU:"分钟",busNote:"乘公交：从成田站乘坐开往AEON Mall（永旺梦乐城）的公交车，在AEON站下车，步行约5分钟。",
 galleryT:"来自海外的客人，在我们的垫上",
-rulesT:"上垫之前",ru1:"开始前，我们会先用英语说明拍击认输（Tap）的规则。",ru2:"到达后请签署一份简短的同意书，内容包括受伤风险与拍摄。",ru3:"饮酒后或有未痊愈的伤，无法上课。若教练当天出于安全考虑婉拒，将全额退款。",ru4:"如果担心心脏或血压，请在预约前先咨询医生。",ru5:"请购买涵盖运动伤害的旅游保险。",histT:"日本悠久的足关节技传统",histLead:"足关节技并非日本发明，擒拿式摔跤（Catch Wrestling）与桑搏也各自发展出自己的技术。但日本钻研它的时间非常长。",h1:"讲道馆柔道创立。缠腿技“足缄”（Ashi-garami）是其关节技之一。",h2y:"之后",h2:"柔道将它排除在比赛之外。足缄至今仍是四个禁止技之一。",h3:"修斗与Pancrase从Shoot摔跤中诞生，足关节技正是其主要武器。",h4y:"2000年代～",h4:"人称“足关十段”的今成正和等选手，把足关节技带进MMA。",histNote:"FLATUP GYM与今成正和选手及今成柔术没有任何关系。",bk1:"发送申请",bk1d:"选择课程与日期，发送下方消息。",bk2:"教练确认",bk2d:"由真人确认日期与你的经验后回复。",bk3:"线上预先付款",bk3d:"我们会发送付款链接。付款完成后，预约才算成立。",bk4:"来上课",bk4d:"60与90分钟课程，我们到成田站接你。",cancelNote:"上课3天前取消可全额退款。航班延误？出示航空公司通知即可全额退款。",lInj:"伤病或健康状况（选填）",lInjS:"伤病",injPh:"例如：左膝",injNote:"仅用于安排安全的课程，课后即删除。",sendIg:"用Instagram私信发送",igCopied:"消息已复制，请粘贴到私信中。",qC:"需要取消怎么办？",aC:"上课3天前取消，全额退款。2天前至当天因个人原因取消，恕不退款。若由我们取消、教练当天出于安全考虑婉拒，或航班延误（请出示航空公司通知），均全额退款。",qI:"这是今成选手的道馆吗？",aI:"不是。我们是成田的FLATUP GYM，与今成正和选手及今成柔术没有任何关系。",fine:"费用不含机票、住宿与行程。我们不代订、也不销售旅游产品。",
+rulesT:"上垫之前",ru1:"开始前，我们会先用英语说明拍击认输（Tap）的规则。",ru2:"到达后请签署一份简短的同意书，内容包括受伤风险与拍摄。",ru3:"饮酒后或有未痊愈的伤，无法上课。若教练当天出于安全考虑婉拒，将全额退款。",ru4:"如果担心心脏或血压，请在预约前先咨询医生。",ru5:"请购买涵盖运动伤害的旅游保险。",histT:"日本悠久的足关节技传统",histLead:"足关节技并非日本发明，擒拿式摔跤（Catch Wrestling）与桑搏也各自发展出自己的技术。但日本钻研它的时间非常长。",h1:"讲道馆柔道创立。缠腿技“足缄”（Ashi-garami）是其关节技之一。",h2y:"之后",h2:"柔道将它排除在比赛之外。足缄至今仍是四个禁止技之一。",h3:"修斗与Pancrase从Shoot摔跤中诞生，足关节技正是其主要武器。",h4y:"2000年代～",h4:"人称“足关十段”的今成正和等选手，把足关节技带进MMA。",histRei:"无论穿不穿道服，礼仪都一样。每堂课都从行礼（Rei）开始。",histNote:"FLATUP GYM与今成正和选手及今成柔术没有任何关系。",bk1:"发送申请",bk1d:"选择课程与日期，发送下方消息。",bk2:"教练确认",bk2d:"由真人确认日期与你的经验后回复。",bk3:"线上预先付款",bk3d:"我们会发送付款链接。付款完成后，预约才算成立。",bk4:"来上课",bk4d:"60与90分钟课程，我们到成田站接你。",cancelNote:"上课3天前取消可全额退款。航班延误？出示航空公司通知即可全额退款。",lInj:"伤病或健康状况（选填）",lInjS:"伤病",injPh:"例如：左膝",injNote:"仅用于安排安全的课程，课后即删除。",sendIg:"用Instagram私信发送",igCopied:"消息已复制，请粘贴到私信中。",qC:"需要取消怎么办？",aC:"上课3天前取消，全额退款。2天前至当天因个人原因取消，恕不退款。若由我们取消、教练当天出于安全考虑婉拒，或航班延误（请出示航空公司通知），均全额退款。",qI:"这是今成选手的道馆吗？",aI:"不是。我们是成田的FLATUP GYM，与今成正和选手及今成柔术没有任何关系。",fine:"费用不含机票、住宿与行程。我们不代订、也不销售旅游产品。",
 msgTitle:"JAPAN MMA JIU-JITSU 预约"},
 ko:{kicker:"MMA 주짓수 체험 · 일본 나리타",
 lead:"레그락, 힐훅, 트라이앵글 초크, 암바. MMA를 위한 노기(No-Gi) 주짓수를 일본에서 배웁니다. 나리타 공항에서 가깝습니다. 스파링은 없고, 초보자도 환영합니다.",
@@ -797,7 +811,7 @@ footer:"운영: FLATUP GYM (나리타). 세계에서 가장 다정한 격투기 
 priceIs:"2~6인 그룹 1인 요금: 30분 {a}, 60분 {b}, 90분 {c}. 1인 참가: {sa}, {sb}, {sc}. 요금은 온라인으로 사전 결제합니다.",
 priceRange:"/ 1인 · 30·60·90분",coursesT:"세 가지 코스",coursesLead:"여행 일정에 맞는 시간을 고르세요. 요금은 2~6인 그룹 기준 1인 요금입니다.",c30n:"맛보기",c60n:"레그락",c90n:"풀 코스",c30d:"기술 하나: 레그락 진입 동작.",c60d:"레그락과 힐훅.",c90d:"레그락, 트라이앵글 초크, 암바.",incPickup:"무료 픽업",incNoPickup:"픽업 없음",incVideo:"기념 영상 포함",incNoVideo:"영상 없음",best:"가장 알뜰",soloLbl:"1인 참가: {s}",choose:"선택",perP:"1인",lCourse:"코스",minU:"분",busNote:"버스: 나리타역에서 이온몰(AEON Mall)행 버스를 타고 이온 정류장에서 내려 도보 약 5분.",
 galleryT:"해외에서 온 손님들과 함께한 수업",
-rulesT:"매트에 오르기 전에",ru1:"가장 먼저 탭 규칙을 영어로 설명합니다.",ru2:"도착하면 간단한 동의서에 서명합니다. 부상 위험과 촬영에 관한 내용입니다.",ru3:"술을 마셨거나 낫지 않은 부상이 있으면 수업을 받을 수 없습니다. 당일 코치가 안전상 참가를 거절한 경우에는 전액 환불합니다.",ru4:"심장이나 혈압이 걱정된다면 예약 전에 의사와 상담해 주세요.",ru5:"스포츠 부상을 보장하는 여행자 보험에 가입해 주세요.",histT:"일본의 오랜 레그락 전통",histLead:"레그락은 일본이 발명한 것이 아닙니다. 캐치 레슬링과 삼보도 저마다 발전시켰습니다. 다만 일본은 아주 오랫동안 이 기술을 연구해 왔습니다.",h1:"고도칸 유도 창설. 다리 얽기 기술인 아시가라미(足緘)는 그 관절기 중 하나입니다.",h2y:"그 후",h2:"유도는 이 기술을 시합에서 제외합니다. 아시가라미는 지금도 네 가지 금지 기술 중 하나입니다.",h3:"슛 레슬링에서 슈토와 판크라스가 탄생합니다. 슛 레슬링에서 레그락은 주요 무기입니다.",h4y:"2000년대~",h4:"‘아시칸 주단(足関十段, 레그락 10단)’으로 불리는 이마나리 마사카즈 같은 선수들이 레그락을 MMA로 가져갑니다.",histNote:"FLATUP GYM은 이마나리 마사카즈 선수 및 이마나리 주짓수와 관계가 없습니다.",bk1:"신청 보내기",bk1d:"코스와 날짜를 고르고 아래 메시지를 보내 주세요.",bk2:"코치가 확인",bk2d:"담당자가 날짜와 경험을 직접 확인한 뒤 답장합니다.",bk3:"온라인 사전 결제",bk3d:"결제 링크를 보내 드립니다. 결제가 완료되면 예약이 확정됩니다.",bk4:"수업 참가",bk4d:"60분·90분 코스는 나리타역으로 마중 나갑니다.",cancelNote:"수업 3일 전까지 취소하면 전액 환불. 항공편이 지연되면 항공사 안내를 보여 주세요. 전액 환불합니다.",lInj:"부상·건강 관련 사항 (선택)",lInjS:"부상",injPh:"예: 왼쪽 무릎",injNote:"안전한 수업 준비에만 사용하며, 수업 후 삭제합니다.",sendIg:"Instagram DM으로 보내기",igCopied:"메시지를 복사했습니다. DM에 붙여 넣어 주세요.",qC:"취소해야 하면 어떻게 하나요?",aC:"수업 3일 전까지 취소하면 전액 환불됩니다. 2일 전부터 당일까지 개인 사정으로 취소하면 환불되지 않습니다. 저희 사정으로 취소하는 경우, 당일 코치가 안전상 참가를 거절한 경우, 항공편이 지연된 경우(항공사 안내를 보여 주세요)에는 전액 환불합니다.",qI:"이마나리 선수의 체육관인가요?",aI:"아닙니다. 저희는 나리타의 FLATUP GYM이며, 이마나리 마사카즈 선수 및 이마나리 주짓수와 관계가 없습니다.",fine:"항공권, 숙박, 투어는 포함되지 않습니다. 여행 상품을 예약하거나 판매하지 않습니다.",
+rulesT:"매트에 오르기 전에",ru1:"가장 먼저 탭 규칙을 영어로 설명합니다.",ru2:"도착하면 간단한 동의서에 서명합니다. 부상 위험과 촬영에 관한 내용입니다.",ru3:"술을 마셨거나 낫지 않은 부상이 있으면 수업을 받을 수 없습니다. 당일 코치가 안전상 참가를 거절한 경우에는 전액 환불합니다.",ru4:"심장이나 혈압이 걱정된다면 예약 전에 의사와 상담해 주세요.",ru5:"스포츠 부상을 보장하는 여행자 보험에 가입해 주세요.",histT:"일본의 오랜 레그락 전통",histLead:"레그락은 일본이 발명한 것이 아닙니다. 캐치 레슬링과 삼보도 저마다 발전시켰습니다. 다만 일본은 아주 오랫동안 이 기술을 연구해 왔습니다.",h1:"고도칸 유도 창설. 다리 얽기 기술인 아시가라미(足緘)는 그 관절기 중 하나입니다.",h2y:"그 후",h2:"유도는 이 기술을 시합에서 제외합니다. 아시가라미는 지금도 네 가지 금지 기술 중 하나입니다.",h3:"슛 레슬링에서 슈토와 판크라스가 탄생합니다. 슛 레슬링에서 레그락은 주요 무기입니다.",h4y:"2000년대~",h4:"‘아시칸 주단(足関十段, 레그락 10단)’으로 불리는 이마나리 마사카즈 같은 선수들이 레그락을 MMA로 가져갑니다.",histRei:"도복을 입든 안 입든 예절은 같습니다. 모든 수업은 인사(레이)로 시작합니다.",histNote:"FLATUP GYM은 이마나리 마사카즈 선수 및 이마나리 주짓수와 관계가 없습니다.",bk1:"신청 보내기",bk1d:"코스와 날짜를 고르고 아래 메시지를 보내 주세요.",bk2:"코치가 확인",bk2d:"담당자가 날짜와 경험을 직접 확인한 뒤 답장합니다.",bk3:"온라인 사전 결제",bk3d:"결제 링크를 보내 드립니다. 결제가 완료되면 예약이 확정됩니다.",bk4:"수업 참가",bk4d:"60분·90분 코스는 나리타역으로 마중 나갑니다.",cancelNote:"수업 3일 전까지 취소하면 전액 환불. 항공편이 지연되면 항공사 안내를 보여 주세요. 전액 환불합니다.",lInj:"부상·건강 관련 사항 (선택)",lInjS:"부상",injPh:"예: 왼쪽 무릎",injNote:"안전한 수업 준비에만 사용하며, 수업 후 삭제합니다.",sendIg:"Instagram DM으로 보내기",igCopied:"메시지를 복사했습니다. DM에 붙여 넣어 주세요.",qC:"취소해야 하면 어떻게 하나요?",aC:"수업 3일 전까지 취소하면 전액 환불됩니다. 2일 전부터 당일까지 개인 사정으로 취소하면 환불되지 않습니다. 저희 사정으로 취소하는 경우, 당일 코치가 안전상 참가를 거절한 경우, 항공편이 지연된 경우(항공사 안내를 보여 주세요)에는 전액 환불합니다.",qI:"이마나리 선수의 체육관인가요?",aI:"아닙니다. 저희는 나리타의 FLATUP GYM이며, 이마나리 마사카즈 선수 및 이마나리 주짓수와 관계가 없습니다.",fine:"항공권, 숙박, 투어는 포함되지 않습니다. 여행 상품을 예약하거나 판매하지 않습니다.",
 msgTitle:"JAPAN MMA JIU-JITSU 예약 문의"}
 };
 /* 画面の日本語版は廃止（旅行者向けサイトのため）。JINが読めるよう、予約メッセージだけは「選んだ言語＋日本語」の併記 */
@@ -903,6 +917,9 @@ function photos(){
     img.onload=()=>{ if(box.closest(".jcard")) box.classList.add("has-photo"); else box.querySelector("svg,span")?.remove(); box.appendChild(img); };
     img.src=src;
   });
+  const dj=$("#dojoPhotos");
+  (P.dojo||[]).forEach(src=>{ const f=document.createElement("figure"); const img=new Image();
+    img.alt=A[src]||""; img.loading="lazy"; img.onload=()=>{ if(img.naturalHeight>img.naturalWidth) f.classList.add("tall"); }; img.onerror=()=>f.remove(); img.src=src; f.appendChild(img); dj.appendChild(f); });
   const g=$("#gallery"); $("#galleryCap").hidden = !(P.gallery||[]).length;
   (P.gallery||[]).forEach(src=>{ const f=document.createElement("figure"); const img=new Image();
     img.alt=A[src]||""; img.loading="lazy"; img.onerror=()=>{ f.remove(); if(!g.children.length) $("#galleryCap").hidden=true; }; img.src=src; f.appendChild(img); g.appendChild(f); });
