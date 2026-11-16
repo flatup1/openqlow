@@ -1,0 +1,798 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>キックボクシングナビ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: 口コミ型ジム検索ポータル。トップ＝ヒーロー→はじめの一歩→地図＋評価ランキング→検索結果→お礼のしくみ→新着口コミ。
+   ジム詳細＝タブ（トップ/口コミ/料金/予約/口コミを書く）、マイページ＝ポイント・予約・チケット。色＝リングの赤と紺 */
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --ink:#16181d; --muted:#5d616a; --line:#dfe0e3;
+  --accent:#c8202f; --accent-ink:#ffffff; --navy:#1d2f4f; --navy-ink:#ffffff; --gold:#8f6400;
+  --tile:#e9ebef; --tile-ink:#4a4f59; --heat1:#f4c9cc; --heat1-ink:#16181d; --heat2:#e57c84; --heat2-ink:#16181d; --heat3:#c8202f; --heat3-ink:#ffffff; --soft:#f1f2f5;
+  --dis-bg:#e3e4e8; --dis-ink:#5a5e68; --wait-bg:#fbeccb; --wait-ink:#5f4200;
+  --display:"Zen Kaku Gothic New","Hiragino Sans",system-ui,sans-serif;
+  --body:"Noto Sans JP","Hiragino Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121418; --surface:#1b1e24; --ink:#eceef2; --muted:#a7acb7; --line:#2e323b;
+  --accent:#ff5a66; --accent-ink:#16181d; --navy:#8fb0e8; --navy-ink:#121418; --gold:#f0c14b;
+  --tile:#252931; --tile-ink:#b3b9c4; --heat1:#5a2a30; --heat1-ink:#eceef2; --heat2:#9e3a44; --heat2-ink:#ffffff; --heat3:#ff5a66; --heat3-ink:#16181d; --soft:#22262d;
+  --dis-bg:#2a2e36; --dis-ink:#a0a6b1; --wait-bg:#3b3115; --wait-ink:#f0c14b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121418; --surface:#1b1e24; --ink:#eceef2; --muted:#a7acb7; --line:#2e323b;
+  --accent:#ff5a66; --accent-ink:#16181d; --navy:#8fb0e8; --navy-ink:#121418; --gold:#f0c14b;
+  --tile:#252931; --tile-ink:#b3b9c4; --heat1:#5a2a30; --heat1-ink:#eceef2; --heat2:#9e3a44; --heat2-ink:#ffffff; --heat3:#ff5a66; --heat3-ink:#16181d; --soft:#22262d;
+  --dis-bg:#2a2e36; --dis-ink:#a0a6b1; --wait-bg:#3b3115; --wait-ink:#f0c14b; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.7;overflow-wrap:anywhere}
+a{color:var(--accent)}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:absolute;left:8px;top:-60px;z-index:20;background:var(--navy);color:var(--navy-ink);padding:8px 14px;font-weight:700}
+.skip:focus{top:8px}
+header.top{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+header.top .wrap{display:flex;align-items:center;gap:10px 14px;padding-block:10px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:900;font-size:18px;color:var(--ink);text-decoration:none;min-width:0}
+.logo b{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:15px;flex:none}
+.logo small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--muted);font-weight:500;text-align:left}
+.search{flex:1;min-width:200px;display:flex;gap:6px}
+.search input{min-width:0}
+.me{margin-left:auto;display:flex;gap:8px;align-items:center}
+.pt{font-family:var(--mono);font-size:12px;background:var(--soft);padding:4px 10px;border-radius:999px;color:var(--ink);text-decoration:none;white-space:nowrap}
+.me a[aria-current=page]{border-color:var(--accent)}
+@media (max-width:640px){header.top{position:static}.search{order:3;flex-basis:100%}.logo{font-size:16px}}
+.sample{background:var(--navy);color:var(--navy-ink);font-size:12px;padding:5px 16px;text-align:center}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--accent);text-transform:uppercase}
+.eyebrow .ja{font-family:var(--body);letter-spacing:.04em;text-transform:none}
+h1{font-family:var(--display);font-weight:900;font-size:clamp(22px,4vw,32px);line-height:1.3;margin:4px 0 8px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:700;font-size:19px;margin:0 0 12px;text-wrap:balance}
+h3,.h3{font-size:15px;margin:0 0 8px;font-family:var(--body);font-weight:700}
+h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus,main[tabindex="-1"]:focus{outline:none}
+#tabpanel:focus:not(:focus-visible){outline:none}
+p{margin:0}
+.muted{color:var(--muted)}.small{font-size:12px}.minw0{min-width:0}
+input[type=text],input[type=search],input[type=date],select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:2px;width:100%}
+input[type=search]{-webkit-appearance:none;appearance:none}
+textarea{min-height:110px;resize:vertical}
+input[type=file]{font:inherit;font-size:12.5px;font-weight:400;max-width:100%;color:var(--ink)}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+legend{font-size:12.5px;font-weight:700;padding:0;margin-bottom:4px}
+.btn{display:inline-block;background:var(--accent);color:var(--accent-ink);border:1px solid transparent;padding:9px 16px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;border-radius:2px;white-space:nowrap;text-decoration:none;text-align:center}
+.btn.navy{background:var(--navy);color:var(--navy-ink)}
+.btn.ghost{background:none;color:var(--ink);border-color:var(--line)}
+.btn.light{background:var(--surface);color:var(--ink)}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn:disabled{background:var(--dis-bg);color:var(--dis-ink);border-color:var(--dis-bg);cursor:not-allowed}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sec{padding-block:26px;border-bottom:1px solid var(--line)}
+.grid2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);padding:16px;min-width:0}
+.lead{max-width:62ch;color:var(--muted)}
+.ctas{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+/* はじめの一歩 */
+.fears{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:10px;margin-top:14px}
+.fear{background:var(--surface);border:1px solid var(--line);padding:14px;display:grid;gap:6px;align-content:start}
+.fear h3{font-family:var(--display);font-size:15px;margin:0}
+.fear p{font-size:12.5px;color:var(--muted)}
+.qf{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+/* 地図 */
+.mapbox{position:relative;overflow-x:auto;overscroll-behavior-x:contain;padding:3px}
+.jmap{display:grid;grid-template-columns:repeat(13,minmax(30px,1fr));gap:3px;min-width:430px}
+.pref{aspect-ratio:1;border:0;border-radius:3px;background:var(--tile);color:var(--tile-ink);font:inherit;font-size:10.5px;cursor:pointer;display:grid;place-items:center;line-height:1.1;padding:0;max-width:100%}
+.pref em{font-style:normal;font-family:var(--mono);font-size:10px;display:block}
+.pref.h1{background:var(--heat1);color:var(--heat1-ink)}.pref.h2{background:var(--heat2);color:var(--heat2-ink);font-weight:700}.pref.h3{background:var(--heat3);color:var(--heat3-ink);font-weight:700}
+.pref.sel{outline:2px solid var(--navy);outline-offset:1px}
+.maphint{display:none;margin-bottom:6px}
+@media (max-width:560px){.maphint{display:block}}
+.legend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:4px;border:1px solid var(--line)}
+/* 点数 */
+.score{display:inline-flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.stars{color:var(--gold);letter-spacing:1px;font-size:13px}
+.num{font-family:var(--mono);font-weight:500;color:var(--accent);font-size:17px;font-variant-numeric:tabular-nums}
+.num.big{font-size:34px}
+.cnt{font-size:12px;color:var(--muted)}
+/* ランキング・カード */
+.rank ol{margin:0;padding:0;list-style:none}
+.rank li{border-bottom:1px solid var(--line)}
+.rank a{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 4px;color:inherit;text-decoration:none}
+.rank a:hover .nm{color:var(--accent);text-decoration:underline}
+.rank .no{font-family:var(--display);font-weight:900;font-size:20px;text-align:center;color:var(--muted)}
+.rank .top3 .no{color:var(--gold)}
+.rank .nm{font-weight:700;font-size:14px;display:block}
+.rank .rs{text-align:right;line-height:1.3}
+.rank .rs .cnt{display:block}
+.rnote{margin-top:10px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.filters h2{margin:0 8px 0 0}
+.fgroups{display:grid;gap:8px;margin-bottom:16px}
+.fg{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.fl{font-size:11.5px;color:var(--muted);min-width:7.5em;font-weight:700}
+.sortrow select{width:auto}
+@media (max-width:640px){.fg:not(.sortrow){flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}.fg .tag{flex:none}.fl{min-width:auto;flex:none}}
+.tag{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+.tag[aria-pressed=true]{background:var(--navy);color:var(--navy-ink);border-color:var(--navy)}
+.tag.clear{border-color:var(--accent);color:var(--accent);font-weight:700}
+.tag.go::after{content:" →"}
+.list{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,470px),1fr))}
+.list .empty{grid-column:1/-1}
+.gcard{background:var(--surface);border:1px solid var(--line);padding:16px;display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;color:inherit;text-decoration:none}
+.gcard:hover{border-color:var(--accent)}
+.gcard:hover h3{color:var(--accent)}
+@media (max-width:420px){.gcard{grid-template-columns:52px minmax(0,1fr);gap:10px;padding:12px}.thumb{font-size:18px}}
+.thumb{aspect-ratio:1;background:var(--soft);display:grid;place-items:center;font-family:var(--display);font-weight:900;color:var(--muted);font-size:22px;border-radius:2px;max-width:100%}
+.gcard h3{margin:0;font-family:var(--display);font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chip{font-size:11px;padding:0 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+.chip.on{border-color:var(--accent);color:var(--accent)}
+.chip.decl{border-style:dashed}
+.quote{display:block;font-size:12.5px;color:var(--muted);margin-top:6px;border-left:2px solid var(--line);padding-left:8px}
+.quote b{color:var(--ink);font-weight:700}
+/* 口コミ */
+.rv{padding-block:14px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+.rv.pend{background:var(--soft);padding-inline:12px;border:1px dashed var(--line)}
+.who{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px}
+.av{width:28px;height:28px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:12px;font-weight:700}
+.badge{font-size:10.5px;padding:0 7px;border-radius:999px;background:var(--soft);color:var(--ink);border:1px solid var(--line);white-space:nowrap}
+.badge.v{background:var(--navy);color:var(--navy-ink);border-color:var(--navy)}
+.badge.wait{background:var(--wait-bg);color:var(--wait-ink);border-color:var(--wait-bg);font-weight:700}
+.badge.ok{background:var(--surface);color:var(--ink)}
+.gymlink{color:var(--accent);text-decoration:underline;text-underline-offset:2px;font-weight:700}
+.sub{display:flex;gap:4px 12px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);font-family:var(--mono);align-items:center}
+.sub .ic{width:14px;height:14px;vertical-align:-2px}
+.helpful{background:none;border:1px solid var(--line);color:var(--muted);font:inherit;font-size:11.5px;padding:2px 10px;border-radius:999px;cursor:pointer;justify-self:start}
+.helpful[aria-pressed=true]{border-color:var(--navy);color:var(--ink);font-weight:700}
+.ptnote{font-size:12px;color:var(--muted);background:var(--soft);padding:6px 10px;border-radius:2px;margin-bottom:8px}
+.rvtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12.5px}
+.rvtools select{width:auto}
+/* 詳細 */
+.crumb{font-size:12px;color:var(--muted);padding-block:12px}
+.crumb a{color:var(--accent)}
+.dhead{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end}
+.dcta{display:flex;gap:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-block:18px 20px;overflow-x:auto}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font:inherit;font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected=true]{color:var(--accent);border-color:var(--accent);font-weight:700}
+@media (max-width:640px){.tabs{flex-wrap:wrap;overflow-x:visible;border-bottom:0;gap:6px}.tabs button{border:1px solid var(--line);border-radius:999px;padding:6px 12px;color:var(--ink)}.tabs button[aria-selected=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}}
+.from{font-size:11px;font-weight:400;color:var(--muted);border:1px dashed var(--line);border-radius:999px;padding:0 8px;margin-left:6px;white-space:nowrap}
+.dsec{margin-bottom:18px}
+.bars{display:grid;gap:6px;font-size:12.5px}
+.bar{display:grid;grid-template-columns:80px minmax(0,1fr) 34px;gap:8px;align-items:center}
+.bar span:nth-child(2){height:6px;background:var(--soft);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar b{font-family:var(--mono);font-weight:500;font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-weight:500;color:var(--muted)}
+.kv th{width:110px}
+@media (max-width:420px){.kv th{width:84px}}
+.ledger td:first-child,.ledger td:nth-child(3),.ledger td:last-child{white-space:nowrap}
+@media (max-width:480px){.ledger th,.ledger td{padding:8px 6px}}
+td{font-variant-numeric:tabular-nums}
+.tw{overflow-x:auto}
+.days{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 4px}
+.day,.slot{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;border-radius:2px}
+.day{min-width:58px;padding:6px 4px;text-align:center;font-size:12px;line-height:1.3;flex:none}
+.day b{display:block;font-size:16px;font-family:var(--mono);font-weight:500}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:8px;margin-top:12px}
+.slot{padding:10px;text-align:left;font-size:12.5px}
+.slot b{font-family:var(--mono);font-weight:500;font-size:14px;display:block}
+.slot:disabled,.day:disabled{background:var(--dis-bg);color:var(--dis-ink);border-style:dashed;cursor:not-allowed}
+.day[aria-pressed=true],.slot[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.steps{display:flex;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:14px;padding:0;list-style:none}
+.steps li{padding:3px 10px;border-radius:999px;background:var(--soft);color:var(--muted)}
+.steps li.on{background:var(--navy);color:var(--navy-ink)}
+.bh{font-size:15px;margin-bottom:8px}
+.calm{display:grid;gap:4px;margin:12px 0;padding:10px 12px;border-left:3px solid var(--navy);background:var(--soft);font-size:12.5px;list-style:none}
+.form{display:grid;gap:14px}
+.form>.btn{justify-self:start;min-width:220px}
+@media (max-width:480px){.form>.btn{justify-self:stretch}}
+.form label.f{display:grid;gap:4px;font-size:12.5px;font-weight:700}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;font-weight:400}
+.check input{margin-top:5px;flex:none}
+.checks{display:flex;flex-wrap:wrap;gap:4px 14px}
+.checks label{display:flex;gap:6px;align-items:center;font-size:12.5px}
+.rate{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.starpick{display:flex;gap:2px}
+.starpick button{background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;padding:0 2px;line-height:1}
+.starpick button.on{color:var(--gold);opacity:1}
+.reward{background:var(--soft);padding:14px;font-size:12.5px;display:grid;gap:4px;align-content:start}
+.reward b{color:var(--accent)}
+.story{border-left:3px solid var(--accent);padding:4px 0 4px 14px;margin-bottom:18px}
+.story p{line-height:2}
+/* マイページ */
+.ptbox{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-block:8px 12px}
+.ptbox div{background:var(--surface);border:1px solid var(--line);padding:10px 12px;display:grid}
+.ptbox b{font-family:var(--mono);font-weight:500;font-size:20px}
+.ptbox .main b{color:var(--accent);font-size:28px}
+.ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.rk{border:1px solid var(--line);padding:10px;font-size:12px;background:var(--surface)}
+.rk.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.rk b{display:block;font-size:14px}
+.meter{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;margin-block:8px 4px;border:1px solid var(--line)}
+.meter i{display:block;height:100%;background:var(--accent)}
+.earn{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
+.earn div{background:var(--surface);border:1px solid var(--line);padding:12px;display:grid;gap:2px;align-content:start;font-weight:700}
+.earn b{font-family:var(--mono);color:var(--accent);font-size:18px;font-weight:500}
+.earn span{font-size:12px;color:var(--muted);font-weight:400}
+.rewards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px}
+.rw{background:var(--surface);border:1px solid var(--line);padding:14px;display:grid;gap:4px;align-content:start}
+.rw.ok{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.ic{width:28px;height:28px;color:var(--accent);flex:none}
+.rwpt{font-family:var(--mono);color:var(--accent);font-size:17px}
+.rwpt small{display:block;font-family:var(--body);font-size:11px;color:var(--muted)}
+.swapq{display:grid;gap:6px;margin-top:4px;font-size:12px}
+.swapq .row{display:flex;gap:6px;flex-wrap:wrap}
+.notice{margin-top:10px;padding:8px 12px;background:var(--wait-bg);color:var(--wait-ink);font-size:12.5px;font-weight:700;border-radius:2px}
+.promo{background:var(--navy);color:var(--navy-ink);padding:18px;display:grid;gap:10px;margin-bottom:18px}
+.promo .eyebrow{color:inherit;opacity:.9}
+.promo-h{font-family:var(--display);font-size:clamp(18px,3vw,24px);font-weight:900;line-height:1.4}
+.flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;margin:0;padding:0;list-style:none}
+.flow li{background:var(--surface);color:var(--ink);padding:3px 10px;border-radius:999px}
+.flow i{font-style:normal}
+.notes{margin:14px 0 0;padding:12px 12px 12px 30px;background:var(--soft);font-size:12.5px;display:grid;gap:2px}
+.demo{border:2px dashed var(--line);padding:16px;background:var(--surface)}
+.demo .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.demo .btns .btn{white-space:normal;text-align:left}
+.impact{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px;margin-block:10px}
+.impact div{border:1px solid var(--line);padding:10px 12px;background:var(--surface);display:grid}
+.impact b{font-family:var(--mono);font-size:24px;font-weight:500;color:var(--accent)}
+.msg{font-family:var(--display);font-weight:700;font-size:15px}
+.blist,.tlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bk,.tk{background:var(--surface);border:1px solid var(--line);padding:12px 14px;display:flex;gap:10px 16px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.bk.off{background:var(--soft);border-style:dashed}
+.bkst{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tk{justify-content:flex-start}
+.doc{max-width:760px}
+.doc ul,.doc ol{padding-left:1.4em;display:grid;gap:6px}
+.doc p{margin-bottom:10px}
+footer{padding-block:24px 40px;font-size:12px;color:var(--muted)}
+footer .wrap{display:grid;gap:10px}
+footer nav{display:flex;gap:6px 16px;flex-wrap:wrap}
+footer b{color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);background:var(--navy);color:var(--navy-ink);padding:10px 16px;font-size:13px;border-radius:2px;z-index:9;width:max-content;max-width:calc(100vw - 32px);opacity:0;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast:empty{padding:0}
+.empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--line);display:grid;gap:10px;justify-items:center}
+@media (prefers-reduced-motion:no-preference){.pref,.gcard{transition:transform .12s,border-color .12s}.pref:hover{transform:scale(1.08)}.toast{transition:opacity .2s,transform .2s}}
+</style>
+
+<a class="skip" href="#main-content" data-skip>本文へスキップ</a>
+<header class="top"><div class="wrap">
+  <a class="logo" href="#home"><b aria-hidden="true">蹴</b><span>キックボクシングナビ<small>KICKBOXING NAVI</small></span></a>
+  <form class="search" id="sform" role="search"><label for="kw" class="sr-only">エリア・駅・ジム名・こだわりで探す</label><input type="search" id="kw" placeholder="エリア・駅・ジム名（例：ちば 初心者）" autocomplete="off" enterkeyhint="search"><button class="btn" type="submit">検索</button></form>
+  <nav class="me" aria-label="マイページ"><a class="pt" href="#me" id="mypt" aria-label="使えるポイント 0pt">0 pt</a><a class="btn ghost sm" href="#me" id="melink">マイページ</a></nav>
+</div></header>
+<div class="sample">試作版：ジム・口コミ・ユーザーはすべて架空のサンプルです。予約や投稿は送信されません</div>
+
+<main class="wrap" id="app" tabindex="-1"></main>
+<footer><div class="wrap">
+  <p><b>運営：（運営者名）</b>。運営者は千葉県でキックボクシングジム『FLATUP GYM』を経営しています。点数・ランキングは運営者のジムも同じルールで計算します。掲載料や広告で点数・順位は変わりません。</p>
+  <nav aria-label="サイトの決まり"><a href="#about">運営者について</a><a href="#terms">利用規約（準備中）</a><a href="#privacy">プライバシーポリシー（準備中）</a><a href="#guidelines">口コミガイドライン</a><a href="#removal">削除依頼（準備中）</a></nav>
+  <p>キックボクシングナビ（試作）｜料金や受付状況は変わることがあります。訪問前に各ジムへご確認ください。</p>
+</div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script>
+/* ===== データ ===== */
+const PREFS=[["北海道",0,12],["青森",2,12],["秋田",3,11],["岩手",3,12],["新潟",4,10],["山形",4,11],["宮城",4,12],["福井",5,6],["石川",5,7],["富山",5,8],["長野",5,9],["群馬",5,10],["栃木",5,11],["福島",5,12],["島根",6,2],["鳥取",6,3],["兵庫",6,4],["京都",6,5],["滋賀",6,6],["岐阜",6,7],["山梨",6,8],["埼玉",6,9],["茨城",6,10],["山口",7,1],["広島",7,2],["岡山",7,3],["大阪",7,4],["奈良",7,5],["愛知",7,6],["静岡",7,7],["神奈川",7,8],["東京",7,9],["千葉",7,10],["佐賀",8,0],["福岡",8,1],["愛媛",8,3],["香川",8,4],["和歌山",8,5],["三重",8,6],["長崎",9,0],["熊本",9,1],["大分",9,2],["高知",9,3],["徳島",9,4],["鹿児島",10,1],["宮崎",10,2],["沖縄",11,0]];
+// 都道府県の読み（ひらがな・ローマ字）
+const PREF_Y={北海道:["ほっかいどう","hokkaido"],青森:["あおもり","aomori"],秋田:["あきた","akita"],岩手:["いわて","iwate"],新潟:["にいがた","niigata"],山形:["やまがた","yamagata"],宮城:["みやぎ","miyagi"],福井:["ふくい","fukui"],石川:["いしかわ","ishikawa"],富山:["とやま","toyama"],長野:["ながの","nagano"],群馬:["ぐんま","gunma"],栃木:["とちぎ","tochigi"],福島:["ふくしま","fukushima"],島根:["しまね","shimane"],鳥取:["とっとり","tottori"],兵庫:["ひょうご","hyogo"],京都:["きょうと","kyoto"],滋賀:["しが","shiga"],岐阜:["ぎふ","gifu"],山梨:["やまなし","yamanashi"],埼玉:["さいたま","saitama"],茨城:["いばらき","ibaraki"],山口:["やまぐち","yamaguchi"],広島:["ひろしま","hiroshima"],岡山:["おかやま","okayama"],大阪:["おおさか","osaka"],奈良:["なら","nara"],愛知:["あいち","aichi"],静岡:["しずおか","shizuoka"],神奈川:["かながわ","kanagawa"],東京:["とうきょう","tokyo"],千葉:["ちば","chiba"],佐賀:["さが","saga"],福岡:["ふくおか","fukuoka"],愛媛:["えひめ","ehime"],香川:["かがわ","kagawa"],和歌山:["わかやま","wakayama"],三重:["みえ","mie"],長崎:["ながさき","nagasaki"],熊本:["くまもと","kumamoto"],大分:["おおいた","oita"],高知:["こうち","kochi"],徳島:["とくしま","tokushima"],鹿児島:["かごしま","kagoshima"],宮崎:["みやざき","miyazaki"],沖縄:["おきなわ","okinawa"]};
+const TAGS=["初心者歓迎","子どもクラス","女性クラス","選手コース","回数券あり","駐車場あり"];
+const DECL=["見学だけOK","手ぶらOK","スパーリングなしで始められる","少人数","保護者見学OK"]; // ジムからの申告
+const VOICES=[["初心者","初心者の声","はじめての格闘技"],["運動不足","運動不足から","運動不足だった"],["40代","40代からの声","40代以上で始めた"],["女性","女性の声","女性"],["親","親の声","子どもを通わせている"]];
+const VOICE_LABEL=Object.fromEntries(VOICES.map(v=>[v[0],v[1]]));
+const SYN={"初心者歓迎":"初心者 はじめて 初めて 未経験 ビギナー","子どもクラス":"子ども 子供 こども キッズ 小学生 親子 ジュニア","女性クラス":"女性 レディース 女子","選手コース":"選手 プロ 試合","回数券あり":"回数券 チケット","駐車場あり":"駐車場 車 パーキング","見学だけOK":"見学","手ぶらOK":"手ぶら レンタル 貸し出し","スパーリングなしで始められる":"スパーなし スパーリングなし","少人数":"少人数","保護者見学OK":"保護者 見学","キック":"キックボクシング","K-1ルール":"k1 けーわん","ムエタイ":"タイ式","フィットネス":"ダイエット エクササイズ"};
+const AX=["指導","雰囲気","設備","通いやすさ"];
+const RANKS=[["はじめの一歩",0],["バトンランナー",300],["道しるべ",800],["灯台",2000]];
+const PERKS=["口コミを書ける","バッジの名前が変わる（口コミの並び順は変わりません）","体験料10%オフ（協力ジムと相談中・仮案）","ナビのイベントにご招待（仮案）"];
+const EARN={review:100,photo:50,book:30};
+const MIN_RV=3; // 評価ランキングに載る、確認済み口コミの件数
+const CANCEL_H=2; // キャンセル期限：体験の何時間前まで（試作の仮ルール）
+const ICON={
+ ticket:'<path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z"/><path d="M14.5 7.5v9" stroke-dasharray="1.5 2"/>',
+ wrap:'<circle cx="8.5" cy="11" r="5"/><circle cx="8.5" cy="11" r="1.6"/><path d="M8.5 16H21v-4h-7.6"/>',
+ glove:'<path d="M8 11V7.5A4.5 4.5 0 0 1 12.5 3h1A4.5 4.5 0 0 1 18 7.5V13a5 5 0 0 1-5 5h-1a4 4 0 0 1-4-4z"/><path d="M8 11.5H6.5a2 2 0 0 0 0 4H9"/><path d="M9 18v3h8v-3.5"/>',
+ pair:'<path d="M8 4h12v3a1.6 1.6 0 0 0 0 3.2V13h-2"/><path d="M4 9h12v3a1.6 1.6 0 0 0 0 3.2V18H4v-2.8a1.6 1.6 0 0 0 0-3.2z"/>',
+ mitt:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+ camera:'<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.3"/>'
+};
+const svg=(k,cls="ic")=>`<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICON[k]}</svg>`;
+// ポイントで交換できるもの（試作の仮案）
+const REWARDS=[
+ {p:300,n:"体験1回 無料チケット",d:"協力ジムで使えます（使えるジムの一覧は準備中）",ic:"ticket"},
+ {p:500,n:"ナビ限定バンテージ",d:"はじめての人がよく最初にそろえる道具です",ic:"wrap"},
+ {p:1000,n:"ナビ限定グローブ",d:"練習用グローブ（サイズは仮案）",ic:"glove"},
+ {p:1500,n:"大会観戦ペアチケット",d:"対象の大会は交換のときにご案内します",ic:"pair"},
+ {p:3000,n:"プロ選手のミット打ち体験",d:"協力ジムで実施。日程はご相談のうえ決めます",ic:"mitt"}];
+
+// 架空のサンプルデータ（y＝検索用の読み、decl＝ジムからの申告、todo＝体験でやること、bring＝持ち物）
+const GYMS=[
+ {id:"g1",n:"サンプル蹴拳ジム 千葉中央",p:"千葉",c:"千葉市中央区",st:"千葉駅 徒歩6分",y:"しゅうけん ちばちゅうおう ちばし ちゅうおうく ちばえき",t:["初心者歓迎","子どもクラス","回数券あり"],decl:["見学だけOK","手ぶらOK","スパーリングなしで始められる","保護者見学OK"],s:["キック","フィットネス"],f:0,m:9800,tt:{"平日":["10:00 一般","17:00 キッズ","19:30 初心者"],"土日":["10:00 キッズ","13:00 一般"]},todo:"準備運動 → 構え → パンチ・キックの基本 → ミット打ち（約60分）。相手と打ち合う練習はしません。",bring:"動きやすい服・飲み物・タオル（グローブは無料で貸し出し）"},
+ {id:"g2",n:"サンプル房総キックスタジオ",p:"千葉",c:"船橋市",st:"船橋駅 徒歩4分",y:"ぼうそう ふなばし ふなばしえき",t:["初心者歓迎","女性クラス","駐車場あり"],decl:["少人数","手ぶらOK","スパーリングなしで始められる"],s:["キック"],f:1000,m:8800,tt:{"平日":["11:00 女性","20:00 一般"],"土日":["11:00 一般"]},todo:"ストレッチ → 基本の打ち方 → サンドバッグ（約50分）。",bring:"動きやすい服・飲み物（グローブ・バンテージの貸し出しあり）"},
+ {id:"g3",n:"サンプル湾岸ムエタイクラブ",p:"千葉",c:"浦安市",st:"新浦安駅 徒歩8分",y:"わんがん うらやす しんうらやす",t:["選手コース"],decl:["見学だけOK"],s:["ムエタイ"],f:2000,m:12000,tt:{"平日":["19:00 選手","21:00 一般"],"土日":["14:00 スパー"]},todo:"ムエタイの基本 → ミット → 首相撲の体験（約90分）。",bring:"動きやすい服・飲み物・タオル（グローブの貸し出しは1組まで）"},
+ {id:"g4",n:"サンプル新宿ストライク",p:"東京",c:"新宿区",st:"新宿三丁目駅 徒歩3分",y:"しんじゅく しんじゅくく しんじゅくさんちょうめ",t:["初心者歓迎","女性クラス","回数券あり"],decl:["手ぶらOK","スパーリングなしで始められる","見学だけOK"],s:["キック","K-1ルール"],f:1000,m:13200,tt:{"平日":["7:00 朝活","12:00 一般","20:00 初心者"],"土日":["12:00 一般"]},todo:"準備運動 → 基本の打ち方 → ミット打ち（約60分）。",bring:"手ぶらでOK（ウェア・グローブ・タオルの貸し出しあり）"},
+ {id:"g5",n:"サンプル下町キッズキック",p:"東京",c:"江東区",st:"門前仲町駅 徒歩5分",y:"したまち こうとうく もんぜんなかちょう もんなか",t:["子どもクラス","初心者歓迎"],decl:["保護者見学OK","少人数","スパーリングなしで始められる"],s:["キック"],f:0,m:7700,tt:{"平日":["16:30 幼児","17:30 小学生"],"土日":["10:00 親子"]},todo:"あいさつ → 体をつかう遊び → パンチ・キックの基本（約45分）。",bring:"動きやすい服・飲み物（グローブの貸し出しあり）"},
+ {id:"g6",n:"サンプル横浜ベイファイト",p:"神奈川",c:"横浜市中区",st:"関内駅 徒歩7分",y:"よこはま なかく かんない",t:["選手コース","回数券あり"],decl:["見学だけOK"],s:["K-1ルール"],f:3000,m:11000,tt:{"平日":["19:00 選手","21:00 一般"],"土日":["15:00 一般"]},todo:"基本の打ち方 → ミット → 軽いマスボクシング（約70分）。",bring:"動きやすい服・飲み物・タオル・グローブ（貸し出しは有料）"},
+ {id:"g7",n:"サンプル杜の都キック",p:"宮城",c:"仙台市青葉区",st:"仙台駅 徒歩10分",y:"もりのみやこ せんだい あおばく",t:["初心者歓迎","駐車場あり"],decl:["手ぶらOK"],s:["キック","フィットネス"],f:500,m:8000,tt:{"平日":["19:00 一般"],"土日":["10:00 一般"]},todo:"ストレッチ → 基本の打ち方 → サンドバッグ（約50分）。",bring:"手ぶらでOK（ウェアの貸し出しあり）"},
+ {id:"g8",n:"サンプル札幌ノースジム",p:"北海道",c:"札幌市中央区",st:"すすきの駅 徒歩5分",y:"さっぽろ ちゅうおうく すすきの",t:["初心者歓迎","子どもクラス"],decl:["保護者見学OK","見学だけOK"],s:["キック"],f:0,m:8500,tt:{"平日":["17:00 キッズ","19:30 一般"],"土日":["13:00 一般"]},todo:"準備運動 → 基本 → ミット打ち（約60分）。",bring:"動きやすい服・飲み物・タオル"},
+ {id:"g9",n:"サンプル名古屋ムエジム",p:"愛知",c:"名古屋市中区",st:"栄駅 徒歩4分",y:"なごや なかく さかえ",t:["選手コース","女性クラス"],decl:["少人数"],s:["ムエタイ"],f:1500,m:10500,tt:{"平日":["10:30 女性","20:00 選手"],"土日":["16:00 一般"]},todo:"ムエタイの基本 → ミット（約60分）。",bring:"動きやすい服・飲み物・タオル（グローブの貸し出しあり）"},
+ {id:"g10",n:"サンプル難波ファイトクラブ",p:"大阪",c:"大阪市浪速区",st:"なんば駅 徒歩6分",y:"なんば おおさかし なにわく",t:["初心者歓迎","回数券あり"],decl:["手ぶらOK","スパーリングなしで始められる"],s:["キック","K-1ルール"],f:1000,m:9900,tt:{"平日":["12:00 一般","20:30 初心者"],"土日":["11:00 一般"]},todo:"準備運動 → 基本の打ち方 → ミット打ち（約60分）。",bring:"手ぶらでOK（グローブ・タオルの貸し出しあり）"},
+ {id:"g11",n:"サンプル博多キックラボ",p:"福岡",c:"福岡市博多区",st:"博多駅 徒歩9分",y:"はかた ふくおかし はかたく",t:["子どもクラス","駐車場あり"],decl:["保護者見学OK"],s:["キック","フィットネス"],f:0,m:7500,tt:{"平日":["17:00 キッズ","19:00 一般"],"土日":["10:00 一般"]},todo:"準備運動 → 基本 → サンドバッグ（約50分）。",bring:"動きやすい服・飲み物"},
+ {id:"g12",n:"サンプル那覇ムエタイ道場",p:"沖縄",c:"那覇市",st:"県庁前駅 徒歩5分",y:"なは けんちょうまえ",t:["選手コース","初心者歓迎"],decl:["見学だけOK"],s:["ムエタイ"],f:2000,m:9000,tt:{"平日":["18:30 一般"],"土日":["9:00 早朝"]},todo:"ムエタイの基本 → ミット（約60分）。",bring:"動きやすい服・飲み物・タオル"}
+];
+// 最寄り駅の読み（「〇〇駅」で探すとき用）
+const STA_Y={g1:"ちば",g2:"ふなばし",g3:"しんうらやす",g4:"しんじゅくさんちょうめ",g5:"もんぜんなかちょう",g6:"かんない",g7:"せんだい",g8:"すすきの",g9:"さかえ",g10:"なんば",g11:"はかた",g12:"けんちょうまえ"};
+// 口コミ（すべて架空のサンプル。status: ok＝運営の確認済み）  v＝声フィルター, push＝その日に強くすすめられたか
+let rid=0;
+const R=(g,u,lv,ax,txt,d,h,o={})=>({id:"r"+(++rid),g,u,lv,ax,txt,d,h,photo:!!o.photo,v:o.v||[],push:o.push,status:"ok"});
+const SAMPLE_REVIEWS=[
+ R("g1","ミット好き会社員","バトンランナー",[5,5,4,4],"体験から丁寧で、構えから教えてもらえました。キッズの声が元気で雰囲気が明るいです。","2026-10-02",14,{photo:1,v:["初心者"],push:false}),
+ R("g1","40代からのキック","はじめの一歩",[4,5,3,5],"運動不足でも置いていかれない。駅から近いので仕事帰りに通えています。","2026-09-21",6,{v:["運動不足","40代"],push:false}),
+ R("g1","子ども2人の親","道しるべ",[5,4,4,4],"小学生の息子が礼儀も身についてきました。見学スペースがあるのが助かる。","2026-09-03",21,{photo:1,v:["親"],push:false}),
+ R("g2","朝ヨガ卒業組","はじめの一歩",[4,5,4,3],"女性クラスは少人数で質問しやすい。駐車場ありがうれしい。","2026-09-28",4,{v:["女性","初心者"],push:false}),
+ R("g2","船橋の会社員","はじめの一歩",[3,4,3,4],"体験は丁寧でした。夜のクラスは人が多くて少しせまく感じたので、昼のほうが落ち着いて練習できそうです。","2026-09-12",5,{v:["運動不足"],push:false}),
+ R("g2","50歳で初挑戦","バトンランナー",[4,5,3,4],"見学だけのつもりでしたが、少しだけ体験させてもらえました。入会は家で考えてからで大丈夫と言われて安心しました。","2026-08-27",9,{v:["40代","初心者"],push:false}),
+ R("g3","元野球部","道しるべ",[5,3,4,3],"ガチ勢向け。首相撲までしっかり。初心者は覚悟して。","2026-08-30",9,{}),
+ R("g4","新宿で働く人","バトンランナー",[4,4,5,5],"朝7時クラスが最高。シャワーとロッカーがきれい。","2026-10-08",11,{photo:1,push:false}),
+ R("g4","はじめての格闘技","はじめの一歩",[5,5,4,5],"回数券で始められたので気が楽でした。","2026-09-15",3,{v:["初心者"],push:false}),
+ R("g4","在宅ワーカー","はじめの一歩",[3,4,4,4],"体験は楽しかったです。ただ、昼のクラスは別の料金プランなので、料金の説明をもう少し先に聞きたかったです。","2026-09-02",7,{v:["運動不足","女性"],push:false}),
+ R("g5","年長ママ","バトンランナー",[5,5,3,4],"親子クラスで一緒に汗をかけます。","2026-09-30",7,{v:["親"],push:false}),
+ R("g6","K-1ファン","灯台",[5,4,5,3],"試合を目指すなら。トレーナーの経験値が高い。","2026-09-11",18,{push:true}),
+ R("g8","雪国キッカー","はじめの一歩",[4,5,4,4],"冬でもジム内は暖かい。会員さんが親切。","2026-09-19",2,{v:["初心者"],push:false}),
+ R("g9","ムエタイ女子","道しるべ",[5,4,4,4],"女性選手も多く刺激になります。","2026-09-25",8,{v:["女性"],push:false}),
+ R("g9","名古屋の大学院生","はじめの一歩",[4,3,4,4],"選手の練習の熱気がすごく、最初は少し入りにくかったです。女性クラスから始めるのがおすすめ。","2026-09-10",4,{v:["初心者"],push:false}),
+ R("g9","40代からの再スタート","バトンランナー",[4,4,3,4],"20年ぶりに再開。ブランクがあっても基本から見てくれました。","2026-08-18",6,{v:["40代"]}),
+ R("g10","大阪の学生","バトンランナー",[4,5,3,5],"学割があってコスパ良し。","2026-10-05",5,{v:["初心者"],push:false}),
+ R("g10","なんばの会社員","はじめの一歩",[4,4,4,5],"駅から近くて仕事帰りに寄りやすい。手ぶらで体験できました。","2026-09-20",3,{v:["運動不足"],push:false}),
+ R("g10","二人の子の母","はじめの一歩",[3,4,3,4],"雰囲気は明るいです。ロッカーが少なめなので、混む時間は荷物の置き場所に少し困りました。","2026-08-29",2,{v:["女性"],push:false}),
+ R("g11","博多パパ","はじめの一歩",[4,4,4,3],"子どもが楽しそう。駐車場が広い。","2026-09-09",3,{v:["親"],push:false}),
+ R("g12","移住組","バトンランナー",[5,5,3,3],"本場仕込みの指導。早朝クラスが気持ちいい。","2026-08-22",6,{})
+];
+let REVIEWS=SAMPLE_REVIEWS.slice();
+const FEARS=[
+ ["こわい人ばかりだったら？","「雰囲気」の点数と、はじめて通った人の口コミで確かめられます。",[["voice:初心者","初心者の声"]]],
+ ["痛くない？ケガしない？","体験で何をするかは、ジムページの「体験でやること」に書いてあります（ジムからの情報）。相手と打ち合わない練習から始められるジムもあります。",[["tag:スパーリングなしで始められる","スパーリングなしで始められる"]]],
+ ["運動不足でもついていける？","運動不足から始めた人、40代から始めた人の口コミが読めます。",[["voice:運動不足","運動不足から"],["voice:40代","40代からの声"]]],
+ ["まわりに見られて、はずかしい","女性クラスや少人数のクラス、見学だけOKのジムで探せます。",[["voice:女性","女性の声"],["tag:少人数","少人数"],["tag:見学だけOK","見学だけOK"]]],
+ ["その日に入会をすすめられたら？","口コミでは「無理なすすめはあった？」も聞いています。その日に決めなくて大丈夫です。",[["nopush","無理な勧誘なしの声が多い"]]],
+ ["何を持っていけばいい？","ジムページの「持ち物」を見てください。手ぶらで行けるジムもあります。",[["tag:手ぶらOK","手ぶらOK"]]],
+ ["子どもにやらせて大丈夫？","子どもを通わせている親の口コミと、保護者が見学できるかが分かります。",[["voice:親","親の声"],["tag:保護者見学OK","保護者見学OK"]]]
+];
+const NOTES=`<ul class="notes">
+ <li>ポイントは評価の高い・低いに関係なくもらえます（★の数でポイントは変わりません）。</li>
+ <li>景品の費用は運営が負担します（試作の仮案）。</li>
+ <li>交換条件は変わることがあります。変えるときは前もってお知らせします。</li>
+ <li>確認待ちのポイントは、まだ使えません。ランクは「これまでにもらったポイントの合計」で決まるので、交換しても下がりません。</li>
+ <li>有効期限：最後にポイントを獲得した日から12か月（試作の仮ルール）。</li>
+</ul>`;
+const PAGES={
+ about:{t:"運営者について",b:`<p>キックボクシングナビ（試作）は、千葉県でキックボクシングジム『FLATUP GYM』を経営する（運営者名）が運営しています。</p>
+  <ul><li>FLATUP GYM がこのサイトに載る場合も、点数・ランキング・表示は、ほかのジムと同じルールで計算します。</li>
+  <li>FLATUP GYM のページには「運営者が経営するジム」と表示し、FLATUP GYM への口コミにはポイントを付けません（方針案）。</li>
+  <li>掲載料や広告料で、点数や順位が変わることはありません。広告を載せるときは「PR」と表示します。</li>
+  <li>景品（ポイントの交換品）の費用は運営が負担します（試作の仮案）。</li>
+  <li>運営者は千葉県キックボクシング協会の理事でもありますが、このサイトは協会とは関係のない民間のサービスです。</li></ul>
+  <p class="small muted">この文は下書きです。公開する前に、専門家の確認を受けます。</p>`},
+ terms:{t:"利用規約",b:`<p>利用規約は準備中です。公開する前に、専門家の確認を受けてから載せます。</p>`},
+ privacy:{t:"プライバシーポリシー",b:`<p>プライバシーポリシーは準備中です。</p><p>この試作版は、入力した内容をどこにも送信しません。口コミ・ポイント・申し込みの記録は、あなたのブラウザの中にだけ保存されます（お名前と質問欄の内容は保存しません）。</p>`},
+ guidelines:{t:"口コミガイドライン",b:`<ol><li>体験・入会した本人だけが書けます。ジムの関係者は、自分のジムには書けません。</li>
+  <li>よかったことも、気になったことも、正直に。★の数でポイントは変わりません。</li>
+  <li>人の名前・顔・悪口・うわさ、ほかのジムをけなす比べ方は書きません。</li>
+  <li>ケガや体調のことは「自分の体験」として書き、人へのアドバイスにはしません。</li>
+  <li>運営が確認してから公開します。公開できないときは、理由をお知らせします。</li>
+  <li>口コミは、1つのジムにつき1人1件までです。</li></ol>
+  <p class="small muted">方針案：18歳未満の子どもの体験は、保護者が書いてください。この内容は試作の下書きです。</p>`},
+ removal:{t:"口コミの削除依頼",b:`<p>削除依頼の窓口は準備中です。</p><p>ジムの方・口コミを書いた方からの削除依頼を受け付けるページを、公開までに用意します。</p>`}
+};
+
+/* ===== 状態 ===== */
+const S={mapFocus:null,view:"home",gym:null,tab:"top",page:null,kw:"",pref:"",tags:new Set(),voices:new Set(),nopush:false,sort:"score",rvSort:"help",
+  ledger:[],bookings:[],tickets:[],helped:new Set(),confirmCancel:null,confirmSwap:null,book:null,draft:null,pendingScroll:null};
+const KEY="kicknavi.v2";
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){S.ledger=s.ledger||[];S.bookings=s.bookings||[];S.tickets=s.tickets||[];S.helped=new Set(s.helped||[]);REVIEWS=REVIEWS.concat(s.mine||[])}}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({ledger:S.ledger,bookings:S.bookings,tickets:S.tickets,helped:[...S.helped],mine:REVIEWS.filter(r=>r.mine)}))}catch(e){}}
+
+/* ===== 小さな道具 ===== */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const yen=v=>v===0?"無料":v.toLocaleString()+"円";
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const avg=a=>a.length?sum(a)/a.length:0;
+const pad=n=>String(n).padStart(2,"0");
+const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today=()=>ymd(new Date());
+const WD="日月火水木金土";
+const md=d=>`${d.getMonth()+1}/${d.getDate()}`;
+const hm=d=>`${d.getHours()}:${pad(d.getMinutes())}`;
+const parseDT=(date,time)=>{const[y,m,d]=date.split("-").map(Number),[h,mi]=time.split(":").map(Number);return new Date(y,m-1,d,h,mi)};
+const gymById=id=>GYMS.find(g=>g.id===id);
+const rvOk=id=>REVIEWS.filter(r=>r.g===id&&r.status==="ok");
+const scoreOf=id=>{const r=rvOk(id);return r.length?avg(r.map(x=>avg(x.ax))):0};
+const axOf=id=>{const r=rvOk(id);return AX.map((_,i)=>r.length?avg(r.map(x=>x.ax[i])):0)};
+const stars=v=>{const n=Math.round(v);return "★".repeat(n)+"☆".repeat(5-n)};
+const helpCnt=r=>r.h+(S.helped.has(r.id)?1:0);
+const byHelp=(a,b)=>helpCnt(b)-helpCnt(a)||b.d.localeCompare(a.d);
+const byNew=(a,b)=>b.d.localeCompare(a.d)||helpCnt(b)-helpCnt(a);
+const myReviewFor=id=>REVIEWS.find(r=>r.mine&&r.g===id);
+const balance=()=>sum(S.ledger.filter(l=>l.status==="ok").map(l=>l.n));
+const earned=()=>sum(S.ledger.filter(l=>l.status==="ok"&&l.n>0).map(l=>l.n));
+const pendingPt=()=>sum(S.ledger.filter(l=>l.status==="pending").map(l=>l.n));
+const rankOf=pt=>RANKS.filter(r=>pt>=r[1]).pop();
+const reduceMotion=()=>window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+let lid=0;const newId=p=>p+Date.now().toString(36)+(++lid);
+function addLedger(n,why,kind,ref,status){S.ledger.unshift({id:newId("l"),n,why,kind,ref,status,d:today()})}
+function toast(m){const t=$("toast");t.classList.remove("show");t.textContent="";clearTimeout(toast.h);
+  setTimeout(()=>{t.textContent=m;t.classList.add("show");toast.h=setTimeout(()=>{t.classList.remove("show");t.textContent=""},4200)},40)}
+
+/* ===== 検索（かな・全角半角・県/都/府の違いを吸収、スペースでAND） ===== */
+const norm=s=>String(s||"").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)).replace(/[\-‐‑–—―−]/g,"").replace(/\s+/g," ").trim();
+// 都道府県名は「漢字・ひらがな・ローマ字」＋「県/けん/ken・都/と/to・府/ふ/fu」のどの組み合わせでも同じ県になる（例：ちば県・千葉けん）
+const PREF_FORMS=PREFS.map(([n])=>{const[y,ro]=PREF_Y[n];return [n,new Set([norm(n),y,ro])]});
+const PREF_SUF=/(県|都|府|けん|と|ふ|ken|to|fu)$/;
+const resolvePref=t=>{for(const[n,f]of PREF_FORMS)if(f.has(t))return n;const u=t.replace(PREF_SUF,"");if(u&&u!==t)for(const[n,f]of PREF_FORMS)if(f.has(u))return n;return null};
+const STA=/(駅|えき)$/;
+const staForms=g=>g._s||(g._s=[norm(g.st.split(" ")[0]).replace(/駅$/,""),STA_Y[g.id]||""].filter(Boolean));
+const hay=g=>g._h||(g._h=norm([g.n,g.p,PREF_Y[g.p][0],PREF_Y[g.p][1],g.c,g.st,g.y,...g.t,...g.decl,...g.s,...[...g.t,...g.decl,...g.s].map(x=>SYN[x]||"")].join(" ")));
+const tokens=kw=>norm(kw).split(" ").filter(Boolean);
+function matchTokens(g,toks){return toks.every(t=>{const p=resolvePref(t);if(p)return g.p===p;
+  const u=t.replace(STA,"");if(!u||u===t)return hay(g).includes(t);
+  // 「千葉駅」「東京駅」のように県名と同じ駅名は、最寄り駅の名前だけで探す（県全体を出さない）
+  if(resolvePref(u))return staForms(g).some(x=>x.startsWith(u));
+  return hay(g).includes(u)})}
+function noPushMany(id){const a=rvOk(id).filter(r=>typeof r.push==="boolean");return a.length>=2&&a.filter(r=>!r.push).length/a.length>=.7}
+function filtered(){
+  const toks=tokens(S.kw);
+  const r=GYMS.filter(g=>matchTokens(g,toks)&&(!S.pref||g.p===S.pref)&&[...S.tags].every(t=>g.t.includes(t)||g.decl.includes(t))&&[...S.voices].every(v=>rvOk(g.id).some(x=>x.v.includes(v)))&&(!S.nopush||noPushMany(g.id)));
+  const enough=id=>rvOk(id).length>=MIN_RV?1:0;
+  const f={score:(a,b)=>enough(b.id)-enough(a.id)||scoreOf(b.id)-scoreOf(a.id)||rvOk(b.id).length-rvOk(a.id).length,reviews:(a,b)=>rvOk(b.id).length-rvOk(a.id).length||scoreOf(b.id)-scoreOf(a.id),price:(a,b)=>a.f-b.f}[S.sort];
+  return r.sort(f);
+}
+function ranking(){
+  const l=GYMS.map(g=>({g,n:rvOk(g.id).length,s:Math.round(scoreOf(g.id)*10)/10})).filter(x=>x.n>=MIN_RV).sort((a,b)=>b.s-a.s||b.n-a.n||a.g.n.localeCompare(b.g.n,"ja"));
+  l.forEach((x,i)=>x.rank=i&&l[i-1].s===x.s?l[i-1].rank:i+1);
+  return l.slice(0,5);
+}
+
+/* ===== 予約の枠 ===== */
+// 申し込みもキャンセルも「体験の2時間前まで」（試作の仮ルール）。期限を過ぎた枠は「受付終了」にする
+const deadline=dt=>new Date(dt.getTime()-CANCEL_H*3600e3);
+function days(){const out=[];for(let i=0;i<7;i++){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+i);out.push({i,d,date:ymd(d),w:WD[d.getDay()],md:md(d),we:d.getDay()%6===0})}return out}
+const bookedOn=(gid,date)=>S.bookings.find(b=>b.g===gid&&b.date===date&&b.st==="pending");
+function slotsFor(g,day){const now=new Date(),booked=!!bookedOn(g.id,day.date);
+  return g.tt[day.we?"土日":"平日"].map((s,i)=>{const[t,c]=s.split(" "),dt=parseDT(day.date,t),past=deadline(dt)<=now,full=(day.i+i)%4===3;return {s,t,c,dt,past,full,booked,ok:!past&&!full&&!booked}})}
+function nextSlot(g){for(const d of days()){const s=slotsFor(g,d).find(x=>x.ok);if(s)return {d,s}}return null}
+function ensureDay(){const g=gymById(S.gym);if(!g)return;if(S.book.day==null){const ds=days();const i=ds.findIndex(d=>slotsFor(g,d).some(s=>s.ok));S.book.day=i<0?0:i}}
+const fmtDT=d=>`${md(d)}（${WD[d.getDay()]}） ${hm(d)}`;
+
+/* ===== 表示パーツ ===== */
+const scoreHtml=(id,big)=>{const n=rvOk(id).length,s=scoreOf(id);if(!n)return `<span class="score"><span class="cnt">まだ点数はありません（確認済みの口コミ 0件）</span></span>`;return `<span class="score"><span class="stars" aria-hidden="true">${stars(s)}</span><span class="num ${big?"big":""}"><span class="sr-only">5点中</span>${s.toFixed(1)}</span><span class="cnt">確認済みの口コミ ${n}件</span></span>`};
+const chipsHtml=g=>`${g.s.map(s=>`<span class="chip on">${esc(s)}</span>`).join("")}${g.t.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}${g.decl.map(t=>`<span class="chip decl">${esc(t)}</span>`).join("")}`;
+function pushLine(g){const a=rvOk(g.id).filter(r=>typeof r.push==="boolean");if(!a.length)return "";return `<p class="small muted">体験のあと、無理な入会のすすめはなかった：${a.length}人中${a.filter(r=>!r.push).length}人（サンプル）</p>`}
+function gcard(g){
+  const ok=rvOk(g.id);let q=null,ql="";
+  if(S.voices.size){const vs=[...S.voices];q=ok.filter(r=>vs.some(v=>r.v.includes(v))).sort(byHelp)[0];if(q)ql=VOICE_LABEL[vs.find(v=>q.v.includes(v))]}
+  if(!q)q=ok.slice().sort(byHelp)[0];
+  return `<a class="gcard" href="#gym-${g.id}" data-gym="${g.id}"><div class="thumb" aria-hidden="true">${esc(g.n.replace("サンプル","").slice(0,1))}</div><div class="minw0">
+  <div class="small muted">${esc(g.p)}・${esc(g.st)}</div><h3>${esc(g.n)}</h3>${scoreHtml(g.id)}
+  <div class="chips">${chipsHtml(g)}</div>
+  <div class="small" style="margin-top:4px">体験 <b>${yen(g.f)}</b>　月謝 ${yen(g.m)}〜</div>
+  ${q?`<span class="quote">${ql?`<b>${ql}</b> `:""}「${esc(q.txt.slice(0,48))}${q.txt.length>48?"…":""}」</span>`:`<span class="quote">まだ口コミがありません</span>`}</div></a>`}
+function rvHtml(r,withGym){const g=gymById(r.g),pend=r.status==="pending",cnt=helpCnt(r),lv=r.mine?rankOf(earned())[0]:r.lv;
+  return `<article class="rv ${pend?"pend":""}"><div class="who"><span class="av" aria-hidden="true">${esc(r.u.slice(0,1))}</span><b>${esc(r.u)}</b><span class="badge">${esc(lv)}</span>${pend?`<span class="badge wait">確認待ち</span>`:`<span class="badge v">運営確認済み</span>`}${withGym?`<a class="gymlink" href="#gym-${g.id}">${esc(g.n)}</a>`:""}</div>
+  ${pend?`<p class="small">運営の確認待ちです。あなたにだけ表示されています。確認が終わると公開され、点数に入ります。</p>`:""}
+  <span class="score"><span class="stars" aria-hidden="true">${stars(avg(r.ax))}</span><span class="num" style="font-size:14px"><span class="sr-only">5点中</span>${avg(r.ax).toFixed(1)}</span></span>
+  ${r.v.length?`<div class="chips">${r.v.map(v=>`<span class="chip">${VOICE_LABEL[v]}</span>`).join("")}</div>`:""}
+  <div class="sub"><span>${AX.map((a,i)=>`${a} ${r.ax[i]}`).join(" / ")}</span><span>${r.d}</span>${r.photo?`<span>${svg("camera")} ${r.mine?"写真つき（試作のため画像は保存していません）":"写真あり"}</span>`:""}</div>
+  <p>${esc(r.txt)}</p>
+  ${typeof r.push==="boolean"?`<p class="small muted">体験のあと、その日に入会を強くすすめられた：${r.push?"はい":"いいえ"}</p>`:""}
+  ${pend?"":r.mine?`<span class="small muted">参考になった ${cnt}（自分の口コミには押せません）</span>`:`<button type="button" class="helpful" data-help="${r.id}" aria-pressed="${S.helped.has(r.id)}">参考になった ${cnt}</button>`}</article>`}
+function rwCards(withBtn){const bal=balance();
+  return `<div class="rewards">${REWARDS.map(r=>{const ok=bal>=r.p,pc=Math.min(100,bal/r.p*100);return `<div class="rw ${ok?"ok":""}">${svg(r.ic)}<b>${r.n}</b><span class="small muted">${r.d}</span><span class="rwpt">${r.p.toLocaleString()}pt<small>＝確認済みの口コミ${Math.ceil(r.p/EARN.review)}件</small></span><div class="meter" aria-hidden="true"><i style="width:${pc}%"></i></div><span class="small">${ok?"交換できます":`あと${r.p-bal}pt`}</span>${!withBtn?"":S.confirmSwap===r.p&&ok?`<div class="swapq"><span>${r.p.toLocaleString()}pt を使って交換しますか？交換したあとは取り消せません。</span><span class="row"><button type="button" class="btn sm" data-swap-yes="${r.p}">はい、交換する</button><button type="button" class="btn ghost sm" data-swap-no="${r.p}">やめる</button></span></div>`:`<button type="button" class="btn sm" data-swap="${r.p}" ${ok?"":"disabled"}>${ok?"交換する":"ポイントが足りません"}</button>`}</div>`}).join("")}</div>`}
+const earnHtml=()=>`<div class="earn">
+  <div><b>+${EARN.review}pt</b>口コミ<span>運営が内容を確認して公開したとき</span></div>
+  <div><b>+${EARN.photo}pt</b>写真つき口コミ<span>写真も確認して公開したとき</span></div>
+  <div><b>+${EARN.book}pt</b>このサイトから体験に参加<span>ジムが「来てくれた」と確認したとき（予約しただけでは付きません）</span></div>
+  <div><b>0pt</b>「参考になった」<span>ポイントにはしません。書いた人のマイページに「届いた人の数」として表示します</span></div></div>`;
+const ptLabel=`<p class="ptnote">口コミ投稿でポイントがもらえる仕組みです（評価に関係なく同じポイント）。<a href="#guidelines">口コミガイドライン</a></p>`;
+
+/* ===== 画面：トップ ===== */
+function home(){
+  const cnt={};GYMS.forEach(g=>cnt[g.p]=(cnt[g.p]||0)+1);
+  const list=filtered(),rk=ranking();
+  const latest=REVIEWS.filter(r=>r.status==="ok").sort(byNew).slice(0,4);
+  const q=S.kw||S.pref,fc=S.tags.size+S.voices.size+(S.nopush?1:0);
+  const head=q?`『${esc(q)}』の検索結果 <span class="num">${list.length}</span>件`:fc?`条件に合うジム <span class="num">${list.length}</span>件`:`全国のジム <span class="num">${list.length}</span>件`;
+  const tagBtn=(t,attr)=>`<button type="button" class="tag" ${attr}="${t}" aria-pressed="${attr==="data-voice"?S.voices.has(t):S.tags.has(t)}">${attr==="data-voice"?VOICE_LABEL[t]:t}</button>`;
+  return `
+  <section class="sec">
+    <div class="eyebrow">Find · Review · Book <span class="ja">─ はじめの一歩を、先輩の声で。</span></div>
+    <h1 tabindex="-1">通う人の本音で、<br>最初のジムを選ぼう。</h1>
+    <p class="lead">口コミは、運営が内容を確認してから載せています。書けるのは、体験・入会した本人だけというルールです。「初心者の声」で探して、体験の申し込みまでそのままできます。</p>
+    <div class="ctas"><button type="button" class="btn" data-qf="voice:初心者">初心者の声で探す</button><button type="button" class="btn ghost" data-scroll="mapH">地図から探す</button></div>
+  </section>
+  <section class="sec" aria-labelledby="fearH">
+    <div class="eyebrow">First step</div>
+    <h2 id="fearH" tabindex="-1">「こわい」は、みんな通った道。</h2>
+    <p class="muted">はじめての人がよく心配することに、先に通った人たちの声で答えます。ボタンを押すと、その条件でジムを探せます。</p>
+    <div class="fears">${FEARS.map(([h,a,bs])=>`<div class="fear"><h3>${h}</h3><p>${a}</p><div class="qf">${bs.map(([k,l])=>`<button type="button" class="tag go" data-qf="${k}">${l}</button>`).join("")}</div></div>`).join("")}</div>
+  </section>
+  <section class="sec grid2">
+    <div class="minw0"><h2 id="mapH" tabindex="-1">日本地図から探す</h2><div class="panel"><p class="maphint small muted">地図は左右にスクロールできます（← →）</p><div class="mapbox"><div class="jmap" role="group" aria-label="都道府県で絞り込む（矢印キーで移動、Enterで選ぶ）">${PREFS.map(([n,r,c])=>{const k=cnt[n]||0,h=k>=3?"h3":k==2?"h2":k==1?"h1":"";return `<button type="button" class="pref ${h} ${S.pref===n?"sel":""}" style="grid-row:${r+1};grid-column:${c+1}" data-pref="${n}" aria-pressed="${S.pref===n}" tabindex="${n===(S.pref||S.mapFocus||"千葉")?0:-1}" aria-label="${n} ${k}件">${n}${k?`<em>${k}</em>`:""}</button>`}).join("")}</div></div>
+      <div class="legend"><span><i style="background:var(--tile)"></i>掲載なし</span><span><i style="background:var(--heat1)"></i>1件</span><span><i style="background:var(--heat2)"></i>2件</span><span><i style="background:var(--heat3)"></i>3件以上</span><span>マスを押すと絞り込み</span></div></div></div>
+    <div class="minw0"><h2>評価ランキング</h2><div class="panel rank">${rk.length?`<ol>${rk.map(x=>`<li class="${x.rank<=3?"top3":""}"><a href="#gym-${x.g.id}" data-gym="${x.g.id}"><span class="no"><span aria-hidden="true">${x.rank}</span><span class="sr-only">${x.rank}位</span></span><span class="minw0"><span class="nm">${esc(x.g.n)}</span><span class="small muted">${esc(x.g.p)}・${esc(x.g.st)}</span></span><span class="rs"><span class="num">${x.s.toFixed(1)}</span><span class="cnt">口コミ${x.n}件</span></span></a></li>`).join("")}</ol>`:`<div class="empty">まだ条件を満たすジムがありません。</div>`}
+      <p class="small muted rnote">確認済みの口コミが${MIN_RV}件以上のジムだけを、4項目（${AX.join("・")}）の平均点で並べています。掲載料・広告で順位は変わりません。</p></div></div>
+  </section>
+  <section class="sec" id="results" aria-labelledby="resH">
+    <div class="filters"><h2 id="resH" tabindex="-1">${head}</h2>${q?`<button type="button" class="tag clear" data-clear="q" aria-label="検索を解除">× 解除</button>`:fc?`<button type="button" class="tag clear" data-clear="f" aria-label="条件を解除">× 解除</button>`:""}</div>
+    <div class="fgroups">
+      <div class="fg" role="group" aria-label="ジムの条件"><span class="fl" aria-hidden="true">ジムの条件</span>${TAGS.map(t=>tagBtn(t,"data-tag")).join("")}</div>
+      <div class="fg" role="group" aria-label="ジムからの情報"><span class="fl" aria-hidden="true">ジムからの情報</span>${DECL.map(t=>tagBtn(t,"data-tag")).join("")}</div>
+      <div class="fg" role="group" aria-label="口コミの声"><span class="fl" aria-hidden="true">口コミの声</span>${VOICES.map(v=>tagBtn(v[0],"data-voice")).join("")}<button type="button" class="tag" data-nopush="1" aria-pressed="${S.nopush}">無理な勧誘なしの声が多い</button></div>
+      <div class="fg sortrow"><label class="fl" for="sort">並び順</label><select id="sort"><option value="score">点数が高い順</option><option value="reviews">口コミが多い順</option><option value="price">体験料金が安い順</option></select></div>
+    </div>
+    <div class="list">${list.length?list.map(gcard).join(""):(S.voices.size||S.nopush)?`<div class="empty"><p>この条件の口コミは、まだありません。ほかの声も読んでみてください。</p><div class="ctas" style="margin-top:0;justify-content:center"><button type="button" class="btn ghost sm" data-clear="voice">フィルターを外す</button><button type="button" class="btn ghost sm" data-clear="all">条件をリセット</button></div></div>`:`<div class="empty"><p>条件に合うジムが見つかりませんでした。条件を1つ減らすか、エリアを広げてみてください。</p><button type="button" class="btn ghost sm" data-clear="all">条件をリセット</button></div>`}</div>
+    ${S.sort==="score"&&list.length>1?`<p class="small muted" style="margin-top:8px">「点数が高い順」は、確認済みの口コミが${MIN_RV}件以上のジムを先に並べます（件数が少ないと点数がぶれやすいため）。</p>`:""}
+    ${S.nopush?`<p class="small muted" style="margin-top:8px">「無理な勧誘なしの声が多い」＝口コミで2人以上が答えていて、そのうち7割以上が「すすめられなかった」と答えたジム。</p>`:""}
+  </section>
+  <section class="sec" aria-labelledby="rewardsH">
+    <div class="eyebrow">Rewards</div><h2 id="rewardsH" tabindex="-1">書いてくれた人へのお礼</h2>
+    <div class="promo"><div class="eyebrow">一歩のバトン</div><p class="promo-h">あなたの1件が、次の誰かの一歩を押す。</p>
+      <p>体験に行ったら、感じたままを書いてください。運営が確認したら100ptのお礼。確認済みの口コミ3件（300pt）で「体験1回 無料チケット」と交換できます。</p>
+      <ol class="flow" aria-label="お礼の流れ"><li>体験に行く</li><i aria-hidden="true">→</i><li>口コミを書く</li><i aria-hidden="true">→</i><li>運営が確認</li><i aria-hidden="true">→</i><li>+100pt</li><i aria-hidden="true">→</i><li>300ptで体験チケット</li></ol>
+      <p class="small">★の数でポイントは変わりません。交換品・必要ポイントは試作の仮案です。</p></div>
+    ${earnHtml()}
+    <h3 style="margin-top:18px">ポイントで交換できるもの（試作の仮案）</h3>${rwCards(false)}
+    <p class="small" style="margin-top:8px"><a href="#me">交換はマイページから</a></p>
+    ${NOTES}
+  </section>
+  <section class="sec"><h2>新着の口コミ <span class="badge">サンプル</span></h2>${ptLabel}${latest.map(r=>rvHtml(r,true)).join("")}</section>`;
+}
+
+/* ===== 画面：ジム詳細 ===== */
+function detail(){const g=gymById(S.gym);
+  if(!g)return `<nav class="crumb" aria-label="現在地"><a href="#home">トップ</a></nav><section class="sec"><h1 tabindex="-1">ジムが見つかりませんでした</h1><p class="muted">URLが変わったか、掲載が終わった可能性があります。</p><p style="margin-top:12px"><a class="btn" href="#home">トップへ戻る</a></p></section>`;
+  const ok=rvOk(g.id),mine=myReviewFor(g.id),ax=axOf(g.id);
+  const tabs=[["top","トップ"],["rv",`口コミ（${ok.length}）`],["price","料金・時間割"],["book","体験予約"],["write","口コミを書く"]];
+  let body="";
+  if(S.tab==="top"){const ns=nextSlot(g),top2=ok.slice().sort(byHelp).slice(0,2);
+    body=`<div class="grid2"><div class="minw0">
+     <div class="dsec"><h2 class="h3">このジムの特徴</h2><div class="chips">${chipsHtml(g)}</div><p class="small muted" style="margin-top:6px">点線のタグはジムからの情報です。</p></div>
+     <div class="dsec"><h2 class="h3">体験でやること <span class="from">ジムからの情報・サンプル</span></h2><p>${esc(g.todo)}</p></div>
+     <div class="dsec"><h2 class="h3">持ち物 <span class="from">ジムからの情報・サンプル</span></h2><p>${esc(g.bring)}</p></div>
+     <h2 class="h3">よく参考にされている口コミ</h2>${ptLabel}${top2.map(r=>rvHtml(r)).join("")||`<div class="empty">まだ口コミがありません。最初の口コミは、次にこのジムを探す人の道しるべになります。</div>`}</div>
+     <div class="minw0"><div class="panel"><h2 class="h3">項目別の点数</h2><div class="bars">${AX.map((a,i)=>`<div class="bar"><span>${a}</span><span aria-hidden="true"><i style="width:${ax[i]/5*100}%"></i></span><b>${ax[i]?ax[i].toFixed(1):"-"}</b></div>`).join("")}</div><p class="small muted" style="margin-top:8px">運営が確認した口コミ${ok.length}件の平均です。</p></div>
+     <div class="panel" style="margin-top:12px"><h2 class="h3">体験</h2><p class="num">${yen(g.f)}</p><p class="small muted">${ns?`いちばん早い空き枠：${ns.d.i===0?"今日":ns.d.md+"（"+ns.d.w+"）"} ${ns.s.t}（${esc(ns.s.c)}クラス）`:"7日以内に申し込める枠はありません。ジムに直接お問い合わせください。"}</p><button type="button" class="btn" style="margin-top:8px;width:100%" data-tab="book" data-cta="1">空き枠を見る</button></div></div></div>`}
+  if(S.tab==="rv"){const list=ok.slice().sort(S.rvSort==="new"?byNew:byHelp);
+    body=`${ptLabel}<div class="rvtools"><label for="rvsort">並び順</label><select id="rvsort"><option value="help">参考になった順</option><option value="new">新しい順</option></select><span class="small muted">書いた人のランクで並び順は変わりません</span></div>
+    ${mine&&mine.status==="pending"?rvHtml(mine):""}${list.map(r=>rvHtml(r)).join("")||`<div class="empty">${mine?"公開された口コミは、まだありません。あなたの口コミは確認が終わると公開されます。":"まだ口コミがありません。最初の口コミは、次にこのジムを探す人の道しるべになります。"}</div>`}`}
+  if(S.tab==="price")body=`<div class="tw"><table class="kv"><tr><th>体験</th><td>${yen(g.f)}</td></tr><tr><th>入会金</th><td>5,500円（サンプル）</td></tr><tr><th>月謝</th><td>${yen(g.m)}〜</td></tr><tr><th>回数券</th><td>${g.t.includes("回数券あり")?"10回券（有効期限6か月・サンプル）":"なし"}</td></tr>
+     ${Object.entries(g.tt).map(([k,v])=>`<tr><th>${k}</th><td>${v.map(esc).join("<br>")}</td></tr>`).join("")}<tr><th>アクセス</th><td>${esc(g.p)} ${esc(g.c)}／${esc(g.st)}</td></tr></table></div>`;
+  if(S.tab==="book")body=bookHtml(g);
+  if(S.tab==="write")body=writeHtml(g);
+  return `<nav class="crumb" aria-label="現在地"><a href="#home">トップ</a> ＞ ${esc(g.p)} ＞ <span aria-current="page">${esc(g.n)}</span></nav>
+  <div class="dhead"><div class="minw0"><div class="small muted">${esc(g.p)}・${esc(g.c)}・${esc(g.st)}</div><h1 tabindex="-1">${esc(g.n)}</h1>${scoreHtml(g.id,true)}${pushLine(g)}</div>
+  <div class="dcta"><button type="button" class="btn navy" data-tab="write" data-cta="1">${mine?"あなたの口コミを見る":"口コミを書く"}</button><button type="button" class="btn" data-tab="book" data-cta="1">体験を予約する</button></div></div>
+  <div class="tabs" role="tablist" aria-label="ジムの情報">${tabs.map(([k,l])=>`<button type="button" role="tab" id="tab-${k}" aria-controls="tabpanel" aria-selected="${S.tab===k}" tabindex="${S.tab===k?0:-1}" data-tab="${k}">${l}</button>`).join("")}</div>
+  <div id="tabpanel" role="tabpanel" aria-labelledby="tab-${S.tab}" tabindex="0" style="padding-bottom:30px">${body}</div>`}
+
+function bookHtml(g){const b=S.book,ds=days();
+  const stepNames=["日時を選ぶ","情報を入力","確認"];
+  const steps=`<ol class="steps">${stepNames.map((s,i)=>`<li class="${b.step===i+1?"on":""}" ${b.step===i+1?'aria-current="step"':""}>${i+1}. ${s}</li>`).join("")}</ol>`;
+  if(b.step===4){const bk=S.bookings.find(x=>x.id===b.last);const dt=bk?parseDT(bk.date,bk.time):null;
+    return `<div class="panel" style="max-width:520px"><h2 class="bh" id="bookH" tabindex="-1">体験を申し込みました</h2>
+    <p>${bk?`${fmtDT(dt)}（${esc(bk.cls)}クラス）`:""}</p><p class="small muted" style="margin-block:6px 12px">ジムからの確定の連絡をお待ちください（試作のため送信されません）。もらえるポイント +${EARN.book}pt は、ジムが来店を確認したあとに付きます。</p>
+    <div class="dcta"><a class="btn" href="#me">マイページで確認・キャンセル</a><button type="button" class="btn ghost" data-bstep="1">ほかの日も見る</button></div></div>`}
+  const day=ds[b.day||0],sl=slotsFor(g,day);
+  // 途中で受付が終わった枠は選び直してもらう（null のまま確認画面に進まない）
+  if(b.slot&&!sl.find(x=>x.s===b.slot&&x.ok)){b.slot=null;if(b.step>1)b.expired=true}
+  if((b.step===2||b.step===3)&&!b.slot)b.step=1;
+  if(b.step===1){const bk=bookedOn(g.id,day.date),exp=b.expired;b.expired=false;
+    return `<h2 class="bh" id="bookH" tabindex="-1">体験予約（1/3 日時を選ぶ）</h2>${steps}${exp?`<p class="notice" role="alert">選んでいた時間の受付が終わりました（申し込みは体験の${CANCEL_H}時間前まで）。ほかの枠を選んでください。</p>`:""}<div class="days" role="group" aria-label="日にち">${ds.map(x=>`<button type="button" class="day" data-day="${x.i}" aria-pressed="${b.day===x.i}">${x.i===0?"今日":x.w}<b>${x.md}</b></button>`).join("")}</div>
+    ${bk?`<p class="small" style="margin-top:10px">この日はすでに申し込み済みです（1つのジムにつき1日1件まで）。ほかの日を選べます。<a href="#me">マイページで確認</a></p>`:sl.some(x=>x.ok)?"":`<p class="small muted" style="margin-top:10px">この日に申し込める体験枠はありません。ほかの日を選ぶか、ジムに直接お問い合わせください。</p>`}
+    <p class="small muted" style="margin-top:8px">申し込みとキャンセルは、どちらも体験の${CANCEL_H}時間前までです（試作の仮ルール）。</p>
+    <div class="slots" role="group" aria-label="時間">${sl.map(x=>`<button type="button" class="slot" data-slot="${esc(x.s)}" aria-pressed="${b.slot===x.s}" ${x.ok?"":"disabled"}><b>${x.t}</b>${esc(x.c)}クラス　${x.past?"受付終了":x.booked?"申し込み済みの日":x.full?"満員":"空きあり"}</button>`).join("")}</div>
+    <p class="small muted" style="margin-top:6px">空き状況は試作のサンプル表示です。本番ではジムが入力した情報だけを出します。</p>
+    <div style="margin-top:14px"><button type="button" class="btn" data-bstep="2" ${b.slot?"":"disabled"}>次へ</button></div>`}
+  if(b.step===2)return `<h2 class="bh" id="bookH" tabindex="-1">体験予約（2/3 情報を入力）</h2>${steps}<form class="form" id="bform" style="max-width:480px"><label class="f" for="bname">お名前（ニックネーム可）<input type="text" id="bname" value="${esc(b.name)}" autocomplete="nickname"></label>
+    <label class="f" for="bexp">経験<select id="bexp">${["はじめて","1年未満","1年以上"].map(o=>`<option ${b.exp===o?"selected":""}>${o}</option>`).join("")}</select></label>
+    <p class="small muted">「はじめて」を選ぶと、はじめての方だとジムに伝わります。ゆっくり教えてもらえるように、心配なことを質問欄に書いておけます。</p>
+    <label class="f" for="bq">ジムへの質問（任意）<textarea id="bq" placeholder="例：手ぶらで行けますか？">${esc(b.q)}</textarea></label>
+    <div style="display:flex;gap:8px"><button type="button" class="btn ghost" data-bstep="1">戻る</button><button class="btn" type="submit">確認へ</button></div></form>`;
+  const dt=parseDT(day.date,b.slot.split(" ")[0]);
+  return `<h2 class="bh" id="bookH" tabindex="-1">体験予約（3/3 確認）</h2>${steps}<div class="panel" style="max-width:520px"><table class="kv"><tr><th>ジム</th><td>${esc(g.n)}</td></tr><tr><th>日時</th><td>${fmtDT(dt)}（${esc(b.slot.split(" ")[1])}クラス）</td></tr><tr><th>お名前</th><td>${esc(b.name||"ゲスト")}</td></tr><tr><th>料金</th><td>${yen(g.f)}（当日払い・サンプル）</td></tr><tr><th>もらえるpt</th><td>+${EARN.book}pt（来店確認後に付与）</td></tr><tr><th>キャンセル</th><td>${fmtDT(deadline(dt))}まで、マイページからできます（体験の${CANCEL_H}時間前まで・試作の仮ルール）</td></tr></table>
+   <ul class="calm"><li>見学だけでもOKのジムもあります</li><li>その日に入会を決めなくて大丈夫です</li><li>持ち物はジムページの「トップ」で確認できます</li></ul>
+   <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn ghost" data-bstep="2">戻る</button><button type="button" class="btn" data-bdone="1">体験を申し込む</button></div></div>`}
+
+function writeHtml(g){const mine=myReviewFor(g.id);
+  if(mine)return `<div class="panel" style="max-width:720px"><h2 class="h3">このジムへの口コミは送信済みです</h2><p class="small muted" style="margin-bottom:6px">口コミは1つのジムにつき1人1件までです。</p>${rvHtml(mine)}<p style="margin-top:12px"><a class="btn ghost sm" href="#me">マイページで見る</a></p></div>`;
+  const d=S.draft;
+  return `<div class="story"><h2>あの日、ドアの前で迷ったあなたへ。</h2><p>はじめてジムに行く前、少しこわかったはず。<br>そのとき、だれかの口コミが背中を押してくれたかもしれません。<br>こんどは、あなたの番です。<br>よかったことも、気になったことも、正直に。<br>あなたの1件が、次の誰かの一歩を押します。</p></div>
+  <div class="grid2"><form class="form" id="wform" novalidate>
+   <fieldset><legend>4つの項目に点数をつける（必須）</legend><div class="rate">${AX.map((a,i)=>`<div role="group" aria-label="${a}の点数"><div class="small" style="font-weight:700">${a}</div><div class="starpick">${[1,2,3,4,5].map(n=>`<button type="button" data-star="${i}-${n}" class="${d.ax[i]>=n?"on":""}" aria-pressed="${d.ax[i]===n}" aria-label="${a} ${n}点">${d.ax[i]>=n?"★":"☆"}</button>`).join("")}</div></div>`).join("")}</div></fieldset>
+   <label class="f" for="wtxt">口コミ（50文字以上）<textarea id="wtxt" placeholder="行く前に心配だったこと／実際どうだったか／どんな人におすすめか">${esc(d.txt)}</textarea></label>
+   <p class="small muted" id="wcount">${d.txt.trim().length}/50文字</p>
+   <fieldset><legend>あなたに当てはまるものは？（任意・いくつでも）</legend><div class="checks">${VOICES.map(([k,,q])=>`<label><input type="checkbox" data-wv="${k}" ${d.v.includes(k)?"checked":""}> ${q}</label>`).join("")}</div><p class="small muted">名前や年齢そのものは表示しません。</p></fieldset>
+   <fieldset><legend>体験のあと、その日に入会を強くすすめられましたか？（任意）</legend><div class="checks">${[["yes","はい"],["no","いいえ"],["","答えない"]].map(([v,l])=>`<label><input type="radio" name="wpush" value="${v}" ${(d.push||"")===v?"checked":""}> ${l}</label>`).join("")}</div></fieldset>
+   <div class="f" style="display:grid;gap:4px;font-size:12.5px">${d.photo?`<p class="check" style="align-items:center;flex-wrap:wrap">写真を1枚選びました（試作のため、画像は保存も表示もしません）<button type="button" class="btn ghost sm" data-photo-clear="1">写真を取り消す</button></p>`:`<label for="wphoto" style="font-weight:700">写真（任意・1枚）</label><input type="file" id="wphoto" accept="image/*">`}<span class="small muted">写真を選んだときだけ「写真つき」になります。運営が写真も確認したあとに +${EARN.photo}pt。</span></div>
+   <label class="check"><input type="checkbox" id="wagree" ${d.agree?"checked":""}> このジムで体験・入会した本人です。このジムで働いていたり、家族が関係していたりはしません。</label>
+   <button class="btn" type="submit">送信する</button></form>
+   <aside class="reward" aria-label="お礼とルール"><b>運営が確認したあと、お礼に +${EARN.review+(d.photo?EARN.photo:0)}pt</b><span>口コミ +${EARN.review}pt${d.photo?`、写真つき +${EARN.photo}pt`:`（写真つきなら +${EARN.photo}pt）`}</span><span>★の数でポイントは変わりません。</span>
+   <span>確認が終わるまでは「確認待ち」です。そのあいだは点数・ランキングに入らず、ポイントもまだ使えません。</span>
+   <b style="margin-top:8px">きまり</b><span>・1つのジムにつき1人1件まで</span><span>・体験・入会した本人だけが書けます。ジムの関係者は書けません</span><span>・人の名前・悪口・うわさは書きません</span><span>・運営が確認してから公開します</span>
+   <a href="#guidelines">口コミガイドラインを読む</a>
+   <span class="small muted" style="margin-top:6px">口コミ投稿でポイントがもらえる仕組みです（評価に関係なく同じポイント）。</span></aside></div>`}
+
+/* ===== 画面：マイページ ===== */
+function me(){const bal=balance(),pen=pendingPt(),ear=earned(),rk=rankOf(ear),nx=RANKS.find(r=>r[1]>ear);
+  const mine=REVIEWS.filter(r=>r.mine).sort(byNew),pub=mine.filter(r=>r.status==="ok"),wait=mine.filter(r=>r.status==="pending"),reached=sum(pub.map(helpCnt));
+  const msg=!pub.length?"最初のバトンは、体験のあとに。":!reached?"あなたのバトンは、次に迷っている人を待っています。":`あなたの口コミで、${reached}人が「参考になった」と言っています。だれかの一歩の、ささえになっています。`;
+  const nr=REWARDS[0];
+  const bks=S.bookings.slice().sort((a,b)=>(b.st==="pending")-(a.st==="pending")||a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+  const stTxt={pending:"ジムの確定待ち",visited:"来店確認済み",canceled:"キャンセル済み"};
+  return `<nav class="crumb" aria-label="現在地"><a href="#home">トップ</a> ＞ <span aria-current="page">マイページ</span></nav>
+  <section class="sec grid2"><div class="minw0"><div class="eyebrow">My page</div><h1 tabindex="-1">マイページ</h1>
+   <div class="ptbox"><div class="main"><span class="small muted">使えるポイント</span><b>${bal} pt</b></div><div><span class="small muted">確認待ち（まだ使えません）</span><b>${pen?`確認待ち +${pen}pt`:"0 pt"}</b></div><div><span class="small muted">これまでにもらった合計</span><b>${ear} pt</b></div></div>
+   <p>ランク：<b>${rk[0]}</b>${nx?`　次の「${nx[0]}」まで、あと ${nx[1]-ear}pt`:""}</p>
+   <div class="meter" aria-hidden="true"><i style="width:${nx?Math.min(100,(ear-rk[1])/(nx[1]-rk[1])*100):100}%"></i></div>
+   <p class="small muted">ランクは「これまでにもらったポイントの合計」で決まります。交換しても下がりません。${bal<nr.p?`あと${nr.p-bal}ptで「${nr.n}」と交換できます。`:""}</p></div>
+   <div class="minw0"><h2>あなたが渡したバトン</h2>
+    <div class="impact"><div><span class="small muted">渡したバトン（公開された口コミ）</span><b>${pub.length}本</b></div><div><span class="small muted">あなたの口コミが届いた人</span><b>${reached}人</b></div><div><span class="small muted">確認中の口コミ</span><b>${wait.length}件</b></div></div>
+    <p class="msg">${msg}</p><p class="small muted" style="margin-top:4px">「届いた人」は、あなたの口コミに「参考になった」を押した人の数です。実際に体験に行ったかどうかまでは分かりません。${wait.length?"確認中の口コミは、確認が終わると公開され、ポイントが付きます。":"確認中の口コミはありません。"}</p></div></section>
+  <section class="sec"><div class="demo"><h2 class="h3">試作の動作確認</h2><p class="small muted">本番にはないボタンです。運営やジムの確認が終わったときの流れを、ここで試せます。</p>
+   <div class="btns"><button type="button" class="btn navy sm" data-demo="approve">（試作）運営の確認を済ませる</button><button type="button" class="btn ghost sm" data-demo="visit">（試作）ジムの来店確認を済ませる</button><button type="button" class="btn ghost sm" data-demo="help" ${pub.length?"":"disabled"}>（試作）だれかが「参考になった」を押したことにする</button><button type="button" class="btn ghost sm" data-demo="reset">（試作）データを最初に戻す</button></div></div></section>
+  <section class="sec" aria-labelledby="bkH"><h2 id="bkH" tabindex="-1">体験の申し込み</h2>${bks.length?`<ul class="blist">${bks.map(b=>{const g=gymById(b.g),dt=parseDT(b.date,b.time),dl=deadline(dt),late=new Date()>dl;
+     return `<li class="bk ${b.st==="pending"?"":"off"}"><div class="minw0"><a class="gymlink" href="#gym-${g.id}">${esc(g.n)}</a><div>${fmtDT(dt)}（${esc(b.cls)}クラス）</div>${b.st==="pending"?`<div class="small muted">キャンセル期限：${fmtDT(dl)}まで（体験の${CANCEL_H}時間前まで）</div>`:""}</div>
+     <div class="bkst"><span class="badge ${b.st==="pending"?"wait":"ok"}">${stTxt[b.st]}</span><span class="small">${b.st==="pending"?`+${EARN.book}pt 来店確認後に付与`:b.st==="visited"?`+${EARN.book}pt 付与済み`:"ポイントは取り消し"}</span>
+     ${b.st!=="pending"?"":S.confirmCancel===b.id?`<span class="small">キャンセルしますか？</span><button type="button" class="btn sm" data-cancel-yes="${b.id}">はい、キャンセルする</button><button type="button" class="btn ghost sm" data-cancel-no="${b.id}">やめる</button>`:late?`<span class="small muted">期限を過ぎました。ジムに直接ご連絡ください</span>`:`<button type="button" class="btn ghost sm" data-cancel="${b.id}">キャンセル</button>`}</div></li>`}).join("")}</ul>`:`<div class="empty">まだ申し込みはありません。気になるジムの「体験予約」から申し込めます。</div>`}</section>
+  <section class="sec"><h2>ポイントを交換する</h2><p class="small muted" style="margin-bottom:10px">使えるポイント：${bal}pt（確認待ちのポイントは使えません）</p>${rwCards(true)}${NOTES}</section>
+  <section class="sec" aria-labelledby="tkH"><h2 id="tkH" tabindex="-1">チケット一覧</h2>${S.tickets.length?`<ul class="tlist">${S.tickets.map(t=>{const r=REWARDS.find(x=>x.p===t.p)||REWARDS[0];return `<li class="tk">${svg(r.ic)}<div class="minw0"><b>${esc(t.n)}</b><div class="small muted">交換日：${t.d}／使い方：準備中（試作のため実際には届きません）</div></div></li>`}).join("")}</ul>`:`<div class="empty">まだ交換したチケットはありません。</div>`}</section>
+  <section class="sec grid2"><div class="minw0"><h2>自分の口コミ</h2>${ptLabel}${mine.length?mine.map(r=>rvHtml(r,true)).join(""):`<div class="empty">まだバトンは渡していません。最初の1本は、体験のあとに。</div>`}</div>
+   <div class="minw0"><h2>ポイント履歴</h2>${S.ledger.length?`<div class="tw"><table class="ledger"><tr><th scope="col">日付</th><th scope="col">内容</th><th scope="col">pt</th><th scope="col">状態</th></tr>${S.ledger.map(l=>`<tr><td>${l.d}</td><td>${esc(l.why)}</td><td class="num" style="font-size:13px">${l.n>0?"+":""}${l.n}</td><td class="small">${l.status==="ok"?(l.n<0?"交換":"付与済み"):l.status==="pending"?"確認待ち":"取り消し"}</td></tr>`).join("")}</table></div>`:`<div class="empty">まだポイントはありません。体験に行ったら、ジムページの「口コミを書く」からどうぞ。</div>`}</div></section>
+  <section class="sec"><h2>ランクの特典</h2><div class="ranks">${RANKS.map(([n,p],i)=>`<div class="rk ${rk[0]===n?"on":""}"><b>${n}</b>これまでの合計 ${p}pt〜<br><span class="muted">${PERKS[i]}</span></div>`).join("")}</div>
+   <p class="small muted" style="margin-top:8px">どのランクでも、口コミの並び順（参考になった順・新しい順）は同じです。</p></section>`}
+
+function page(){const p=PAGES[S.page];return `<nav class="crumb" aria-label="現在地"><a href="#home">トップ</a> ＞ <span aria-current="page">${p.t}</span></nav><section class="sec doc"><h1 tabindex="-1">${p.t}</h1>${p.b}</section>`}
+
+/* ===== 描画・フォーカス ===== */
+const FKEYS=["data-tab","data-tag","data-voice","data-nopush","data-pref","data-star","data-day","data-slot","data-help","data-swap","data-cancel","data-qf","data-demo","data-wv","data-clear"];
+function keyOf(el){if(!el||!$("app").contains(el)||el===$("app"))return null;if(el.id)return "#"+CSS.escape(el.id);
+  for(const a of FKEYS)if(el.hasAttribute(a)){const role=el.getAttribute("role");return `${el.tagName.toLowerCase()}${role?`[role="${role}"]`:""}[${a}="${CSS.escape(el.getAttribute(a))}"]`}return null}
+function updateHeader(){const b=balance(),p=pendingPt();$("mypt").textContent=b+" pt";$("mypt").setAttribute("aria-label",`使えるポイント ${b}pt${p?`、確認待ち ${p}pt`:""}`);
+  const cur=S.view==="me";["mypt","melink"].forEach(id=>cur?$(id).setAttribute("aria-current","page"):$(id).removeAttribute("aria-current"))}
+function render(opts={}){
+  const key=("focus" in opts)?opts.focus:keyOf(document.activeElement);
+  const build=()=>S.view==="home"?home():S.view==="gym"?detail():S.view==="page"?page():me();
+  let html;try{html=build()}catch(err){console.error(err);
+    // 万一の保険：予約・下書きの途中状態をリセットして描き直す（画面が止まらないように）
+    if(S.view==="gym"&&S.gym){const keep=S.tab;resetGym(S.gym);S.tab=keep;if(keep==="book")ensureDay();html=build()}else{S.view="home";html=home()}}
+  $("app").innerHTML=html;
+  const so=$("sort");if(so)so.value=S.sort;const rs=$("rvsort");if(rs)rs.value=S.rvSort;
+  updateHeader();
+  const mb=document.querySelector(".mapbox");if(mb&&mb.scrollWidth>mb.clientWidth){const t=mb.querySelector(`.pref[data-pref="${S.pref||"千葉"}"]`);if(t)mb.scrollLeft=Math.max(0,t.offsetLeft-mb.clientWidth*.6)}
+  if(key){const el=$("app").querySelector(key);if(el)el.focus({preventScroll:true})}
+}
+function headerOffset(){const h=document.querySelector("header.top");return getComputedStyle(h).position==="sticky"?h.offsetHeight:0}
+function scrollToEl(el){const y=el.getBoundingClientRect().top+scrollY-headerOffset()-10;scrollTo({top:Math.max(0,y),behavior:reduceMotion()?"auto":"smooth"})}
+function scrollRes(){const el=$("results");if(!el)return;scrollToEl(el);const h=$("resH");if(h)h.focus({preventScroll:true})}
+
+/* ===== ルーティング（#home / #me / #gym-<id>[-tab] / #about など） ===== */
+const TABS=["top","rv","price","book","write"];
+function parse(h){h=decodeURIComponent((h||"").replace(/^#/,""));
+  if(!h||h==="home")return {view:"home"};if(h==="me")return {view:"me"};if(PAGES[h])return {view:"page",page:h};
+  const m=h.match(/^gym-(g\d+)(?:-(top|rv|price|book|write))?$/);if(m)return {view:"gym",gym:m[1],tab:m[2]||"top"};
+  return {view:"home"}}
+const gymHash=()=>`#gym-${S.gym}${S.tab==="top"?"":"-"+S.tab}`;
+function resetGym(id){S.gym=id;S.book={day:null,slot:null,step:1,name:"",exp:"はじめて",q:"",last:null};S.draft={ax:[0,0,0,0],txt:"",photo:false,v:[],push:"",agree:false};S.rvSort="help"}
+function setTitle(){const g=S.view==="gym"&&gymById(S.gym);document.title=S.view==="home"?"キックボクシングナビ":g?`${g.n}｜キックボクシングナビ`:S.view==="me"?"マイページ｜キックボクシングナビ":S.view==="page"?`${PAGES[S.page].t}｜キックボクシングナビ`:"キックボクシングナビ"}
+const scrollMem={};let lastY=0,appNav=false;
+function route(o={}){const r=parse(location.hash);
+  S.view=r.view;S.page=r.page||null;S.confirmCancel=null;S.confirmSwap=null;
+  if(r.view==="gym"){if(r.gym!==S.gym||!S.book)resetGym(r.gym);S.tab=r.tab;if(S.tab==="book"&&gymById(S.gym))ensureDay()}
+  render({focus:null});setTitle();
+  const hk=location.hash||"#home";
+  if(S.pendingScroll){const id=S.pendingScroll;S.pendingScroll=null;requestAnimationFrame(()=>{const el=$(id);if(el){scrollTo(0,0);scrollToEl(el);const h=el.querySelector("h2")||el;h.focus({preventScroll:true})}});return}
+  scrollTo(0,o.restore&&scrollMem[hk]!=null?scrollMem[hk]:0);
+  if(!o.noFocus){const h1=$("app").querySelector("h1");if(h1)h1.focus({preventScroll:true})}
+}
+function nav(h){if(location.hash===h){route({});return}appNav=true;location.hash=h}
+function setTab(k,focusSel){if(!TABS.includes(k))return;S.tab=k;if(k==="book")ensureDay();
+  try{history.replaceState(null,"",gymHash())}catch(e){}
+  render({focus:focusSel});setTitle();
+  if(focusSel==="#tabpanel"){const tl=document.querySelector(".tabs");if(tl&&tl.getBoundingClientRect().top<headerOffset())scrollToEl(tl)}}
+if("scrollRestoration" in history)history.scrollRestoration="manual";
+addEventListener("scroll",()=>{lastY=scrollY},{passive:true});
+addEventListener("hashchange",e=>{let oh="#home";try{oh=new URL(e.oldURL).hash||"#home"}catch(_){}scrollMem[oh]=lastY;const restore=!appNav;appNav=false;route({restore})});
+
+/* ===== 操作 ===== */
+function applyQF(spec){S.tags.clear();S.voices.clear();S.nopush=false;S.kw="";S.pref="";$("kw").value="";
+  const[k,v]=spec.split(":");if(k==="voice")S.voices.add(v);else if(k==="tag")S.tags.add(v);else if(k==="nopush")S.nopush=true;
+  if(S.view!=="home"){S.pendingScroll="results";nav("#home")}else{render({focus:null});scrollRes()}}
+function clearAll(){S.kw="";S.pref="";S.tags.clear();S.voices.clear();S.nopush=false;$("kw").value=""}
+function demo(kind){
+  if(kind==="approve"){const w=REVIEWS.filter(r=>r.mine&&r.status==="pending");if(!w.length){toast("確認待ちの口コミはありません。");return}
+    let n=0;w.forEach(r=>{r.status="ok";S.ledger.forEach(l=>{if(l.ref===r.id&&l.status==="pending"){l.status="ok";l.d=today();n+=l.n}})});save();render();toast(`あなたの口コミが公開されました。+${n}pt。バトンが渡りました。`);return}
+  if(kind==="visit"){const w=S.bookings.filter(b=>b.st==="pending");if(!w.length){toast("確認待ちの申し込みはありません。");return}
+    w.forEach(b=>{b.st="visited";S.ledger.forEach(l=>{if(l.ref===b.id&&l.status==="pending"){l.status="ok";l.d=today()}})});save();render();toast(`体験への参加が確認されました。+${EARN.book*w.length}pt`);return}
+  if(kind==="help"){const pub=REVIEWS.filter(r=>r.mine&&r.status==="ok");if(!pub.length)return;const first=sum(pub.map(helpCnt))===0;pub.sort(byNew)[0].h++;save();render();toast(first?"あなたの口コミが、はじめてだれかの役に立ちました。":"「参考になった」が1人ふえました（試作）。");return}
+  if(kind==="reset"){REVIEWS=SAMPLE_REVIEWS.slice();SAMPLE_REVIEWS.forEach(r=>r.status="ok");S.ledger=[];S.bookings=[];S.tickets=[];S.helped=new Set();S.confirmCancel=null;try{localStorage.removeItem(KEY)}catch(e){}render({focus:null});const h1=$("app").querySelector("h1");if(h1)h1.focus({preventScroll:true});toast("試作のデータを最初の状態に戻しました。")}
+}
+document.addEventListener("click",e=>{const t=e.target;let el;
+  if(el=t.closest("a[data-skip]")){e.preventDefault();const h=$("app").querySelector("h1")||$("app");h.focus();return}
+  if(el=t.closest('a[href^="#"]')){const h=el.getAttribute("href");if(h===location.hash||(h==="#home"&&!location.hash)){e.preventDefault();route({})}else appNav=true;return}
+  if(el=t.closest("[data-qf]")){applyQF(el.dataset.qf);return}
+  if(el=t.closest("[data-scroll]")){const x=$(el.dataset.scroll);if(x){scrollToEl(x);x.focus({preventScroll:true})}return}
+  if(el=t.closest("[data-clear]")){const k=el.dataset.clear;if(k==="q"){S.kw="";S.pref="";$("kw").value=""}else if(k==="f"){S.tags.clear();S.voices.clear();S.nopush=false}else if(k==="voice"){S.voices.clear();S.nopush=false}else clearAll();render({focus:"#resH"});return}
+  if(el=t.closest("[data-help]")){const k=el.dataset.help;if(S.helped.has(k))S.helped.delete(k);else{S.helped.add(k);toast("「参考になった」を送りました。書いた人に気持ちが届きます。")}save();render();return}
+  if(el=t.closest("[data-swap]")){const p=+el.dataset.swap;if(balance()<p)return;S.confirmSwap=p;render({focus:`[data-swap-yes="${p}"]`});return}
+  if(el=t.closest("[data-swap-no]")){const p=+el.dataset.swapNo;S.confirmSwap=null;render({focus:`[data-swap="${p}"]`});return}
+  if(el=t.closest("[data-swap-yes]")){const p=+el.dataset.swapYes,r=REWARDS.find(x=>x.p===p);S.confirmSwap=null;if(!r||balance()<p){render();return}addLedger(-p,"交換："+r.n,"swap",null,"ok");S.tickets.unshift({id:newId("t"),p,n:r.n,d:today()});save();render({focus:"#tkH"});toast(`「${r.n}」と交換しました。使い方はマイページのチケット一覧で確認できます。（試作のため実際には届きません）`);return}
+  if(el=t.closest("[data-photo-clear]")){S.draft.photo=false;render({focus:"#wphoto"});return}
+  if(el=t.closest("[data-pref]")){const n=el.dataset.pref;S.pref=S.pref===n?"":n;S.kw="";$("kw").value="";if(S.pref){render({focus:null});scrollRes()}else render({focus:`.pref[data-pref="${n}"]`});return}
+  if(el=t.closest("[data-tag]")){const k=el.dataset.tag;S.tags.has(k)?S.tags.delete(k):S.tags.add(k);render();return}
+  if(el=t.closest("[data-voice]")){const k=el.dataset.voice;S.voices.has(k)?S.voices.delete(k):S.voices.add(k);render();return}
+  if(el=t.closest("[data-nopush]")){S.nopush=!S.nopush;render();return}
+  if(el=t.closest("[data-tab]")){const k=el.dataset.tab;setTab(k,el.getAttribute("role")==="tab"?`#tab-${k}`:"#tabpanel");return}
+  if(el=t.closest("[data-day]")){S.book.day=+el.dataset.day;S.book.slot=null;render();return}
+  if(el=t.closest("[data-slot]")){S.book.slot=el.dataset.slot;render();return}
+  if(el=t.closest("[data-bstep]")){const n=+el.dataset.bstep;if(n===2&&!S.book.slot)return;S.book.step=n;if(n===1&&S.book.last){S.book.last=null;S.book.slot=null}render({focus:"#bookH"});return}
+  if(el=t.closest("[data-star]")){const[i,n]=el.dataset.star.split("-").map(Number);S.draft.ax[i]=n;render();return}
+  if(el=t.closest("[data-bdone]")){const g=gymById(S.gym),b=S.book,day=days()[b.day||0],s=slotsFor(g,day).find(x=>x.s===b.slot);
+    if(!s||!s.ok){b.step=1;b.slot=null;b.expired=!(s&&s.booked);render({focus:"#bookH"});toast(s&&s.booked?"この日はすでに申し込み済みです（1つのジムにつき1日1件まで）。":`その時間の受付は終わりました（申し込みは体験の${CANCEL_H}時間前まで）。ほかの枠を選んでください。`);return}
+    const bk={id:newId("b"),g:g.id,date:day.date,time:s.t,cls:s.c,st:"pending",made:today()};S.bookings.push(bk);
+    addLedger(EARN.book,"体験に参加："+g.n,"book",bk.id,"pending");save();S.book={day:b.day,slot:null,step:4,name:"",exp:"はじめて",q:"",last:bk.id};render({focus:"#bookH"});
+    toast("体験を申し込みました。ジムからの確定の連絡をお待ちください。（試作のため送信されません）");return}
+  if(el=t.closest("[data-cancel]")){S.confirmCancel=el.dataset.cancel;render({focus:`[data-cancel-yes="${el.dataset.cancel}"]`});return}
+  if(el=t.closest("[data-cancel-no]")){const id=el.dataset.cancelNo;S.confirmCancel=null;render({focus:`[data-cancel="${id}"]`});return}
+  if(el=t.closest("[data-cancel-yes]")){const id=el.dataset.cancelYes,b=S.bookings.find(x=>x.id===id);S.confirmCancel=null;if(!b||b.st!=="pending")return;
+    if(new Date()>deadline(parseDT(b.date,b.time))){render({focus:"#bkH"});toast("キャンセル期限を過ぎています。ジムに直接ご連絡ください。");return}
+    b.st="canceled";let n=0;S.ledger.forEach(l=>{if(l.ref===id&&l.status==="pending"){l.status="canceled";n+=l.n}});save();render({focus:"#bkH"});toast(`申し込みをキャンセルしました。確認待ちのポイント（+${n}pt）も取り消しました。（試作のため送信されません）`);return}
+  if(el=t.closest("[data-demo]")){demo(el.dataset.demo);return}
+});
+document.addEventListener("keydown",e=>{const tile=e.target.closest&&e.target.closest(".jmap .pref");
+  if(tile&&["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Home","End"].includes(e.key)){e.preventDefault();
+    const all=[...document.querySelectorAll(".jmap .pref")];let nx=null;
+    if(e.key==="Home")nx=all[0];else if(e.key==="End")nx=all[all.length-1];else{const c=tile.getBoundingClientRect(),cx=c.left+c.width/2,cy=c.top+c.height/2;let best=1e9;
+      for(const t of all){if(t===tile)continue;const r=t.getBoundingClientRect(),dx=r.left+r.width/2-cx,dy=r.top+r.height/2-cy;
+        const ok=e.key==="ArrowUp"?dy<-2:e.key==="ArrowDown"?dy>2:e.key==="ArrowLeft"?dx<-2:dx>2;if(!ok)continue;
+        const main=(e.key==="ArrowUp"||e.key==="ArrowDown")?Math.abs(dy):Math.abs(dx),side=(e.key==="ArrowUp"||e.key==="ArrowDown")?Math.abs(dx):Math.abs(dy);const sc=main+side*2.5;if(sc<best){best=sc;nx=t}}}
+    if(nx){tile.tabIndex=-1;nx.tabIndex=0;S.mapFocus=nx.dataset.pref;nx.focus()}return}
+  const tab=e.target.closest&&e.target.closest('[role="tab"]');if(!tab)return;
+  const tabs=[...document.querySelectorAll('[role="tab"]')],i=tabs.indexOf(tab);let n=null;
+  if(e.key==="ArrowRight")n=(i+1)%tabs.length;else if(e.key==="ArrowLeft")n=(i-1+tabs.length)%tabs.length;else if(e.key==="Home")n=0;else if(e.key==="End")n=tabs.length-1;
+  if(n!==null){e.preventDefault();setTab(tabs[n].dataset.tab,`#tab-${tabs[n].dataset.tab}`)}});
+document.addEventListener("input",e=>{const t=e.target;
+  if(t.id==="wtxt"){S.draft.txt=t.value;$("wcount").textContent=t.value.trim().length+"/50文字"}
+  else if(t.id==="bname")S.book.name=t.value;else if(t.id==="bq")S.book.q=t.value});
+document.addEventListener("change",e=>{const t=e.target;
+  if(t.id==="sort"){S.sort=t.value;render()}
+  else if(t.id==="rvsort"){S.rvSort=t.value;render()}
+  else if(t.id==="wphoto"){S.draft.photo=!!(t.files&&t.files.length);render({focus:S.draft.photo?"[data-photo-clear]":"#wphoto"})}
+  else if(t.id==="wagree")S.draft.agree=t.checked;
+  else if(t.id==="bexp")S.book.exp=t.value;
+  else if(t.dataset&&t.dataset.wv){const k=t.dataset.wv,v=S.draft.v;t.checked?(!v.includes(k)&&v.push(k)):v.splice(v.indexOf(k),1)}
+  else if(t.name==="wpush")S.draft.push=t.value});
+document.addEventListener("submit",e=>{e.preventDefault();const f=e.target;
+  if(f.id==="sform"){S.kw=$("kw").value.trim();S.pref="";if(S.view!=="home"){S.pendingScroll=S.kw?"results":null;nav("#home")}else{render({focus:null});if(S.kw)scrollRes()}return}
+  if(f.id==="bform"){const b=S.book,g=gymById(S.gym);b.name=$("bname").value.trim();
+    const s=g&&b.slot?slotsFor(g,days()[b.day||0]).find(x=>x.s===b.slot):null;
+    if(!s||!s.ok){b.step=1;b.slot=null;b.expired=true;render({focus:"#bookH"});toast(`選んでいた時間の受付が終わりました（申し込みは体験の${CANCEL_H}時間前まで）。ほかの枠を選んでください。`);return}
+    b.step=3;render({focus:"#bookH"});return}
+  if(f.id==="wform"){const d=S.draft,g=gymById(S.gym);
+    if(myReviewFor(g.id)){toast("このジムへの口コミは送信済みです（1つのジムにつき1人1件まで）。");return}
+    if(d.ax.some(x=>!x)){toast("4つの項目すべてに点数をつけてください。");return}
+    if(d.txt.trim().length<50){toast(`あと${50-d.txt.trim().length}文字で送信できます。`);$("wtxt").focus();return}
+    if(!d.agree){toast("「体験・入会した本人で、ジムの関係者ではない」の確認にチェックしてください。");$("wagree").focus();return}
+    const r={id:newId("m"),g:g.id,u:"あなた",lv:"",ax:[...d.ax],txt:d.txt.trim(),d:today(),h:0,photo:d.photo,v:[...d.v],push:d.push==="yes"?true:d.push==="no"?false:undefined,status:"pending",mine:true};
+    REVIEWS.push(r);addLedger(EARN.review,"口コミ："+g.n,"review",r.id,"pending");if(d.photo)addLedger(EARN.photo,"写真つき口コミ："+g.n,"photo",r.id,"pending");save();
+    S.draft={ax:[0,0,0,0],txt:"",photo:false,v:[],push:"",agree:false};setTab("rv","#tabpanel");
+    toast(`送信しました。運営が確認したら公開され、+${EARN.review+(d.photo?EARN.photo:0)}ptが付きます。`)}
+});
+load();route({noFocus:true});
+</script>
+
+</body></html>
