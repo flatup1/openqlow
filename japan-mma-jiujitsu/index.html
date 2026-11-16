@@ -10,6 +10,16 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="JAPAN MMA JIU-JITSU — Narita, Japan">
 <meta property="og:description" content="Leg locks, heel hooks, triangle, armbar · 30, 60 or 90 min no-gi · No sparring · Narita, Japan">
+<!-- ドメインは japan-mma-jiujitsu.com の予定（未取得）。変わったら、この下の5か所のURLを置き換える -->
+<link rel="canonical" href="https://japan-mma-jiujitsu.com/">
+<meta property="og:url" content="https://japan-mma-jiujitsu.com/">
+<meta property="og:site_name" content="JAPAN MMA JIU-JITSU">
+<meta property="og:image" content="https://japan-mma-jiujitsu.com/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="JAPAN MMA JIU-JITSU: a vermilion brush circle around the kanji 柔">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://japan-mma-jiujitsu.com/og.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23EDE9E0'/%3E%3Ccircle cx='20' cy='20' r='13' fill='none' stroke='%23B5121B' stroke-width='5.5' stroke-dasharray='70 12' stroke-linecap='round' transform='rotate(-140 20 20)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -144,14 +154,13 @@ h1 span{display:block}
 .gallery figure{position:relative;aspect-ratio:3/2;background:var(--washi-deep);overflow:hidden}
 .gallery:empty{display:none}
 .gcap{margin-top:clamp(36px,5vw,64px)}
-.punch{animation:punch 1.6s ease-in-out infinite;transform-origin:30% 60%}
-@keyframes punch{0%,60%,100%{transform:translateX(0)}30%{transform:translateX(14px)}}
 .rec{animation:rec 1.2s steps(2) infinite}
 @keyframes rec{50%{opacity:0}}
 
 /* ---- Japan (the one ink band) ---- */
 .japan{background:var(--ink);color:var(--washi);border-top:0}
 .japan .lead{color:rgba(237,233,224,.72)}
+.japan .eyebrow{color:#EC6268}
 .jgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(14px,2vw,28px)}
 .jcard{display:grid;gap:12px;align-content:start;min-width:0}
 .jcard .bg{position:relative;aspect-ratio:4/3;border:1px solid rgba(237,233,224,.28);display:grid;place-items:center;overflow:hidden}
@@ -161,12 +170,27 @@ h1 span{display:block}
 .jcard .tag{font-size:12px;font-weight:700;letter-spacing:.2em;color:rgba(237,233,224,.6)}
 .jcard h3{font-size:20px;line-height:1.2}
 .jcard p{font-size:15.5px;color:rgba(237,233,224,.72)}
+.hist{display:grid;gap:clamp(20px,3vw,32px);margin-top:clamp(44px,6vw,80px);padding-top:clamp(28px,4vw,44px);border-top:1px solid rgba(237,233,224,.28)}
+.hist-head{display:grid;gap:10px;max-width:42em}
+.hist h3{font-family:var(--display);font-weight:400;text-transform:uppercase;font-size:clamp(26px,3.4vw,42px);line-height:1.05;letter-spacing:.01em;text-wrap:balance}
+:lang(zh-Hant) .hist h3,:lang(zh-Hans) .hist h3,:lang(ko) .hist h3{font-weight:900;letter-spacing:0}
+.hist-head p:last-child{font-size:16.5px;color:rgba(237,233,224,.72)}
+.hist-line{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,2vw,28px)}
+.hist-line li{display:grid;gap:8px;align-content:start;border-top:2px solid rgba(237,233,224,.45);padding-top:12px;font-size:15.5px;color:rgba(237,233,224,.78)}
+.hist-line li:last-child{border-top-color:#EC6268}
+.hist-line b{font-family:var(--display);font-weight:400;font-size:24px;line-height:1;letter-spacing:.03em;color:var(--washi);white-space:nowrap}
+:lang(zh-Hant) .hist-line b[data-t],:lang(zh-Hans) .hist-line b[data-t],:lang(ko) .hist-line b[data-t]{font-weight:900;font-size:20px;letter-spacing:0}
+.hist-note{font-size:14px;color:rgba(237,233,224,.62)}
 
 /* ---- safety + coach ---- */
 .safe{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:3px solid var(--ink)}
 .safe li{display:grid;gap:12px;justify-items:start;padding:22px 18px 22px 0;font-weight:700;font-size:18px;line-height:1.25}
 .safe li+li{padding-left:18px;border-left:1px solid var(--rule)}
 .safe svg{width:44px;height:44px}
+.rules{display:grid;gap:14px;margin-top:clamp(26px,3.4vw,40px)}
+.rules ul{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 32px}
+.rules li{position:relative;padding-left:1.5em;font-size:16px;color:var(--ink-soft)}
+.rules li::before{content:"";position:absolute;left:0;top:.72em;width:.75em;height:2px;background:var(--shu)}
 .coach{display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(18px,3vw,36px);align-items:center;margin-top:clamp(28px,4vw,48px);padding-top:clamp(28px,4vw,48px);border-top:1px solid var(--rule)}
 .seal{position:relative;width:132px;height:132px;display:grid;place-items:center;background:var(--shu);color:var(--washi);font-family:var(--display);font-size:44px;letter-spacing:.04em;border-radius:6px;transform:rotate(-3deg);overflow:hidden}
 .seal img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.1)}
@@ -178,11 +202,16 @@ h1 span{display:block}
 .coach p.say{color:var(--ink-soft);max-width:36em}
 
 /* ---- booking ---- */
+.how{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(14px,2vw,28px);margin-bottom:clamp(28px,4vw,44px)}
+.how li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start}
+.how b{grid-row:1/3;font-family:var(--display);font-weight:400;font-size:38px;line-height:.9;color:var(--shu)}
+.how h3{font-size:17px;line-height:1.25}
+.how p{grid-column:2;font-size:15px;color:var(--ink-soft)}
 .bk{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(22px,4vw,56px);border-top:3px solid var(--ink);padding-top:26px}
 .fields{display:grid;gap:20px;align-content:start}
 .field{display:grid;gap:8px}
 .field>label,.field>span{font-weight:700;font-size:15px}
-.field input[type=date]{width:100%;min-height:52px;padding:12px 14px;font-size:17px;background:var(--washi-lift);border:2px solid var(--ink);border-radius:3px}
+.field input[type=date],.field input[type=text]{width:100%;min-height:52px;padding:12px 14px;font-size:17px;background:var(--washi-lift);border:2px solid var(--ink);border-radius:3px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chips input{position:absolute;opacity:0;pointer-events:none}
 .chips label{display:inline-flex;align-items:center;min-height:46px;padding:8px 16px;background:var(--washi-lift);border:2px solid var(--ink);border-radius:3px;font-weight:600;font-size:16px;cursor:pointer;transition:background .15s,color .15s}
@@ -192,6 +221,7 @@ h1 span{display:block}
 .stepper button{width:52px;height:48px;border:0;background:none;font-size:24px;font-weight:700;cursor:pointer}
 .stepper output{min-width:44px;text-align:center;font-family:var(--display);font-size:24px}
 .total{font-weight:700;font-size:16px}
+.hint{font-size:14px;color:var(--ink-soft)}
 .send{display:grid;gap:12px;align-content:start;min-width:0}
 .preview{min-height:190px;padding:18px;background:var(--ink);color:var(--washi);border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 .send .btn{width:100%}
@@ -226,6 +256,7 @@ footer{background:var(--ink);color:rgba(237,233,224,.75);padding-block:48px 120p
 footer .wrap{display:grid;gap:10px;justify-items:center}
 footer .logo{color:var(--washi)}
 footer .logo small{color:rgba(237,233,224,.6)}
+footer .fine{font-size:13.5px;color:rgba(237,233,224,.6);max-width:40em}
 footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:0 22px}
 footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--washi)}
 .sticky{position:fixed;left:0;right:0;bottom:0;z-index:40;display:none;padding:10px var(--gutter-r) max(10px,env(safe-area-inset-bottom,0px)) var(--gutter);background:rgba(237,233,224,.94);box-shadow:0 -1px 0 var(--rule);transform:translateY(110%);visibility:hidden;transition:transform .3s,visibility .3s}
@@ -260,6 +291,11 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
   .safe li{padding:18px 12px 18px 0;font-size:16.5px}
   .safe li:nth-child(3){padding-left:0;border-left:0}
   .safe li:nth-child(n+3){border-top:1px solid var(--rule)}
+  .rules ul{grid-template-columns:minmax(0,1fr)}
+  .hist-line{grid-template-columns:minmax(0,1fr);gap:0}
+  .hist-line li{grid-template-columns:104px minmax(0,1fr);gap:14px;align-items:baseline;padding-block:14px}
+  .hist-line b{font-size:21px;white-space:normal}
+  .how{grid-template-columns:minmax(0,1fr);gap:16px}
   .coach{grid-template-columns:minmax(0,1fr);justify-items:start}
   .seal{width:104px;height:104px;font-size:36px}
   .bk{grid-template-columns:minmax(0,1fr)}
@@ -292,6 +328,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
     <symbol id="i-line" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5C6.2 2.5 1.5 6.3 1.5 11c0 4.2 3.7 7.7 8.8 8.4.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.6s5.9-3.5 8.1-6C21.6 15 22.5 13.1 22.5 11 22.5 6.3 17.8 2.5 12 2.5zM8.3 13.6H6.2c-.3 0-.5-.2-.5-.5V9c0-.3.2-.5.5-.5s.5.2.5.5v3.6h1.6c.3 0 .5.2.5.5s-.2.5-.5.5zm2.1-.5c0 .3-.2.5-.5.5s-.5-.2-.5-.5V9c0-.3.2-.5.5-.5s.5.2.5.5v4.1zm5 0c0 .2-.1.4-.3.5h-.2c-.2 0-.3-.1-.4-.2l-2.1-2.9v2.6c0 .3-.2.5-.5.5s-.5-.2-.5-.5V9c0-.2.1-.4.3-.5h.2c.2 0 .3.1.4.2l2.1 2.9V9c0-.3.2-.5.5-.5s.5.2.5.5v4.1zm3.4-2.6c.3 0 .5.2.5.5s-.2.5-.5.5h-1.6v1h1.6c.3 0 .5.2.5.5s-.2.5-.5.5h-2.1c-.3 0-.5-.2-.5-.5V9c0-.3.2-.5.5-.5h2.1c.3 0 .5.2.5.5s-.2.5-.5.5h-1.6v1h1.6z"/></symbol>
     <symbol id="i-chat" viewBox="0 0 24 24"><path d="M12 3a9 9 0 00-7.7 13.6L3 21l4.6-1.2A9 9 0 1012 3z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M9 8.6c0 3.2 2.4 5.9 5.6 6.4l1.1-1.6-2-1-.8.8c-.9-.4-1.7-1.200-2.100-2.100l.8-.8-1-2z" fill="currentColor"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1.500" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M3.500 6.500l8.500 6.500 8.500-6.500" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ig" viewBox="0 0 24 24"><rect x="3.500" y="3.500" width="17" height="17" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="7" r="1.300" fill="currentColor"/></symbol>
     <symbol id="i-nogi" viewBox="0 0 32 32"><path d="M11 5L4 9l3 5 3-1.500V27h12V12.500l3 1.500 3-5-7-4c-1 2-2.700 3-5 3s-4-1-5-3z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></symbol>
     <symbol id="i-clock" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 9v7l5 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
     <symbol id="i-nospar" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M7.5 7.5l17 17" stroke="currentColor" stroke-width="2.4"/><path d="M11 13h5a2 2 0 010 4h-2v3h-3z" fill="currentColor"/></symbol>
@@ -334,7 +371,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
       <p class="motto" data-t="motto">Strength is kindness.</p>
       <p class="price" id="priceTag"><span class="nw">¥5,000–12,000</span> <small>per person · 30, 60 or 90 min</small></p>
       <div class="hero-ctas">
-        <a class="btn btn-ink" href="#book" data-t="cta">Book now</a>
+        <a class="btn btn-ink" href="#book" data-t="cta">Request to book</a>
         <a class="textlink" href="#courses" data-t="cta2">See the courses</a>
       </div>
     </div>
@@ -370,6 +407,16 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
         <p class="tag">SANKAKU · 三角</p><h3 data-t="t2">Triangle choke</h3><p data-t="td2">Sankaku-jime. Taught with a method of our coach's own.</p></div>
       <div class="jcard"><div class="bg" data-photo="tech3"><svg viewBox="0 -830 2000 920" fill="currentColor" aria-hidden="true"><use href="#g-ju"/><use href="#g-ji" x="1000"/></svg></div>
         <p class="tag">JUJI · 十字</p><h3 data-t="t3">Armbar</h3><p data-t="td3">Ude-juji, the cross armlock. Taught with the same original method.</p></div>
+    </div>
+    <div class="hist" id="tradition">
+      <div class="hist-head"><p class="eyebrow">ASHIKAN · 足関</p><h3 data-t="histT">Japan's long leg lock tradition</h3><p data-t="histLead">Japan did not invent leg locks. Catch wrestling and sambo grew their own. But Japan has been working on them for a very long time.</p></div>
+      <ol class="hist-line">
+        <li><b>1882</b><span data-t="h1">Kodokan judo is founded. Ashi-garami, the leg entanglement, is one of its joint techniques.</span></li>
+        <li><b data-t="h2y">Later</b><span data-t="h2">Judo takes it out of competition. Ashi-garami is still one of its four forbidden techniques.</span></li>
+        <li><b>1985 · 1993</b><span data-t="h3">Shooto and Pancrase are born from shoot wrestling, where leg locks are a main weapon.</span></li>
+        <li><b data-t="h4y">2000s →</b><span data-t="h4">Fighters like Masakazu Imanari, nicknamed “Ashikan Judan” (10th dan of leg locks), carry them into MMA.</span></li>
+      </ol>
+      <p class="hist-note" data-t="histNote">FLATUP GYM is not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.</p>
     </div>
   </div>
 </section>
@@ -418,19 +465,19 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
       <article class="step">
         <p class="num">0–15′</p>
         <div class="art ph" data-photo="step1"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="34" r="12" fill="#141414"/><path d="M48 50h24l6 40H42z" fill="#141414" transform="rotate(16 60 90)"/><rect x="20" y="98" width="80" height="5" fill="#B5121B"/></svg></div>
-        <h3 data-t="s1">Bow &amp; warm-up</h3><p data-t="d1">Start with a bow, then warm up together.</p></article>
+        <h3 data-t="s1">Bow &amp; warm-up</h3><p data-t="d1">Bow in. We check your experience, explain the tap rule, then warm up together.</p></article>
       <article class="step">
         <p class="num">15–45′</p>
-        <div class="art ph" data-photo="step2"><svg viewBox="0 0 120 120" aria-hidden="true"><rect x="80" y="22" width="18" height="74" rx="8" fill="#B5121B"/><g class="punch"><circle cx="40" cy="58" r="14" fill="#141414"/><rect x="18" y="52" width="14" height="12" rx="4" fill="#141414"/></g><path d="M60 48l10-6M60 68l10 6M62 58h12" stroke="#141414" stroke-width="4" stroke-linecap="round"/></svg></div>
-        <h3 data-t="s2">Striking forms</h3><p data-t="d2">Learn the basic shapes of striking, slowly.</p></article>
+        <div class="art ph" data-photo="step2"><svg viewBox="0 0 120 120" aria-hidden="true"><path d="M24 86L74 40" stroke="#141414" stroke-width="13" stroke-linecap="round"/><path d="M44 30l52 52" stroke="#B5121B" stroke-width="13" stroke-linecap="round"/></svg></div>
+        <h3 data-t="s2">Leg locks (ASHIKAN)</h3><p data-t="d2">Entries, control and heel hook positions. Slowly, with a partner.</p></article>
       <article class="step">
         <p class="num">45–80′</p>
         <div class="art ph" data-photo="step3"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="34" fill="none" stroke="#141414" stroke-width="8" stroke-dasharray="40 14" stroke-linecap="round"/><circle cx="60" cy="60" r="12" fill="#B5121B"/></svg></div>
-        <h3 data-t="s3">MMA jiu-jitsu</h3><p data-t="d3">Leg locks, triangle and armbar. Slowly, with a partner. No force.</p></article>
+        <h3 data-t="s3">Triangle &amp; armbar</h3><p data-t="d3">Sankaku-jime and ude-juji, taught with our coach's own method. Slowly. No force.</p></article>
       <article class="step">
         <p class="num">80–90′</p>
         <div class="art ph" data-photo="step4"><svg viewBox="0 0 120 120" aria-hidden="true"><rect x="36" y="18" width="48" height="84" rx="8" fill="#141414"/><rect x="42" y="28" width="36" height="58" rx="2" fill="#EDE9E0"/><circle class="rec" cx="70" cy="36" r="4" fill="#B5121B"/><path d="M54 50v20l16-10z" fill="#B5121B"/></svg></div>
-        <h3 data-t="s4">Take home your video</h3><p data-t="d4">A short video of your class, yours to keep.</p></article>
+        <h3 data-t="s4">Take home your video</h3><p data-t="d4">A short video of your class, yours to keep. Only if you say yes to filming.</p></article>
     </div>
     <p class="eyebrow gcap" id="galleryCap" data-t="galleryT" hidden>Guests from abroad, on our mat</p>
     <div class="gallery" id="gallery"></div>
@@ -443,10 +490,20 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
     <div class="sec-head"><p class="eyebrow">Safety</p><h2 data-t="safeT">Safe by design</h2></div>
     <ul class="safe">
       <li><svg style="color:var(--shu)" aria-hidden="true"><use href="#i-nospar"/></svg><span data-t="sa1">No sparring</span></li>
-      <li><svg aria-hidden="true"><use href="#i-feather"/></svg><span data-t="sa2">Minimal contact</span></li>
+      <li><svg aria-hidden="true"><use href="#i-feather"/></svg><span data-t="sa2">Slow drills, no force</span></li>
       <li><svg aria-hidden="true"><use href="#i-hand"/></svg><span data-t="sa3">Stop anytime</span></li>
       <li><svg aria-hidden="true"><use href="#i-18"/></svg><span data-t="sa4">18+</span></li>
     </ul>
+    <div class="rules">
+      <p class="eyebrow" data-t="rulesT">Before you step on the mat</p>
+      <ul>
+        <li data-t="ru1">We explain the tap rule in English before anything else.</li>
+        <li data-t="ru2">You sign a short waiver when you arrive. It covers injury risk and filming.</li>
+        <li data-t="ru3">No class if you have been drinking or have an unhealed injury. If the coach has to turn you away on the day, you get a full refund.</li>
+        <li data-t="ru4">Worried about your heart or blood pressure? Please ask your doctor before you book.</li>
+        <li data-t="ru5">Please bring travel insurance that covers sports injuries.</li>
+      </ul>
+    </div>
     <div class="coach">
       <div class="seal" data-photo="coach"><span>JIN</span></div>
       <div class="coach-copy">
@@ -462,7 +519,13 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
 <!-- ===== BOOK ===== -->
 <section id="book">
   <div class="wrap">
-    <div class="sec-head"><p class="eyebrow">Booking</p><h2 data-t="bookT">Book your class</h2><p class="lead" data-t="bookLead">Tell us your dates. We fit the class to your trip.</p></div>
+    <div class="sec-head"><p class="eyebrow">Booking</p><h2 data-t="bookT">Request your class</h2><p class="lead" data-t="bookLead">Tell us your dates. We fit the class to your trip.</p></div>
+    <ol class="how">
+      <li><b aria-hidden="true">1</b><h3 data-t="bk1">Send your request</h3><p data-t="bk1d">Pick a course and a date, then send the message below.</p></li>
+      <li><b aria-hidden="true">2</b><h3 data-t="bk2">A coach confirms</h3><p data-t="bk2d">A person checks the date and your experience, then replies.</p></li>
+      <li><b aria-hidden="true">3</b><h3 data-t="bk3">Pay online, in advance</h3><p data-t="bk3d">We send you a payment link. Your place is confirmed once you have paid.</p></li>
+      <li><b aria-hidden="true">4</b><h3 data-t="bk4">Come and train</h3><p data-t="bk4d">We meet you at Narita Station on the 60 and 90-minute courses.</p></li>
+    </ol>
     <form class="bk" id="bk" novalidate>
       <div class="fields">
         <div class="field"><span data-t="lCourse">Course</span><div class="chips" id="cCourse"></div></div>
@@ -473,6 +536,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
           <p class="total" id="priceTotal" aria-live="polite">Total: ¥24,000</p></div>
         <div class="field"><span data-t="lExp">Experience</span><div class="chips" id="cExp"></div></div>
         <div class="field"><span data-t="lStay">Staying</span><div class="chips" id="cStay"></div></div>
+        <div class="field"><label for="fInj" data-t="lInj">Injuries or health concerns (optional)</label><input type="text" id="fInj" maxlength="120" autocomplete="off" placeholder="e.g. left knee"><p class="hint" data-t="injNote">Used only to plan a safe class, then deleted.</p></div>
       </div>
       <div class="send">
         <a class="btn btn-ink" id="bookOnline" href="#" target="_blank" rel="noopener" hidden data-t="bookOnline">Book &amp; pay online</a>
@@ -481,12 +545,14 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
         <a class="btn btn-out" id="sendWa" href="#" target="_blank" rel="noopener" hidden><svg aria-hidden="true"><use href="#i-chat"/></svg><span data-t="sendWa">Send on WhatsApp</span></a>
         <a class="btn btn-out" id="sendMail" href="#" hidden><svg aria-hidden="true"><use href="#i-mail"/></svg><span data-t="sendMail">Send by email</span></a>
         <p class="mailaddr" id="mailAddr" hidden></p>
+        <a class="btn btn-out" id="sendIg" href="#" target="_blank" rel="noopener" hidden><svg aria-hidden="true"><use href="#i-ig"/></svg><span data-t="sendIg">Send by Instagram DM</span></a>
+        <p class="note" id="igHint" role="status" hidden data-t="igCopied">Message copied. Paste it into the DM.</p>
         <div class="mini">
           <button type="button" class="linkbtn" id="copyBtn" data-t="copy">Copy message</button>
           <a class="linkbtn" id="addFriend" href="#" target="_blank" rel="noopener" data-t="addFriend">Add us on LINE</a>
-          <a class="linkbtn" id="igLink" href="#" target="_blank" rel="noopener" data-t="noLine">No LINE? Message us on Instagram</a>
         </div>
-        <p class="note" data-t="bookNote">We reply with a time that fits. Payment is online, in advance.</p>
+        <p class="note" data-t="bookNote">This is a request, not a confirmed booking yet. A coach confirms every booking by hand. Payment is online, in advance.</p>
+        <p class="note" data-t="cancelNote">Full refund up to 3 days before. Flight delayed? Full refund with the airline's notice.</p>
       </div>
     </form>
   </div>
@@ -504,7 +570,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
       <li class="stop end"><svg aria-hidden="true"><use href="#i-gym"/></svg><span>FLATUP GYM</span></li>
     </ol>
     <div class="where">
-      <div><address class="addr" id="addr"></address><p data-t="pickupNote">Free pickup from Narita Station comes with the 60 and 90-minute courses. Just ask when you book.</p><p data-t="busNote">By bus: from Narita Station take the bus bound for AEON Mall, get off at AEON, then walk about 5 minutes.</p><p data-t="around">After class: Naritasan Temple (founded in 940) and the old Omotesando street are a short walk from Narita Station.</p></div>
+      <div><address class="addr" id="addr"></address><p data-t="pickupNote">Free pickup from Narita Station comes with the 60 and 90-minute courses. Just ask when you book.</p><p data-t="busNote">By bus: from Narita Station take the bus bound for AEON Mall, get off at AEON, then walk about 5 minutes.</p><p data-t="around">After class: Naritasan Temple (founded in 940) and the old Omotesando street are a short walk from Narita Station. Ask us and we'll point the way.</p></div>
       <a class="btn btn-out" id="mapBtn" href="#" target="_blank" rel="noopener" data-t="map">Open in Google Maps</a>
     </div>
   </div>
@@ -515,14 +581,16 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
   <div class="wrap">
     <div class="sec-head"><h2>FAQ</h2></div>
     <details><summary data-t="q1">Do I need experience?</summary><p data-t="a1">No. It's built for first-timers.</p></details>
-    <details><summary data-t="q2">Is there sparring?</summary><p data-t="a2">No. You practice forms slowly with a partner. Submissions are shown, not applied.</p></details>
-    <details><summary data-t="qH">Aren't heel hooks dangerous?</summary><p data-t="aH">At full speed, they can be. Here you learn the positions slowly, there is no sparring, and you can stop at any time. Submissions are shown, not applied.</p></details>
+    <details><summary data-t="q2">Is there sparring?</summary><p data-t="a2">No. You drill each technique slowly with a partner who does not resist. You stop before any pressure. Nobody cranks a submission.</p></details>
+    <details><summary data-t="qH">Aren't heel hooks dangerous?</summary><p data-t="aH">At full speed, they can be. Here you drill the positions slowly with a cooperative partner and stop before any pressure. There is no sparring. Tap early, and you can stop at any time.</p></details>
     <details><summary data-t="qG">Gi or no-gi?</summary><p data-t="aG">No-gi. This is jiu-jitsu for MMA, so there is no gi to grip.</p></details>
     <details><summary data-t="qL">What language is the class in?</summary><p data-t="aL">Simple English, plus a translation app when we need it. Most of the class is taught by showing, so it's easy to follow.</p></details>
     <details><summary data-t="qW">When can I come?</summary><p data-t="aW">We're flexible. Tell us your travel dates and a time that suits you, and we'll arrange the class around your trip.</p></details>
     <details><summary data-t="q4">Price and payment?</summary><p data-t="a4">30 min ¥5,000, 60 min ¥9,000, 90 min ¥12,000 per person, for groups of 2 to 6. Coming alone: ¥7,500, ¥13,500 or ¥18,000. Payment is online, in advance.</p></details>
-    <details><summary data-t="q3">Insurance?</summary><p data-t="a3">Optional. Many travel policies exclude martial arts, so please check yours.</p></details>
-    <details><summary data-t="q5">What should I bring?</summary><p data-t="a5">T-shirt, shorts and water. Gloves and rental wear are ready.</p></details>
+    <details><summary data-t="qC">What if I need to cancel?</summary><p data-t="aC">Cancel up to 3 days before your class for a full refund. From 2 days before, there is no refund if you cancel for your own reasons. If we have to cancel, if the coach turns you away on the day for safety, or if your flight is delayed (show us the airline's notice), you get a full refund.</p></details>
+    <details><summary data-t="q3">Insurance?</summary><p data-t="a3">Please bring travel insurance that covers sports injuries. Many policies exclude martial arts, so check yours before you fly.</p></details>
+    <details><summary data-t="q5">What should I bring?</summary><p data-t="a5">A T-shirt or rashguard, shorts without zippers or pockets, a towel and water.</p></details>
+    <details><summary data-t="qI">Is this Imanari's gym?</summary><p data-t="aI">No. We are FLATUP GYM in Narita. We are not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.</p></details>
   </div>
 </section>
 </main>
@@ -531,11 +599,12 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
   <div class="wrap">
     <a class="logo" href="#top"><svg class="mark" aria-hidden="true"><use href="#mark"/></svg><span>JAPAN MMA JIU-JITSU<small>BY FLATUP GYM · NARITA</small></span></a>
     <p data-t="footer">Operated by FLATUP GYM, Narita. The kindest martial arts gym.</p>
+    <p class="fine" data-t="fine">Flights, hotels and tours are not included. We don't arrange or sell travel.</p>
     <nav><a id="gymLink" href="#" target="_blank" rel="noopener">flatupnarita.jp</a><a id="igLink2" href="#" target="_blank" rel="noopener">Instagram</a></nav>
   </div>
 </footer>
 
-<div class="sticky" id="sticky"><a class="btn btn-ink" href="#book" data-t="cta">Book now</a></div>
+<div class="sticky" id="sticky"><a class="btn btn-ink" href="#book" data-t="cta">Request to book</a></div>
 
 <script>
 /* =====================================================
@@ -543,14 +612,16 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
    ===================================================== */
 const CONFIG = {
   /* ▼ 公開前に必ず確認 ---------------------------------------------- */
-  lineId: "@jfl0054o",      // ⚠ 今はAIKAのLINE。旅行者専用LINEができたら、そのIDに差し替える
+  lineId: "@jfl0054o",      // 今のLINE（AIKAと同じアカウント）で、人が返信する。⚠ AIKAの自動返信が外国語の予約に答えないよう、公開前に運用を決める
   whatsapp: "",             // WhatsAppの番号（国番号つき・数字のみ。例 "819012345678"）。空ならボタン非表示
   email: "",                // 予約を受け取るメールアドレス。空ならボタン非表示
-  bookingUrl: "",           // 予約システム（事前決済）のURL。入れると「Book & pay online」ボタンが出る
+  bookingUrl: "",           // 空のままでよい。支払いは、人が予約を確定したあとに「決済リンク」を個別に送る（2026-11-16 JIN回答）。あとで予約システムを入れたら、ここにURLを書くと「Book & pay online」ボタンが出る
+  instagramDm: "https://ig.me/m/flatup.narita",   // Instagram DMで予約を受ける窓口（LINEを使わない国の人向け）。空ならボタン非表示
   /* ▲ ---------------------------------------------------------------- */
   instagram: "https://www.instagram.com/flatup.narita/",
   gymSite: "https://www.flatupnarita.jp/",
   address: "FLATUP GYM, 2F Aoyagi Building, 516-4 Tsuchiya, Narita, Chiba 286-0021",
+  postal: {street:"516-4 Tsuchiya, 2F", city:"Narita", region:"Chiba", zip:"286-0021"},   // 検索エンジン向けの住所（正本 canon.ts と同じ。建物名は入れない）
   /* コースと料金。price＝1名あたり（2〜6名で参加するとき）、solo＝1名だけで参加するとき。
      中身の説明文（技・送迎・動画）は、下の T の c30d / c60d / c90d と、ページ上の「COURSES」の欄を直す */
   courses: [
@@ -562,7 +633,7 @@ const CONFIG = {
   /* 写真：images/ フォルダに置いてファイル名を書く。空なら筆文字や絵で表示。写真は自動で白黒になります */
   photos: {
     heroFigure: "images/hero-figure.webp",   // トップの人物（墨絵風に加工した透過PNG/WebP）。空にすると「柔」の字だけになる
-    step1: "images/s1.jpg", step2: "images/s2.jpg", step3: "images/s3.jpg", step4: "",
+    step1: "images/s1.jpg", step2: "images/s3.jpg", step3: "images/s5.jpg", step4: "",
     tech1: "images/t1.jpg", tech2: "images/t2.jpg", tech3: "images/t3.jpg",   // 足関節・三角絞め・腕十字の写真（空なら筆文字だけ）
     coach: "",
     gallery: ["images/guest1.jpg","images/guest2.jpg","images/guest3.jpg"]   // 海外ゲストの写真
@@ -570,8 +641,8 @@ const CONFIG = {
   /* 写真の説明文（目の不自由な方と検索エンジン向け・英語） */
   alt: {
     step1: "Members and a guest from abroad warming up on the mat",
-    step2: "A member smiling as she punches a mitt",
-    step3: "Two members drilling a leg lock on the mat",
+    step2: "Two members drilling a leg lock on the mat",
+    step3: "A triangle and armbar set-up from the guard, drilled with a smile",
     tech1: "A leg entanglement with the foot held, drilled on the mat",
     tech2: "A triangle choke from the bottom",
     tech3: "An armbar: one leg swings over to extend the arm",
@@ -587,142 +658,146 @@ const T = {
 en:{kicker:"MMA jiu-jitsu experience · Narita, Japan",
 lead:"Leg locks, heel hooks, triangles and armbars. No-gi jiu-jitsu built for MMA, taught in Japan, minutes from Narita Airport. No sparring. Beginners welcome.",
 motto:"Strength is kindness.",ju:"柔 (jū): gentle, yielding. The first character of jiu-jitsu.",
-cta:"Book now",ctaShort:"Book",cta2:"See the courses",
+cta:"Request to book",ctaShort:"Book",cta2:"See the courses",
 f1:"30 / 60 / 90 min",f2:"No sparring",f3:"Beginners welcome",f6:"No-gi",f5:"Free pickup (60 & 90 min)",
-flowT:"Your 90 minutes",s1:"Bow & warm-up",s2:"Striking forms",s3:"MMA jiu-jitsu",s4:"Take home your video",
-d1:"Start with a bow, then warm up together.",d2:"Learn the basic shapes of striking, slowly.",d3:"Leg locks, triangle and armbar. Slowly, with a partner. No force.",d4:"A short video of your class, yours to keep.",
+flowT:"Your 90 minutes",s1:"Bow & warm-up",s2:"Leg locks (ASHIKAN)",s3:"Triangle & armbar",s4:"Take home your video",
+d1:"Bow in. We check your experience, explain the tap rule, then warm up together.",d2:"Entries, control and heel hook positions. Slowly, with a partner.",d3:"Sankaku-jime and ude-juji, taught with our coach's own method. Slowly. No force.",d4:"A short video of your class, yours to keep. Only if you say yes to filming.",
 learnT:"What you learn",learnLead:"Jiu-jitsu built for MMA, not for the gi. Each technique is taught under its Japanese name.",
 t1:"Leg locks & heel hooks",t2:"Triangle choke",t3:"Armbar",
 td1:"Banned in gi competition, a core weapon in MMA. Learn how heel hooks and other leg locks work, slowly and under control.",td2:"Sankaku-jime. Taught with a method of our coach's own.",td3:"Ude-juji, the cross armlock. Taught with the same original method.",
-safeT:"Safe by design",sa1:"No sparring",sa2:"Minimal contact",sa3:"Stop anytime",sa4:"18+",
+safeT:"Safe by design",sa1:"No sparring",sa2:"Slow drills, no force",sa3:"Stop anytime",sa4:"18+",
 coachT:"Your coach",p1:"Member",p2:"Pro fighter",p3:"Gym owner",
 coachLang:"Teaches in simple English, with a translation app when needed. Most of it is shown, not said.",
-bookT:"Book your class",bookLead:"Tell us your dates. We fit the class to your trip.",
+bookT:"Request your class",bookLead:"Tell us your dates. We fit the class to your trip.",
 lDate:"Date",lTime:"Time",lPeople:"People",lExp:"Experience",lStay:"Staying",
 time:["Morning","Afternoon","Evening"],exp:["None","A little","Experienced"],stay:["Layover","Narita hotel","Tokyo"],
 bookOnline:"Book & pay online",send:"Send on LINE",sendWa:"Send on WhatsApp",sendMail:"Send by email",
-copy:"Copy message",copied:"Copied!",addFriend:"Add us on LINE",noLine:"No LINE? Message us on Instagram",
-bookNote:"We reply with a time that fits. Payment is online, in advance.",
+copy:"Copy message",copied:"Copied!",addFriend:"Add us on LINE",
+bookNote:"This is a request, not a confirmed booking yet. A coach confirms every booking by hand. Payment is online, in advance.",
 accT:"Access",st1:"Narita Airport",st2:"Narita Station",leg1:"Train · about 10 min",leg2:"Free pickup · about 10 min",
-pickupNote:"Free pickup from Narita Station comes with the 60 and 90-minute courses. Just ask when you book.",around:"After class: Naritasan Temple (founded in 940) and the old Omotesando street are a short walk from Narita Station.",map:"Open in Google Maps",
+pickupNote:"Free pickup from Narita Station comes with the 60 and 90-minute courses. Just ask when you book.",around:"After class: Naritasan Temple (founded in 940) and the old Omotesando street are a short walk from Narita Station. Ask us and we'll point the way.",map:"Open in Google Maps",
 q1:"Do I need experience?",a1:"No. It's built for first-timers.",
-q2:"Is there sparring?",a2:"No. You practice forms slowly with a partner. Submissions are shown, not applied.",
-qH:"Aren't heel hooks dangerous?",aH:"At full speed, they can be. Here you learn the positions slowly, there is no sparring, and you can stop at any time. Submissions are shown, not applied.",
+q2:"Is there sparring?",a2:"No. You drill each technique slowly with a partner who does not resist. You stop before any pressure. Nobody cranks a submission.",
+qH:"Aren't heel hooks dangerous?",aH:"At full speed, they can be. Here you drill the positions slowly with a cooperative partner and stop before any pressure. There is no sparring. Tap early, and you can stop at any time.",
 qG:"Gi or no-gi?",aG:"No-gi. This is jiu-jitsu for MMA, so there is no gi to grip.",
 qL:"What language is the class in?",aL:"Simple English, plus a translation app when we need it. Most of the class is taught by showing, so it's easy to follow.",
 qW:"When can I come?",aW:"We're flexible. Tell us your travel dates and a time that suits you, and we'll arrange the class around your trip.",
 q4:"Price and payment?",a4:"",
-q3:"Insurance?",a3:"Optional. Many travel policies exclude martial arts, so please check yours.",
-q5:"What should I bring?",a5:"T-shirt, shorts and water. Gloves and rental wear are ready.",lTotal:"Total",
+q3:"Insurance?",a3:"Please bring travel insurance that covers sports injuries. Many policies exclude martial arts, so check yours before you fly.",
+q5:"What should I bring?",a5:"A T-shirt or rashguard, shorts without zippers or pockets, a towel and water.",lTotal:"Total",
 footer:"Operated by FLATUP GYM, Narita. The kindest martial arts gym.",
 priceIs:"30 min {a}, 60 min {b}, 90 min {c} per person, for groups of 2 to 6. Coming alone: {sa}, {sb} or {sc}. Payment is online, in advance.",
 priceRange:"per person · 30, 60 or 90 min",coursesT:"Three courses",coursesLead:"Pick the time that fits your trip. Prices are per person, for groups of 2 to 6.",c30n:"Taster",c60n:"Leg locks",c90n:"Full course",c30d:"One technique: a leg lock entry.",c60d:"Leg locks and heel hooks.",c90d:"Leg locks, triangle and armbar.",incPickup:"Free pickup",incNoPickup:"No pickup",incVideo:"Your video",incNoVideo:"No video",best:"Best value",soloLbl:"Solo: {s}",choose:"Choose",perP:"per person",lCourse:"Course",minU:" min",busNote:"By bus: from Narita Station take the bus bound for AEON Mall, get off at AEON, then walk about 5 minutes.",
 galleryT:"Guests from abroad, on our mat",
+rulesT:"Before you step on the mat",ru1:"We explain the tap rule in English before anything else.",ru2:"You sign a short waiver when you arrive. It covers injury risk and filming.",ru3:"No class if you have been drinking or have an unhealed injury. If the coach has to turn you away on the day, you get a full refund.",ru4:"Worried about your heart or blood pressure? Please ask your doctor before you book.",ru5:"Please bring travel insurance that covers sports injuries.",histT:"Japan's long leg lock tradition",histLead:"Japan did not invent leg locks. Catch wrestling and sambo grew their own. But Japan has been working on them for a very long time.",h1:"Kodokan judo is founded. Ashi-garami, the leg entanglement, is one of its joint techniques.",h2y:"Later",h2:"Judo takes it out of competition. Ashi-garami is still one of its four forbidden techniques.",h3:"Shooto and Pancrase are born from shoot wrestling, where leg locks are a main weapon.",h4y:"2000s →",h4:"Fighters like Masakazu Imanari, nicknamed “Ashikan Judan” (10th dan of leg locks), carry them into MMA.",histNote:"FLATUP GYM is not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.",bk1:"Send your request",bk1d:"Pick a course and a date, then send the message below.",bk2:"A coach confirms",bk2d:"A person checks the date and your experience, then replies.",bk3:"Pay online, in advance",bk3d:"We send you a payment link. Your place is confirmed once you have paid.",bk4:"Come and train",bk4d:"We meet you at Narita Station on the 60 and 90-minute courses.",cancelNote:"Full refund up to 3 days before. Flight delayed? Full refund with the airline's notice.",lInj:"Injuries or health concerns (optional)",lInjS:"Injuries",injPh:"e.g. left knee",injNote:"Used only to plan a safe class, then deleted.",sendIg:"Send by Instagram DM",igCopied:"Message copied. Paste it into the DM.",qC:"What if I need to cancel?",aC:"Cancel up to 3 days before your class for a full refund. From 2 days before, there is no refund if you cancel for your own reasons. If we have to cancel, if the coach turns you away on the day for safety, or if your flight is delayed (show us the airline's notice), you get a full refund.",qI:"Is this Imanari's gym?",aI:"No. We are FLATUP GYM in Narita. We are not affiliated with Masakazu Imanari or Imanari Jiu-Jitsu.",fine:"Flights, hotels and tours are not included. We don't arrange or sell travel.",
 msgTitle:"JAPAN MMA JIU-JITSU booking request"},
 "zh-Hant":{kicker:"MMA柔術體驗・日本成田",
 lead:"足關節技、足跟勾、三角絞、十字固。為MMA而生的無道服（No-Gi）柔術，在日本學，離成田機場很近。無對打，歡迎新手。",
 motto:"強大，就是溫柔。",ju:"柔（jū）：柔和、順勢而為。「柔術」的第一個字。",
-cta:"立即預約",ctaShort:"預約",cta2:"查看課程",
+cta:"申請預約",ctaShort:"預約",cta2:"查看課程",
 f1:"30／60／90分鐘",f2:"無對打",f3:"歡迎新手",f6:"無道服 No-Gi",f5:"成田站免費接送（60、90分鐘）",
-flowT:"你的90分鐘",s1:"行禮與暖身",s2:"打擊招式",s3:"MMA柔術",s4:"紀念影片帶回家",
-d1:"先行禮，再一起暖身。",d2:"慢慢學習打擊的基本動作。",d3:"足關節技、三角絞與十字固。與夥伴慢慢練，不用力。",d4:"為你拍下上課的短片，帶回家留念。",
+flowT:"你的90分鐘",s1:"行禮與暖身",s2:"足關節技（ASHIKAN）",s3:"三角絞與十字固",s4:"紀念影片帶回家",
+d1:"先行禮。確認你的經驗、說明拍擊認輸（Tap）的規則，再一起暖身。",d2:"進入、控制與足跟勾的姿勢。與夥伴慢慢練。",d3:"以教練獨創的方法學習三角絞與十字固。慢慢練，不用力。",d4:"為你拍下上課的短片，帶回家留念。需經你同意才會拍攝。",
 learnT:"你會學到什麼",learnLead:"這是為MMA設計的柔術，不穿道服。每個招式都用日文名稱來教。",
 t1:"足關節技與足跟勾",t2:"三角絞",t3:"十字固",
 td1:"在道服柔術比賽中被禁用，卻是MMA的重要武器。慢慢地、在控制之下，學會足跟勾等足關節技的原理。",td2:"日文叫「三角絞め」（Sankaku-jime）。以教練獨創的方法指導。",td3:"日文叫「腕十字」（Ude-juji）。同樣以獨創的方法指導。",
-safeT:"安全為先",sa1:"無對打",sa2:"接觸最少",sa3:"隨時可停",sa4:"18歲以上",
+safeT:"安全為先",sa1:"無對打",sa2:"慢速練習，不用力",sa3:"隨時可停",sa4:"18歲以上",
 coachT:"教練",p1:"會員",p2:"職業選手",p3:"館長",
 coachLang:"以簡單英語授課，需要時使用翻譯App。大部分動作都是示範給你看。",
-bookT:"預約課程",bookLead:"告訴我們你的日期，我們會配合你的行程安排上課時間。",
+bookT:"申請預約課程",bookLead:"告訴我們你的日期，我們會配合你的行程安排上課時間。",
 lDate:"日期",lTime:"時段",lPeople:"人數",lExp:"經驗",lStay:"住宿",
 time:["上午","下午","晚上"],exp:["無","一點","有經驗"],stay:["轉機","住成田","住東京"],
 bookOnline:"線上預約並付款",send:"用LINE傳送",sendWa:"用WhatsApp傳送",sendMail:"用電子郵件傳送",
-copy:"複製訊息",copied:"已複製",addFriend:"加入LINE好友",noLine:"沒有LINE？請用Instagram私訊",
-bookNote:"我們會回覆適合的時段。費用於線上預先支付。",
+copy:"複製訊息",copied:"已複製",addFriend:"加入LINE好友",
+bookNote:"這是預約申請，尚未成立。每一筆預約都由教練親自確認。費用於線上預先支付。",
 accT:"交通",st1:"成田機場",st2:"成田站",leg1:"電車・約10分鐘",leg2:"免費接送・約10分鐘",
-pickupNote:"60與90分鐘課程附成田站免費接送，預約時告訴我們即可。",around:"下課後：創建於西元940年的成田山新勝寺與表參道老街，從成田站步行可達。",map:"在Google地圖開啟",
+pickupNote:"60與90分鐘課程附成田站免費接送，預約時告訴我們即可。",around:"下課後：創建於西元940年的成田山新勝寺與表參道老街，從成田站步行可達。需要的話，我們可以為你指路。",map:"在Google地圖開啟",
 q1:"需要經驗嗎？",a1:"不需要，專為初學者設計。",
-q2:"有對打嗎？",a2:"沒有。與夥伴慢慢練習招式，關節技只示範不施加。",
-qH:"足跟勾不是很危險嗎？",aH:"全速施展時確實有風險。在這裡你會慢慢學習姿勢，沒有對打，而且隨時可以停止。關節技只示範，不實際施加。",
+q2:"有對打嗎？",a2:"沒有。與不抵抗的夥伴慢慢練習每個招式，在產生壓力之前就停下，不會把關節技做到底。",
+qH:"足跟勾不是很危險嗎？",aH:"全速施展時確實有風險。在這裡，你會與配合的夥伴慢慢練習姿勢，在產生壓力之前就停下。沒有對打。請及早拍擊認輸，而且隨時可以停止。",
 qG:"穿道服還是不穿？",aG:"不穿道服（No-Gi）。這是為MMA設計的柔術，沒有道服可以抓。",
 qL:"上課用什麼語言？",aL:"以簡單英語為主，需要時使用翻譯App。大部分內容都是示範教學，很容易跟上。",
 qW:"什麼時候可以上課？",aW:"時間可以商量。告訴我們你的旅行日期和方便的時段，我們會配合你的行程安排。",
 q4:"費用與付款？",a4:"",
-q3:"保險呢？",a3:"自由選擇。許多旅遊保險不承保格鬥技，請自行確認。",
-q5:"要帶什麼？",a5:"T恤、短褲和飲用水。提供手套與服裝租借。",lTotal:"合計",
+q3:"保險呢？",a3:"請投保涵蓋運動傷害的旅遊保險。許多保險不承保格鬥技，出發前請先確認。",
+q5:"要帶什麼？",a5:"T恤或防磨衣（Rashguard）、沒有拉鍊和口袋的短褲、毛巾和飲用水。",lTotal:"合計",
 footer:"營運：FLATUP GYM（成田）。世界最溫柔的格鬥技道館。",
 priceIs:"2至6人同行，每人：30分鐘 {a}、60分鐘 {b}、90分鐘 {c}。1人參加：{sa}、{sb}、{sc}。費用於線上預先支付。",
 priceRange:"/ 每人・30、60或90分鐘",coursesT:"三種課程",coursesLead:"依你的行程選擇時間。價格為每人費用（2至6人同行）。",c30n:"體驗課",c60n:"足關節技",c90n:"完整課程",c30d:"一個招式：足關節技的入門動作。",c60d:"足關節技與足跟勾。",c90d:"足關節技、三角絞與十字固。",incPickup:"免費接送",incNoPickup:"無接送",incVideo:"附紀念影片",incNoVideo:"無影片",best:"最划算",soloLbl:"1人參加：{s}",choose:"選擇",perP:"每人",lCourse:"課程",minU:"分鐘",busNote:"搭公車：從成田站搭往AEON Mall（永旺夢樂城）的公車，在AEON站下車，步行約5分鐘。",
 galleryT:"來自海外的客人，在我們的墊上",
+rulesT:"上墊之前",ru1:"開始前，我們會先用英語說明拍擊認輸（Tap）的規則。",ru2:"抵達後請簽署一份簡短的同意書，內容包含受傷風險與拍攝。",ru3:"飲酒後或有未痊癒的傷，無法上課。若教練當天基於安全考量婉拒，將全額退款。",ru4:"若擔心心臟或血壓，請在預約前先諮詢醫師。",ru5:"請投保涵蓋運動傷害的旅遊保險。",histT:"日本悠久的足關節技傳統",histLead:"足關節技並非日本發明，擒拿式摔角（Catch Wrestling）與桑搏也各自發展出自己的技術。但日本鑽研它的時間非常長。",h1:"講道館柔道創立。纏腿技「足緘」（Ashi-garami）是其關節技之一。",h2y:"之後",h2:"柔道將它排除在比賽之外。足緘至今仍是四個禁止技之一。",h3:"修斗與Pancrase從Shoot摔角中誕生，足關節技正是其主要武器。",h4y:"2000年代～",h4:"人稱「足關十段」的今成正和等選手，把足關節技帶進MMA。",histNote:"FLATUP GYM與今成正和選手及今成柔術沒有任何關係。",bk1:"送出申請",bk1d:"選擇課程與日期，送出下方訊息。",bk2:"教練確認",bk2d:"由真人確認日期與你的經驗後回覆。",bk3:"線上預先付款",bk3d:"我們會傳送付款連結。付款完成後，預約才算成立。",bk4:"來上課",bk4d:"60與90分鐘課程，我們到成田站接你。",cancelNote:"上課3天前取消可全額退款。航班延誤？出示航空公司通知即可全額退款。",lInj:"傷病或健康狀況（選填）",lInjS:"傷病",injPh:"例如：左膝",injNote:"僅用於安排安全的課程，課後即刪除。",sendIg:"用Instagram私訊傳送",igCopied:"訊息已複製，請貼到私訊中。",qC:"需要取消怎麼辦？",aC:"上課3天前取消，全額退款。2天前至當天因個人因素取消，恕不退款。若由我們取消、教練當天基於安全考量婉拒，或航班延誤（請出示航空公司通知），皆全額退款。",qI:"這是今成選手的道館嗎？",aI:"不是。我們是成田的FLATUP GYM，與今成正和選手及今成柔術沒有任何關係。",fine:"費用不含機票、住宿與行程。我們不代訂、也不販售旅遊產品。",
 msgTitle:"JAPAN MMA JIU-JITSU 預約"},
 "zh-Hans":{kicker:"MMA柔术体验・日本成田",
 lead:"足关节技、足跟勾、三角绞、十字固。为MMA而生的无道服（No-Gi）柔术，在日本学，离成田机场很近。无对打，欢迎新手。",
 motto:"强大，就是温柔。",ju:"柔（jū）：柔和、顺势而为。“柔术”的第一个字。",
-cta:"立即预约",ctaShort:"预约",cta2:"查看课程",
+cta:"申请预约",ctaShort:"预约",cta2:"查看课程",
 f1:"30／60／90分钟",f2:"无对打",f3:"欢迎新手",f6:"无道服 No-Gi",f5:"成田站免费接送（60、90分钟）",
-flowT:"你的90分钟",s1:"行礼与热身",s2:"打击招式",s3:"MMA柔术",s4:"纪念视频带回家",
-d1:"先行礼，再一起热身。",d2:"慢慢学习打击的基本动作。",d3:"足关节技、三角绞与十字固。与伙伴慢慢练，不用力。",d4:"为你拍下上课的短视频，带回家留念。",
+flowT:"你的90分钟",s1:"行礼与热身",s2:"足关节技（ASHIKAN）",s3:"三角绞与十字固",s4:"纪念视频带回家",
+d1:"先行礼。确认你的经验、说明拍击认输（Tap）的规则，再一起热身。",d2:"进入、控制与足跟勾的姿势。与伙伴慢慢练。",d3:"用教练独创的方法学习三角绞与十字固。慢慢练，不用力。",d4:"为你拍下上课的短视频，带回家留念。需经你同意才会拍摄。",
 learnT:"你会学到什么",learnLead:"这是为MMA设计的柔术，不穿道服。每个招式都用日文名称来教。",
 t1:"足关节技与足跟勾",t2:"三角绞",t3:"十字固",
 td1:"在道服柔术比赛中被禁用，却是MMA的重要武器。慢慢地、在控制之下，学会足跟勾等足关节技的原理。",td2:"日文叫“三角絞め”（Sankaku-jime）。以教练独创的方法指导。",td3:"日文叫“腕十字”（Ude-juji）。同样以独创的方法指导。",
-safeT:"安全第一",sa1:"无对打",sa2:"接触最少",sa3:"随时可停",sa4:"18岁以上",
+safeT:"安全第一",sa1:"无对打",sa2:"慢速练习，不用力",sa3:"随时可停",sa4:"18岁以上",
 coachT:"教练",p1:"会员",p2:"职业选手",p3:"馆长",
 coachLang:"用简单英语授课，需要时使用翻译App。大部分动作都是示范给你看。",
-bookT:"预约课程",bookLead:"告诉我们你的日期，我们会配合你的行程安排上课时间。",
+bookT:"申请预约课程",bookLead:"告诉我们你的日期，我们会配合你的行程安排上课时间。",
 lDate:"日期",lTime:"时段",lPeople:"人数",lExp:"经验",lStay:"住宿",
 time:["上午","下午","晚上"],exp:["无","一点","有经验"],stay:["转机","住成田","住东京"],
 bookOnline:"在线预约并付款",send:"用LINE发送",sendWa:"用WhatsApp发送",sendMail:"用电子邮件发送",
-copy:"复制消息",copied:"已复制",addFriend:"添加LINE好友",noLine:"没有LINE？请用Instagram私信",
-bookNote:"我们会回复合适的时段。费用在线上预先支付。",
+copy:"复制消息",copied:"已复制",addFriend:"添加LINE好友",
+bookNote:"这是预约申请，尚未成立。每一笔预约都由教练亲自确认。费用在线上预先支付。",
 accT:"交通",st1:"成田机场",st2:"成田站",leg1:"电车・约10分钟",leg2:"免费接送・约10分钟",
-pickupNote:"60与90分钟课程附成田站免费接送，预约时告诉我们即可。",around:"下课后：创建于公元940年的成田山新胜寺与表参道老街，从成田站步行可达。",map:"在Google地图打开",
+pickupNote:"60与90分钟课程附成田站免费接送，预约时告诉我们即可。",around:"下课后：创建于公元940年的成田山新胜寺与表参道老街，从成田站步行可达。需要的话，我们可以为你指路。",map:"在Google地图打开",
 q1:"需要经验吗？",a1:"不需要，专为初学者设计。",
-q2:"有对打吗？",a2:"没有。与伙伴慢慢练习招式，关节技只示范不施加。",
-qH:"足跟勾不是很危险吗？",aH:"全速施展时确实有风险。在这里你会慢慢学习姿势，没有对打，而且随时可以停止。关节技只示范，不实际施加。",
+q2:"有对打吗？",a2:"没有。与不抵抗的伙伴慢慢练习每个招式，在产生压力之前就停下，不会把关节技做到底。",
+qH:"足跟勾不是很危险吗？",aH:"全速施展时确实有风险。在这里，你会与配合的伙伴慢慢练习姿势，在产生压力之前就停下。没有对打。请及早拍击认输，而且随时可以停止。",
 qG:"穿道服还是不穿？",aG:"不穿道服（No-Gi）。这是为MMA设计的柔术，没有道服可以抓。",
 qL:"上课用什么语言？",aL:"以简单英语为主，需要时使用翻译App。大部分内容都是示范教学，很容易跟上。",
 qW:"什么时候可以上课？",aW:"时间可以商量。告诉我们你的旅行日期和方便的时段，我们会配合你的行程安排。",
 q4:"费用与付款？",a4:"",
-q3:"保险呢？",a3:"自愿选择。很多旅游保险不承保格斗技，请自行确认。",
-q5:"要带什么？",a5:"T恤、短裤和饮用水。提供手套与服装租借。",lTotal:"合计",
+q3:"保险呢？",a3:"请购买涵盖运动伤害的旅游保险。很多保险不承保格斗技，出发前请先确认。",
+q5:"要带什么？",a5:"T恤或防磨衣（Rashguard）、没有拉链和口袋的短裤、毛巾和饮用水。",lTotal:"合计",
 footer:"运营：FLATUP GYM（成田）。世界最温柔的格斗技道馆。",
 priceIs:"2至6人同行，每人：30分钟 {a}、60分钟 {b}、90分钟 {c}。1人参加：{sa}、{sb}、{sc}。费用在线上预先支付。",
 priceRange:"/ 每人・30、60或90分钟",coursesT:"三种课程",coursesLead:"按你的行程选择时间。价格为每人费用（2至6人同行）。",c30n:"体验课",c60n:"足关节技",c90n:"完整课程",c30d:"一个招式：足关节技的入门动作。",c60d:"足关节技与足跟勾。",c90d:"足关节技、三角绞与十字固。",incPickup:"免费接送",incNoPickup:"无接送",incVideo:"附纪念视频",incNoVideo:"无视频",best:"最划算",soloLbl:"1人参加：{s}",choose:"选择",perP:"每人",lCourse:"课程",minU:"分钟",busNote:"乘公交：从成田站乘坐开往AEON Mall（永旺梦乐城）的公交车，在AEON站下车，步行约5分钟。",
 galleryT:"来自海外的客人，在我们的垫上",
+rulesT:"上垫之前",ru1:"开始前，我们会先用英语说明拍击认输（Tap）的规则。",ru2:"到达后请签署一份简短的同意书，内容包括受伤风险与拍摄。",ru3:"饮酒后或有未痊愈的伤，无法上课。若教练当天出于安全考虑婉拒，将全额退款。",ru4:"如果担心心脏或血压，请在预约前先咨询医生。",ru5:"请购买涵盖运动伤害的旅游保险。",histT:"日本悠久的足关节技传统",histLead:"足关节技并非日本发明，擒拿式摔跤（Catch Wrestling）与桑搏也各自发展出自己的技术。但日本钻研它的时间非常长。",h1:"讲道馆柔道创立。缠腿技“足缄”（Ashi-garami）是其关节技之一。",h2y:"之后",h2:"柔道将它排除在比赛之外。足缄至今仍是四个禁止技之一。",h3:"修斗与Pancrase从Shoot摔跤中诞生，足关节技正是其主要武器。",h4y:"2000年代～",h4:"人称“足关十段”的今成正和等选手，把足关节技带进MMA。",histNote:"FLATUP GYM与今成正和选手及今成柔术没有任何关系。",bk1:"发送申请",bk1d:"选择课程与日期，发送下方消息。",bk2:"教练确认",bk2d:"由真人确认日期与你的经验后回复。",bk3:"线上预先付款",bk3d:"我们会发送付款链接。付款完成后，预约才算成立。",bk4:"来上课",bk4d:"60与90分钟课程，我们到成田站接你。",cancelNote:"上课3天前取消可全额退款。航班延误？出示航空公司通知即可全额退款。",lInj:"伤病或健康状况（选填）",lInjS:"伤病",injPh:"例如：左膝",injNote:"仅用于安排安全的课程，课后即删除。",sendIg:"用Instagram私信发送",igCopied:"消息已复制，请粘贴到私信中。",qC:"需要取消怎么办？",aC:"上课3天前取消，全额退款。2天前至当天因个人原因取消，恕不退款。若由我们取消、教练当天出于安全考虑婉拒，或航班延误（请出示航空公司通知），均全额退款。",qI:"这是今成选手的道馆吗？",aI:"不是。我们是成田的FLATUP GYM，与今成正和选手及今成柔术没有任何关系。",fine:"费用不含机票、住宿与行程。我们不代订、也不销售旅游产品。",
 msgTitle:"JAPAN MMA JIU-JITSU 预约"},
 ko:{kicker:"MMA 주짓수 체험 · 일본 나리타",
 lead:"레그락, 힐훅, 트라이앵글 초크, 암바. MMA를 위한 노기(No-Gi) 주짓수를 일본에서 배웁니다. 나리타 공항에서 가깝습니다. 스파링은 없고, 초보자도 환영합니다.",
 motto:"강함은 곧 다정함.",ju:"柔(주): 부드러움. '주짓수(柔術)'의 첫 글자입니다.",
-cta:"지금 예약",ctaShort:"예약",cta2:"코스 보기",
+cta:"예약 신청",ctaShort:"예약",cta2:"코스 보기",
 f1:"30·60·90분",f2:"스파링 없음",f3:"초보자 환영",f6:"노기 (No-Gi)",f5:"나리타역 무료 픽업 (60·90분)",
-flowT:"나의 90분",s1:"인사와 준비운동",s2:"타격 기본 동작",s3:"MMA 주짓수",s4:"기념 영상 증정",
-d1:"인사로 시작해 함께 몸을 풉니다.",d2:"타격의 기본 동작을 천천히 배웁니다.",d3:"레그락, 트라이앵글 초크, 암바. 파트너와 천천히, 힘은 쓰지 않습니다.",d4:"수업 모습을 짧은 영상으로 담아 드립니다.",
+flowT:"나의 90분",s1:"인사와 준비운동",s2:"레그락 (ASHIKAN)",s3:"트라이앵글 초크와 암바",s4:"기념 영상 증정",
+d1:"인사로 시작합니다. 경험을 확인하고 탭 규칙을 설명한 뒤 함께 몸을 풉니다.",d2:"진입, 컨트롤, 힐훅 포지션. 파트너와 천천히 연습합니다.",d3:"코치만의 방법으로 배우는 산카쿠지메와 우데주지. 천천히, 힘은 쓰지 않습니다.",d4:"수업 모습을 짧은 영상으로 담아 드립니다. 촬영에 동의하신 경우에만 찍습니다.",
 learnT:"배우는 기술",learnLead:"도복이 아닌 MMA를 위한 주짓수입니다. 모든 기술을 일본어 이름으로 배웁니다.",
 t1:"레그락과 힐훅",t2:"트라이앵글 초크",t3:"암바",
 td1:"도복 주짓수 대회에서는 금지되지만, MMA에서는 핵심 무기입니다. 힐훅을 비롯한 레그락의 원리를 천천히, 통제된 상태에서 배웁니다.",td2:"일본어로는 산카쿠지메(三角絞め). 코치만의 독자적인 방법으로 지도합니다.",td3:"일본어로는 우데주지(腕十字). 같은 독자적인 방법으로 지도합니다.",
-safeT:"안전 최우선",sa1:"스파링 없음",sa2:"접촉 최소화",sa3:"언제든 중단",sa4:"18세 이상",
+safeT:"안전 최우선",sa1:"스파링 없음",sa2:"천천히, 힘 없이",sa3:"언제든 중단",sa4:"18세 이상",
 coachT:"코치",p1:"회원",p2:"프로 선수",p3:"체육관 대표",
 coachLang:"쉬운 영어로 진행하며, 필요할 때는 번역 앱을 사용합니다. 대부분 직접 보여 드리며 가르칩니다.",
-bookT:"수업 예약",bookLead:"날짜를 알려 주세요. 여행 일정에 맞춰 수업 시간을 잡아 드립니다.",
+bookT:"수업 예약 신청",bookLead:"날짜를 알려 주세요. 여행 일정에 맞춰 수업 시간을 잡아 드립니다.",
 lDate:"날짜",lTime:"시간대",lPeople:"인원",lExp:"경험",lStay:"숙박",
 time:["오전","오후","저녁"],exp:["없음","조금","경험자"],stay:["환승","나리타 숙박","도쿄 숙박"],
 bookOnline:"온라인 예약·결제",send:"LINE으로 보내기",sendWa:"WhatsApp으로 보내기",sendMail:"이메일로 보내기",
-copy:"메시지 복사",copied:"복사됨",addFriend:"LINE 친구 추가",noLine:"LINE이 없다면 Instagram DM",
-bookNote:"가능한 시간을 답장으로 알려 드립니다. 요금은 온라인으로 사전 결제합니다.",
+copy:"메시지 복사",copied:"복사됨",addFriend:"LINE 친구 추가",
+bookNote:"이것은 예약 신청이며, 아직 확정이 아닙니다. 모든 예약은 코치가 직접 확인합니다. 요금은 온라인으로 사전 결제합니다.",
 accT:"오시는 길",st1:"나리타 공항",st2:"나리타역",leg1:"전철 · 약 10분",leg2:"무료 픽업 · 약 10분",
-pickupNote:"60분·90분 코스에는 나리타역 무료 픽업이 포함됩니다. 예약할 때 말씀해 주세요.",around:"수업 후에는: 940년에 창건된 나리타산 신쇼지와 오모테산도 옛 거리가 나리타역에서 걸어갈 수 있는 거리에 있습니다.",map:"Google 지도에서 열기",
+pickupNote:"60분·90분 코스에는 나리타역 무료 픽업이 포함됩니다. 예약할 때 말씀해 주세요.",around:"수업 후에는: 940년에 창건된 나리타산 신쇼지와 오모테산도 옛 거리가 나리타역에서 걸어갈 수 있는 거리에 있습니다. 길은 저희가 알려 드릴게요.",map:"Google 지도에서 열기",
 q1:"경험이 필요한가요?",a1:"아니요. 처음인 분을 위한 체험입니다.",
-q2:"스파링이 있나요?",a2:"없습니다. 파트너와 동작만 천천히 연습하며, 관절기는 시범만 보입니다.",
-qH:"힐훅은 위험하지 않나요?",aH:"전속력으로 걸면 위험할 수 있습니다. 여기서는 자세를 천천히 배우고, 스파링이 없으며, 언제든 멈출 수 있습니다. 관절기는 시범만 보이고 실제로 걸지 않습니다.",
+q2:"스파링이 있나요?",a2:"없습니다. 저항하지 않는 파트너와 각 기술을 천천히 연습하고, 압력이 걸리기 전에 멈춥니다. 관절기를 끝까지 걸지 않습니다.",
+qH:"힐훅은 위험하지 않나요?",aH:"전속력으로 걸면 위험할 수 있습니다. 여기서는 협조하는 파트너와 자세를 천천히 연습하고, 압력이 걸리기 전에 멈춥니다. 스파링은 없습니다. 일찍 탭하시고, 언제든 멈출 수 있습니다.",
 qG:"도복을 입나요?",aG:"입지 않습니다(노기). MMA를 위한 주짓수라서 잡을 도복이 없습니다.",
 qL:"수업은 어떤 언어로 진행하나요?",aL:"쉬운 영어로 진행하고, 필요할 때는 번역 앱을 사용합니다. 대부분 직접 보여 드리며 가르치기 때문에 따라 하기 쉽습니다.",
 qW:"언제 갈 수 있나요?",aW:"일정은 유연하게 맞춰 드립니다. 여행 날짜와 원하는 시간대를 알려 주시면 일정에 맞춰 수업을 잡아 드립니다.",
 q4:"요금과 결제는요?",a4:"",
-q3:"보험은요?",a3:"선택 사항입니다. 여행자 보험은 격투기를 보장하지 않는 경우가 많으니 확인해 주세요.",
-q5:"준비물은요?",a5:"티셔츠, 반바지, 물. 글러브와 운동복은 대여할 수 있습니다.",lTotal:"합계",
+q3:"보험은요?",a3:"스포츠 부상을 보장하는 여행자 보험에 가입해 주세요. 격투기를 보장하지 않는 보험이 많으니 출발 전에 확인해 주세요.",
+q5:"준비물은요?",a5:"티셔츠나 래시가드, 지퍼와 주머니가 없는 반바지, 수건, 물.",lTotal:"합계",
 footer:"운영: FLATUP GYM (나리타). 세계에서 가장 다정한 격투기 체육관.",
 priceIs:"2~6인 그룹 1인 요금: 30분 {a}, 60분 {b}, 90분 {c}. 1인 참가: {sa}, {sb}, {sc}. 요금은 온라인으로 사전 결제합니다.",
 priceRange:"/ 1인 · 30·60·90분",coursesT:"세 가지 코스",coursesLead:"여행 일정에 맞는 시간을 고르세요. 요금은 2~6인 그룹 기준 1인 요금입니다.",c30n:"맛보기",c60n:"레그락",c90n:"풀 코스",c30d:"기술 하나: 레그락 진입 동작.",c60d:"레그락과 힐훅.",c90d:"레그락, 트라이앵글 초크, 암바.",incPickup:"무료 픽업",incNoPickup:"픽업 없음",incVideo:"기념 영상 포함",incNoVideo:"영상 없음",best:"가장 알뜰",soloLbl:"1인 참가: {s}",choose:"선택",perP:"1인",lCourse:"코스",minU:"분",busNote:"버스: 나리타역에서 이온몰(AEON Mall)행 버스를 타고 이온 정류장에서 내려 도보 약 5분.",
 galleryT:"해외에서 온 손님들과 함께한 수업",
+rulesT:"매트에 오르기 전에",ru1:"가장 먼저 탭 규칙을 영어로 설명합니다.",ru2:"도착하면 간단한 동의서에 서명합니다. 부상 위험과 촬영에 관한 내용입니다.",ru3:"술을 마셨거나 낫지 않은 부상이 있으면 수업을 받을 수 없습니다. 당일 코치가 안전상 참가를 거절한 경우에는 전액 환불합니다.",ru4:"심장이나 혈압이 걱정된다면 예약 전에 의사와 상담해 주세요.",ru5:"스포츠 부상을 보장하는 여행자 보험에 가입해 주세요.",histT:"일본의 오랜 레그락 전통",histLead:"레그락은 일본이 발명한 것이 아닙니다. 캐치 레슬링과 삼보도 저마다 발전시켰습니다. 다만 일본은 아주 오랫동안 이 기술을 연구해 왔습니다.",h1:"고도칸 유도 창설. 다리 얽기 기술인 아시가라미(足緘)는 그 관절기 중 하나입니다.",h2y:"그 후",h2:"유도는 이 기술을 시합에서 제외합니다. 아시가라미는 지금도 네 가지 금지 기술 중 하나입니다.",h3:"슛 레슬링에서 슈토와 판크라스가 탄생합니다. 슛 레슬링에서 레그락은 주요 무기입니다.",h4y:"2000년대~",h4:"‘아시칸 주단(足関十段, 레그락 10단)’으로 불리는 이마나리 마사카즈 같은 선수들이 레그락을 MMA로 가져갑니다.",histNote:"FLATUP GYM은 이마나리 마사카즈 선수 및 이마나리 주짓수와 관계가 없습니다.",bk1:"신청 보내기",bk1d:"코스와 날짜를 고르고 아래 메시지를 보내 주세요.",bk2:"코치가 확인",bk2d:"담당자가 날짜와 경험을 직접 확인한 뒤 답장합니다.",bk3:"온라인 사전 결제",bk3d:"결제 링크를 보내 드립니다. 결제가 완료되면 예약이 확정됩니다.",bk4:"수업 참가",bk4d:"60분·90분 코스는 나리타역으로 마중 나갑니다.",cancelNote:"수업 3일 전까지 취소하면 전액 환불. 항공편이 지연되면 항공사 안내를 보여 주세요. 전액 환불합니다.",lInj:"부상·건강 관련 사항 (선택)",lInjS:"부상",injPh:"예: 왼쪽 무릎",injNote:"안전한 수업 준비에만 사용하며, 수업 후 삭제합니다.",sendIg:"Instagram DM으로 보내기",igCopied:"메시지를 복사했습니다. DM에 붙여 넣어 주세요.",qC:"취소해야 하면 어떻게 하나요?",aC:"수업 3일 전까지 취소하면 전액 환불됩니다. 2일 전부터 당일까지 개인 사정으로 취소하면 환불되지 않습니다. 저희 사정으로 취소하는 경우, 당일 코치가 안전상 참가를 거절한 경우, 항공편이 지연된 경우(항공사 안내를 보여 주세요)에는 전액 환불합니다.",qI:"이마나리 선수의 체육관인가요?",aI:"아닙니다. 저희는 나리타의 FLATUP GYM이며, 이마나리 마사카즈 선수 및 이마나리 주짓수와 관계가 없습니다.",fine:"항공권, 숙박, 투어는 포함되지 않습니다. 여행 상품을 예약하거나 판매하지 않습니다.",
 msgTitle:"JAPAN MMA JIU-JITSU 예약 문의"}
 };
 /* 画面の日本語版は廃止（旅行者向けサイトのため）。JINが読めるよう、予約メッセージだけは「選んだ言語＋日本語」の併記 */
@@ -734,6 +809,7 @@ const yen = n => "¥" + Number(n).toLocaleString("en-US");
 const course = () => CONFIG.courses[val("course")] || CONFIG.courses[CONFIG.courses.length-1];
 const total = () => { const c = course(); return people === 1 ? c.solo : c.price * people; };
 const $ = s => document.querySelector(s);
+const priceText = t => CONFIG.courses.reduce((s,c,i)=>s.replace(`{${"abc"[i]}}`,yen(c.price)).replace(`{s${"abc"[i]}}`,yen(c.solo)), t.priceIs);
 const store = {get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 
 function detect(){
@@ -760,16 +836,33 @@ function apply(l){
   const C = CONFIG.courses, ps = C.map(c=>c.price);
   const pt=$("#priceTag"); pt.textContent="";
   { const n=document.createElement("span"); n.className="nw"; n.textContent=`${yen(Math.min(...ps))}–${Math.max(...ps).toLocaleString("en-US")}`; pt.append(n," "); } { const s=document.createElement("small"); s.textContent=t.priceRange; pt.append(s); }
-  let a4=t.priceIs; C.forEach((c,i)=>{ a4=a4.replace(`{${"abc"[i]}}`,yen(c.price)).replace(`{s${"abc"[i]}}`,yen(c.solo)); });
-  document.querySelector('[data-t="a4"]').textContent = a4;
+  document.querySelector('[data-t="a4"]').textContent = priceText(t);
   C.forEach(c=>{ const pe=document.querySelector(`[data-price="${c.id}"]`), se=document.querySelector(`[data-solo="${c.id}"]`);
     if(pe) pe.textContent=yen(c.price); if(se) se.textContent=t.soloLbl.replace("{s}",yen(c.solo)); });
   chips("#cCourse","course",C.map(c=>`${c.min}${t.minU}`),C.length-1);
   chips("#cTime","time",t.time); chips("#cExp","exp",t.exp); chips("#cStay","stay",t.stay);
+  $("#fInj").placeholder = t.injPh;
   $("#langLabel").textContent = LANGS.find(x=>x[0]===l)[1];
   document.querySelectorAll(".lang li button").forEach(b=>b.setAttribute("aria-current", b.dataset.l===l));
   store.set("jmj-lang", l);
   build();
+}
+
+/* 検索エンジン向けの構造化データ。料金・FAQは CONFIG と英語の文言から作るので、二重管理にならない */
+function jsonld(){
+  const link=document.querySelector('link[rel="canonical"]'); if(!link) return;
+  const url=link.href, t=T.en, C=CONFIG.courses, A=CONFIG.postal;
+  const faq=[...document.querySelectorAll("#faq details")].map(d=>{ const q=d.querySelector("summary").dataset.t, a=d.querySelector("p").dataset.t; return [t[q], a==="a4" ? priceText(t) : t[a]]; }).filter(x=>x[0]&&x[1]);
+  const data={"@context":"https://schema.org","@graph":[
+    {"@type":"SportsActivityLocation","@id":url+"#place","name":"JAPAN MMA JIU-JITSU by FLATUP GYM","url":url,"image":new URL("og.jpg",url).href,
+     "description":document.querySelector('meta[name="description"]').content,
+     "address":{"@type":"PostalAddress","streetAddress":A.street,"addressLocality":A.city,"addressRegion":A.region,"postalCode":A.zip,"addressCountry":"JP"},
+     "priceRange":`${yen(Math.min(...C.map(c=>c.price)))}–${yen(Math.max(...C.map(c=>c.solo)))}`,"currenciesAccepted":"JPY",
+     "parentOrganization":{"@type":"Organization","name":"FLATUP GYM","url":CONFIG.gymSite},"sameAs":[CONFIG.instagram],
+     "makesOffer":C.map(c=>({"@type":"Offer","name":`${c.min}-minute MMA jiu-jitsu class`,"description":t[c.id+"d"],"price":String(c.price),"priceCurrency":"JPY"}))},
+    {"@type":"FAQPage","mainEntity":faq.map(([q,a])=>({"@type":"Question","name":q,"acceptedAnswer":{"@type":"Answer","text":a}}))}
+  ]};
+  const el=document.createElement("script"); el.type="application/ld+json"; el.textContent=JSON.stringify(data); document.head.appendChild(el);
 }
 
 function val(name){ const c=document.querySelector(`input[name=${name}]:checked`); return c?+c.value:0; }
@@ -777,6 +870,7 @@ function val(name){ const c=document.querySelector(`input[name=${name}]:checked`
 function build(){
   const t=T[lang], d=$("#fDate").value || "—";
   const ti=val("time"), ex=val("exp"), st=val("stay"), c=course(), tot=total();
+  const inj=$("#fInj").value.replace(/\s+/g," ").trim();
   const both = (a,b)=> a===b ? a : `${a} / ${b}`;
   const lines = [
     `【${t.msgTitle}】`,
@@ -787,6 +881,7 @@ function build(){
     ...(tot===null ? [] : [`${both(t.lTotal,"合計")}: ${yen(tot)}`]),
     `${both(t.lExp,"経験")}: ${both(t.exp[ex],JA_FIELDS.exp[ex])}`,
     `${both(t.lStay,"滞在")}: ${both(t.stay[st],JA_FIELDS.stay[st])}`,
+    ...(inj ? [`${both(t.lInjS,"ケガ・体調")}: ${inj}`] : []),
     `Language / 言語: ${LANGS.find(x=>x[0]===lang)[2]}`
   ];
   const msg = lines.join("\n"), enc = encodeURIComponent(msg);
@@ -840,7 +935,10 @@ function init(){
 
   // links and optional channels
   $("#addFriend").href=`https://line.me/R/ti/p/${encodeURIComponent(CONFIG.lineId)}`;
-  ["#igLink","#igLink2"].forEach(s=>$(s).href=CONFIG.instagram);
+  $("#igLink2").href=CONFIG.instagram;
+  /* Instagram DM: the message cannot be pre-filled, so copy it first, then open the DM */
+  if(CONFIG.instagramDm){ const ig=$("#sendIg"); ig.href=CONFIG.instagramDm; ig.hidden=false;
+    ig.addEventListener("click",()=>{ try{ navigator.clipboard.writeText(build()).then(()=>{ $("#igHint").hidden=false; },()=>{}); }catch(e){} }); }
   $("#gymLink").href=CONFIG.gymSite;
   $("#addr").textContent=CONFIG.address;
   $("#mapBtn").href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(CONFIG.address)}`;
@@ -854,7 +952,7 @@ function init(){
   new IntersectionObserver(([e])=>{ atBook=e.isIntersecting; onScroll(); },{threshold:0}).observe(book);
   addEventListener("scroll",onScroll,{passive:true}); onScroll();
 
-  photos(); apply(detect());
+  photos(); apply(detect()); jsonld();
 }
 init();
 </script>
