@@ -3,8 +3,9 @@
 images/*.jpg
 images/*.jpeg
 images/*.png
-# トップの人物画像も、写っている人の許可が確認できるまで入れない（無いときは「柔」の字だけで表示される）
-images/hero-figure.webp
+# WebPの写真とトップの人物画像も、写っている人の許可が確認できるまで入れない（円相の enso.webp だけは入れる）
+images/*.webp
+!images/enso.webp
 # 加工の途中で出る作業ファイル
 tools/out/
 __pycache__/
