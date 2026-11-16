@@ -93,7 +93,8 @@ h1{font-size:clamp(60px,8.6vw,128px);line-height:.94;letter-spacing:.005em}
 h1 span{display:block}
 .by{font-size:13px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft)}
 .motto{font-family:var(--mincho);font-weight:500;font-size:clamp(21px,2.2vw,28px);letter-spacing:.04em}
-.price{display:flex;align-items:baseline;gap:8px;font-family:var(--display);font-size:34px;line-height:1}
+.price{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-family:var(--display);font-size:34px;line-height:1}
+.nw{white-space:nowrap}
 .price small{font-family:var(--body);font-weight:600;font-size:15px;color:var(--ink-soft)}
 .hero-ctas{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px}
 .hero-art{position:relative;justify-self:center;width:100%;max-width:640px;aspect-ratio:1}
@@ -142,6 +143,7 @@ h1 span{display:block}
 .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:clamp(14px,2vw,28px);margin-top:clamp(14px,2vw,28px)}
 .gallery figure{position:relative;aspect-ratio:3/2;background:var(--washi-deep);overflow:hidden}
 .gallery:empty{display:none}
+.gcap{margin-top:clamp(36px,5vw,64px)}
 .punch{animation:punch 1.6s ease-in-out infinite;transform-origin:30% 60%}
 @keyframes punch{0%,60%,100%{transform:translateX(0)}30%{transform:translateX(14px)}}
 .rec{animation:rec 1.2s steps(2) infinite}
@@ -154,6 +156,8 @@ h1 span{display:block}
 .jcard{display:grid;gap:12px;align-content:start;min-width:0}
 .jcard .bg{position:relative;aspect-ratio:4/3;border:1px solid rgba(237,233,224,.28);display:grid;place-items:center;overflow:hidden}
 .jcard .bg svg{width:64%;height:auto;color:var(--washi)}
+.jcard .bg.has-photo img{filter:grayscale(1) contrast(1.12) brightness(.9)}
+.jcard .bg.has-photo svg{position:absolute;right:5%;bottom:5%;width:36%;z-index:1;filter:drop-shadow(0 2px 8px rgba(0,0,0,.8))}
 .jcard .tag{font-size:12px;font-weight:700;letter-spacing:.2em;color:rgba(237,233,224,.6)}
 .jcard h3{font-size:20px;line-height:1.2}
 .jcard p{font-size:15.5px;color:rgba(237,233,224,.72)}
@@ -251,6 +255,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
   .jcard{grid-template-columns:104px minmax(0,1fr);gap:2px 16px;align-content:center}
   .jcard .bg{grid-row:1/4;aspect-ratio:1;align-self:start}
   .jcard .bg svg{width:82%}
+  .jcard .bg.has-photo svg{width:56%;right:4%;bottom:4%}
   .safe{grid-template-columns:repeat(2,minmax(0,1fr))}
   .safe li{padding:18px 12px 18px 0;font-size:16.5px}
   .safe li:nth-child(3){padding-left:0;border-left:0}
@@ -327,7 +332,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
       <p class="by">Operated by FLATUP GYM, Narita</p>
       <p class="lead" data-t="lead">Leg locks, heel hooks, triangles and armbars. No-gi jiu-jitsu built for MMA, taught in Japan, minutes from Narita Airport. No sparring. Beginners welcome.</p>
       <p class="motto" data-t="motto">Strength is kindness.</p>
-      <p class="price" id="priceTag">¥5,000–12,000 <small>per person · 30, 60 or 90 min</small></p>
+      <p class="price" id="priceTag"><span class="nw">¥5,000–12,000</span> <small>per person · 30, 60 or 90 min</small></p>
       <div class="hero-ctas">
         <a class="btn btn-ink" href="#book" data-t="cta">Book now</a>
         <a class="textlink" href="#courses" data-t="cta2">See the courses</a>
@@ -427,6 +432,7 @@ footer nav a{display:inline-flex;align-items:center;min-height:44px;color:var(--
         <div class="art ph" data-photo="step4"><svg viewBox="0 0 120 120" aria-hidden="true"><rect x="36" y="18" width="48" height="84" rx="8" fill="#141414"/><rect x="42" y="28" width="36" height="58" rx="2" fill="#EDE9E0"/><circle class="rec" cx="70" cy="36" r="4" fill="#B5121B"/><path d="M54 50v20l16-10z" fill="#B5121B"/></svg></div>
         <h3 data-t="s4">Take home your video</h3><p data-t="d4">A short video of your class, yours to keep.</p></article>
     </div>
+    <p class="eyebrow gcap" id="galleryCap" data-t="galleryT" hidden>Guests from abroad, on our mat</p>
     <div class="gallery" id="gallery"></div>
   </div>
 </section>
@@ -555,18 +561,23 @@ const CONFIG = {
   maxPeople: 6,
   /* 写真：images/ フォルダに置いてファイル名を書く。空なら筆文字や絵で表示。写真は自動で白黒になります */
   photos: {
-    heroFigure: "",         // トップの人物（墨絵風に加工した透過PNG/WebP）。入れると円相の中に重なる
-    step1: "images/step1.jpg", step2: "", step3: "images/step3.jpg", step4: "",
-    tech1: "", tech2: "", tech3: "",   // 足関節・三角絞め・腕十字の写真（空なら筆文字）
+    heroFigure: "images/hero-figure.webp",   // トップの人物（墨絵風に加工した透過PNG/WebP）。空にすると「柔」の字だけになる
+    step1: "images/s1.jpg", step2: "images/s2.jpg", step3: "images/s3.jpg", step4: "",
+    tech1: "images/t1.jpg", tech2: "images/t2.jpg", tech3: "images/t3.jpg",   // 足関節・三角絞め・腕十字の写真（空なら筆文字だけ）
     coach: "",
-    gallery: ["images/g1.jpg","images/g2.jpg"]
+    gallery: ["images/guest1.jpg","images/guest2.jpg","images/guest3.jpg"]   // 海外ゲストの写真
   },
   /* 写真の説明文（目の不自由な方と検索エンジン向け・英語） */
   alt: {
-    step1: "Class lined up on the mat before the warm-up",
-    step3: "Two students practicing a standing grip",
-    "images/g1.jpg": "Students practicing in pairs on the mat",
-    "images/g2.jpg": "A student working on a grappling position with a partner"
+    step1: "Members and a guest from abroad warming up on the mat",
+    step2: "A member smiling as she punches a mitt",
+    step3: "Two members drilling a leg lock on the mat",
+    tech1: "A leg entanglement with the foot held, drilled on the mat",
+    tech2: "A triangle choke from the bottom",
+    tech3: "An armbar: one leg swings over to extend the arm",
+    "images/guest1.jpg": "A member and a guest from abroad practicing grips in front of the green wall",
+    "images/guest2.jpg": "A guest from abroad drilling a guard position with a partner",
+    "images/guest3.jpg": "A guest from abroad joining the warm-up drills"
   }
 };
 
@@ -606,6 +617,7 @@ q5:"What should I bring?",a5:"T-shirt, shorts and water. Gloves and rental wear 
 footer:"Operated by FLATUP GYM, Narita. The kindest martial arts gym.",
 priceIs:"30 min {a}, 60 min {b}, 90 min {c} per person, for groups of 2 to 6. Coming alone: {sa}, {sb} or {sc}. Payment is online, in advance.",
 priceRange:"per person · 30, 60 or 90 min",coursesT:"Three courses",coursesLead:"Pick the time that fits your trip. Prices are per person, for groups of 2 to 6.",c30n:"Taster",c60n:"Leg locks",c90n:"Full course",c30d:"One technique: a leg lock entry.",c60d:"Leg locks and heel hooks.",c90d:"Leg locks, triangle and armbar.",incPickup:"Free pickup",incNoPickup:"No pickup",incVideo:"Your video",incNoVideo:"No video",best:"Best value",soloLbl:"Solo: {s}",choose:"Choose",perP:"per person",lCourse:"Course",minU:" min",busNote:"By bus: from Narita Station take the bus bound for AEON Mall, get off at AEON, then walk about 5 minutes.",
+galleryT:"Guests from abroad, on our mat",
 msgTitle:"JAPAN MMA JIU-JITSU booking request"},
 "zh-Hant":{kicker:"MMA柔術體驗・日本成田",
 lead:"足關節技、足跟勾、三角絞、十字固。為MMA而生的無道服（No-Gi）柔術，在日本學，離成田機場很近。無對打，歡迎新手。",
@@ -640,6 +652,7 @@ q5:"要帶什麼？",a5:"T恤、短褲和飲用水。提供手套與服裝租借
 footer:"營運：FLATUP GYM（成田）。世界最溫柔的格鬥技道館。",
 priceIs:"2至6人同行，每人：30分鐘 {a}、60分鐘 {b}、90分鐘 {c}。1人參加：{sa}、{sb}、{sc}。費用於線上預先支付。",
 priceRange:"/ 每人・30、60或90分鐘",coursesT:"三種課程",coursesLead:"依你的行程選擇時間。價格為每人費用（2至6人同行）。",c30n:"體驗課",c60n:"足關節技",c90n:"完整課程",c30d:"一個招式：足關節技的入門動作。",c60d:"足關節技與足跟勾。",c90d:"足關節技、三角絞與十字固。",incPickup:"免費接送",incNoPickup:"無接送",incVideo:"附紀念影片",incNoVideo:"無影片",best:"最划算",soloLbl:"1人參加：{s}",choose:"選擇",perP:"每人",lCourse:"課程",minU:"分鐘",busNote:"搭公車：從成田站搭往AEON Mall（永旺夢樂城）的公車，在AEON站下車，步行約5分鐘。",
+galleryT:"來自海外的客人，在我們的墊上",
 msgTitle:"JAPAN MMA JIU-JITSU 預約"},
 "zh-Hans":{kicker:"MMA柔术体验・日本成田",
 lead:"足关节技、足跟勾、三角绞、十字固。为MMA而生的无道服（No-Gi）柔术，在日本学，离成田机场很近。无对打，欢迎新手。",
@@ -674,6 +687,7 @@ q5:"要带什么？",a5:"T恤、短裤和饮用水。提供手套与服装租借
 footer:"运营：FLATUP GYM（成田）。世界最温柔的格斗技道馆。",
 priceIs:"2至6人同行，每人：30分钟 {a}、60分钟 {b}、90分钟 {c}。1人参加：{sa}、{sb}、{sc}。费用在线上预先支付。",
 priceRange:"/ 每人・30、60或90分钟",coursesT:"三种课程",coursesLead:"按你的行程选择时间。价格为每人费用（2至6人同行）。",c30n:"体验课",c60n:"足关节技",c90n:"完整课程",c30d:"一个招式：足关节技的入门动作。",c60d:"足关节技与足跟勾。",c90d:"足关节技、三角绞与十字固。",incPickup:"免费接送",incNoPickup:"无接送",incVideo:"附纪念视频",incNoVideo:"无视频",best:"最划算",soloLbl:"1人参加：{s}",choose:"选择",perP:"每人",lCourse:"课程",minU:"分钟",busNote:"乘公交：从成田站乘坐开往AEON Mall（永旺梦乐城）的公交车，在AEON站下车，步行约5分钟。",
+galleryT:"来自海外的客人，在我们的垫上",
 msgTitle:"JAPAN MMA JIU-JITSU 预约"},
 ko:{kicker:"MMA 주짓수 체험 · 일본 나리타",
 lead:"레그락, 힐훅, 트라이앵글 초크, 암바. MMA를 위한 노기(No-Gi) 주짓수를 일본에서 배웁니다. 나리타 공항에서 가깝습니다. 스파링은 없고, 초보자도 환영합니다.",
@@ -708,6 +722,7 @@ q5:"준비물은요?",a5:"티셔츠, 반바지, 물. 글러브와 운동복은 �
 footer:"운영: FLATUP GYM (나리타). 세계에서 가장 다정한 격투기 체육관.",
 priceIs:"2~6인 그룹 1인 요금: 30분 {a}, 60분 {b}, 90분 {c}. 1인 참가: {sa}, {sb}, {sc}. 요금은 온라인으로 사전 결제합니다.",
 priceRange:"/ 1인 · 30·60·90분",coursesT:"세 가지 코스",coursesLead:"여행 일정에 맞는 시간을 고르세요. 요금은 2~6인 그룹 기준 1인 요금입니다.",c30n:"맛보기",c60n:"레그락",c90n:"풀 코스",c30d:"기술 하나: 레그락 진입 동작.",c60d:"레그락과 힐훅.",c90d:"레그락, 트라이앵글 초크, 암바.",incPickup:"무료 픽업",incNoPickup:"픽업 없음",incVideo:"기념 영상 포함",incNoVideo:"영상 없음",best:"가장 알뜰",soloLbl:"1인 참가: {s}",choose:"선택",perP:"1인",lCourse:"코스",minU:"분",busNote:"버스: 나리타역에서 이온몰(AEON Mall)행 버스를 타고 이온 정류장에서 내려 도보 약 5분.",
+galleryT:"해외에서 온 손님들과 함께한 수업",
 msgTitle:"JAPAN MMA JIU-JITSU 예약 문의"}
 };
 /* 画面の日本語版は廃止（旅行者向けサイトのため）。JINが読めるよう、予約メッセージだけは「選んだ言語＋日本語」の併記 */
@@ -744,7 +759,7 @@ function apply(l){
   document.querySelectorAll("[data-t]").forEach(el=>{ const v=t[el.dataset.t]; if(typeof v==="string" && v) el.textContent=v; });
   const C = CONFIG.courses, ps = C.map(c=>c.price);
   const pt=$("#priceTag"); pt.textContent="";
-  pt.append(`${yen(Math.min(...ps))}–${Math.max(...ps).toLocaleString("en-US")} `); { const s=document.createElement("small"); s.textContent=t.priceRange; pt.append(s); }
+  { const n=document.createElement("span"); n.className="nw"; n.textContent=`${yen(Math.min(...ps))}–${Math.max(...ps).toLocaleString("en-US")}`; pt.append(n," "); } { const s=document.createElement("small"); s.textContent=t.priceRange; pt.append(s); }
   let a4=t.priceIs; C.forEach((c,i)=>{ a4=a4.replace(`{${"abc"[i]}}`,yen(c.price)).replace(`{s${"abc"[i]}}`,yen(c.solo)); });
   document.querySelector('[data-t="a4"]').textContent = a4;
   C.forEach(c=>{ const pe=document.querySelector(`[data-price="${c.id}"]`), se=document.querySelector(`[data-solo="${c.id}"]`);
@@ -790,12 +805,12 @@ function photos(){
   document.querySelectorAll("[data-photo]").forEach(box=>{
     const key=box.dataset.photo, src=P[key]; if(!src) return;
     const img=new Image(); img.alt=A[key]||"";
-    img.onload=()=>{ box.querySelector("svg,span")?.remove(); box.appendChild(img); };
+    img.onload=()=>{ if(box.closest(".jcard")) box.classList.add("has-photo"); else box.querySelector("svg,span")?.remove(); box.appendChild(img); };
     img.src=src;
   });
-  const g=$("#gallery");
+  const g=$("#gallery"); $("#galleryCap").hidden = !(P.gallery||[]).length;
   (P.gallery||[]).forEach(src=>{ const f=document.createElement("figure"); const img=new Image();
-    img.alt=A[src]||""; img.loading="lazy"; img.onerror=()=>f.remove(); img.src=src; f.appendChild(img); g.appendChild(f); });
+    img.alt=A[src]||""; img.loading="lazy"; img.onerror=()=>{ f.remove(); if(!g.children.length) $("#galleryCap").hidden=true; }; img.src=src; f.appendChild(img); g.appendChild(f); });
 }
 
 function init(){
