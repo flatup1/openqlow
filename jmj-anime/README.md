@@ -9,8 +9,11 @@
 
 | ファイル | 中身 |
 |---|---|
-| `jmj_lesson01.py` | レッスン1「構え → ジャブ」を組み立てるスクリプト |
-| `preview_lesson01_jab.mp4` | 確認用の動画（5秒・縦長・540×960） |
+| `jmj_core.py` | 共通の部品（マネキン・舞台・光・文字・ポーズ集・書き出し） |
+| `jmj_lesson01.py` | レッスン1「構え → ジャブ」の流れと文字 |
+| `jmj_lesson02.py` | レッスン2「ワンツー（ジャブ → ストレート）」の流れと文字 |
+| `preview_lesson01_jab.mp4` | レッスン1の確認用動画（5秒・縦長・540×960） |
+| `preview_lesson02_onetwo.mp4` | レッスン2の確認用動画（約6秒・縦長・540×960）。書き出しが終わりしだい追加 |
 
 ## 動かし方
 
@@ -24,17 +27,20 @@ ffmpeg -framerate 30 -i frames/f_%04d.png -c:v libx264 -pix_fmt yuv420p out.mp4
 ```
 
 - `--scale 50` で半分の大きさ（確認用）、`--scale 100` で 1080×1920（本番）。
-- Blender の画面の中で実行すると、今のシーンの `JMJ_Lesson01` コレクションに組み立てる。
+- レッスン2は `jmj_lesson02.py` に読みかえる。3つの `.py` は同じフォルダに置く。
+- Blender の画面の中で実行すると、今のシーンの `JMJ_Lesson01` などのコレクションに組み立てる。
 
 ## 直し方
 
 | 直したい所 | スクリプトの場所 |
 |---|---|
-| 差し色 | `ACCENT` |
-| 構え・ジャブの形 | `STANCE` / `JAB`（手足の位置を世界座標で書く） |
-| 速さ・回数 | `TIMELINE`（フレーム, ポーズ）。30fps |
-| 文字 | `build()` の `add_text(...)` |
-| 光・カメラ | `build_stage()` |
+| 差し色 | `jmj_core.py` の `ACCENT` |
+| 構え・ジャブ・ストレートの形 | `jmj_core.py` の `STANCE` / `JAB` / `CROSS`（手足の位置を世界座標で書く） |
+| 速さ・回数 | 各レッスンの `LESSON["timeline"]`（フレーム, ポーズ）。30fps |
+| 技の名前・速さの表示 | 各レッスンの `LESSON["title"]` / `LESSON["labels"]` |
+| 光・カメラ | `jmj_core.py` の `build_stage()` |
+
+新しいレッスンは、`jmj_lesson02.py` をコピーして、ポーズと `LESSON` を書きかえて作る。
 
 骨組みは、手と足を「目印（`ik_hand` / `ik_foot`）」で動かす作り。ひじ・ひざの向きは `pole_elbow` / `pole_knee` で決める。
 
@@ -46,8 +52,8 @@ ffmpeg -framerate 30 -i frames/f_%04d.png -c:v libx264 -pix_fmt yuv420p out.mp4
 
 ## 組み立てる順番
 
-1. 構え → ジャブ（この試作）
-2. ワンツー
+1. 構え → ジャブ（試作ずみ）
+2. ワンツー（試作ずみ）
 3. 前蹴り・ローキック
 4. エビ
 5. テクニカルスタンドアップ
