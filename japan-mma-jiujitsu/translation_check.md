@@ -22,7 +22,7 @@
 | `f2` | No sparring | 無對打 | 无对打 | 스파링 없음 |
 | `f3` | Beginners welcome | 歡迎新手 | 欢迎新手 | 초보자 환영 |
 | `f6` | No-gi | 無道服 No-Gi | 无道服 No-Gi | 노기 (No-Gi) |
-| `f5` | Free pickup (60 & 90 min) | 成田站免費接送（60、90分鐘） | 成田站免费接送（60、90分钟） | 나리타역 무료 픽업 (60·90분) |
+| `f5` | Free pickup at Narita Station (60 & 90 min) | 成田站免費接送（60、90分鐘） | 成田站免费接送（60、90分钟） | 나리타역 무료 픽업 (60·90분) |
 | `flowT` | Your 90 minutes | 你的90分鐘 | 你的90分钟 | 나의 90분 |
 | `s1` | Bow & warm-up | 行禮與暖身 | 行礼与热身 | 인사와 준비운동 |
 | `s2` | Leg locks (ASHIKAN) | 足關節技（ASHIKAN） | 足关节技（ASHIKAN） | 레그락 (ASHIKAN) |
@@ -77,7 +77,7 @@
 | `around` | After class: Naritasan Temple (founded in 940) and the old Omotesando street are a short walk from Narita Station. Ask us and we'll point the way. | 下課後：創建於西元940年的成田山新勝寺與表參道老街，從成田站步行可達。需要的話，我們可以為你指路。 | 下课后：创建于公元940年的成田山新胜寺与表参道老街，从成田站步行可达。需要的话，我们可以为你指路。 | 수업 후에는: 940년에 창건된 나리타산 신쇼지와 오모테산도 옛 거리가 나리타역에서 걸어갈 수 있는 거리에 있습니다. 길은 저희가 알려 드릴게요. |
 | `map` | Open in Google Maps | 在Google地圖開啟 | 在Google地图打开 | Google 지도에서 열기 |
 | `q1` | Do I need experience? | 需要經驗嗎？ | 需要经验吗？ | 경험이 필요한가요? |
-| `a1` | No. It's built for first-timers. | 不需要，專為初學者設計。 | 不需要，专为初学者设计。 | 아니요. 처음인 분을 위한 체험입니다. |
+| `a1` | No. Beginners learn each position step by step, heel hooks included, and never apply pressure. The coach shows every move first and watches every rep. | 不需要。初學者會一步一步學習每個姿勢（包括足跟勾），而且絕不施加壓力。每個動作教練都會先示範，並看著你的每一次練習。 | 不需要。初学者会一步一步学习每个姿势（包括足跟勾），而且绝不施加压力。每个动作教练都会先示范，并看着你的每一次练习。 | 아니요. 초보자는 힐훅을 포함한 각 자세를 단계별로 배우며, 절대 압력을 걸지 않습니다. 코치가 모든 동작을 먼저 보여 주고, 매번 연습을 지켜봅니다. |
 | `q2` | Is there sparring? | 有對打嗎？ | 有对打吗？ | 스파링이 있나요? |
 | `a2` | No. You drill each technique slowly with a partner who does not resist. You stop before any pressure. Nobody cranks a submission. | 沒有。與不抵抗的夥伴慢慢練習每個招式，在產生壓力之前就停下，不會把關節技做到底。 | 没有。与不抵抗的伙伴慢慢练习每个招式，在产生压力之前就停下，不会把关节技做到底。 | 없습니다. 저항하지 않는 파트너와 각 기술을 천천히 연습하고, 압력이 걸리기 전에 멈춥니다. 관절기를 끝까지 걸지 않습니다. |
 | `qH` | Aren't heel hooks dangerous? | 足跟勾不是很危險嗎？ | 足跟勾不是很危险吗？ | 힐훅은 위험하지 않나요? |
@@ -96,7 +96,7 @@
 | `lTotal` | Total | 合計 | 合计 | 합계 |
 | `footer` | Operated by FLATUP GYM, Narita. The kindest martial arts gym. | 營運：FLATUP GYM（成田）。世界最溫柔的格鬥技道館。 | 运营：FLATUP GYM（成田）。世界最温柔的格斗技道馆。 | 운영: FLATUP GYM (나리타). 세계에서 가장 다정한 격투기 체육관. |
 | `priceIs` | 30 min {a}, 60 min {b}, 90 min {c} per person, for groups of 2 to 6. Coming alone: {sa}, {sb} or {sc}. Payment is online, in advance. | 2至6人同行，每人：30分鐘 {a}、60分鐘 {b}、90分鐘 {c}。1人參加：{sa}、{sb}、{sc}。費用於線上預先支付。 | 2至6人同行，每人：30分钟 {a}、60分钟 {b}、90分钟 {c}。1人参加：{sa}、{sb}、{sc}。费用在线上预先支付。 | 2~6인 그룹 1인 요금: 30분 {a}, 60분 {b}, 90분 {c}. 1인 참가: {sa}, {sb}, {sc}. 요금은 온라인으로 사전 결제합니다. |
-| `priceRange` | per person · 30, 60 or 90 min | / 每人・30、60或90分鐘 | / 每人・30、60或90分钟 | / 1인 · 30·60·90분 |
+| `priceRange` | per person in a group of 2+ · alone from {s} | 每人（2人以上）・1人參加{s}起 | 每人（2人以上）・1人参加{s}起 | 1인 요금(2인 이상) · 1인 참가 {s}부터 |
 | `coursesT` | Three courses | 三種課程 | 三种课程 | 세 가지 코스 |
 | `coursesLead` | Pick the time that fits your trip. Prices are per person, for groups of 2 to 6. | 依你的行程選擇時間。價格為每人費用（2至6人同行）。 | 按你的行程选择时间。价格为每人费用（2至6人同行）。 | 여행 일정에 맞는 시간을 고르세요. 요금은 2~6인 그룹 기준 1인 요금입니다. |
 | `c30n` | Taster | 體驗課 | 体验课 | 맛보기 |
@@ -156,4 +156,18 @@
 | `metaTitle` | JAPAN MMA JIU-JITSU \| Martial arts experience near Narita Airport | JAPAN MMA JIU-JITSU｜成田機場附近的格鬥技體驗 | JAPAN MMA JIU-JITSU｜成田机场附近的格斗技体验 | JAPAN MMA JIU-JITSU \| 나리타 공항 근처 격투기 체험 |
 | `metaDesc` | MMA jiu-jitsu near Narita Airport, Japan: leg locks, heel hooks, triangle and armbar. No-gi classes of 30, 60 or 90 minutes from {min}. No sparring. | 在日本成田機場附近體驗MMA柔術：足關節技、足跟勾、三角絞、十字固。無道服課程30、60或90分鐘，{min}起。無對打。 | 在日本成田机场附近体验MMA柔术：足关节技、足跟勾、三角绞、十字固。无道服课程30、60或90分钟，{min}起。无对打。 | 일본 나리타 공항 근처에서 MMA 주짓수 체험: 레그락, 힐훅, 트라이앵글 초크, 암바. 30·60·90분 노기 수업, {min}부터. 스파링 없음. |
 | `reviewsT` | What guests say | 客人的心得 | 客人的感想 | 참가자 후기 |
+| `priceFrom` | From {p} | {p}起 | {p}起 | {p}부터 |
+| `qLay` | I have a layover. Is there enough time? | 我在轉機，時間夠嗎？ | 我在转机，时间够吗？ | 환승 중인데 시간이 될까요? |
+| `aLay` | Plan on at least 7 hours between flights for the 60 or 90-minute course, and 6 hours for the 30-minute taster. That covers immigration, the train to Narita Station (about 10 minutes), the class, and getting back to the airport 2 hours before your next flight. You must be able to enter Japan, so check the visa rules for your passport. Large bags can stay in the airport's baggage storage. | 60或90分鐘課程，建議兩班飛機之間至少有7小時；30分鐘體驗課至少6小時。這包含入境手續、搭電車到成田站（約10分鐘）、上課，以及在下一班飛機起飛前2小時回到機場的時間。你必須能入境日本，請先確認你的護照的簽證規定。大件行李可寄放在機場的行李寄存處。 | 60或90分钟课程，建议两班飞机之间至少有7小时；30分钟体验课至少6小时。这包括入境手续、乘电车到成田站（约10分钟）、上课，以及在下一班飞机起飞前2小时回到机场的时间。你必须能入境日本，请先确认你所持护照的签证规定。大件行李可寄存在机场的行李寄存处。 | 60분·90분 코스는 항공편 사이에 최소 7시간, 30분 맛보기는 최소 6시간을 잡아 주세요. 입국 수속, 나리타역까지 전철(약 10분), 수업, 그리고 다음 항공편 출발 2시간 전까지 공항에 돌아가는 시간이 포함됩니다. 일본에 입국할 수 있어야 하므로, 여권의 비자 규정을 미리 확인해 주세요. 큰 짐은 공항 수하물 보관소에 맡길 수 있습니다. |
+| `layNote` | On a layover? Plan on at least 7 hours between flights (6 for the 30-minute taster). | 轉機中？兩班飛機之間請預留至少7小時（30分鐘體驗課為6小時）。 | 转机中？两班飞机之间请预留至少7小时（30分钟体验课为6小时）。 | 환승 중이라면 항공편 사이에 최소 7시간(30분 맛보기는 6시간)을 잡아 주세요. |
+| `replyNote` | We usually reply within {h} hours. | 我們通常會在{h}小時內回覆。 | 我们通常会在{h}小时内回复。 | 보통 {h}시간 이내에 답장합니다. |
+| `navLearn` | Techniques | 招式 | 招式 | 기술 |
+| `navCourses` | Courses | 課程 | 课程 | 코스 |
+| `navSafety` | Safety | 安全 | 安全 | 안전 |
+| `navAccess` | Access | 交通 | 交通 | 오시는 길 |
+| `navFaq` | FAQ | 常見問題 | 常见问题 | FAQ |
+| `sendWc` | Message us on WeChat | 用微信聯絡我們 | 用微信联系我们 | WeChat으로 문의하기 |
+| `wcIdLbl` | WeChat ID | 微信號 | 微信号 | WeChat ID |
+| `wcCopyId` | Copy WeChat ID | 複製微信號 | 复制微信号 | WeChat ID 복사 |
+| `wcHow` | Add us on WeChat, then paste your booking message. We have copied it for you. | 加我們為微信好友後，貼上預約訊息即可。訊息已為你複製。 | 添加我们为微信好友后，粘贴预约消息即可。消息已为你复制。 | WeChat에서 저희를 친구로 추가한 뒤 예약 메시지를 붙여 넣어 주세요. 메시지는 이미 복사해 두었습니다. |
 | `msgTitle` | JAPAN MMA JIU-JITSU booking request | JAPAN MMA JIU-JITSU 預約 | JAPAN MMA JIU-JITSU 预约 | JAPAN MMA JIU-JITSU 예약 문의 |

@@ -49,6 +49,7 @@ function jsonld() {
         "availableLanguage": ["en", "zh-Hant", "zh-Hans", "ko"],
         "parentOrganization": { "@type": "Organization", "name": "FLATUP GYM", "url": CONFIG.gymSite },
         "sameAs": [CONFIG.instagram],
+        ...(CONFIG.email ? { "email": CONFIG.email } : {}),
         "makesOffer": C.map(c => ({ "@type": "Offer", "name": `${c.min}-minute MMA jiu-jitsu class`, "description": t[c.id + "d"], "price": String(c.price), "priceCurrency": "JPY" }))
       },
       { "@type": "FAQPage", "mainEntity": faq.map(([q, a]) => ({ "@type": "Question", "name": q, "acceptedAnswer": { "@type": "Answer", "text": a } })) }

@@ -26,7 +26,7 @@
 写真（`images/*.webp`。円相の `enso.webp` だけは入れる）とトップの人物画像（`images/hero-figure.webp`）は**このリポジトリに入れていません**。写真は軽いWebP形式（画質80）で置く。会員さんや海外ゲストが写っており、掲載許可が未確認のためです。
 写真が無い場所は、筆文字やイラストで表示されます（海外ゲストの欄は丸ごと隠れます）。
 
-### 今サイトで使っている写真（確認用ページ側に保存。元はGoogleドライブ「JMJ素材_お気に入り」）
+### 今サイトで使っている写真（`index.html` の `<img src>` に直接書いてある。替えるときは同じ名前で上書きする）（確認用ページ側に保存。元はGoogleドライブ「JMJ素材_お気に入り」）
 
 | 場所 | ファイル | 元の素材 |
 |---|---|---|
@@ -48,16 +48,19 @@
 |---|---|---|
 | `lineId` | 予約メッセージの届け先LINE | 今のLINE（AIKAと同じID）で**人が返信する**（2026-11-16 JIN回答）。⚠ AIKAの自動返信が外国語の予約に答えないよう、公開前に運用を決める |
 | `whatsapp` | WhatsAppの番号（国番号つき） | 空（入れるとボタンが出る） |
-| `email` | 予約を受けるメールアドレス | 空（入れるとボタンが出る） |
+| `email` | 予約を受けるメールアドレス | `flatupgym@gmail.com`（2026-11-17 JIN承認） |
 | `bookingUrl` | 予約システムのURL | 空のまま。支払いは、人が予約を確定したあとに**決済リンク**を個別に送る（2026-11-16 JIN回答）。あとで予約システムを入れたら書く |
+| `wechatId` | WeChat（微信）のID。中国本土の人向け（中国本土ではLINE・Instagram・WhatsApp・Gmailが使えない） | 空（入れるとボタンが出る。押すと予約文をコピーして、IDとQRコードを表示） |
+| `wechatQr` | WeChatの友だち追加QRコードの画像 | 空（IDだけ表示） |
 | `instagramDm` | Instagram DMの窓口（LINEを使わない国の人向け） | `https://ig.me/m/flatup.narita`。押すと予約文をコピーしてDMを開く。空にするとボタンが消える |
 | `courses` | コースと料金（数字で書く）。`price`＝1名あたり（2〜6名）、`solo`＝1名のみ | 30分 ¥5,000（1名のみ ¥7,500）／60分 ¥9,000（¥13,500）／90分 ¥12,000（¥18,000） |
-| `photos.heroFigure` | トップの人物画像（墨絵風の透過PNG） | 空（入れると円相の中に重なる） |
+| `replyHours` | 返信の目安（時間）。例 `24` →「We usually reply within 24 hours.」 | `24`（2026-11-17 JIN承認）。**守れる数字だけ**書く |
 | `photos.coach` | コーチの顔写真 | 空（白い道着で腕を組んだ写真を探し中） |
 | `coachBio` | コーチの短い経歴（空なら非表示）。言語ごとに変えるなら `{en:"…", ko:"…"}` | 空 |
 | `reviews` | 口コミ。`{text, name, from}` の並び。**本人の許可を取った実際の言葉だけ**。空なら欄ごと隠れる | 空 |
 
 料金・FAQ・説明文・ドメインを変えたら、最後に `node tools/sitedata.mjs jsonld` を実行する（検索エンジン向けのデータを書き直す）。
+連絡ボタンの並び順は言語ごとに変わる（英語＝WhatsApp→Instagram→メール→LINE、繁体字＝LINE→WhatsApp…、簡体字＝WeChat→メール…、韓国語＝Instagram→WhatsApp…）。設定が空のボタンは出ない。
 言語ごとのURLは `?lang=zh-Hant` `?lang=zh-Hans` `?lang=ko`（英語はURLそのまま）。ページの先頭に、検索エンジン向けの言語の案内（hreflang）を書いてある。
 
 ## トップ画像の作り方（写真 → 墨絵風）
@@ -70,7 +73,7 @@
    - 床に寝た技を上から撮った写真は、2人が黒いかたまりに重なって形が読みにくくなる。低い位置から、緑の壁を背にして撮るのがよい。
    - 画面の端で体が切れているときは `--fade-right 0.07` や `--fade-bottom 0.1` で、墨がかすれるように消せる。
    - ロゴが写ったら `--erase "x0,y0,x1,y1"` で消せる（元写真の座標）。
-3. `figure.png` を `images/` に置き、`CONFIG.photos.heroFigure` にファイル名を書く。
+3. `figure.png` をWebPにして `images/hero-figure.webp` に上書きする（例: `python3 -c "from PIL import Image; Image.open('tools/out/figure.png').save('images/hero-figure.webp', quality=82)"`）。
 4. 見本やシェア用の1枚絵が要るとき: `python3 tools/compose.py 人物PNG 円相PNG 筆文字フォント.ttf 出力.png 2560 1440`
 
 必要なもの: Python 3、`pip install opencv-python-headless pillow numpy`。
@@ -79,6 +82,8 @@
 
 - [ ] 今のLINEで人が返信する運用を決めた（AIKAの自動返信が外国語の予約に答えないこと。LINE Botの担当はCodex）
 - [ ] 決済リンクを作るサービス（海外のカードが使えるもの）を決め、返金の手順を確認した
+- [ ] LINE・Instagram DM・メール（flatupgym@gmail.com）の予約に、24時間以内に人が返信できる体制を決めた
+- [ ] 乗り継ぎ客への目安（飛行機の間が7時間以上、30分コースは6時間）をJINが確認した（2026-11-17 承認済み）
 - [ ] ドメイン `japan-mma-jiujitsu.com` を取得した（空きは未確認）。別の名前になったら `index.html` の先頭にあるURL 5か所を置き換える
 - [ ] コーチの顔写真を `images/` に置き、`CONFIG.photos.coach` にファイル名を書いた
 - [ ] Instagram DMで予約を受けてよいか、だれが返信するか決めた
