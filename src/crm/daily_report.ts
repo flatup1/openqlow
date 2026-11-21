@@ -1,7 +1,7 @@
 // openQLOW 日次集客レポート生成（指示書フォーマット準拠・短く読みやすい版）
 //
 // 見込み客データから「新規問い合わせ／返信漏れ／追客／体験予約／体験後フォロー／
-// 口コミ依頼／入会・失注／改善Top3／コメント」の Markdown を生成する。
+// 入会後フォロー／口コミ依頼／入会・失注／改善Top3／コメント」の Markdown を生成する。
 // 日報は「誰に何を」だけに絞り、長い返信下書きは載せない（`crm draft <id>` で個別に出す）。
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -14,11 +14,13 @@ import {
   getTrialFollowupNeeded,
   getTrialScheduled,
 } from "./queries.js";
+import { getJoinDateMissing, getOnboardingDue, joinDateOf, withdrawalProspectIds } from "./onboarding.js";
 import {
   getConfirmationNotSent,
   getOwnerReviewRequired,
   getPaymentStopPending,
   getReadyToClose,
+  toJstDate,
   withdrawalStatusLabel,
   type WithdrawalCase,
 } from "./withdrawal.js";
@@ -66,11 +68,20 @@ export function buildDailyReport(
   const trialScheduled = getTrialScheduled(prospects);
   const trialFollowups = getTrialFollowupNeeded(prospects);
   const reviewCandidates = getReviewRequestCandidates(prospects);
-  const joinedToday = prospects.filter(p => p.joined === 1 && p.updatedAt.slice(0, 10) === date);
+  // 「本日入会」は入会日（日本時間）で数える。更新日で数えると、入会後フォローの記録を付けた日や
+  // メモを直した日に、昔からの会員を「本日入会」と数え直してしまう。
+  const todayJst = toJstDate(dateIso);
+  const joinedToday = prospects.filter(p => p.joined === 1 && joinDateOf(p.joinedAt) === todayJst);
   const lost = prospects.filter(p => p.status === "lost");
 
   // 退会まわりの「処理漏れ」。人の記憶ではなくシステム上の未完了として毎日出す。
   const withdrawals = options.withdrawals ?? [];
+  // 入会した人に続けてもらうための声かけ。退会の相談・手続きに入っている会員は外す。
+  const onboardingDue = getOnboardingDue(prospects, now, {
+    excludeProspectIds: withdrawalProspectIds(withdrawals, prospects),
+  });
+  // 入会日が無いと声かけの時期を数えられない。推測では埋めず、補ってもらうために出す。
+  const joinDateMissing = getJoinDateMissing(prospects);
   const paymentPending = getPaymentStopPending(withdrawals);
   const confirmationPending = getConfirmationNotSent(withdrawals);
   const ownerReview = getOwnerReviewRequired(withdrawals);
@@ -83,6 +94,7 @@ export function buildDailyReport(
   if (replyMissing.length) actions.push(`返信漏れ ${replyMissing.length}件を今日中に返信する`);
   if (chasing.length) actions.push(`追客候補 ${chasing.length}件に再提案を送る`);
   if (trialFollowups.length) actions.push(`体験後フォロー ${trialFollowups.length}件に連絡する`);
+  if (onboardingDue.length) actions.push(`入会後フォロー ${onboardingDue.length}件にひとこと声をかける`);
   if (reviewCandidates.length) actions.push(`入会者 ${reviewCandidates.length}名に口コミを依頼する`);
   if (trialScheduled.length) actions.push(`体験予定 ${trialScheduled.length}件のリマインドを送る`);
   while (actions.length < 3) actions.push("特になし（流入を増やす施策を1つ検討する）");
@@ -110,6 +122,23 @@ export function buildDailyReport(
   lines.push("");
   lines.push("## 5. 体験後フォロー候補");
   lines.push(bullet(trialFollowups.map(p => `- ${nameOf(p)} / 体験日：${p.trialDate} → フォロー案: crm draft ${p.id}`)));
+  lines.push("");
+  lines.push("## 5-2. 入会後フォロー候補");
+  lines.push(
+    bullet(
+      onboardingDue.map(
+        d =>
+          `- ${nameOf(d.prospect)} / ${d.step.label}（入会${d.days}日目） → 声かけ文: crm draft ${d.prospect.id}` +
+          ` ／ 送ったら: crm onboarding sent ${d.prospect.id}`,
+      ),
+    ),
+  );
+  if (joinDateMissing.length > 0) {
+    lines.push(
+      `- ※ 入会日が未記録 ${joinDateMissing.length}名（${joinDateMissing.map(nameOf).join("、")}）` +
+        " → 補うと候補に出ます: crm status <番号> 入会 --joined-at YYYY-MM-DD",
+    );
+  }
   lines.push("");
   lines.push("## 6. 口コミ依頼候補");
   lines.push(bullet(reviewCandidates.map(p => `- ${nameOf(p)} / 入会済み → 依頼文: crm draft ${p.id}`)));
@@ -156,7 +185,7 @@ export function buildDailyReport(
   lines.push("");
   lines.push("## 9. openQLOWコメント");
   lines.push(
-    `見込み客 計${prospects.length}名。返信漏れ${replyMissing.length}・追客${chasing.length}・体験後フォロー${trialFollowups.length}・口コミ依頼${reviewCandidates.length}が要対応。` +
+    `見込み客 計${prospects.length}名。返信漏れ${replyMissing.length}・追客${chasing.length}・体験後フォロー${trialFollowups.length}・入会後フォロー${onboardingDue.length}・口コミ依頼${reviewCandidates.length}が要対応。` +
       "返信案は `crm draft <番号>` で出せます。送信は必ず人間が確認してから（自動送信はしません）。",
   );
   lines.push("");

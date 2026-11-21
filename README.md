@@ -175,10 +175,14 @@ npm run crm -- add --name 山田 --gender female --category female --status wait
 npm run crm -- list
 npm run crm -- find 田中
 npm run crm -- status 1 入会      # 返信した / 体験予約 / 体験済み / 入会 / 見送り（英語コードも可）
+npm run crm -- status 1 入会 --joined-at 2026-11-01   # 入会日を指定（省略すると今日）
 # その人向けの返信下書きを個別に出す（日報からは外し、必要な時だけ）
 npm run crm -- draft 1
-# 追客漏れ／体験後フォロー／口コミ依頼の候補を見える化
+# 追客漏れ／体験後フォロー／入会後フォロー／口コミ依頼の候補を見える化
 npm run crm -- followups
+# 入会後フォロー（続けてもらうための声かけ）: 入会当日・1週間・2週間・1ヶ月の候補と下書き
+npm run crm -- onboarding --drafts
+npm run crm -- onboarding sent 1  # 送った（または見送った）ことを記録すると候補から消える
 # 日次集客レポートを生成して保存（推奨メッセージはAIKAジェネレータを再利用）
 npm run crm -- daily-report
 # 自己修復ログ（記録と修復案のみ・自動修復なし）
