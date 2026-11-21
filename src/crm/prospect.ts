@@ -92,6 +92,13 @@ export interface Prospect {
   trialDate: string;
   trialStatus: string;
   joined: 0 | 1;
+  /**
+   * 入会日（ISO日時 または YYYY-MM-DD）。入会後フォロー（onboarding.ts）の起点。
+   * 空文字は「未記録」。推測で埋めない（古い記録は `crm status <番号> 入会 --joined-at` で補う）。
+   */
+  joinedAt: string;
+  /** 送信済みの入会後フォロー。ステップのキーをカンマ区切りで持つ（例: "welcome,week1"） */
+  onboardingSent: string;
   lostReason: string;
   memo: string;
   createdAt: string;
@@ -119,6 +126,8 @@ const DEFAULTS: Omit<Prospect, "id" | "createdAt" | "updatedAt"> = {
   trialDate: "",
   trialStatus: "",
   joined: 0,
+  joinedAt: "",
+  onboardingSent: "",
   lostReason: "",
   memo: "",
 };

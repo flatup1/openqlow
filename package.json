@@ -115,6 +115,7 @@
     "test:crm-intake": "tsx src/crm/intake.test.ts",
     "test:crm-line-intake": "tsx src/crm/line_intake.test.ts",
     "test:crm-queries": "tsx src/crm/queries.test.ts",
+    "test:crm-onboarding": "tsx src/crm/onboarding.test.ts",
     "test:crm-store": "tsx src/crm/store.test.ts",
     "test:crm-guardian-consent": "tsx src/crm/guardian_consent.test.ts",
     "test:crm-daily-report": "tsx src/crm/daily_report.test.ts",

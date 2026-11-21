@@ -4,6 +4,7 @@
 //   npm run crm -- list
 //   npm run crm -- status 1 replied
 //   npm run crm -- followups
+//   npm run crm -- onboarding            入会後フォロー（続けてもらうための声かけ）の候補
 //   npm run crm -- daily-report
 //   npm run crm -- log-error api_error "401 Unauthorized"
 //
@@ -17,6 +18,21 @@ import { getFollowupNeeded, getReviewRequestCandidates, getTrialFollowupNeeded }
 import { logError, type ErrorType } from "./self_repair.js";
 import { buildProspectFromInquiry } from "./intake.js";
 import { resolveStatus, type Prospect, type ProspectInput, type ProspectStatus } from "./prospect.js";
+import {
+  addOnboardingSent,
+  buildJoinPatch,
+  buildOnboardingMessage,
+  daysSinceJoin,
+  findOnboardingStep,
+  getJoinDateMissing,
+  getOnboardingDue,
+  isValidYmd,
+  joinDateOf,
+  ONBOARDING_STEPS,
+  parseOnboardingSent,
+  withdrawalProspectIds,
+  type OnboardingDue,
+} from "./onboarding.js";
 import {
   buildImportantMattersMessage,
   CONSENT_TERMS_VERSION,
@@ -84,6 +100,35 @@ function draftFor(p: Prospect): string {
     message: p.inquiryText?.trim() || "体験について相談したい",
     gender,
   }).replies.followUp24h;
+}
+
+// --- 入会後フォロー（続けてもらうための声かけ） ----------------------------------
+
+/** 退会の相談・手続きに入っている会員を外したうえで、いま声をかける候補を出す。 */
+async function loadOnboardingDue(all: Prospect[], now: Date): Promise<OnboardingDue[]> {
+  const withdrawals = await openWithdrawalService({ dataDir: baseDir }).cases.getAll();
+  return getOnboardingDue(all, now, { excludeProspectIds: withdrawalProspectIds(withdrawals, all) });
+}
+
+/** 候補の一覧を表示する。followups と onboarding の両方から使う。 */
+function printOnboardingDue(due: OnboardingDue[], missing: Prospect[], withDrafts: boolean): void {
+  console.log(`\n■ 入会後フォロー候補（${due.length}件）`);
+  if (!due.length) console.log("  なし");
+  for (const d of due) {
+    const p = d.prospect;
+    console.log(
+      `  #${p.id} ${p.name || "(無名)"}　${d.step.label}（入会${d.days}日目）` +
+        `→ 文面: crm draft ${p.id} ／ 送ったら: crm onboarding sent ${p.id}`,
+    );
+    if (withDrafts) {
+      const draft = buildOnboardingMessage(d.step.key).split("\n").map(line => `      ${line}`).join("\n");
+      console.log(`    --- 声かけの下書き（確認して送信・自動送信なし） ---\n${draft}\n`);
+    }
+  }
+  if (missing.length) {
+    console.log(`  ※ 入会日が未記録の会員 ${missing.length}名（${missing.map(p => `#${p.id}`).join(" ")}）は候補に出せません。`);
+    console.log("    補うには: crm status <番号> 入会 --joined-at YYYY-MM-DD");
+  }
 }
 
 function flagsToProspectInput(flags: Record<string, string>): ProspectInput {
@@ -495,6 +540,8 @@ function printHelp(): void {
 ■ よく使う
   intake --message "<問い合わせ文>"   問い合わせを取り込み、返信下書きまで一気に出す
   followups [--drafts]                 今フォローすべき人の一覧（--drafts で全員の返信下書きも一括表示）
+  onboarding [--drafts]                入会後フォロー候補（入会当日・1週間・2週間・1ヶ月の声かけ）
+  onboarding sent <番号>               その声かけを送った（または見送った）ことを記録
   draft <番号>                         その人向けの返信下書きを出す（自動送信はしません）
   daily-report                         今日の集計レポートを作って保存
 
@@ -503,7 +550,8 @@ function printHelp(): void {
   find <名前の一部>                    名前で探す
   show <番号>                          その人の詳しい情報をすべて表示
   status <番号> <状態> [--memo "…"]   状態を更新（メモも残せる。メモは返信下書きに反映）
-  add [--name 田中 --gender female ...] 手動で1件登録
+  status <番号> 入会 [--joined-at YYYY-MM-DD]  入会を記録（入会日は省略すると今日）
+  add [--name 田中 --gender female ...] 手動で1件登録（すでに会員の人は --status 入会 --joined-at YYYY-MM-DD）
 
 ■ 退会手続き（退会トラブルゼロ化OS）
   withdrawal alerts                    要処理の一覧（会費ペイ未処理など）
@@ -540,6 +588,27 @@ async function main(argv: string[]): Promise<number> {
     case "add": {
       const input = flagsToProspectInput(flags);
       if (!input.lastContactAt) input.lastContactAt = new Date().toISOString();
+      // 状態は日本語でも受け付ける（status コマンドと同じ）。未知の値は登録しない。
+      if (flags.status) {
+        const resolved = resolveStatus(flags.status);
+        if (!resolved) {
+          console.error(`不明な状態: ${flags.status}（例: 返信した / 体験予約 / 体験済み / 入会 / 見送り）`);
+          return 1;
+        }
+        input.status = resolved;
+      }
+      // 入会済みとして登録するときも、入会フラグと入会日をそろえる（status コマンドと同じ規則）。
+      const addJoinedAt = (flags["joined-at"] ?? "").trim();
+      if ("joined-at" in flags && (input.status !== "joined" || !isValidYmd(addJoinedAt))) {
+        console.error("Usage: crm add --status 入会 --joined-at YYYY-MM-DD（入会日は実在する日付で指定してください）");
+        return 1;
+      }
+      if (input.status === "joined") {
+        Object.assign(
+          input,
+          buildJoinPatch({ status: "new_inquiry", joinedAt: "" }, "joined", { explicitJoinedAt: addJoinedAt }).patch,
+        );
+      }
       const created = await store.create(input);
       console.log(`登録しました: #${created.id} ${created.name || "(無名)"} [${created.status}]`);
       return 0;
@@ -591,9 +660,24 @@ async function main(argv: string[]): Promise<number> {
         console.error("  状態（日本語OK）: 返信した / 体験予約 / 体験済み / 入会 / 見送り など（英語コードも可）");
         return 1;
       }
+      const current = await store.get(id);
+      if (!current) {
+        console.error(`#${id} が見つかりません。`);
+        return 1;
+      }
+      // 入会日の指定は、実在する日付だけ受け付ける（入会後フォローの時期がずれるため）。
+      const explicitJoinedAt = (flags["joined-at"] ?? "").trim();
+      if ("joined-at" in flags && (status !== "joined" || !isValidYmd(explicitJoinedAt))) {
+        console.error("Usage: crm status <番号> 入会 --joined-at YYYY-MM-DD（入会日は実在する日付で指定してください）");
+        return 1;
+      }
+      const now = new Date();
+      // 状態と入会フラグ・入会日をそろえる（以前は状態だけ変わり、入会者が一覧から消えていた）。
+      const join = buildJoinPatch(current, status, { explicitJoinedAt, now });
       const updated = await store.update(id, {
         status,
-        lastContactAt: new Date().toISOString(),
+        lastContactAt: now.toISOString(),
+        ...join.patch,
         ...(flags.memo ? { memo: flags.memo } : {}),
       });
       if (!updated) {
@@ -601,6 +685,14 @@ async function main(argv: string[]): Promise<number> {
         return 1;
       }
       console.log(`#${id} を ${status} に更新しました。${flags.memo ? `（メモ: ${flags.memo}）` : ""}`);
+      if (status === "joined") {
+        if (join.joinDateMissing) {
+          console.log("※ 入会日が未記録です。入会後フォローの候補に出すには入会日を補ってください:");
+          console.log(`   crm status ${id} 入会 --joined-at YYYY-MM-DD`);
+        } else {
+          console.log(`  入会日: ${joinDateOf(updated.joinedAt)}（入会後フォローの候補は \`crm onboarding\` で確認できます）`);
+        }
+      }
       return 0;
     }
     case "find": {
@@ -640,6 +732,11 @@ async function main(argv: string[]): Promise<number> {
       row("メモ", p.memo);
       row("体験日", p.trialDate);
       row("体験の状況", p.trialStatus);
+      row("入会日", joinDateOf(p.joinedAt));
+      row(
+        "入会後フォロー送信済み",
+        parseOnboardingSent(p.onboardingSent).map(k => findOnboardingStep(k)?.label ?? k).join("、"),
+      );
       row("見送り理由", p.lostReason);
       row("次アクション", p.nextAction);
       row("最終連絡", p.lastContactAt?.slice(0, 16));
@@ -654,6 +751,16 @@ async function main(argv: string[]): Promise<number> {
       if (!p) {
         console.error("Usage: crm draft <番号>（その人向けの返信下書きを出します）");
         return 1;
+      }
+      // 入会後フォローの時期に入っている会員には、その声かけ文を出す（口コミ依頼より先）。
+      const dueNow = (await loadOnboardingDue([p], new Date()))[0];
+      if (dueNow) {
+        console.log(
+          `■ #${p.id} ${p.name || "(無名)"} 向け 入会後フォロー「${dueNow.step.label}」の下書き（確認して送信・自動送信なし）\n`,
+        );
+        console.log(buildOnboardingMessage(dueNow.step.key));
+        console.log(`\n送ったら: npm run crm -- onboarding sent ${p.id}`);
+        return 0;
       }
       console.log(`■ #${p.id} ${p.name || "(無名)"} 向け 返信下書き（確認して送信・自動送信なし）\n`);
       console.log(draftFor(p));
@@ -679,6 +786,7 @@ async function main(argv: string[]): Promise<number> {
       };
       print("追客漏れ候補", getFollowupNeeded(all, now, followupHours));
       print("体験後フォロー候補", getTrialFollowupNeeded(all));
+      printOnboardingDue(await loadOnboardingDue(all, now), getJoinDateMissing(all), withDrafts);
       print("口コミ依頼候補", getReviewRequestCandidates(all));
       console.log(
         withDrafts
@@ -686,6 +794,52 @@ async function main(argv: string[]): Promise<number> {
           : "\nヒント: 各候補の下書きを一括で出すなら `npm run crm -- followups --drafts`（自動送信なし）。",
       );
       return 0;
+    }
+    case "onboarding": {
+      const sub = (positional[0] ?? "list").trim();
+      const all = await store.getAll();
+      const now = new Date();
+
+      if (sub === "list") {
+        printOnboardingDue(await loadOnboardingDue(all, now), getJoinDateMissing(all), "drafts" in flags);
+        console.log(
+          `\n声をかける時期: ${ONBOARDING_STEPS.map(s => `${s.label}（${s.dueDay}日目から${s.windowDays}日間）`).join(" / ")}`,
+        );
+        console.log("ヒント: 営業ではない一言です。送信は必ず人が確認してから（自動送信はしません）。");
+        return 0;
+      }
+
+      // 送った（または今回は見送った）ことを記録する。記録すると候補から消える。
+      if (sub === "sent") {
+        const id = Number(positional[1] ?? flags.id);
+        const p = id ? await store.get(id) : undefined;
+        if (!p) {
+          console.error("Usage: crm onboarding sent <番号> [--step welcome|week1|week2|month1]");
+          return 1;
+        }
+        const days = daysSinceJoin(p.joinedAt, now);
+        const step = flags.step
+          ? findOnboardingStep(flags.step)
+          : (await loadOnboardingDue([p], now))[0]?.step;
+        if (flags.step && !step) {
+          console.error(`不明なステップ: ${flags.step}（使える: ${ONBOARDING_STEPS.map(s => s.key).join(" / ")}）`);
+          return 1;
+        }
+        if (!step) {
+          console.log(
+            days === null
+              ? `#${id} は入会日が未記録のため、声かけの時期を数えられません。`
+              : `#${id} は今は声かけの時期ではありません（入会${days}日目）。記録するものはありません。`,
+          );
+          return 0;
+        }
+        await store.update(id, { onboardingSent: addOnboardingSent(p.onboardingSent, step.key) });
+        console.log(`#${id} ${p.name || "(無名)"} の「${step.label}」を送信済みとして記録しました。`);
+        return 0;
+      }
+
+      console.error(`不明なサブコマンド: ${sub}\n  使える: list [--drafts] / sent <番号>`);
+      return 1;
     }
     case "withdrawal":
       return runWithdrawal(positional, flags);

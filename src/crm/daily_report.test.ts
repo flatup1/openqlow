@@ -25,6 +25,12 @@ const prospects: Prospect[] = [
   make({ name: "体験済みさん", status: "trial_done", trialDate: "2026-06-09", gender: "female" }),
   make({ name: "入会さん", status: "joined", joined: 1 }, "2026-06-11T02:00:00.000Z"),
   make({ name: "失注さん", status: "lost", lostReason: "家族と相談中" }),
+  // 入会して8日目（1週間の声かけの時期）。入会後フォロー候補に出る
+  make({ name: "一週間さん", status: "joined", joined: 1, joinedAt: "2026-06-03" }, "2026-06-03T02:00:00.000Z"),
+  // 今日（日本時間 2026-06-11）入会。「本日入会」に数え、入会当日の声かけ候補に出る
+  make({ name: "今日入会さん", status: "joined", joined: 1, joinedAt: "2026-06-11" }),
+  // 同じ時期だが送信済み。候補に出ない
+  make({ name: "声かけ済みさん", status: "joined", joined: 1, joinedAt: "2026-06-03", onboardingSent: "week1" }, "2026-06-03T02:00:00.000Z"),
 ];
 
 const { markdown, dateIso } = buildDailyReport(prospects, now);
@@ -39,6 +45,7 @@ for (const heading of [
   "## 3. 追客候補",
   "## 4. 体験予約済み",
   "## 5. 体験後フォロー候補",
+  "## 5-2. 入会後フォロー候補",
   "## 6. 口コミ依頼候補",
   "## 7. 入会・失注状況",
   "## 8. 今日の改善アクションTop3",
@@ -54,6 +61,24 @@ assert(markdown.includes("体験予定さん"), "trial_scheduled shows in 体験
 assert(markdown.includes("体験済みさん"), "trial_done shows in 体験後フォロー");
 assert(markdown.includes("入会さん"), "joined shows in 口コミ依頼");
 assert(markdown.includes("家族と相談中"), "lost reason shown");
+
+// 入会後フォロー: 時期に入っていて未送信の会員だけが出る
+const onboardingSection = markdown.split("## 5-2. 入会後フォロー候補")[1].split("## 6.")[0];
+assert(onboardingSection.includes("一週間さん") && onboardingSection.includes("入会1週間（入会8日目）"), "member in week-1 window shows in 入会後フォロー");
+assert(!onboardingSection.includes("声かけ済みさん"), "already-sent member is not listed again");
+assert(onboardingSection.includes("今日入会さん / 入会当日（入会0日目）"), "member who joined today shows the welcome touch");
+assert(!/- 入会さん \//.test(onboardingSection), "member without a join date is not guessed into the candidates");
+assert(/入会日が未記録 1名（入会さん）/.test(onboardingSection), "member without a join date is flagged for backfill instead");
+assert(onboardingSection.includes("crm onboarding sent"), "report tells how to record the touch as sent");
+
+// 「本日入会」は入会日で数える（入会日のある会員を、更新日で数え直さない）
+assert(markdown.includes("- 入会（本日）：1"), "joined-today counts by join date only (not by last update, not older members)");
+
+// 退会の相談に入っている会員は、入会後フォローから外す
+const withLeaving = buildDailyReport(prospects, now, {
+  withdrawals: [{ prospectId: prospects.find(p => p.name === "一週間さん")!.id, lineUserId: "", currentWithdrawalStatus: "WITHDRAWAL_INQUIRY" } as never],
+}).markdown;
+assert(!withLeaving.split("## 5-2. 入会後フォロー候補")[1].split("## 6.")[0].includes("一週間さん"), "member in a withdrawal case is excluded");
 
 // 日報は短く、返信文は載せず `crm draft <id>` へ誘導する
 assert(markdown.includes("crm draft"), "report points to crm draft for reply text");
